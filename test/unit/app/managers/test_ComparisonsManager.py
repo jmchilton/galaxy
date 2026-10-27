@@ -5,13 +5,21 @@ import pytest
 from sqlalchemy import event
 
 from galaxy import model
+from galaxy.datatypes.binary import Bam
 from galaxy.managers.comparison_cells import (
+    cap_metadata_value,
     COMPARISON_INLINE_EXPRESSION_MAX_BYTES,
+    COMPARISON_METADATA_MAX_ITEMS,
     ComparisonAccess,
     ComparisonCellBuilder,
     inlinable_expression,
+    scalar_metadata_keys,
 )
-from galaxy.managers.comparison_columns import SUMMARY_STATES
+from galaxy.managers.comparison_records import (
+    ComparisonRecordLoader,
+    LabelledStep,
+)
+from galaxy.managers.comparison_states import SUMMARY_STATES
 from galaxy.managers.comparisons import ComparisonsManager
 from galaxy.managers.hdas import HDASerializer
 from galaxy.managers.histories import HistoryManager
@@ -35,7 +43,7 @@ class TestComparisonsManager(BaseTestCase):
         super().set_up_managers()
         self.session = self.app.model.session
         cell_builder = _cell_builder(self.app)
-        self.comparisons_manager = ComparisonsManager(self.session, cell_builder)
+        self.comparisons_manager = ComparisonsManager(self.session, ComparisonRecordLoader(self.session), cell_builder)
         Security.security = self.app.security
         self.foreign_users = 0
         self.tool_id = "cat1"
@@ -53,7 +61,7 @@ class TestComparisonsManager(BaseTestCase):
             workflow_id=stored_workflow_id, step_label="target", metadata_elements=_metadata_elements(metadata)
         )
         (table, total), statement_count = self._count_statements(
-            lambda: self.comparisons_manager.step_runs(access, stored_workflow_id, query)
+            lambda: self.comparisons_manager.step_runs(access, query)
         )
         assert total == invocations
         assert len(table.rows) == invocations
@@ -137,12 +145,33 @@ class TestComparisonsManager(BaseTestCase):
         # every batch matches exactly the state it shows
         assert None not in shown_states.values()
 
+    def test_labelled_steps_only_versions_with_the_label(self):
+        stored_workflow = model.StoredWorkflow()
+        stored_workflow.user = self.trans.user
+        stored_workflow.name = "relabelled"
+        steps = []
+        for label, step_type in (("before", "data_input"), ("target", "tool")):
+            workflow = model.Workflow()
+            workflow.name = "relabelled"
+            workflow.stored_workflow = stored_workflow
+            step = model.WorkflowStep()
+            step.order_index = 0
+            step.type = step_type
+            step.label = label
+            workflow.steps.append(step)
+            steps.append((workflow, step))
+        stored_workflow.latest_workflow = steps[-1][0]
+        self.session.add(stored_workflow)
+        self.session.commit()
+        records = ComparisonRecordLoader(self.session)
+        workflow, step = steps[1]
+        assert records.labelled_steps(stored_workflow.id, "target") == {workflow.id: LabelledStep(step.id, "tool")}
+        assert records.labelled_steps(stored_workflow.id, "missing") == {}
+
     def test_admin_sees_inaccessible_items(self):
         stored_workflow_id = self._stored_workflow_with_runs(1, mapped=False).id
         query = StepRunsQuery.model_construct(workflow_id=stored_workflow_id, step_label="target")
-        table, _ = self.comparisons_manager.step_runs(
-            _access(self.trans.user, is_admin=True), stored_workflow_id, query
-        )
+        table, _ = self.comparisons_manager.step_runs(_access(self.trans.user, is_admin=True), query)
         (row,) = table.rows
         assert row.cells["input:foreign"].type == "dataset"
 
@@ -197,7 +226,7 @@ class TestComparisonsManager(BaseTestCase):
         stored_workflow, first_outputs = self._stored_workflow_with_output_runs(2)
         access = _access(self.trans.user)
         query = OutputRunsQuery.model_construct(workflow_id=stored_workflow.id)
-        table, _ = self.comparisons_manager.output_runs(access, stored_workflow.id, query)
+        table, _ = self.comparisons_manager.output_runs(access, query)
         columns = {column.key: column for column in table.columns}
         assert columns["output:out"].duplicate
         assert not columns["output:val"].duplicate
@@ -205,6 +234,20 @@ class TestComparisonsManager(BaseTestCase):
             cell = row.cells["output:out"]
             assert cell.type == "dataset"
             assert cell.id == self.app.security.encode_id(first_outputs[row.run.id])
+
+    def test_output_runs_new_filter_matches_unset_state(self):
+        stored_workflow, first_outputs = self._stored_workflow_with_output_runs(2)
+        unset_id, scheduled_id = first_outputs
+        invocation = self.session.get(model.WorkflowInvocation, self.app.security.decode_id(unset_id))
+        assert invocation
+        invocation.state = None
+        self.session.commit()
+        access = _access(self.trans.user)
+        for state, expected in (("new", unset_id), ("scheduled", scheduled_id)):
+            query = OutputRunsQuery.model_construct(workflow_id=stored_workflow.id, states=[state])
+            table, total = self.comparisons_manager.output_runs(access, query)
+            assert [(row.run.id, row.state) for row in table.rows] == [(expected, state)]
+            assert total == 1
 
     def _output_runs_statement_count(self, invocations: int, metadata: bool) -> int:
         stored_workflow, _ = self._stored_workflow_with_output_runs(invocations)
@@ -215,7 +258,7 @@ class TestComparisonsManager(BaseTestCase):
             workflow_id=stored_workflow_id, metadata_elements=_metadata_elements(metadata)
         )
         (table, total), statement_count = self._count_statements(
-            lambda: self.comparisons_manager.output_runs(access, stored_workflow_id, query)
+            lambda: self.comparisons_manager.output_runs(access, query)
         )
         assert total == len(table.rows) == invocations
         for row in table.rows:
@@ -404,38 +447,25 @@ class TestComparisonsManager(BaseTestCase):
         return hdca
 
 
-class TestComparisonCellBuilder(BaseTestCase):
-    def set_up_managers(self):
-        super().set_up_managers()
-        self.session = self.app.model.session
-        self.cell_builder = _cell_builder(self.app)
-        Security.security = self.app.security
+def test_scalar_metadata_keys_skip_file_metadata():
+    keys = scalar_metadata_keys(Bam.metadata_spec)
+    assert "bam_index" in Bam.metadata_spec
+    assert "bam_index" not in keys
+    assert "bam_version" in keys
 
-    def test_dataset_cell_skips_file_metadata(self):
-        hda = self._hda("bam")
-        assert "bam_index" in hda.metadata.spec
-        assert "bam_index" not in self.cell_builder.metadata_keys(hda)
-        cell = self.cell_builder.dataset_cell(hda, ["bam_index"], inline_expression_values=False)
-        assert cell.type == "dataset"
-        assert cell.metadata == {}
 
-    def test_dataset_cell_caps_list_metadata(self):
-        hda = self._hda("tabular")
-        hda.metadata.column_names = [f"c{i}" for i in range(60)]
-        hda.metadata.data_lines = 7
-        cell = self.cell_builder.dataset_cell(hda, ["column_names", "data_lines"], inline_expression_values=False)
-        assert cell.type == "dataset"
-        assert cell.metadata == {"column_names": [f"c{i}" for i in range(50)], "data_lines": 7}
-
-    def _hda(self, extension: str) -> model.HistoryDatasetAssociation:
-        history = model.History(name="cells", user=self.trans.user)
-        self.session.add(history)
-        hda = model.HistoryDatasetAssociation(
-            history=history, extension=extension, create_dataset=True, sa_session=self.session
-        )
-        self.session.add(hda)
-        self.session.commit()
-        return hda
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        (list(range(60)), list(range(COMPARISON_METADATA_MAX_ITEMS))),
+        (tuple(range(60)), list(range(COMPARISON_METADATA_MAX_ITEMS))),
+        ({f"k{i}": i for i in range(60)}, {f"k{i}": i for i in range(COMPARISON_METADATA_MAX_ITEMS)}),
+        (["a", "b"], ["a", "b"]),
+        (7, 7),
+    ],
+)
+def test_cap_metadata_value(value, expected):
+    assert cap_metadata_value(value) == expected
 
 
 @pytest.mark.parametrize(

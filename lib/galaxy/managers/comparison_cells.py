@@ -1,14 +1,15 @@
-"""Batch loading of job, step and dataset records and comparison cell builders."""
+"""Comparison cells: datasets and collections as the caller may see them, and one cell per row and column."""
 
 import logging
 from collections import defaultdict
 from collections.abc import (
     Collection,
+    Container,
     Iterable,
+    Mapping,
 )
 from typing import (
     Any,
-    Literal,
     NamedTuple,
 )
 
@@ -18,33 +19,33 @@ from sqlalchemy.orm import (
     undefer,
 )
 
-from galaxy.managers.comparison_columns import multiple_input_members
+from galaxy.managers.comparison_records import (
+    IoValue,
+    ItemRef,
+    ItemRefs,
+)
 from galaxy.managers.hdas import HDASerializer
 from galaxy.managers.histories import HistoryManager
 from galaxy.model import (
-    DatasetCollectionElement,
     HistoryDatasetAssociation,
     HistoryDatasetCollectionAssociation,
-    ImplicitCollectionJobs,
-    ImplicitCollectionJobsJobAssociation,
-    ImplicitlyCreatedDatasetCollectionInput,
-    Job,
-    JobToInputDatasetAssociation,
-    JobToInputDatasetCollectionAssociation,
-    JobToInputDatasetCollectionElementAssociation,
-    JobToOutputDatasetAssociation,
-    JobToOutputDatasetCollectionAssociation,
 )
 from galaxy.model.metadata import (
     FileParameter,
+    MetadataSpecCollection,
     PythonObjectParameter,
 )
 from galaxy.model.scoped_session import galaxy_scoped_session
 from galaxy.model.security import GalaxyRBACAgent
 from galaxy.schema.comparisons import (
+    AnyComparisonCell,
     CollectionCell,
+    ComparisonColumn,
+    ComparisonQueryBase,
     DatasetCell,
+    DatasetListCell,
     MissingCell,
+    MissingReason,
     ValueCell,
 )
 from galaxy.workflow.modules import read_expression_json
@@ -54,18 +55,6 @@ log = logging.getLogger(__name__)
 COMPARISON_INLINE_EXPRESSION_MAX_BYTES = 4096
 COMPARISON_METADATA_MAX_ITEMS = 50
 NON_SCALAR_METADATA_PARAMS = (FileParameter, PythonObjectParameter)
-JOB_RECORD_COLUMNS = (Job.id, Job.state, Job.tool_id, Job.tool_version, Job.copied_from_job_id.is_not(None))
-
-
-class ItemRef(NamedTuple):
-    src: Literal["hda", "hdca"]
-    id: int
-
-
-class ItemRefs(NamedTuple):
-    """The datasets of a multiple data input, in order."""
-
-    refs: tuple[ItemRef, ...]
 
 
 class ComparisonAccess(NamedTuple):
@@ -81,21 +70,14 @@ class ItemCell(NamedTuple):
     metadata_keys: list[str]
 
 
-class JobRecord(NamedTuple):
-    id: int
-    state: str
-    tool_id: str | None
-    tool_version: str | None
-    copied: bool
+class RowIo(NamedTuple):
+    """A row's io by column key, and what its empty columns show."""
 
-
-class ImplicitCollectionJobsRecord(NamedTuple):
-    id: int
-    populated_state: str
-    representative: JobRecord | None
-    states: dict[str, int]
-    job_count: int
-    copied_count: int
+    io: Mapping[str, IoValue]
+    # keys of the columns the row's version has; None: every column
+    in_version: Container[str] | None
+    # why a column the row's version has is empty
+    reason: MissingReason
 
 
 class ComparisonCellBuilder:
@@ -110,6 +92,14 @@ class ComparisonCellBuilder:
         self.hda_serializer = hda_serializer
         self.security_agent = security_agent
         self.history_manager = history_manager
+
+    def row_cells(
+        self, columns: list[ComparisonColumn], rows: list[RowIo], access: ComparisonAccess, query: ComparisonQueryBase
+    ) -> list[dict[str, AnyComparisonCell]]:
+        """Each row's cells, with every dataset and collection loaded and access-checked in one batch."""
+        refs = (ref for row in rows for ref in item_refs(row.io))
+        item_cells = self.item_cells(refs, access, query.metadata_elements, query.inline_expression_values)
+        return fill_cells(columns, rows, item_cells)
 
     def item_cells(
         self,
@@ -133,7 +123,7 @@ class ComparisonCellBuilder:
                 item_cells[ItemRef("hda", hda.id)] = skipped
                 continue
             cell = self.dataset_cell(hda, metadata_elements, inline_expression_values)
-            item_cells[ItemRef("hda", hda.id)] = ItemCell(cell, self.metadata_keys(hda))
+            item_cells[ItemRef("hda", hda.id)] = ItemCell(cell, scalar_metadata_keys(hda.datatype.metadata_spec))
         for hdca in hdcas.values():
             if hdca.history_id not in accessible_history_ids:
                 item_cells[ItemRef("hdca", hdca.id)] = inaccessible
@@ -156,149 +146,6 @@ class ComparisonCellBuilder:
             self.security_agent.accessible_dataset_ids(access.role_ids, dataset_ids),
             self.history_manager.accessible_ids(access.user_id, history_ids),
         )
-
-    def load_jobs(self, job_ids: Collection[int]) -> dict[int, JobRecord]:
-        if not job_ids:
-            return {}
-        stmt = select(*JOB_RECORD_COLUMNS).where(Job.id.in_(job_ids))
-        return {row[0]: JobRecord(*row) for row in self.sa_session.execute(stmt)}
-
-    def load_implicit_collection_jobs(self, icj_ids: Collection[int]) -> dict[int, ImplicitCollectionJobsRecord]:
-        """Member job states, reuse and the representative (first) job of each mapped batch."""
-        if not icj_ids:
-            return {}
-        icj = ImplicitCollectionJobs
-        icjja = ImplicitCollectionJobsJobAssociation
-        # outer joins keep batches mapped over an empty collection
-        stmt = (
-            select(icj.id, icj.populated_state, *JOB_RECORD_COLUMNS)
-            .outerjoin(icjja, icjja.implicit_collection_jobs_id == icj.id)
-            .outerjoin(Job, Job.id == icjja.job_id)
-            .where(icj.id.in_(icj_ids))
-            .order_by(icj.id, icjja.order_index, icjja.job_id)
-        )
-        populated_states: dict[int, str] = {}
-        members: dict[int, list[JobRecord]] = defaultdict(list)
-        for icj_id, populated_state, *job_columns in self.sa_session.execute(stmt):
-            populated_states[icj_id] = populated_state
-            if job_columns[0] is not None:
-                members[icj_id].append(JobRecord(*job_columns))
-        records = {}
-        for icj_id, populated_state in populated_states.items():
-            jobs = members[icj_id]
-            states: dict[str, int] = defaultdict(int)
-            for member in jobs:
-                states[member.state] += 1
-            records[icj_id] = ImplicitCollectionJobsRecord(
-                id=icj_id,
-                populated_state=populated_state,
-                representative=jobs[0] if jobs else None,
-                states=dict(states),
-                job_count=len(jobs),
-                copied_count=sum(job.copied for job in jobs),
-            )
-        return records
-
-    def job_inputs(self, job_ids: Collection[int]) -> dict[int, dict[str, ItemRef | ItemRefs]]:
-        """Input datasets and collections of each job, keyed by association name."""
-        inputs: dict[int, dict[str, ItemRef | ItemRefs]] = defaultdict(dict)
-        if not job_ids:
-            return inputs
-        jtida = JobToInputDatasetAssociation
-        dataset_ids: dict[int, dict[str, int]] = defaultdict(dict)
-        stmt = (
-            select(jtida.job_id, jtida.name, jtida.dataset_id)
-            .where(jtida.job_id.in_(job_ids), jtida.dataset_id.is_not(None))
-            .order_by(jtida.id)
-        )
-        for job_id, name, dataset_id in self.sa_session.execute(stmt):
-            dataset_ids[job_id][name] = dataset_id
-        for job_id, by_name in dataset_ids.items():
-            members = multiple_input_members(by_name)
-            folded = {name for names in members.values() for name in names}
-            for name, dataset_id in by_name.items():
-                if name in folded:
-                    continue
-                names = members.get(name, ())
-                if len(names) > 1:
-                    inputs[job_id][name] = ItemRefs(tuple(ItemRef("hda", by_name[member]) for member in names))
-                else:
-                    inputs[job_id][name] = ItemRef("hda", dataset_id)
-
-        jtidca = JobToInputDatasetCollectionAssociation
-        collection_stmt = (
-            select(jtidca.job_id, jtidca.name, jtidca.dataset_collection_id)
-            .where(jtidca.job_id.in_(job_ids), jtidca.dataset_collection_id.is_not(None))
-            .order_by(jtidca.id)
-        )
-        for job_id, name, hdca_id in self.sa_session.execute(collection_stmt):
-            inputs[job_id][name] = ItemRef("hdca", hdca_id)
-
-        jtidcea = JobToInputDatasetCollectionElementAssociation
-        element_stmt = (
-            select(jtidcea.job_id, jtidcea.name, DatasetCollectionElement.hda_id)
-            .join(DatasetCollectionElement, DatasetCollectionElement.id == jtidcea.dataset_collection_element_id)
-            .where(jtidcea.job_id.in_(job_ids), DatasetCollectionElement.hda_id.is_not(None))
-            .order_by(jtidcea.id)
-        )
-        for job_id, name, hda_id in self.sa_session.execute(element_stmt):
-            inputs[job_id].setdefault(name, ItemRef("hda", hda_id))
-        return inputs
-
-    def implicit_collection_inputs(self, icj_ids: Collection[int]) -> dict[int, dict[str, ItemRef]]:
-        """Collections a mapped batch was mapped over, keyed by input name."""
-        inputs: dict[int, dict[str, ItemRef]] = defaultdict(dict)
-        if not icj_ids:
-            return inputs
-        hdca = HistoryDatasetCollectionAssociation
-        icdci = ImplicitlyCreatedDatasetCollectionInput
-        stmt = (
-            select(hdca.implicit_collection_jobs_id, icdci.name, icdci.input_dataset_collection_id)
-            .join(icdci, icdci.dataset_collection_id == hdca.id)
-            .where(hdca.implicit_collection_jobs_id.in_(icj_ids), icdci.input_dataset_collection_id.is_not(None))
-            .order_by(icdci.id)
-        )
-        for icj_id, name, input_hdca_id in self.sa_session.execute(stmt):
-            inputs[icj_id].setdefault(name, ItemRef("hdca", input_hdca_id))
-        return inputs
-
-    def job_outputs(self, job_ids: Collection[int]) -> dict[int, dict[str, ItemRef]]:
-        """Output datasets and collections of each job, keyed by association name."""
-        outputs: dict[int, dict[str, ItemRef]] = defaultdict(dict)
-        if not job_ids:
-            return outputs
-        jtoda = JobToOutputDatasetAssociation
-        stmt = (
-            select(jtoda.job_id, jtoda.name, jtoda.dataset_id)
-            .where(jtoda.job_id.in_(job_ids), jtoda.dataset_id.is_not(None))
-            .order_by(jtoda.id)
-        )
-        for job_id, name, hda_id in self.sa_session.execute(stmt):
-            outputs[job_id].setdefault(name, ItemRef("hda", hda_id))
-        jtodca = JobToOutputDatasetCollectionAssociation
-        collection_stmt = (
-            select(jtodca.job_id, jtodca.name, jtodca.dataset_collection_id)
-            .where(jtodca.job_id.in_(job_ids), jtodca.dataset_collection_id.is_not(None))
-            .order_by(jtodca.id)
-        )
-        for job_id, name, hdca_id in self.sa_session.execute(collection_stmt):
-            outputs[job_id][name] = ItemRef("hdca", hdca_id)
-        return outputs
-
-    def implicit_collection_outputs(self, icj_ids: Collection[int]) -> dict[int, dict[str, ItemRef]]:
-        """Collections a mapped batch created, keyed by output name."""
-        outputs: dict[int, dict[str, ItemRef]] = defaultdict(dict)
-        if not icj_ids:
-            return outputs
-        hdca = HistoryDatasetCollectionAssociation
-        stmt = (
-            select(hdca.implicit_collection_jobs_id, hdca.implicit_output_name, hdca.id)
-            .where(hdca.implicit_collection_jobs_id.in_(icj_ids), hdca.implicit_output_name.is_not(None))
-            .order_by(hdca.id)
-        )
-        for icj_id, name, hdca_id in self.sa_session.execute(stmt):
-            outputs[icj_id].setdefault(name, ItemRef("hdca", hdca_id))
-        return outputs
 
     def load_items(
         self, refs: Iterable[ItemRef], with_metadata: bool
@@ -327,12 +174,6 @@ class ComparisonCellBuilder:
         )
         return {hdca.id: hdca for hdca in self.sa_session.scalars(stmt).unique()}
 
-    def metadata_keys(self, hda: HistoryDatasetAssociation) -> list[str]:
-        """Metadata element names a dataset's datatype declares, without file or object values."""
-        # the datatype's spec, not hda.metadata, which loads the deferred metadata column
-        spec = hda.datatype.metadata_spec
-        return [name for name, element in spec.items() if not isinstance(element.param, NON_SCALAR_METADATA_PARAMS)]
-
     def dataset_cell(
         self, hda: HistoryDatasetAssociation, metadata_elements: list[str], inline_expression_values: bool
     ) -> DatasetCell | ValueCell:
@@ -342,9 +183,9 @@ class ComparisonCellBuilder:
                 return value_cell
         metadata: dict[str, Any] = {}
         if metadata_elements:
-            included = set(metadata_elements).intersection(self.metadata_keys(hda))
+            included = set(metadata_elements).intersection(scalar_metadata_keys(hda.datatype.metadata_spec))
             serialized = self.hda_serializer.serialize_metadata(hda, "metadata", included=included)
-            metadata = {name: _cap(value) for name, value in serialized.items() if value is not None}
+            metadata = {name: cap_metadata_value(value) for name, value in serialized.items() if value is not None}
         return DatasetCell(
             id=hda.id,
             hid=hda.hid,
@@ -392,9 +233,66 @@ def inlinable_expression(hda: HistoryDatasetAssociation) -> bool:
     return size <= COMPARISON_INLINE_EXPRESSION_MAX_BYTES
 
 
-def _cap(value: Any) -> Any:
+def scalar_metadata_keys(spec: MetadataSpecCollection) -> list[str]:
+    """Element names of a datatype's metadata spec, without file or object values."""
+    # read from the datatype's spec, not hda.metadata, which loads the deferred metadata column
+    return [name for name, element in spec.items() if not isinstance(element.param, NON_SCALAR_METADATA_PARAMS)]
+
+
+def cap_metadata_value(value: Any) -> Any:
+    """At most ``COMPARISON_METADATA_MAX_ITEMS`` items of a list, tuple or dict value."""
     if isinstance(value, (list, tuple)):
         return list(value[:COMPARISON_METADATA_MAX_ITEMS])
     if isinstance(value, dict):
         return dict(list(value.items())[:COMPARISON_METADATA_MAX_ITEMS])
     return value
+
+
+def item_refs(io: Mapping[str, IoValue]) -> Iterable[ItemRef]:
+    """Every dataset and collection a row's io refers to, multiple input members included."""
+    for value in io.values():
+        if isinstance(value, ItemRef):
+            yield value
+        elif isinstance(value, ItemRefs):
+            yield from value.refs
+
+
+def fill_cells(
+    columns: list[ComparisonColumn], rows: list[RowIo], item_cells: Mapping[ItemRef, ItemCell]
+) -> list[dict[str, AnyComparisonCell]]:
+    """One cell per row and column; sets each column's ``metadata_keys`` from the datasets in it."""
+    metadata_keys: dict[str, set[str]] = defaultdict(set)
+    filled = [_row_cells(columns, row, item_cells, metadata_keys) for row in rows]
+    for column in columns:
+        column.metadata_keys = sorted(metadata_keys[column.key])
+    return filled
+
+
+def _row_cells(
+    columns: list[ComparisonColumn],
+    row: RowIo,
+    item_cells: Mapping[ItemRef, ItemCell],
+    metadata_keys: dict[str, set[str]],
+) -> dict[str, AnyComparisonCell]:
+    cells: dict[str, AnyComparisonCell] = {}
+    for column in columns:
+        value = row.io.get(column.key)
+        if isinstance(value, ItemRef):
+            item_cell = item_cells.get(value)
+            if item_cell:
+                cells[column.key] = item_cell.cell
+                metadata_keys[column.key].update(item_cell.metadata_keys)
+                continue
+        elif isinstance(value, ItemRefs):
+            members = [item_cells[ref] for ref in value.refs if ref in item_cells]
+            if members:
+                cells[column.key] = DatasetListCell(items=[member.cell for member in members])
+                for member in members:
+                    metadata_keys[column.key].update(member.metadata_keys)
+                continue
+        elif value is not None:
+            cells[column.key] = value
+            continue
+        in_row_version = row.in_version is None or column.key in row.in_version
+        cells[column.key] = MissingCell(reason=row.reason if in_row_version else "not_in_version")
+    return cells
