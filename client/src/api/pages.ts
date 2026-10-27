@@ -2,7 +2,7 @@
  * Unified API client for all Galaxy Pages (history-attached and standalone).
  * Uses the generated typed client against the /api/pages endpoints.
  */
-import { type components, GalaxyApi, type GalaxyApiPaths } from "@/api";
+import { type components, GalaxyApi, type GalaxyApiPaths, totalMatches } from "@/api";
 import { errorMessageAsString, rethrowSimple } from "@/utils/simple-error";
 import { slugify } from "@/utils/slug";
 
@@ -95,9 +95,7 @@ export async function loadPages(options: LoadPagesOptions = {}): Promise<LoadPag
         rethrowSimple(error);
     }
 
-    const totalMatches = parseInt(response.headers.get("total_matches") ?? "0", 10) || 0;
-
-    return { data, totalMatches };
+    return { data, totalMatches: totalMatches(response) };
 }
 
 /** Backend `err_code` of a slug the user already owns (`USER_SLUG_DUPLICATE`) */
