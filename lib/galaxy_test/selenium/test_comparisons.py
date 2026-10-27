@@ -71,6 +71,7 @@ class TestComparisons(SeleniumTestCase):
         comparisons.row_detail.wait_for_visible()
         changed = comparisons.row_detail_changed_parameter.wait_for_visible()
         assert "Concatenate Dataset" in changed.text, changed.text
+        self.scroll_into_view(changed)
         self.screenshot("comparisons_step_all_runs_row_detail")
         comparisons.row_expand(run_id=older_ids[0]).wait_for_and_click()
         comparisons.row_detail.wait_for_absent_or_hidden()
@@ -95,8 +96,7 @@ class TestComparisons(SeleniumTestCase):
         comparisons.row(run_id=newest_id).wait_for_visible()
 
         comparisons.view_all_link.wait_for_and_click()
-        comparisons._.wait_for_visible()
-        self.assert_current_url_contains("kind=step_runs")
+        self._assert_comparison_page("step_runs")
         self._assert_rows(newest_id, *older_ids)
         self._assert_summary("Showing 1–3 of 3 · newest first · your runs only")
 
@@ -110,9 +110,8 @@ class TestComparisons(SeleniumTestCase):
         self.get(f"workflows/{workflow_id}/invocations")
         comparisons = self.components.comparisons
         comparisons.compare_outputs_button.wait_for_and_click()
-        comparisons._.wait_for_visible()
+        self._assert_comparison_page("output_runs")
         self._assert_rows(newest_id, *older_ids)
-        self.assert_current_url_contains("kind=output_runs")
         self.screenshot("comparisons_compare_outputs_page")
 
         comparisons.column_header(key="output:first_out").wait_for_visible()
@@ -132,13 +131,13 @@ class TestComparisons(SeleniumTestCase):
         job_id = second_cat["jobs"][0]["id"]
         self.get(f"jobs/{job_id}/view")
         comparisons.other_runs_action.wait_for_and_click()
-        self.assert_current_url_contains("kind=tool_runs")
+        self._assert_comparison_page("tool_runs")
         comparisons.row(run_id=job_id).wait_for_visible()
         self.screenshot("comparisons_tool_runs_page")
 
         self.get(f"datasets/{second_cat['outputs']['out_file1']['id']}/details")
         comparisons.other_runs_action.wait_for_and_click()
-        self.assert_current_url_contains("kind=tool_runs")
+        self._assert_comparison_page("tool_runs")
         comparisons.row(run_id=job_id).wait_for_visible()
 
         self.get(f"workflows/edit?id={workflow_id}")
@@ -146,8 +145,7 @@ class TestComparisons(SeleniumTestCase):
         comparisons.editor_compare_runs_link.wait_for_visible()
         self.screenshot("comparisons_editor_compare_runs_link")
         comparisons.editor_compare_runs_link.wait_for_and_click()
-        comparisons._.wait_for_visible()
-        self.assert_current_url_contains("kind=step_runs")
+        self._assert_comparison_page("step_runs")
         self.assert_current_url_contains("step_label=second_cat")
         self._assert_rows(newest_id, *older_ids)
 
@@ -188,6 +186,10 @@ class TestComparisons(SeleniumTestCase):
         ).json()["id"]
         assert len(older_ids) == 2 and newest_id not in older_ids
         return workflow_id, older_ids, newest_id
+
+    def _assert_comparison_page(self, kind: str):
+        self.components.comparisons._.wait_for_visible()
+        self.assert_current_url_contains(f"kind={kind}")
 
     def _assert_rows(self, *run_ids: str):
         comparisons = self.components.comparisons
