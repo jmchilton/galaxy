@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { ComparisonQuery, ComparisonRow, ComparisonTable } from "@/api/comparisons";
+import type { ComparisonCell, ComparisonQuery, ComparisonRow, ComparisonTable, DatasetCell } from "@/api/comparisons";
 
 import {
     cellText,
@@ -27,6 +27,17 @@ describe("cellText", () => {
         expect(cellText(MAPPED.cells["input:input1"], MAPPED, "meta:data_lines")).toBe("list · 3");
         expect(cellText(NOT_RUN.cells["input:input1"], NOT_RUN, "link")).toBe("not run yet");
         expect(cellText(undefined, NOT_RUN, "link")).toBe("");
+    });
+
+    it("writes every dataset of a multiple input", () => {
+        const input = V2_RUN.cells["input:input1"] as DatasetCell;
+        const second = { ...input, hid: 9, name: "second", metadata: { data_lines: 4 } };
+        const list: ComparisonCell = {
+            type: "dataset_list",
+            items: [input, second, { type: "missing", reason: "inaccessible" }],
+        };
+        expect(cellText(list, V2_RUN, "link")).toBe(`6: ${input.name}; 9: second; no access`);
+        expect(cellText(list, V2_RUN, "meta:data_lines")).toBe("1; 4; no access");
     });
 
     it("writes values on one line", () => {

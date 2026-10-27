@@ -23,6 +23,7 @@ const LINK_STUB = {
     props: ["itemId", "itemSrc", "to", "linkClass"],
     template: "<a class='item-link'><slot /></a>",
 };
+const POPOVER_STUB = { name: "GPopover", props: ["target"], template: "<div class='popover-stub'><slot /></div>" };
 
 function mountCell(
     cell: Cell | undefined,
@@ -33,7 +34,10 @@ function mountCell(
     const localVue = getLocalVue();
     return mount(ComparisonCell as object, {
         props: { cell, row: { version: 1 }, display, requestedMetadata, loading },
-        global: { ...localVue, stubs: { ...localVue.stubs, ItemPopoverLink: LINK_STUB, FontAwesomeIcon: true } },
+        global: {
+            ...localVue,
+            stubs: { ...localVue.stubs, ItemPopoverLink: LINK_STUB, GPopover: POPOVER_STUB, FontAwesomeIcon: true },
+        },
     });
 }
 
@@ -131,6 +135,33 @@ describe("ComparisonCell values", () => {
         const link = mountCell(cell, "link").findComponent(LINK_STUB);
         expect(link.props("itemId")).toBe("ds1");
         expect(link.text()).toBe("18204");
+    });
+});
+
+describe("ComparisonCell dataset lists", () => {
+    const second: DatasetCell = { ...DATASET, id: "second", hid: 9, name: "second" };
+    const list: Cell = { type: "dataset_list", items: [DATASET, second, { type: "missing", reason: "inaccessible" }] };
+
+    it("shows the first dataset and lists every dataset behind a count", () => {
+        const wrapper = mountCell(list);
+        const [first, ...listed] = wrapper.findAllComponents(LINK_STUB);
+        expect(first!.props("itemId")).toBe(DATASET.id);
+        expect(wrapper.find(".comparison-dataset-list-more").text()).toBe("+2 more");
+        const items = wrapper.findAll(".comparison-dataset-list-items li");
+        expect(items.map((item) => item.text())).toEqual([
+            `${DATASET.hid}: ${DATASET.name}`,
+            "9: second",
+            "—no access",
+        ]);
+        expect(listed.map((link) => link.props("itemId"))).toEqual([DATASET.id, "second"]);
+    });
+
+    it("shows each dataset's metadata under a metadata display", () => {
+        const lines = (n: number): DatasetCell => ({ ...DATASET, metadata: { data_lines: n } });
+        const wrapper = mountCell({ type: "dataset_list", items: [lines(3), lines(5)] }, "meta:data_lines", [
+            "data_lines",
+        ]);
+        expect(wrapper.findAll("code").map((code) => code.text())).toEqual(["3", "3", "5"]);
     });
 });
 
