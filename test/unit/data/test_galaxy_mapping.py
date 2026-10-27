@@ -1,8 +1,8 @@
 import os
 import random
 import uuid
+from dataclasses import dataclass
 from tempfile import NamedTemporaryFile
-from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import (
@@ -19,6 +19,7 @@ from galaxy.model.orm.util import (
     add_object_to_object_session,
     get_object_session,
 )
+from galaxy.model.scoped_session import galaxy_scoped_session
 from galaxy.model.security import GalaxyRBACAgent
 from galaxy.model.unittest_utils.utils import random_email
 from galaxy.objectstore import QuotaSourceMap
@@ -642,7 +643,7 @@ class TestMappings(BaseModelTestCase):
 
         # parity with the per-item and released batch rules
         datasets = [hda.dataset for hda in (public, shared, private, both)]
-        trans = SimpleNamespace(sa_session=self.model.session)
+        trans = SessionTrans(sa_session=self.model.session)
         public_map = security_agent.datasets_are_public(trans, datasets)
         assert {d.id for d in datasets if public_map[d.id]} == security_agent.accessible_dataset_ids([], dataset_ids)
         for user in (u_from, u_to, u_other):
@@ -848,6 +849,13 @@ def _workflow_from_steps(user, steps):
     workflow.steps = steps
     workflow.stored_workflow = stored_workflow
     return workflow
+
+
+@dataclass
+class SessionTrans:
+    """The part of a trans the batch dataset permission checks read."""
+
+    sa_session: galaxy_scoped_session
 
 
 class MockObjectStore:
