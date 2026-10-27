@@ -15,10 +15,9 @@ const props = defineProps<{
     graphStep?: GraphStep;
 }>();
 
+const workflowStore = useWorkflowStore();
 // The invocation page has loaded the workflow; this reads the store without fetching.
-const storedWorkflowId = computed(() =>
-    useWorkflowStore().getStoredWorkflowIdByInstanceId(props.invocation.workflow_id),
-);
+const storedWorkflowId = computed(() => workflowStore.getStoredWorkflowIdByInstanceId(props.invocation.workflow_id));
 
 // The editor step carries the label; the invocation step has it once scheduled.
 const stepLabel = computed(
