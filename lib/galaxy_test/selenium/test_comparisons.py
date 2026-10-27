@@ -71,8 +71,7 @@ class TestComparisons(SeleniumTestCase):
         comparisons.row_detail.wait_for_visible()
         changed = comparisons.row_detail_changed_parameter.wait_for_visible()
         assert "Concatenate Dataset" in changed.text, changed.text
-        self.scroll_into_view(changed)
-        self.screenshot("comparisons_step_all_runs_row_detail")
+        self._screenshot_settled("comparisons_step_all_runs_row_detail", comparisons.row_detail_changed_parameter)
         comparisons.row_expand(run_id=older_ids[0]).wait_for_and_click()
         comparisons.row_detail.wait_for_absent_or_hidden()
 
@@ -109,6 +108,9 @@ class TestComparisons(SeleniumTestCase):
         workflow_id, older_ids, newest_id = self._runs_across_two_versions()
         self.get(f"workflows/{workflow_id}/invocations")
         comparisons = self.components.comparisons
+        comparisons.compare_outputs_button.wait_for_visible()
+        self._assert_invocation_grid_rows(3)
+        self.screenshot("comparisons_stored_workflow_invocations")
         comparisons.compare_outputs_button.wait_for_and_click()
         self._assert_comparison_page("output_runs")
         self._assert_rows(newest_id, *older_ids)
@@ -130,12 +132,14 @@ class TestComparisons(SeleniumTestCase):
         (second_cat,) = [step for step in steps if step["workflow_step_label"] == "second_cat"]
         job_id = second_cat["jobs"][0]["id"]
         self.get(f"jobs/{job_id}/view")
+        self._screenshot_settled("comparisons_job_other_runs_action", comparisons.other_runs_action)
         comparisons.other_runs_action.wait_for_and_click()
         self._assert_comparison_page("tool_runs")
         comparisons.row(run_id=job_id).wait_for_visible()
         self.screenshot("comparisons_tool_runs_page")
 
         self.get(f"datasets/{second_cat['outputs']['out_file1']['id']}/details")
+        self._screenshot_settled("comparisons_dataset_details_other_runs_action", comparisons.other_runs_action)
         comparisons.other_runs_action.wait_for_and_click()
         self._assert_comparison_page("tool_runs")
         comparisons.row(run_id=job_id).wait_for_visible()
@@ -160,8 +164,7 @@ class TestComparisons(SeleniumTestCase):
         comparisons = self.components.comparisons
         self._assert_rows(reused_id, summary.invocation_id)
         comparisons.row_expand(run_id=reused_id).wait_for_and_click()
-        self.scroll_into_view(comparisons.row_detail_reused_badge.wait_for_visible())
-        self.screenshot("comparisons_mapped_step_reused_job")
+        self._screenshot_settled("comparisons_mapped_step_reused_job", comparisons.row_detail_reused_badge)
         comparisons.row_expand(run_id=reused_id).wait_for_and_click()
         comparisons.row_detail.wait_for_absent_or_hidden()
 
@@ -187,6 +190,19 @@ class TestComparisons(SeleniumTestCase):
         assert len(older_ids) == 2 and newest_id not in older_ids
         return workflow_id, older_ids, newest_id
 
+    def _screenshot_settled(self, label: str, subject):
+        """Screenshot with subject in view, once loading spinners are gone and fade-ins have run."""
+        self._wait_on(
+            lambda: not any(
+                span.is_displayed() for span in self.find_elements_by_selector('[data-description="loading message"]')
+            ),
+            "visible loading messages to clear",
+            wait_type=self.wait_types.DATABASE_OPERATION,
+        )
+        self.sleep_for(self.wait_types.UX_RENDER)
+        self.scroll_into_view(subject.wait_for_visible())
+        self.screenshot(label)
+
     def _assert_comparison_page(self, kind: str):
         self.components.comparisons._.wait_for_visible()
         self.assert_current_url_contains(f"kind={kind}")
@@ -196,6 +212,11 @@ class TestComparisons(SeleniumTestCase):
         for run_id in run_ids:
             comparisons.row(run_id=run_id).wait_for_visible()
         assert len(comparisons.rows.all()) == len(run_ids)
+
+    @retry_assertion_during_transitions
+    def _assert_invocation_grid_rows(self, count: int):
+        rows = self.find_elements_by_selector('.grid-table [data-description="grid item"]')
+        assert len(rows) == count, f"Expected {count} invocation rows, found {len(rows)}"
 
     @retry_assertion_during_transitions
     def _assert_transposed(self, transposed: bool):
