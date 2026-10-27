@@ -1697,4 +1697,7 @@ class SeleniumSessionWorkflowPopulator(SeleniumSessionGetPostMixin, populators.B
         return upload_response.json()
 
 
-__all__ = ("retry_during_transitions",)
+__all__ = (
+    "retry_assertion_during_transitions",
+    "retry_during_transitions",
+)
