@@ -96,33 +96,16 @@ class DSpaceFilesSource(BaseFilesSource[DSpaceFileSourceTemplateConfiguration, D
             if not status.get("authenticated"):
                 raise self._token_not_accepted()
         query = query.strip() if query else None
-        parts = self._split(path)
-        if not parts:
-            endpoint = "core/communities/search/top"
-            if query:
-                # this endpoint has no search, so filter all top communities by name
-                communities = self._directories("communities", self._all(config, endpoint, {}, "communities"))
-                return self._filter_and_page(communities, limit, offset, query)
-            objects, total = self._page(config, endpoint, self._page_params({}, limit, offset), "communities")
-            return self._directories("communities", objects), total
-        if len(parts) == 2 and parts[0] == "communities":
-            children = self._directories(
-                "communities", self._all(config, f"core/communities/{parts[1]}/subcommunities", {}, "subcommunities")
-            ) + self._directories(
-                "collections", self._all(config, f"core/communities/{parts[1]}/collections", {}, "collections")
-            )
-            return self._filter_and_page(children, limit, offset, query)
-        if len(parts) == 2 and parts[0] == "collections":
-            params = {"dsoType": "ITEM", "scope": parts[1], "sort": "dc.title,ASC"}
-            if query:
-                # DSpace matches whole words only; a trailing * also finds partial ones, but breaks words like "a-b"
-                params["query"] = " ".join(f"{word}*" if re.fullmatch(r"\w+", word) else word for word in query.split())
-            items, total = self._search_page(config, self._page_params(params, limit, offset))
-            return self._directories("items", items), total
-        if len(parts) == 2 and parts[0] == "items":
-            bitstreams = self._bitstreams(config, parts[1])
-            files: list[AnyRemoteEntry] = [self._file(bitstream) for bitstream in bitstreams]
-            return self._filter_and_page(files, limit, offset, query)
+        match self._split(path):
+            case []:
+                return self._top_communities(config, limit, offset, query)
+            case ["communities", community_id]:
+                return self._community_children(config, community_id, limit, offset, query)
+            case ["collections", collection_id]:
+                return self._collection_items(config, collection_id, limit, offset, query)
+            case ["items", item_id]:
+                files: list[AnyRemoteEntry] = [self._file(bitstream) for bitstream in self._bitstreams(config, item_id)]
+                return self._filter_and_page(files, limit, offset, query)
         raise ObjectNotFound(f"The specified DSpace path is not a directory [{path}].")
 
     def _realize_to(
@@ -147,6 +130,46 @@ class DSpaceFilesSource(BaseFilesSource[DSpaceFileSourceTemplateConfiguration, D
         context: FilesSourceRuntimeContext[DSpaceFileSourceConfiguration],
     ) -> str | None:
         raise MessageException("DSpace file sources are read-only.")
+
+    def _top_communities(
+        self, config: DSpaceFileSourceConfiguration, limit: int | None, offset: int | None, query: str | None
+    ) -> tuple[list[AnyRemoteEntry], int]:
+        endpoint = "core/communities/search/top"
+        if query:
+            # this endpoint has no search, so filter all top communities by name
+            communities = self._directories("communities", self._all(config, endpoint, {}, "communities"))
+            return self._filter_and_page(communities, limit, offset, query)
+        objects, total = self._page(config, endpoint, self._page_params({}, limit, offset), "communities")
+        return self._directories("communities", objects), total
+
+    def _community_children(
+        self,
+        config: DSpaceFileSourceConfiguration,
+        community_id: str,
+        limit: int | None,
+        offset: int | None,
+        query: str | None,
+    ) -> tuple[list[AnyRemoteEntry], int]:
+        endpoint = f"core/communities/{community_id}"
+        children = self._directories(
+            "communities", self._all(config, f"{endpoint}/subcommunities", {}, "subcommunities")
+        ) + self._directories("collections", self._all(config, f"{endpoint}/collections", {}, "collections"))
+        return self._filter_and_page(children, limit, offset, query)
+
+    def _collection_items(
+        self,
+        config: DSpaceFileSourceConfiguration,
+        collection_id: str,
+        limit: int | None,
+        offset: int | None,
+        query: str | None,
+    ) -> tuple[list[AnyRemoteEntry], int]:
+        params = {"dsoType": "ITEM", "scope": collection_id, "sort": "dc.title,ASC"}
+        if query:
+            # DSpace matches whole words only; a trailing * also finds partial ones, but breaks words like "a-b"
+            params["query"] = " ".join(f"{word}*" if re.fullmatch(r"\w+", word) else word for word in query.split())
+        items, total = self._search_page(config, self._page_params(params, limit, offset))
+        return self._directories("items", items), total
 
     def _bitstreams(self, config: DSpaceFileSourceConfiguration, item_id: str) -> list[dict[str, Any]]:
         bundles = self._all(config, f"core/items/{item_id}/bundles", {}, "bundles")
