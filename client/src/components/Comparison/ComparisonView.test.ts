@@ -237,10 +237,29 @@ describe("ComparisonView", () => {
         expect(view.find(".alert-danger").text()).toBe("A step_runs comparison needs step_label.");
     });
 
-    it("labels state filters as the State column does, keeping raw values", async () => {
+    function stateLabels(view: VueWrapper) {
+        return view.findAll(".comparison-filter-states label").map((label) => label.text());
+    }
+
+    function statesToggle(view: VueWrapper) {
+        return view.find(".comparison-filter-states-toggle").text();
+    }
+
+    it("labels state filters as the State column does, one failed for job error and failed", async () => {
         const { view } = await mountView({ kind: "step_runs", workflow_id: "wf1", step_label: "s" });
         const error = view.find(".comparison-filter-states input[value='error']");
         expect(error.element.closest("label")!.textContent!.trim()).toBe("failed");
+        expect(view.find(".comparison-filter-states input[value='failed']").exists()).toBe(false);
+        const labels = stateLabels(view);
+        expect(labels.filter((label) => label.startsWith("failed"))).toEqual(["failed"]);
+        expect(new Set(labels).size).toBe(labels.length);
+        expect(statesToggle(view)).toBe("State: any");
+    });
+
+    it("offers an invocation's failed state on its own for output runs", async () => {
+        const { view } = await mountView({ kind: "output_runs", workflow_id: "wf1" });
+        const failed = view.find(".comparison-filter-states input[value='failed']");
+        expect(failed.element.closest("label")!.textContent!.trim()).toBe("failed");
     });
 
     it("writes a state filter to the URL and returns to the first page", async () => {
@@ -252,7 +271,27 @@ describe("ComparisonView", () => {
         });
         await view.find(".comparison-filter-states input[value='error']").setValue(true);
         expect(replace).toHaveBeenLastCalledWith({
-            query: { kind: "step_runs", workflow_id: "wf1", step_label: "second_cat", states: ["error"] },
+            query: { kind: "step_runs", workflow_id: "wf1", step_label: "second_cat", states: ["error", "failed"] },
+        });
+    });
+
+    it("checks a shared state option when the URL names either of its states", async () => {
+        const { view } = await mountView({ kind: "tool_runs", tool_id: "cat1", states: "failed" });
+        const error = view.find(".comparison-filter-states input[value='error']").element as HTMLInputElement;
+        expect(error.checked).toBe(true);
+        expect(statesToggle(view)).toBe("State: failed");
+    });
+
+    it("drops every state of an unchecked option from the URL", async () => {
+        const { view, replace } = await mountView({
+            kind: "tool_runs",
+            tool_id: "cat1",
+            states: ["error", "ok", "failed", "running"],
+        });
+        expect(statesToggle(view)).toBe("State: 3 selected");
+        await view.find(".comparison-filter-states input[value='error']").setValue(false);
+        expect(replace).toHaveBeenLastCalledWith({
+            query: { kind: "tool_runs", tool_id: "cat1", states: ["running", "ok"] },
         });
     });
 
