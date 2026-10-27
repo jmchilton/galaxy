@@ -66,3 +66,15 @@ def test_repeat_index_mismatch_is_not_rewritten():
     resolved = _resolve("rep_1|rep_2|x")
     assert not resolved.matches
     assert resolved.runtime_key == "rep_1|rep_2|x"
+
+
+def test_value_from_conditional_without_test_param():
+    tool = """<tool id="id" name="name">
+    <inputs>
+        <conditional name="meta" value_from="self:app.datatypes_registry.get_upload_metadata_params" value_ref="file_type" value_ref_in_group="False" />
+        <param name="input1" type="data" />
+    </inputs>
+</tool>
+"""
+    resolved = InputReferences(XmlToolSource(parse_xml_string_to_etree(tool))).resolve("input1")
+    assert output_reference_problem(resolved, "format_source") is None
