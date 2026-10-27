@@ -12,6 +12,7 @@ const TABLE = STEP_RUNS as unknown as ComparisonTable;
 const [NOT_RUN, V2_RUN, V1_RUN] = TABLE.rows as [ComparisonRow, ComparisonRow, ComparisonRow];
 const MAPPED = TABLE.rows[4]!;
 const LINKS = { "input:input1": "link", "output:out_file1": "link" } as const;
+const ALL_COLUMNS = ["version", "state", "reused", "history", ...TABLE.columns.map((c) => c.key)];
 const PARAMS_STUB = {
     name: "JobParametersDiff",
     props: ["jobIdA", "jobIdB", "labelA", "labelB", "onlyDifferences"],
@@ -22,7 +23,14 @@ const LINK_STUB = { name: "ItemPopoverLink", props: ["itemId", "itemSrc", "to"],
 function mountDiff(rows: [ComparisonRow, ComparisonRow], props: Record<string, unknown> = {}) {
     const localVue = getLocalVue();
     return mount(ComparisonDiff as object, {
-        props: { rows, columns: TABLE.columns, query: TABLE.query, displays: LINKS, ...props },
+        props: {
+            rows,
+            columns: TABLE.columns,
+            query: TABLE.query,
+            displays: LINKS,
+            visibleColumns: ALL_COLUMNS,
+            ...props,
+        },
         global: {
             ...localVue,
             stubs: { ...localVue.stubs, JobParametersDiff: PARAMS_STUB, ItemPopoverLink: LINK_STUB },
@@ -60,6 +68,14 @@ describe("ComparisonDiff", () => {
             "output:out_file1",
         ]);
         expect(wrapper.findComponent(PARAMS_STUB).props("onlyDifferences")).toBe(false);
+    });
+
+    it("lists only the table's visible fields and columns", async () => {
+        const wrapper = mountDiff([V2_RUN, V1_RUN], { visibleColumns: ["state", "input:input1"] });
+        expect(lineKeys(wrapper).map(([key]) => key)).toEqual(["input:input1"]);
+        expect(wrapper.find(".comparison-diff-summary").text()).toBe("1 of 2 fields differ");
+        await wrapper.find(".comparison-diff-only input").setValue(false);
+        expect(lineKeys(wrapper).map(([key]) => key)).toEqual(["state", "input:input1"]);
     });
 
     it("compares by each column's display", () => {

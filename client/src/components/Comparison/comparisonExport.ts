@@ -10,13 +10,13 @@ import { versionlessToolId } from "@/utils/tool-version";
 import {
     type CellDisplay,
     isScalar,
-    META_FIELDS,
     META_LABELS,
     metadataKeyOf,
     type MetaField,
     missingText,
     stateText,
     versionLabel,
+    visibleFields,
 } from "./comparisonUtils";
 
 export type ExportFormat = "csv" | "tsv";
@@ -84,11 +84,9 @@ export interface ExportOptions {
 
 /** The table's shown fields and columns as lines of text, runs as rows or, transposed, as columns. */
 export function exportLines(table: ComparisonTable, options: ExportOptions): string[][] {
-    const [anchor, ...optional] = META_FIELDS[table.query.kind];
-    const metaFields = [anchor!, ...optional.filter((field) => options.visibleColumns.includes(field))];
-    const columns = table.columns.filter((column) => options.visibleColumns.includes(column.key));
+    const { anchor, metaFields, columns } = visibleFields(table.query.kind, table.columns, options.visibleColumns);
     const fields = [
-        ...metaFields.map((field) => ({
+        ...[anchor, ...metaFields].map((field) => ({
             label: META_LABELS[field],
             text: (row: ComparisonRow) => metaText(field, row),
         })),
