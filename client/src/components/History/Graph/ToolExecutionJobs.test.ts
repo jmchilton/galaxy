@@ -24,6 +24,7 @@ function toolRequest(jobIds: string[]) {
 
 let failRequest: boolean;
 let jobIds: string[];
+let copiedFrom: Record<string, string>;
 let batchRequests: URLSearchParams[];
 // While set, the first batch's response waits for it.
 let firstBatchGate: Promise<void> | undefined;
@@ -31,6 +32,7 @@ let firstBatchGate: Promise<void> | undefined;
 beforeEach(() => {
     failRequest = false;
     jobIds = ["j1", "j2", "j3"];
+    copiedFrom = {};
     batchRequests = [];
     firstBatchGate = undefined;
     server.use(
@@ -46,7 +48,11 @@ beforeEach(() => {
                 return HttpResponse.json({ err_msg: "nope", err_code: 500 }, { status: 500 });
             }
             // newest first, as the index sorts
-            return HttpResponse.json([...jobIds].reverse().map((id) => ({ id, model_class: "Job", state: "ok" })));
+            return HttpResponse.json(
+                [...jobIds]
+                    .reverse()
+                    .map((id) => ({ id, model_class: "Job", state: "ok", copied_from_job_id: copiedFrom[id] ?? null })),
+            );
         }),
         http.untyped.get("/api/tool_requests/:id", () =>
             failRequest
@@ -105,6 +111,15 @@ describe("ToolExecutionJobs", () => {
         expect(wrapper.findComponent(TABS_STUB).props("jobId")).toBe("j1");
         await wrapper.find("button[aria-label='Go to page 2']").trigger("click");
         expect(wrapper.findComponent(TABS_STUB).props("jobId")).toBe("j2");
+    });
+
+    it("marks a batch job the job cache reused", async () => {
+        copiedFrom = { j2: "earlier" };
+        const wrapper = await mountJobs({ toolExecutionId: undefined, implicitCollectionJobsId: "icj1" });
+        expect(batchRequests).toHaveLength(1);
+        expect(wrapper.find(".tool-execution-job-reused").exists()).toBe(false);
+        await wrapper.find("button[aria-label='Go to page 2']").trigger("click");
+        expect(wrapper.find(".tool-execution-job-reused").text()).toBe("reused");
     });
 
     it("asks for every job of a batch whose size is known", async () => {
