@@ -6,6 +6,7 @@ import type {
     ComparisonRow,
     MissingCell,
 } from "@/api/comparisons";
+import { statePlaceholders } from "@/composables/useInvocationGraph";
 
 /** How a column renders its cells: name with popover, the value itself, or one metadata element. */
 export type CellDisplay = "link" | "value" | `meta:${string}`;
@@ -34,6 +35,11 @@ export const ROLE_LABELS: Record<ComparisonColumn["role"], string> = {
     output: "out",
     parameter: "param",
 };
+
+/** A state as the invocation view names it; failed_metadata's placeholder only reads after a job count. */
+export function stateText(state: string): string {
+    return state === "failed_metadata" ? state : (statePlaceholders[state] ?? state);
+}
 
 /** Versions are 0-based on the wire and 1-based in the UI. */
 export function versionLabel(version: number | null | undefined): string {

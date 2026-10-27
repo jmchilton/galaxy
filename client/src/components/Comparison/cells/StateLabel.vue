@@ -2,7 +2,9 @@
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { computed } from "vue";
 
-import { type GraphStepState, iconClasses, statePlaceholders } from "@/composables/useInvocationGraph";
+import { type GraphStepState, iconClasses } from "@/composables/useInvocationGraph";
+
+import { stateText } from "../comparisonUtils";
 
 const props = defineProps<{
     /** A job, dataset, collection or invocation state. */
@@ -12,10 +14,7 @@ const props = defineProps<{
 }>();
 
 const icon = computed(() => iconClasses[props.state as GraphStepState]);
-// The placeholder for failed_metadata only reads after a job count.
-const text = computed(() =>
-    props.state === "failed_metadata" ? props.state : (statePlaceholders[props.state] ?? props.state),
-);
+const text = computed(() => stateText(props.state));
 </script>
 
 <template>

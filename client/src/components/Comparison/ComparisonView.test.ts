@@ -175,6 +175,12 @@ describe("ComparisonView", () => {
         expect(view.find(".alert-danger").text()).toBe(message);
     });
 
+    it("labels state filters as the State column does, keeping raw values", async () => {
+        const { view } = await mountView({ kind: "step_runs", workflow_id: "wf1", step_label: "s" });
+        const error = view.find(".comparison-filter-states input[value='error']");
+        expect(error.element.closest("label")!.textContent!.trim()).toBe("failed");
+    });
+
     it("writes a state filter to the URL and returns to the first page", async () => {
         const { view, replace } = await mountView({
             kind: "step_runs",

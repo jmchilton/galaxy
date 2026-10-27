@@ -23,7 +23,7 @@ import {
     parseComparisonQuery,
     STATE_OPTIONS,
 } from "./comparisonQuery";
-import { requestedMetadata } from "./comparisonUtils";
+import { requestedMetadata, stateText } from "./comparisonUtils";
 import { useComparisonDisplay, useComparisonFetch } from "./useComparison";
 
 import ComparisonPager from "./ComparisonPager.vue";
@@ -103,7 +103,7 @@ const states = computed({
 });
 const stateOptions = computed(() => {
     const options = kind.value ? STATE_OPTIONS[kind.value] : [];
-    return [...new Set([...options, ...states.value])].map((state) => ({ text: state, value: state }));
+    return [...new Set([...options, ...states.value])].map((state) => ({ text: stateText(state), value: state }));
 });
 
 const toolVersions = computed({
