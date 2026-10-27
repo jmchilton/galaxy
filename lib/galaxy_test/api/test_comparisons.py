@@ -478,10 +478,16 @@ class TestComparisonsApi(ApiTestCase):
             assert (skipped_row["run"]["id"], skipped_row["version"]) == (skipped_id, 0)
             assert skipped_row["state"] == skipped_row["step_job"]["state"] == "skipped"
             assert skipped_row["cells"]["input:input1"]["id"] == hda["id"]
-            # a skipped job still records its outputs, as null expression.json datasets
-            skipped_output = skipped_row["cells"]["output:out_file1"]
-            assert (skipped_output["type"], skipped_output["value"]) == ("value", None)
+            # a skipped job records null placeholder outputs; they show as skipped, in the version
+            assert skipped_row["cells"]["output:out_file1"] == {"type": "missing", "reason": "skipped"}
             assert ran_row["cells"]["output:out_file1"]["type"] == "dataset"
+            for inline in (True, False):
+                table = self._step_runs_table(workflow_id, "maybe_cat", inline_expression_values=inline)
+                assert table["rows"][1]["cells"]["output:out_file1"] == {"type": "missing", "reason": "skipped"}
+
+            tool_rows = self._tool_runs_table("cat1", history_id=history_id)["rows"]
+            (skipped_tool_row,) = [row for row in tool_rows if row["state"] == "skipped"]
+            assert skipped_tool_row["cells"]["output:out_file1"] == {"type": "missing", "reason": "skipped"}
 
     @skip_without_tool("multi_data_param")
     def test_tool_runs_multiple_data_input(self):
