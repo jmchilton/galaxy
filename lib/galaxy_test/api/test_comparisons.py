@@ -383,6 +383,14 @@ class TestComparisonsApi(ApiTestCase):
             new_rows = self._step_runs_table(workflow_id, "after_pause", states="new")["rows"]
             assert [row["run"]["id"] for row in new_rows] == [paused_id]
 
+            # a pause step never has a job, and reports "scheduled" both while paused and once resumed
+            wait_on(lambda: self._invocation_step(paused_id, order_index=1), "pause step reached")
+            pause_rows = {row["run"]["id"]: row for row in self._step_runs_table(workflow_id, "the_pause")["rows"]}
+            assert {run_id: (row["state"], row["step_job"]) for run_id, row in pause_rows.items()} == {
+                resumed_id: ("scheduled", None),
+                paused_id: ("scheduled", None),
+            }
+
     @skip_without_tool("cat1")
     def test_step_runs_mapped_over_empty_list(self):
         with self.dataset_populator.test_history() as history_id:

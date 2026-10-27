@@ -48,6 +48,23 @@ describe("ComparisonRowDetail", () => {
         expect(wrapper.text()).toContain("No outputs.");
     });
 
+    it("links a subworkflow step to the subworkflow run", () => {
+        const row = { ...TABLE.rows[0]!, state: "scheduled", subworkflow_invocation_id: "sub1" };
+        const wrapper = mountDetail(row);
+        expect(wrapper.findComponent(JOB_TABS_STUB).exists()).toBe(false);
+        expect(wrapper.text()).toContain("This step ran a subworkflow.");
+        expect(wrapper.find("a.comparison-row-detail-subworkflow").attributes("href")).toBe(
+            "/workflows/invocations/sub1",
+        );
+    });
+
+    it("explains a scheduled step without a job, such as a pause", () => {
+        const row = { ...TABLE.rows[0]!, state: "scheduled" };
+        const wrapper = mountDetail(row);
+        expect(wrapper.text()).toContain("This step has no job: pause and input steps run without one.");
+        expect(wrapper.text()).not.toContain("no job for this step yet");
+    });
+
     it("has no single job for a workflow-outputs row", () => {
         const query = { kind: "output_runs", workflow_id: "w" } as ComparisonQuery;
         const row = { ...TABLE.rows[1]!, step_job: null };

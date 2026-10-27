@@ -30,6 +30,8 @@ const job = computed(() => rowJob(props.row));
 const isInvocationRow = computed(() => props.query.kind === "output_runs");
 const link = computed(() => runLink(props.row, props.query));
 const openLabel = computed(() => (props.row.run.model === "WorkflowInvocation" ? "Open invocation" : "Open job"));
+// Steps are "new" or "ready" until scheduled; a scheduled step without a job (e.g. a pause) never gets one.
+const notScheduled = computed(() => ["new", "ready"].includes(props.row.state));
 </script>
 
 <template>
@@ -56,7 +58,20 @@ const openLabel = computed(() => (props.row.run.model === "WorkflowInvocation" ?
             <GTabs v-else-if="job?.jobId">
                 <JobDetailsTabs :job-id="job.jobId" />
             </GTabs>
-            <GAlert v-else variant="info" show class="mb-0">This run has no job for this step yet.</GAlert>
+            <GAlert v-else-if="row.subworkflow_invocation_id" variant="info" show class="mb-0">
+                This step ran a subworkflow.
+                <router-link
+                    class="comparison-row-detail-subworkflow"
+                    :to="`/workflows/invocations/${row.subworkflow_invocation_id}`">
+                    Open the subworkflow run
+                </router-link>
+            </GAlert>
+            <GAlert v-else-if="notScheduled" variant="info" show class="mb-0"
+                >This run has no job for this step yet.</GAlert
+            >
+            <GAlert v-else variant="info" show class="mb-0">
+                This step has no job: pause and input steps run without one.
+            </GAlert>
             <GButton v-if="link" class="mt-2" size="small" color="blue" outline :to="link">{{ openLabel }}</GButton>
         </div>
     </div>
