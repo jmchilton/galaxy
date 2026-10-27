@@ -14,6 +14,9 @@ export interface JobParameterDiffEntry {
     /** The value in each job as text; undefined when that job lacks the parameter. */
     a?: string;
     b?: string;
+    /** Each job's note on the parameter, e.g. that it was added after the job ran. */
+    notesA?: string;
+    notesB?: string;
     differs: boolean;
 }
 
@@ -63,6 +66,8 @@ function diffEntry(key: string, left?: Pathed, right?: Pathed): JobParameterDiff
         depth: parameter.depth,
         a: left && valueText(left.parameter.value),
         b: right && valueText(right.parameter.value),
+        notesA: left?.parameter.notes || undefined,
+        notesB: right?.parameter.notes || undefined,
         differs: !left || !right || left.identity !== right.identity,
     };
 }

@@ -46,6 +46,13 @@ describe("diffJobParameters", () => {
         ]);
     });
 
+    it("carries each side's notes", () => {
+        const note = "not used (parameter was added after this job was run)";
+        const [entry] = diffJobParameters([p("Mode", "fast")], [{ text: "Mode", depth: 1, notes: note }]);
+        expect(entry).toMatchObject({ a: "fast", b: "", notesB: note, differs: true });
+        expect(entry!.notesA).toBeUndefined();
+    });
+
     it("tells repeated paths apart by position", () => {
         const diff = diffJobParameters([p("Query", 1), p("Query", 2)], [p("Query", 1), p("Query", 5)]);
         expect(diff.map((entry) => entry.differs)).toEqual([false, true]);

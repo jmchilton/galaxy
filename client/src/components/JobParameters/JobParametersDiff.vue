@@ -72,13 +72,17 @@ const differing = computed(() => entries.value.filter((entry) => entry.differs).
                         <td :style="{ 'padding-left': `${(entry.depth - 1) * 10 + 4}px` }" :title="entry.path">
                             {{ entry.label }}
                         </td>
-                        <td>
-                            <span v-if="entry.a === undefined" class="text-muted font-italic">absent</span>
-                            <template v-else>{{ entry.a }}</template>
-                        </td>
-                        <td>
-                            <span v-if="entry.b === undefined" class="text-muted font-italic">absent</span>
-                            <template v-else>{{ entry.b }}</template>
+                        <td
+                            v-for="(side, index) in [
+                                { value: entry.a, notes: entry.notesA },
+                                { value: entry.b, notes: entry.notesB },
+                            ]"
+                            :key="index">
+                            <span v-if="side.value === undefined" class="text-muted font-italic">absent</span>
+                            <template v-else>{{ side.value }}</template>
+                            <em v-if="side.notes" class="job-parameters-diff-notes text-muted small">
+                                {{ side.notes }}
+                            </em>
                         </td>
                     </tr>
                 </tbody>

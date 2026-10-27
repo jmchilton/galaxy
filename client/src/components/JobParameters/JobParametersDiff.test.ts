@@ -9,6 +9,8 @@ import JobParametersDiff from "./JobParametersDiff.vue";
 
 const { server, http } = useServerMock();
 
+const NOT_USED = "not used (parameter was added after this job was run)";
+
 function display(lines: number, input: string) {
     return {
         has_parameter_errors: false,
@@ -26,6 +28,11 @@ beforeEach(() => {
     server.use(
         http.untyped.get("/api/jobs/a/parameters_display", () => HttpResponse.json(display(10, "x"))),
         http.untyped.get("/api/jobs/b/parameters_display", () => HttpResponse.json(display(12, "y"))),
+        http.untyped.get("/api/jobs/old/parameters_display", () => {
+            const old = display(10, "x");
+            old.parameters[2] = { text: "Mode", depth: 1, notes: NOT_USED } as (typeof old.parameters)[number];
+            return HttpResponse.json(old);
+        }),
         http.untyped.get("/api/jobs/broken/parameters_display", () =>
             HttpResponse.json({ err_msg: "Job not accessible", err_code: 403 }, { status: 403 }),
         ),
@@ -66,6 +73,11 @@ describe("JobParametersDiff", () => {
         const wrapper = await mountDiff({ jobIdA: "a", jobIdB: "a", onlyDifferences: true });
         expect(wrapper.find(".job-parameters-diff-summary").text()).toBe("All parameters match.");
         expect(wrapper.find("table").exists()).toBe(false);
+    });
+
+    it("shows a parameter's notes where it has no value", async () => {
+        const wrapper = await mountDiff({ jobIdA: "a", jobIdB: "old" });
+        expect(lines(wrapper)[2]).toEqual({ cells: ["Mode", "fast", NOT_USED], changed: true });
     });
 
     it("shows a load error", async () => {
