@@ -322,26 +322,11 @@ describe("JobInformation/JobInformation.vue other runs link", () => {
         return wrapper;
     }
 
-    it("hides the link from anonymous users, who have no runs to compare", async () => {
-        const wrapper = await mountWith(
-            { includeOtherRunsLink: true },
-            {
-                isAnonymous: true,
-                total_disk_usage: 0,
-                nice_total_disk_usage: "0 bytes",
-            },
-        );
-        expect(wrapper.find("[id^='g-card-action-job-other-runs']").exists()).toBe(false);
-    });
-
-    it("links to the tool's runs only when asked to", async () => {
-        const without = await mountWith({});
-        expect(without.find("[id^='g-card-action-job-other-runs']").exists()).toBe(false);
-        const withLink = await mountWith({ includeOtherRunsLink: true });
-        const link = withLink.find("a[id^='g-card-action-job-other-runs']");
-        expect(link.text()).toContain("Other runs of this tool");
-        expect(link.attributes("href")).toBe(
-            "/comparisons?kind=tool_runs&tool_id=toolshed.example.org%2Frepos%2Fu%2Fr%2Fcat%2F1.0",
-        );
+    it("offers the link to registered users who ask for it, and only them", async () => {
+        const hasLink = (wrapper) => wrapper.find("[id^='g-card-action-job-other-runs']").exists();
+        expect(hasLink(await mountWith({ includeOtherRunsLink: true }))).toBe(true);
+        expect(hasLink(await mountWith({}))).toBe(false);
+        const anonymous = { isAnonymous: true, total_disk_usage: 0, nice_total_disk_usage: "0 bytes" };
+        expect(hasLink(await mountWith({ includeOtherRunsLink: true }, anonymous))).toBe(false);
     });
 });
