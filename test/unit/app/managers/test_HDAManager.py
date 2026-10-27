@@ -513,6 +513,14 @@ class TestHDASerializer(HDATestCase):
             "delimiter": "\t",
         }
 
+    def test_serialize_metadata_included(self):
+        hda = self._create_vanilla_hda(extension="tabular")
+        result = self.hda_serializer.serialize_metadata(
+            hda, "metadata", included=["data_lines", "columns", "not_a_metadata_element"]
+        )
+        assert result == {"data_lines": 0, "columns": 0}
+        assert self.hda_serializer.serialize_metadata(hda, "metadata", included=[]) == {}
+
     def test_serializing_inaccessible(self):
         owner = self.user_manager.create(**user2_data)
         non_owner = self.user_manager.create(**user3_data)
