@@ -555,7 +555,11 @@ class ComparisonsManager:
             step = steps.get(invocation.id)
             # an input step's own input; its step output is the same item
             io: dict[str, IoValue] = dict(request_inputs.get(invocation.id, {}))
-            if step and step_types[invocation.workflow_id] not in INPUT_STEP_TYPES:
+            is_input_step = step_types[invocation.workflow_id] in INPUT_STEP_TYPES
+            if step and is_input_step and not io and "output" in outputs.get(step.id, {}):
+                # a defaulted data input is recorded only as the step's output
+                io[f"input:{query.step_label}"] = outputs[step.id]["output"]
+            if step and not is_input_step:
                 job = jobs.get(step.job_id) if step.job_id else None
                 icj = icjs.get(step.implicit_collection_jobs_id) if step.implicit_collection_jobs_id else None
                 inputs = job_inputs.get(job.id, {}) if job else icj_inputs.get(icj.id, {}) if icj else {}
