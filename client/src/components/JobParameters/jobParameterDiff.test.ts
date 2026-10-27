@@ -51,3 +51,40 @@ describe("diffJobParameters", () => {
         expect(diff.map((entry) => entry.differs)).toEqual([false, true]);
     });
 });
+
+// As `summarize_job_parameters` lists them: plain parameters carry notes, a conditional's test row
+// doesn't, and repeat members follow without a header row.
+describe("diffJobParameters with repeats", () => {
+    const plain = (text: string, value: JobParameter["value"], depth = 1) => ({ ...p(text, value, depth), notes: "" });
+    const rows = (diff: ReturnType<typeof diffJobParameters>) =>
+        diff.map((entry) => [entry.path, entry.a, entry.b, entry.differs]);
+
+    it("gives members of a leading repeat a path without a phantom parent", () => {
+        const a = [plain("Query", "x", 2), plain("Query", "y", 2), plain("Lines", 10)];
+        const b = [plain("Query", "x", 2), plain("Lines", 10)];
+        expect(rows(diffJobParameters(a, b))).toEqual([
+            ["Query", "x", "x", false],
+            ["Query", "y", undefined, true],
+            ["Lines", "10", "10", false],
+        ]);
+    });
+
+    it("doesn't nest repeat members under the plain parameter before them", () => {
+        const diff = diffJobParameters([plain("Lines", 10), plain("Query", "x", 2)], [plain("Lines", 10)]);
+        expect(rows(diff)).toEqual([
+            ["Lines", "10", "10", false],
+            ["Query", "x", undefined, true],
+        ]);
+    });
+
+    it("pairs repeat members after a conditional whose case has a same-named child", () => {
+        const a = [p("Mode", "advanced"), plain("Size", 5, 2), plain("Size", 1, 2), plain("Size", 2, 2)];
+        const b = [p("Mode", "simple"), plain("Size", 1, 2), plain("Size", 3, 2)];
+        expect(rows(diffJobParameters(a, b))).toEqual([
+            ["Mode", "advanced", "simple", true],
+            ["Mode › Size", "5", undefined, true],
+            ["Mode › Size", "1", "1", false],
+            ["Mode › Size", "2", "3", true],
+        ]);
+    });
+});
