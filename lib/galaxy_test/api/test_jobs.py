@@ -385,7 +385,7 @@ steps:
         run_response = self.dataset_populator.run_tool("cat1", {"input1": {"src": "hda", "id": dataset_id}}, history_id)
         job_id = run_response["jobs"][0]["id"]
         self.dataset_populator.wait_for_job(job_id, assert_ok=True)
-        index_jobs = self._get("jobs", data={"history_id": history_id, "tool_id": "cat1"}).json()
+        index_jobs = self.__jobs_index(data={"history_id": history_id, "tool_id": "cat1"})
         assert [j["id"] for j in index_jobs] == [job_id]
         show = self.dataset_populator.get_job_details(job_id).json()
         show_full = self.dataset_populator.get_job_details(job_id, full=True).json()
@@ -406,10 +406,10 @@ steps:
             "user_email",
             "user_id",
             "tool_version",
+            "copied_from_job_id",
         }
         show_keys = index_keys | {
             "command_version",
-            "copied_from_job_id",
             "implicit_collection_jobs_id",
             "inputs",
             "output_collections",
@@ -431,6 +431,30 @@ steps:
         assert set(show.keys()) == show_keys
         assert set(show_full.keys()) == show_full_keys
         assert index_jobs[0]["tool_version"] == show["tool_version"] == "1.0.0"
+        assert index_jobs[0]["copied_from_job_id"] is None
+        cached = self.dataset_populator.run_tool(
+            "cat1", {"input1": {"src": "hda", "id": dataset_id}}, history_id, use_cached_job=True
+        )
+        cached_job_id = cached["jobs"][0]["id"]
+        self.dataset_populator.wait_for_job(cached_job_id, assert_ok=True)
+        (cached_job,) = self.__jobs_index(data={"history_id": history_id, "tool_id": "cat1", "limit": 1})
+        assert (cached_job["id"], cached_job["copied_from_job_id"]) == (cached_job_id, job_id)
+
+    @skip_without_tool("multiple_versions")
+    def test_index_tool_version_filter(self, history_id):
+        job_ids = {}
+        for tool_version in ("0.1", "0.2"):
+            run_response = self._run("multiple_versions", history_id, {}, tool_version=tool_version).json()
+            job_ids[tool_version] = run_response["jobs"][0]["id"]
+
+        def index_ids(**params):
+            jobs = self.__jobs_index(data={"history_id": history_id, "tool_id": "multiple_versions", **params})
+            return {job["id"] for job in jobs}
+
+        assert index_ids() == set(job_ids.values())
+        assert index_ids(tool_version="0.1") == {job_ids["0.1"]}
+        assert index_ids(tool_version="0.1,0.2") == set(job_ids.values())
+        assert index_ids(tool_version="9.9") == set()
 
     @requires_new_history
     def test_show_security(self, history_id):
