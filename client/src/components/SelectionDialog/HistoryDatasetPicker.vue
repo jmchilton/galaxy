@@ -287,10 +287,10 @@ function onCancel() {
         :search-title="searchTitle"
         :title="title"
         :filter-class="datasetsVisible ? undefined : HistoriesFilters"
-        @on-ok="onOk"
-        @on-undo="onUndo"
-        @on-cancel="onCancel"
-        @on-select-all="selectAll"
-        @on-open="onHistoryClick"
-        @on-click="onDatasetClick" />
+        @onOk="onOk"
+        @onUndo="onUndo"
+        @onCancel="onCancel"
+        @onSelectAll="selectAll"
+        @onOpen="onHistoryClick"
+        @onClick="onDatasetClick" />
 </template>
