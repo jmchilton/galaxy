@@ -312,24 +312,31 @@ class TestDatasetsApi(ApiTestCase):
 
     def test_show_metadata_key_expands_every_element(self, history_id):
         hda = self.dataset_populator.new_dataset(history_id, content="1\t2\n3\t4\n", file_type="tabular", wait=True)
-        shown = self._get(f"histories/{history_id}/contents/datasets/{hda['id']}?keys=name,metadata").json()
+        shown = self.dataset_populator.get_history_dataset_details(history_id, dataset=hda, keys="name,metadata")
         assert set(shown) == {"name", *TABULAR_METADATA_KEYS}
         assert shown["metadata_columns"] == 2
         # keys add to the detailed view here
-        shown = self._get(f"datasets/{hda['id']}?view=summary&keys=metadata").json()
+        shown = self._show_summary(hda["id"], keys="metadata")
         assert {key for key in shown if key.startswith("metadata_")} == TABULAR_METADATA_KEYS
-        summary = self._get(f"datasets/{hda['id']}?view=summary").json()
+        summary = self._show_summary(hda["id"])
         assert not [key for key in summary if key.startswith("metadata_")]
 
     def test_show_single_metadata_key(self, history_id):
         hda = self.dataset_populator.new_dataset(history_id, content="1\t2\n3\t4\n", file_type="tabular", wait=True)
-        contents_url = f"histories/{history_id}/contents/datasets/{hda['id']}"
-        shown = self._get(f"{contents_url}?keys=name,metadata_columns,metadata_not_an_element").json()
+        keys = "name,metadata_columns,metadata_not_an_element"
+        shown = self.dataset_populator.get_history_dataset_details(history_id, dataset=hda, keys=keys)
         assert shown == {"name": hda["name"], "metadata_columns": 2}
-        shown = self._get(f"datasets/{hda['id']}?view=summary&keys=metadata_columns").json()
+        shown = self._show_summary(hda["id"], keys="metadata_columns")
         assert [key for key in shown if key.startswith("metadata_")] == ["metadata_columns"]
-        both = self._get(f"{contents_url}?keys=metadata_columns,metadata").json()
+        both = self.dataset_populator.get_history_dataset_details(
+            history_id, dataset=hda, keys="metadata_columns,metadata"
+        )
         assert set(both) == TABULAR_METADATA_KEYS
+
+    def _show_summary(self, dataset_id: str, **params) -> dict[str, Any]:
+        response = self._get(f"datasets/{dataset_id}", data={"view": "summary", **params})
+        self._assert_status_code_is(response, 200)
+        return response.json()
 
     def test_show_permission_denied(self, history_id):
         hda = self.dataset_populator.new_dataset(history_id)
