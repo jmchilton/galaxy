@@ -9,8 +9,11 @@ import logging
 import os
 import re
 import subprocess
+from collections.abc import (
+    Callable,
+    Iterable,
+)
 from dataclasses import dataclass
-from functools import partial
 from time import (
     sleep,
     time,
@@ -55,6 +58,7 @@ from galaxy.job_execution.compute_environment import (
     ComputeEnvironment,
     dataset_path_to_extra_path,
 )
+from galaxy.job_execution.datasets import DatasetPath
 from galaxy.job_metrics.instrumenters.pulsar import PulsarPlugin
 from galaxy.jobs.command_factory import build_command
 from galaxy.jobs.handler import JobHandlerQueue
@@ -66,9 +70,11 @@ from galaxy.jobs.runners import (
 )
 from galaxy.model.base import check_database_connection
 from galaxy.model.store.discover import safe_path_from_directory
+from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.security.staging_signer import (
     input_url,
     INPUT_URL_LIFETIME_SECONDS,
+    StagedInputKind,
 )
 from galaxy.tool_util.deps import dependencies
 from galaxy.tool_util.parser.output_collection_def import FilePatternDatasetCollectionDescription
@@ -752,51 +758,23 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
         Galaxy answers from the store by identity, so Galaxy need not pull the input into its own
         cache and no Galaxy host needs to share its disk with the one answering Pulsar.
         """
-        issue_url = None
-        staging = compute_environment.object_store_staging
-        if staging is not None:
-            redirect = (
-                staging == "redirect"
-                and self.pulsar_version(remote_job_config) >= MINIMUM_PULSAR_VERSIONS["object_store_staging_redirect"]
-            )
-            expires = int(time()) + INPUT_URL_LIFETIME_SECONDS
-            # Called with (kind, object_id).
-            issue_url = partial(
-                input_url, self.app.security, self.galaxy_url, job_wrapper.job_id, expires=expires, redirect=redirect
-            )
-
-        client_inputs_list = []
-        for input_dataset_wrapper in job_wrapper.job_io.get_input_paths(
+        issue_url = _staging_url_issuer(
+            compute_environment.object_store_staging,
+            self.pulsar_version(remote_job_config),
+            self.app.security,
+            self.galaxy_url,
+            job_wrapper.job_id,
+        )
+        input_paths = job_wrapper.job_io.get_input_paths(
             compute_environment.materialized_objects, sync_cache=issue_url is None
-        ):
-            # str here to resolve false_path if set on a DatasetPath object.
-            path = str(input_dataset_wrapper)
-            object_store_ref = {
-                "dataset_id": input_dataset_wrapper.dataset_id,
-                "dataset_uuid": str(input_dataset_wrapper.dataset_uuid),
-                "object_store_id": input_dataset_wrapper.object_store_id,
-            }
-            url = None
-            # A deferred input materialized into the job directory has no object store identity.
-            if issue_url and input_dataset_wrapper.dataset_id is not None:
-                url = issue_url("dataset", input_dataset_wrapper.dataset_id)
-            client_inputs_list.append(
-                _client_input(path, CLIENT_INPUT_PATH_TYPES.INPUT_PATH, url, object_store_ref=object_store_ref)
-            )
-
-        for input_extra_path in compute_environment.path_rewrites_input_extra.keys():
-            # TODO: track dataset for object_Store_ref...
-            client_inputs_list.append(ClientInput(input_extra_path, CLIENT_INPUT_PATH_TYPES.INPUT_EXTRA_FILES_PATH))
-
-        for input_metadata_path in compute_environment.path_rewrites_input_metadata.keys():
-            url = None
-            metadata_file_id = compute_environment.input_metadata_file_ids.get(input_metadata_path)
-            if issue_url and metadata_file_id is not None:
-                url = issue_url("metadata_file", metadata_file_id)
-            client_inputs_list.append(
-                _client_input(input_metadata_path, CLIENT_INPUT_PATH_TYPES.INPUT_METADATA_PATH, url)
-            )
-        return ClientInputs(client_inputs_list)
+        )
+        return _client_inputs(
+            input_paths,
+            compute_environment.path_rewrites_input_extra,
+            compute_environment.path_rewrites_input_metadata,
+            compute_environment.input_metadata_file_ids,
+            issue_url,
+        )
 
     def get_client(
         self,
@@ -1440,6 +1418,65 @@ class PulsarEmbeddedJobRunner(PulsarJobRunner):
 
 class PulsarEmbeddedMQJobRunner(PulsarMQJobRunner):
     default_build_pulsar_app = True
+
+
+StagingUrlIssuer = Callable[[StagedInputKind, int], str]
+
+
+def _staging_url_issuer(
+    staging: ObjectStoreStagingMode | None,
+    pulsar_version: Version,
+    security: IdEncodingHelper,
+    galaxy_url: str,
+    job_id: int,
+) -> StagingUrlIssuer | None:
+    """Sign staging URLs for a job's inputs, ``None`` when inputs are staged by path."""
+    if staging is None:
+        return None
+    redirect = staging == "redirect" and pulsar_version >= MINIMUM_PULSAR_VERSIONS["object_store_staging_redirect"]
+    expires = int(time()) + INPUT_URL_LIFETIME_SECONDS
+
+    def issue_url(kind: StagedInputKind, object_id: int) -> str:
+        return input_url(security, galaxy_url, job_id, kind, object_id, expires, redirect=redirect)
+
+    return issue_url
+
+
+def _client_inputs(
+    input_paths: list[DatasetPath],
+    input_extra_paths: Iterable[str],
+    input_metadata_paths: Iterable[str],
+    input_metadata_file_ids: dict[str, int],
+    issue_url: StagingUrlIssuer | None,
+) -> ClientInputs:
+    client_inputs_list = []
+    for input_dataset_wrapper in input_paths:
+        # str here to resolve false_path if set on a DatasetPath object.
+        path = str(input_dataset_wrapper)
+        object_store_ref = {
+            "dataset_id": input_dataset_wrapper.dataset_id,
+            "dataset_uuid": str(input_dataset_wrapper.dataset_uuid),
+            "object_store_id": input_dataset_wrapper.object_store_id,
+        }
+        url = None
+        # A deferred input materialized into the job directory has no object store identity.
+        if issue_url and input_dataset_wrapper.dataset_id is not None:
+            url = issue_url("dataset", input_dataset_wrapper.dataset_id)
+        client_inputs_list.append(
+            _client_input(path, CLIENT_INPUT_PATH_TYPES.INPUT_PATH, url, object_store_ref=object_store_ref)
+        )
+
+    for input_extra_path in input_extra_paths:
+        # TODO: track dataset for object_Store_ref...
+        client_inputs_list.append(ClientInput(input_extra_path, CLIENT_INPUT_PATH_TYPES.INPUT_EXTRA_FILES_PATH))
+
+    for input_metadata_path in input_metadata_paths:
+        url = None
+        metadata_file_id = input_metadata_file_ids.get(input_metadata_path)
+        if issue_url and metadata_file_id is not None:
+            url = issue_url("metadata_file", metadata_file_id)
+        client_inputs_list.append(_client_input(input_metadata_path, CLIENT_INPUT_PATH_TYPES.INPUT_METADATA_PATH, url))
+    return ClientInputs(client_inputs_list)
 
 
 def _client_input(path, input_type, url, **kwds) -> ClientInput:

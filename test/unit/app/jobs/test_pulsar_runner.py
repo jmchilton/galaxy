@@ -1,6 +1,5 @@
 """Unit tests for Pulsar job runner utility methods and client construction."""
 
-import os
 from types import SimpleNamespace
 from typing import (
     Any,
@@ -45,14 +44,12 @@ from galaxy.jobs.runners import (
     pulsar as pulsar_runner,
 )
 from galaxy.jobs.runners.pulsar import (  # type: ignore[attr-defined]
+    _client_inputs,
     _object_store_staging,
+    _staging_url_issuer,
     build_client_manager,
-    PulsarComputeEnvironment,
     PulsarJobRunner,
 )
-from galaxy.model import HistoryDatasetAssociation
-from galaxy.model.metadata import MetadataTempFile
-from galaxy.model.unittest_utils import GalaxyDataTestApp
 from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.security.staging_signer import StagingUrlSigner
 
@@ -394,145 +391,68 @@ def test_host_metadata_does_not_resolve_container(config):
 # Staging inputs by object store identity (``object_store_staging``).
 
 STAGING_SECRET = "1234567890abcdef"
+STAGING_SECURITY = IdEncodingHelper(id_secret=STAGING_SECRET)
 INPUT_CACHE_PATH = "/galaxy/cache/0/00/dataset_5.dat"
 METADATA_CACHE_PATH = "/galaxy/cache/_metadata_files/0/00/metadata_9.dat"
 
 
-class _RecordingJobIO:
-    def __init__(self, input_paths):
-        self.input_paths = input_paths
-        self.sync_cache = None
-
-    def get_input_paths(self, materialized_objects, sync_cache=True):
-        self.sync_cache = sync_cache
-        return self.input_paths
-
-    def get_input_path(self, dataset, sync_cache=True):
-        self.sync_cache = sync_cache
-        return INPUT_CACHE_PATH
+def _issuer(staging, pulsar_version="0.15.16"):
+    return _staging_url_issuer(staging, Version(pulsar_version), STAGING_SECURITY, "http://galaxy.example", 7)
 
 
-def _staging_runner():
-    runner = cast(Any, object.__new__(PulsarJobRunner))
-    runner.app = SimpleNamespace(security=IdEncodingHelper(id_secret=STAGING_SECRET))
-    runner.galaxy_url = "http://galaxy.example"
-    return runner
-
-
-def _staging_job_wrapper(dataset_id=5):
-    input_path = DatasetPath(dataset_id, INPUT_CACHE_PATH, dataset_uuid=uuid4(), object_store_id="s3")
-    return SimpleNamespace(job_id=7, job_io=_RecordingJobIO([input_path]))
-
-
-def _staging_compute_environment(staging, metadata_file_ids=None):
-    metadata_file_ids = metadata_file_ids or {}
-    return SimpleNamespace(
-        object_store_staging=staging,
-        materialized_objects={},
-        path_rewrites_input_extra={},
-        path_rewrites_input_metadata={path: f"/pulsar/inputs/{os.path.basename(path)}" for path in metadata_file_ids},
-        input_metadata_file_ids=metadata_file_ids,
-    )
+def _input_paths(dataset_id=5):
+    return [DatasetPath(dataset_id, INPUT_CACHE_PATH, dataset_uuid=uuid4(), object_store_id="s3")]
 
 
 def _assert_signed_input_url(url, kind, object_id, redirect):
-    security = IdEncodingHelper(id_secret=STAGING_SECRET)
     parsed = urlparse(url)
-    assert parsed.path == f"/api/jobs/{security.encode_id(7)}/staging/inputs/{kind}/{security.encode_id(object_id)}"
+    encoded_job_id = STAGING_SECURITY.encode_id(7)
+    assert parsed.path == f"/api/jobs/{encoded_job_id}/staging/inputs/{kind}/{STAGING_SECURITY.encode_id(object_id)}"
     query = parse_qs(parsed.query)
     assert StagingUrlSigner(STAGING_SECRET).verify(7, kind, object_id, "", int(query["exp"][0]), query["sig"][0])
     assert (query.get("redirect") == ["1"]) is redirect
 
 
-def test_inputs_are_staged_from_signed_urls_without_pulling_them():
-    runner, job_wrapper = _staging_runner(), _staging_job_wrapper()
-    client_inputs = runner._client_inputs(job_wrapper, _staging_compute_environment("stream"), {})
-    (client_input,) = list(client_inputs)
-    assert client_input.path == INPUT_CACHE_PATH
-    _assert_signed_input_url(client_input.url, "dataset", 5, redirect=False)
-    assert job_wrapper.job_io.sync_cache is False
+def test_no_staging_urls_without_object_store_staging():
+    assert _issuer(None) is None
 
 
-def test_redirect_is_requested_from_a_pulsar_that_follows_redirects():
-    runner = _staging_runner()
-    remote_job_config = {"pulsar_version": "0.15.16"}
-    client_inputs = runner._client_inputs(
-        _staging_job_wrapper(), _staging_compute_environment("redirect"), remote_job_config
+@pytest.mark.parametrize(
+    "staging,pulsar_version,redirect",
+    [
+        ("stream", "0.15.16", False),
+        ("redirect", "0.15.16", True),
+        # Older Pulsar's curl transport does not follow redirects.
+        ("redirect", "0.15.15", False),
+    ],
+)
+def test_staging_urls_are_signed_for_the_job_input(staging, pulsar_version, redirect):
+    issue_url = _issuer(staging, pulsar_version)
+    assert issue_url is not None
+    _assert_signed_input_url(issue_url("dataset", 5), "dataset", 5, redirect)
+
+
+def test_inputs_and_metadata_files_carry_staging_urls():
+    client_inputs = _client_inputs(
+        _input_paths(), [], [METADATA_CACHE_PATH], {METADATA_CACHE_PATH: 9}, _issuer("stream")
     )
-    _assert_signed_input_url(next(iter(client_inputs)).url, "dataset", 5, redirect=True)
-
-
-def test_redirect_is_not_requested_from_a_pulsar_that_cannot_follow_it():
-    runner = _staging_runner()
-    remote_job_config = {"pulsar_version": "0.15.15"}
-    client_inputs = runner._client_inputs(
-        _staging_job_wrapper(), _staging_compute_environment("redirect"), remote_job_config
-    )
-    _assert_signed_input_url(next(iter(client_inputs)).url, "dataset", 5, redirect=False)
-
-
-def test_input_metadata_files_are_staged_from_signed_urls():
-    runner = _staging_runner()
-    compute_environment = _staging_compute_environment("stream", {METADATA_CACHE_PATH: 9})
-    client_inputs = runner._client_inputs(_staging_job_wrapper(), compute_environment, {})
-    metadata_input = next(i for i in client_inputs if i.path == METADATA_CACHE_PATH)
+    dataset_input, metadata_input = client_inputs
+    assert dataset_input.path == INPUT_CACHE_PATH
+    _assert_signed_input_url(dataset_input.url, "dataset", 5, redirect=False)
+    assert metadata_input.path == METADATA_CACHE_PATH
     _assert_signed_input_url(metadata_input.url, "metadata_file", 9, redirect=False)
 
 
 def test_materialized_inputs_keep_path_staging():
     # A deferred input materialized into the job directory has no object store identity.
-    runner = _staging_runner()
-    client_inputs = runner._client_inputs(
-        _staging_job_wrapper(dataset_id=None), _staging_compute_environment("stream"), {}
-    )
-    assert getattr(next(iter(client_inputs)), "url", None) is None
+    (client_input,) = _client_inputs(_input_paths(dataset_id=None), [], [], {}, _issuer("stream"))
+    assert getattr(client_input, "url", None) is None
 
 
 def test_inputs_keep_path_staging_without_object_store_staging():
-    runner, job_wrapper = _staging_runner(), _staging_job_wrapper()
-    compute_environment = _staging_compute_environment(None, {METADATA_CACHE_PATH: 9})
-    client_inputs = runner._client_inputs(job_wrapper, compute_environment, {})
+    client_inputs = _client_inputs(_input_paths(), [], [METADATA_CACHE_PATH], {METADATA_CACHE_PATH: 9}, None)
     # Built without ``url``, so pulsar-galaxy-lib releases lacking it still accept these inputs.
     assert [getattr(client_input, "url", None) for client_input in client_inputs] == [None, None]
-    assert job_wrapper.job_io.sync_cache is True
-
-
-def _staging_compute_environment_for_rewrites(staging):
-    compute_environment = cast(Any, object.__new__(PulsarComputeEnvironment))
-    compute_environment.object_store_staging = staging
-    compute_environment.job_wrapper = SimpleNamespace(job_io=_RecordingJobIO([]))
-    compute_environment.local_path_config = SimpleNamespace(input_path_rewrite=lambda dataset: INPUT_CACHE_PATH)
-    compute_environment.path_mapper = SimpleNamespace(
-        remote_input_path_rewrite=lambda path, **kwd: f"/pulsar/inputs/{os.path.basename(path)}"
-    )
-    compute_environment.path_rewrites_input_metadata = {}
-    compute_environment.input_metadata_file_ids = {}
-    return compute_environment
-
-
-def test_input_path_rewrite_does_not_pull_an_input_staged_by_identity():
-    compute_environment = _staging_compute_environment_for_rewrites("stream")
-    assert compute_environment.input_path_rewrite(object()) == "/pulsar/inputs/dataset_5.dat"
-    assert compute_environment.job_wrapper.job_io.sync_cache is False
-
-
-def test_input_metadata_file_path_records_the_metadata_file_staged_by_identity(tmp_path):
-    app = GalaxyDataTestApp()
-    hda = HistoryDatasetAssociation(extension="bam", create_dataset=True, sa_session=app.model.session)
-    index = tmp_path / "index"
-    index.write_text("bam index")
-    app.model.session.add(hda)
-    app.model.session.commit()
-    hda.metadata.from_JSON_dict(
-        json_dict={"bam_index": MetadataTempFile.from_JSON({"kwds": {}, "filename": str(index)})}
-    )
-    app.model.session.commit()
-    bam_index = hda.metadata.bam_index
-
-    compute_environment = _staging_compute_environment_for_rewrites("stream")
-    metadata_path = compute_environment.input_metadata_file_path(bam_index)
-    assert metadata_path == bam_index.get_file_name(sync_cache=False)
-    assert compute_environment.input_metadata_file_ids == {metadata_path: bam_index.id}
 
 
 @pytest.mark.parametrize(
@@ -558,9 +478,3 @@ def test_object_store_staging_mode_is_read_from_the_destination(params, rewrite_
 def test_invalid_object_store_staging_is_a_configuration_error(params, rewrite_parameters):
     with pytest.raises(ConfigurationError):
         _object_store_staging(params, rewrite_parameters)
-
-
-def test_input_path_rewrite_keeps_the_local_path_without_object_store_staging():
-    compute_environment = _staging_compute_environment_for_rewrites(None)
-    assert compute_environment.input_path_rewrite(object()) == "/pulsar/inputs/dataset_5.dat"
-    assert compute_environment.job_wrapper.job_io.sync_cache is None  # the local path config was used
