@@ -9,6 +9,7 @@ export type DatasetCell = components["schemas"]["DatasetCell"];
 export type CollectionCell = components["schemas"]["CollectionCell"];
 export type ValueCell = components["schemas"]["ValueCell"];
 export type MissingCell = components["schemas"]["MissingCell"];
+export type DatasetListCell = components["schemas"]["DatasetListCell"];
 export type MissingReason = MissingCell["reason"];
 export type ComparisonQuery = ComparisonTable["query"];
 export type ComparisonKind = ComparisonQuery["kind"];
