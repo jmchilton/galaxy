@@ -58,14 +58,29 @@ export function offeredOptions(
     selected: readonly string[],
     text: (value: string) => string = (value) => value,
 ): { text: string; value: string }[] {
-    const seen = new Set<string>();
-    return [...new Set([...available, ...selected])].map((value) => {
-        const name = text(value);
-        // e.g. job states error and failed both read "failed"
-        const option = { text: seen.has(name) ? `${name} (${value})` : name, value };
-        seen.add(name);
-        return option;
-    });
+    return [...new Set([...available, ...selected])].map((value) => ({ text: text(value), value }));
+}
+
+/** A state filter option; `value` is its first state and stands for all of `states`. */
+export interface StateFilterOption {
+    text: string;
+    value: string;
+    states: string[];
+}
+
+/** State filter options as the State column reads them; states that read alike, e.g. job error and failed, share one. */
+export function stateFilterOptions(available: readonly string[], selected: readonly string[]): StateFilterOption[] {
+    const byText = new Map<string, StateFilterOption>();
+    for (const state of new Set([...available, ...selected])) {
+        const text = stateText(state);
+        const option = byText.get(text);
+        if (option) {
+            option.states.push(state);
+        } else {
+            byText.set(text, { text, value: state, states: [state] });
+        }
+    }
+    return [...byText.values()];
 }
 
 export const ROLE_LABELS: Record<ComparisonColumn["role"], string> = {

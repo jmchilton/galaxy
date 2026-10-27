@@ -156,10 +156,10 @@ describe("StepRunsTab", () => {
         expect(requests).toHaveLength(4);
         const last = requests.at(-1)!.query;
         expect(last.getAll("versions")).toEqual(["1"]);
-        expect(last.getAll("states")).toEqual(["error"]);
+        expect(last.getAll("states")).toEqual(["error", "failed"]);
         expect(last.get("offset")).toBe("0");
         expect(tab.find("a.comparison-view-all").attributes("href")).toBe(
-            "/comparisons?kind=step_runs&workflow_id=adb5f5c93f827949&step_label=second_cat&states=error&versions=1",
+            "/comparisons?kind=step_runs&workflow_id=adb5f5c93f827949&step_label=second_cat&states=error&states=failed&versions=1",
         );
     });
 
