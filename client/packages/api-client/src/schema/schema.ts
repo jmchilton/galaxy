@@ -9651,11 +9651,31 @@ export interface components {
             /** State */
             state: string;
             /**
+             * Step Action
+             * @description A pause step's review decision; null until reviewed.
+             */
+            step_action?: boolean | null;
+            /**
              * Step Job
              * @description The job or mapped batch that ran the compared step.
              */
             step_job?:
                 | (components["schemas"]["JobRunRef"] | components["schemas"]["ImplicitCollectionJobsRunRef"])
+                | null;
+            /**
+             * Step Type
+             * @description Module type of the compared step in this run.
+             */
+            step_type?:
+                | (
+                      | "data_input"
+                      | "data_collection_input"
+                      | "parameter_input"
+                      | "pause"
+                      | "pick_value"
+                      | "tool"
+                      | "subworkflow"
+                  )
                 | null;
             /** Subworkflow Invocation Id */
             subworkflow_invocation_id?: string | null;
@@ -9680,6 +9700,11 @@ export interface components {
         ComparisonTable: {
             /** Columns */
             columns: components["schemas"]["ComparisonColumn"][];
+            /**
+             * Output Labels Available
+             * @description Output labels of the page's workflow versions, whatever `output_labels` selects.
+             */
+            output_labels_available?: string[] | null;
             /** Query */
             query:
                 | components["schemas"]["StepRunsQuery"]
