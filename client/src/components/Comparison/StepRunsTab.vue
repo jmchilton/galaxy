@@ -118,6 +118,7 @@ const pageLink = computed(() => {
                     v-model:offset="offset"
                     :total="total"
                     :limit="DEFAULT_LIMIT"
+                    :loaded-offset="table.query.offset"
                     :row-count="table.rows.length" />
             </template>
         </template>

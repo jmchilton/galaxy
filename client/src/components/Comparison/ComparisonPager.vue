@@ -6,8 +6,11 @@ const props = defineProps<{
     /** Runs matching the query, from `total_matches`. */
     total: number;
     limit: number;
+    /** The page asked for. */
     offset: number;
-    /** Runs on the current page. */
+    /** Offset of the loaded rows, which the summary describes while the next page loads. */
+    loadedOffset: number;
+    /** Runs on the loaded page. */
     rowCount: number;
 }>();
 
@@ -24,7 +27,7 @@ const summary = computed(() => {
     if (!props.rowCount) {
         return "";
     }
-    const firstRow = props.offset + 1;
+    const firstRow = props.loadedOffset + 1;
     return `Showing ${firstRow}–${firstRow + props.rowCount - 1} of ${props.total} · newest first · your runs only`;
 });
 </script>

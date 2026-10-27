@@ -22,6 +22,7 @@ vi.unmock("@/composables/userLocalStorage");
 let requests: { workflowId: string; query: URLSearchParams }[];
 let total: string;
 let fail: boolean;
+let gate: Promise<void> | undefined;
 let wrapper: VueWrapper | undefined;
 
 beforeEach(() => {
@@ -29,16 +30,21 @@ beforeEach(() => {
     requests = [];
     total = String(TABLE.rows.length);
     fail = false;
+    gate = undefined;
     server.use(
-        http.get("/api/workflows/{workflow_id}/step_runs", ({ request, params, response }) => {
+        http.get("/api/workflows/{workflow_id}/step_runs", async ({ request, params, response }) => {
             const query = new URL(request.url).searchParams;
             requests.push({ workflowId: String(params.workflow_id), query });
+            await gate;
             if (fail) {
                 return response("4XX").json({ err_msg: "Step label not found", err_code: 404 }, { status: 404 });
             }
             const metadata = query.getAll("metadata_elements");
             return response(200).json(
-                { ...TABLE, query: { ...TABLE.query, metadata_elements: metadata } },
+                {
+                    ...TABLE,
+                    query: { ...TABLE.query, metadata_elements: metadata, offset: Number(query.get("offset")) },
+                },
                 {
                     headers: { total_matches: total },
                 },
@@ -97,6 +103,20 @@ describe("StepRunsTab", () => {
         await pagination.find("[aria-posinset='3'], button[aria-label='Go to page 3']").trigger("click");
         await flushPromises();
         expect(requests.map((r) => r.query.get("offset"))).toEqual(["0", "50"]);
+    });
+
+    it("summarises the loaded page until the next one arrives", async () => {
+        total = "60";
+        const tab = await mountTab();
+        let release: () => void = () => {};
+        gate = new Promise((resolve) => (release = resolve));
+        await tab.find("button[aria-label='Go to page 3']").trigger("click");
+        await flushPromises();
+        expect(requests).toHaveLength(2);
+        expect(tab.find(".comparison-summary").text()).toBe("Showing 1–6 of 60 · newest first · your runs only");
+        release();
+        await flushPromises();
+        expect(tab.find(".comparison-summary").text()).toBe("Showing 51–56 of 60 · newest first · your runs only");
     });
 
     it("links to the full page by the stored workflow id the server echoed", async () => {

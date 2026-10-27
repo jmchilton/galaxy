@@ -278,6 +278,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => {
                     :total="total"
                     :limit="limit"
                     :offset="offset"
+                    :loaded-offset="table.query.offset"
                     :row-count="table.rows.length"
                     @update:offset="updateUrl({ offset: $event })">
                     <label class="mb-0 mr-1 text-nowrap" for="comparison-page-size"><small>Per page</small></label>
