@@ -44,6 +44,29 @@ steps:
       input1: input_list
 """
 
+WORKFLOW_LABELLED_IO = """
+class: GalaxyWorkflow
+inputs:
+  input1: data
+  min_quality:
+    type: int
+outputs:
+  cat_out:
+    outputSource: first_cat/out_file1
+steps:
+  first_cat:
+    tool_id: cat1
+    in:
+      input1: input1
+  forty_two:
+    tool_id: expression_forty_two
+test_data:
+  input1: "hello world"
+  min_quality:
+    value: 7
+    type: raw
+"""
+
 WORKFLOW_PAUSE_THEN_CAT = """
 class: GalaxyWorkflow
 inputs:
@@ -341,6 +364,104 @@ class TestComparisonsApi(ApiTestCase):
             assert row["reused"] is None
             assert row["cells"]["input:input1"]["id"] == empty_list
             assert row["cells"]["output:out_file1"]["element_count"] == 0
+
+    @skip_without_tool("cat1")
+    @skip_without_tool("expression_forty_two")
+    def test_output_runs_across_versions(self):
+        with self.dataset_populator.test_history() as history_id:
+            summary = self.workflow_populator.run_workflow(WORKFLOW_LABELLED_IO, history_id=history_id)
+            self._add_workflow_output(summary.workflow_id, "forty_two", "out1", "n")
+            rerun_id = self._rerun(summary)
+            for invocation_id in (summary.invocation_id, rerun_id):
+                self.workflow_populator.wait_for_invocation_and_completion(invocation_id)
+
+            response = self._output_runs(summary.workflow_id)
+            assert response.headers["total_matches"] == "2"
+            table = response.json()
+            assert table["query"]["kind"] == "output_runs"
+            assert table["query"]["workflow_id"] == summary.workflow_id
+            columns = {column["key"]: column for column in table["columns"]}
+            # step order; format2 import orders forty_two (no inputs) before first_cat
+            assert list(columns) == ["input:input1", "parameter:min_quality", "output:n", "output:cat_out"]
+            assert [column["role"] for column in columns.values()] == ["input", "parameter", "output", "output"]
+            assert columns["output:n"]["present_in_versions"] == [1]
+            assert columns["output:cat_out"]["present_in_versions"] is None
+            assert not any(column["duplicate"] for column in columns.values())
+
+            new_row, old_row = table["rows"]
+            assert [(row["run"]["id"], row["version"]) for row in (new_row, old_row)] == [
+                (rerun_id, 1),
+                (summary.invocation_id, 0),
+            ]
+            for row in (new_row, old_row):
+                assert row["run"]["model"] == "WorkflowInvocation"
+                assert row["state"] == row["run"]["state"] == "completed"
+                assert row["reused"] is None
+                assert row["step_job"] is None
+                assert row["cells"]["parameter:min_quality"] == {
+                    "type": "value",
+                    "value": 7,
+                    "source": "parameter",
+                    "dataset_id": None,
+                }
+                for key in ("input:input1", "output:cat_out"):
+                    cell = row["cells"][key]
+                    details = self.dataset_populator.get_history_dataset_details(history_id, dataset_id=cell["id"])
+                    assert cell["type"] == "dataset"
+                    assert (cell["hid"], cell["name"]) == (details["hid"], details["name"])
+            assert old_row["cells"]["output:n"] == {"type": "missing", "reason": "not_in_version"}
+            n_cell = new_row["cells"]["output:n"]
+            assert (n_cell["type"], n_cell["value"], n_cell["source"]) == ("value", 42, "expression_json")
+            n_details = self.dataset_populator.get_history_dataset_details(history_id, dataset_id=n_cell["dataset_id"])
+            assert n_details["extension"] == "expression.json"
+
+            # expression values as datasets
+            raw = self._output_runs_table(summary.workflow_id, inline_expression_values=False)
+            n_dataset = raw["rows"][0]["cells"]["output:n"]
+            assert (n_dataset["type"], n_dataset["id"], n_dataset["extension"]) == (
+                "dataset",
+                n_cell["dataset_id"],
+                "expression.json",
+            )
+
+            # output_labels filters columns only
+            filtered = self._output_runs_table(summary.workflow_id, output_labels=["n", "min_quality"])
+            assert [column["key"] for column in filtered["columns"]] == ["parameter:min_quality", "output:n"]
+            assert [set(row["cells"]) for row in filtered["rows"]] == [{"parameter:min_quality", "output:n"}] * 2
+
+            # states filter on the invocation state
+            assert len(self._output_runs_table(summary.workflow_id, states="completed")["rows"]) == 2
+            response = self._output_runs(summary.workflow_id, states="failed")
+            assert response.headers["total_matches"] == "0"
+
+    @skip_without_tool("cat1")
+    @skip_without_tool("expression_forty_two")
+    def test_output_runs_owner_filter(self):
+        with self.dataset_populator.test_history() as history_id:
+            summary = self.workflow_populator.run_workflow(WORKFLOW_LABELLED_IO, history_id=history_id)
+            self.workflow_populator.make_public(summary.workflow_id)
+            with self._different_user():
+                response = self._output_runs(summary.workflow_id)
+                assert response.headers["total_matches"] == "0"
+                assert response.json()["rows"] == []
+            with self._different_user(anon=True):
+                assert self._output_runs(summary.workflow_id).headers["total_matches"] == "0"
+            response = self._output_runs(summary.workflow_id)
+            assert response.headers["total_matches"] == "1"
+            assert [row["run"]["id"] for row in response.json()["rows"]] == [summary.invocation_id]
+
+    def _add_workflow_output(self, workflow_id: str, step_label: str, output_name: str, label: str) -> None:
+        with self.workflow_populator.export_for_update(workflow_id) as workflow:
+            step = next(step for step in workflow["steps"].values() if step["label"] == step_label)
+            step["workflow_outputs"].append({"output_name": output_name, "label": label})
+
+    def _output_runs(self, workflow_id: str, expected_status: int = 200, **params) -> Response:
+        response = self._get(f"workflows/{workflow_id}/output_runs", data=params)
+        self._assert_status_code_is(response, expected_status)
+        return response
+
+    def _output_runs_table(self, workflow_id: str, **params) -> dict[str, Any]:
+        return self._output_runs(workflow_id, **params).json()
 
     def _invocation_step(self, invocation_id: str, order_index: int) -> dict[str, Any] | None:
         invocation = self.workflow_populator.get_invocation(invocation_id)
