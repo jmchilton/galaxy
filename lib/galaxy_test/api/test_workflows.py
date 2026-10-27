@@ -52,7 +52,7 @@ from galaxy_test.base.populators import (
     WorkflowPopulator,
 )
 from galaxy_test.base.workflow_fixtures import (
-    DEFAULT_FILE_DATASET_INPUT_LOCATION,
+    default_file_dataset_input_location,
     NESTED_WORKFLOW_WITH_CONDITIONAL_SUBWORKFLOW_AND_DISCONNECTED_MAP_OVER_SOURCE,
     parameter_input_workflow,
     WORKFLOW_FLAT_CROSS_PRODUCT,
@@ -90,11 +90,6 @@ from galaxy_test.base.workflow_fixtures import (
 )
 from ._framework import ApiTestCase
 from .sharable import SharingApiTests
-
-
-def _default_file_location(test_http_server) -> str:
-    return test_http_server.get_url(remote_url=DEFAULT_FILE_DATASET_INPUT_LOCATION, file_path="test-data/1.bed")
-
 
 NESTED_WORKFLOW_AUTO_LABELS_MODERN_SYNTAX = """
 class: GalaxyWorkflow
@@ -8538,7 +8533,9 @@ data_input:
     def test_run_with_default_file_dataset_input(self, test_http_server):
         with self.dataset_populator.test_history() as history_id:
             run_response = self._run_workflow(
-                WORKFLOW_WITH_DEFAULT_FILE_DATASET_INPUT.format(location=_default_file_location(test_http_server)),
+                WORKFLOW_WITH_DEFAULT_FILE_DATASET_INPUT.format(
+                    location=default_file_dataset_input_location(test_http_server)
+                ),
                 history_id=history_id,
                 wait=True,
                 assert_ok=True,
@@ -8554,7 +8551,9 @@ data_input:
     def test_run_with_default_file_dataset_input_and_explicit_input(self, test_http_server):
         with self.dataset_populator.test_history() as history_id:
             run_response = self._run_workflow(
-                WORKFLOW_WITH_DEFAULT_FILE_DATASET_INPUT.format(location=_default_file_location(test_http_server)),
+                WORKFLOW_WITH_DEFAULT_FILE_DATASET_INPUT.format(
+                    location=default_file_dataset_input_location(test_http_server)
+                ),
                 test_data="""
 default_file_input:
   value: 1.fasta
@@ -8578,7 +8577,9 @@ default_file_input:
     def test_run_with_default_file_in_step_inline(self, test_http_server):
         with self.dataset_populator.test_history() as history_id:
             self._run_workflow(
-                WORKFLOW_WITH_STEP_DEFAULT_FILE_DATASET_INPUT.format(location=_default_file_location(test_http_server)),
+                WORKFLOW_WITH_STEP_DEFAULT_FILE_DATASET_INPUT.format(
+                    location=default_file_dataset_input_location(test_http_server)
+                ),
                 history_id=history_id,
                 wait=True,
                 assert_ok=True,

@@ -1,6 +1,8 @@
 import json
 from typing import Any
 
+from galaxy.util.unittest_utils.test_http_server import TestHttpServer
+
 WORKFLOW_SIMPLE = """
 class: GalaxyWorkflow
 name: Simple Workflow
@@ -1227,6 +1229,12 @@ outputs:
 
 # The location is templated so tests can serve 1.bed from the local test HTTP server.
 DEFAULT_FILE_DATASET_INPUT_LOCATION = "https://raw.githubusercontent.com/galaxyproject/galaxy/dev/test-data/1.bed"
+
+
+def default_file_dataset_input_location(test_http_server: TestHttpServer) -> str:
+    """Local stand-in for ``DEFAULT_FILE_DATASET_INPUT_LOCATION``."""
+    return test_http_server.get_url(remote_url=DEFAULT_FILE_DATASET_INPUT_LOCATION, file_path="test-data/1.bed")
+
 
 WORKFLOW_WITH_DEFAULT_FILE_DATASET_INPUT = """
 class: GalaxyWorkflow
