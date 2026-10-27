@@ -1,0 +1,171 @@
+import { createTestRouter, getLocalVue, withPlugins } from "@tests/vitest/helpers";
+import { mount, type VueWrapper } from "@vue/test-utils";
+import flushPromises from "flush-promises";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { HttpResponse, useServerMock } from "@/api/client/__mocks__";
+import type { ComparisonTable as Table } from "@/api/comparisons";
+
+import STEP_RUNS from "./test-data/step_runs.json";
+
+import ComparisonPager from "./ComparisonPager.vue";
+import ComparisonTable from "./ComparisonTable.vue";
+import ComparisonView from "./ComparisonView.vue";
+
+const STEP_TABLE = STEP_RUNS as unknown as Table;
+const { server, http } = useServerMock();
+
+let requests: { path: string; query: URLSearchParams }[];
+let wrapper: VueWrapper | undefined;
+
+function tableFor(query: Record<string, unknown>): Table {
+    return { ...STEP_TABLE, query: { ...STEP_TABLE.query, ...query } as Table["query"] };
+}
+
+beforeEach(() => {
+    requests = [];
+    const record = (request: Request) => {
+        const url = new URL(request.url);
+        requests.push({ path: url.pathname, query: url.searchParams });
+        return url.searchParams;
+    };
+    server.use(
+        http.get("/api/workflows/{workflow_id}/step_runs", ({ request, response }) => {
+            record(request);
+            return response(200).json(STEP_TABLE, { headers: { total_matches: "60" } });
+        }),
+        http.get("/api/workflows/{workflow_id}/output_runs", ({ request, response }) => {
+            const query = record(request);
+            const table = tableFor({ kind: "output_runs", output_labels: query.getAll("output_labels") });
+            return response(200).json(table, { headers: { total_matches: "6" } });
+        }),
+        http.get("/api/tool_runs", ({ request, response }) => {
+            record(request);
+            const table = {
+                ...tableFor({ kind: "tool_runs", tool_id: "cat1" }),
+                tool_versions_available: ["1.0", "2.0"],
+            };
+            return response(200).json(table, { headers: { total_matches: "6" } });
+        }),
+        http.get("/api/workflows/{workflow_id}", ({ response }) => {
+            return response(200).json({ name: "Two cats" } as never);
+        }),
+        // Tool Shed ids hold slashes, so match any path under /api/tools/.
+        http.untyped.get("/api/tools/*", () => HttpResponse.json({ id: "cat1", name: "Concatenate" })),
+    );
+});
+
+afterEach(() => {
+    wrapper?.unmount();
+    wrapper = undefined;
+});
+
+async function mountView(query: Record<string, string | string[]>) {
+    const router = createTestRouter();
+    const replace = vi.spyOn(router, "replace").mockResolvedValue(undefined);
+    const localVue = getLocalVue();
+    wrapper = mount(ComparisonView as object, {
+        props: { query },
+        global: { ...withPlugins(localVue, router), stubs: { ...localVue.stubs, ComparisonTable: true } },
+    });
+    await flushPromises();
+    return { view: wrapper, replace };
+}
+
+function comparisonRequests() {
+    return requests.filter((r) => /_runs$/.test(r.path));
+}
+
+describe("ComparisonView", () => {
+    it("forwards a step_runs query unchanged, repeating list values", async () => {
+        const { view } = await mountView({
+            kind: "step_runs",
+            workflow_id: "wf1",
+            step_label: "second_cat",
+            states: ["ok", "error"],
+            offset: "25",
+            sort_by: "update_time",
+        });
+        const [only, ...rest] = comparisonRequests();
+        expect(rest).toHaveLength(0);
+        expect(only!.path).toBe("/api/workflows/wf1/step_runs");
+        expect(only!.query.get("step_label")).toBe("second_cat");
+        expect(only!.query.getAll("states")).toEqual(["ok", "error"]);
+        expect(only!.query.get("offset")).toBe("25");
+        expect(only!.query.get("sort_by")).toBe("update_time");
+        expect(only!.query.has("kind")).toBe(false);
+        expect(view.findComponent(ComparisonTable).exists()).toBe(true);
+        expect(view.find(".breadcrumb-heading").text()).toContain('Runs of step "second_cat"');
+        expect(view.find(".breadcrumb-heading").text()).toContain("Two cats");
+    });
+
+    it("forwards output labels without splitting on commas", async () => {
+        await mountView({ kind: "output_runs", workflow_id: "wf1", output_labels: ["a,b", "n"] });
+        const [only] = comparisonRequests();
+        expect(only!.path).toBe("/api/workflows/wf1/output_runs");
+        expect(only!.query.getAll("output_labels")).toEqual(["a,b", "n"]);
+    });
+
+    it("forwards a tool_runs query and offers the tool versions the server found", async () => {
+        const { view } = await mountView({
+            kind: "tool_runs",
+            tool_id: "toolshed.g2.bx.psu.edu/repos/devteam/cat/cat1/1.0",
+            tool_versions: "1.0",
+            include_workflow_jobs: "false",
+            history_id: "h1",
+        });
+        const [only] = comparisonRequests();
+        expect(only!.path).toBe("/api/tool_runs");
+        expect(only!.query.get("tool_id")).toBe("toolshed.g2.bx.psu.edu/repos/devteam/cat/cat1/1.0");
+        expect(only!.query.getAll("tool_versions")).toEqual(["1.0"]);
+        expect(only!.query.get("include_workflow_jobs")).toBe("false");
+        expect(only!.query.get("history_id")).toBe("h1");
+        const versions = view.find(".comparison-filter-tool-versions");
+        expect(versions.findAll("input").map((input) => input.attributes("value"))).toEqual(["1.0", "2.0"]);
+        expect(view.find(".comparison-filter-history").exists()).toBe(true);
+        expect(view.find(".breadcrumb-heading").text()).toContain("Runs of Concatenate");
+    });
+
+    it.each([
+        [{ kind: "nope" }, 'Unknown comparison kind "nope".'],
+        [{}, "No comparison kind given."],
+        [{ kind: "step_runs", workflow_id: "wf1" }, "A step_runs comparison needs step_label."],
+    ])("shows an error and fetches nothing for %j", async (query, message) => {
+        const { view } = await mountView(query);
+        expect(comparisonRequests()).toHaveLength(0);
+        expect(view.find(".alert-danger").text()).toBe(message);
+    });
+
+    it("writes a state filter to the URL and returns to the first page", async () => {
+        const { view, replace } = await mountView({
+            kind: "step_runs",
+            workflow_id: "wf1",
+            step_label: "second_cat",
+            offset: "25",
+        });
+        await view.find(".comparison-filter-states input[value='error']").setValue(true);
+        expect(replace).toHaveBeenLastCalledWith({
+            query: { kind: "step_runs", workflow_id: "wf1", step_label: "second_cat", states: ["error"] },
+        });
+    });
+
+    it("writes paging and page size to the URL", async () => {
+        const { view, replace } = await mountView({ kind: "step_runs", workflow_id: "wf1", step_label: "s" });
+        view.findComponent(ComparisonPager).vm.$emit("update:offset", 50);
+        expect(replace).toHaveBeenLastCalledWith({
+            query: { kind: "step_runs", workflow_id: "wf1", step_label: "s", offset: "50" },
+        });
+        await view.find("#comparison-page-size").setValue("50");
+        expect(replace).toHaveBeenLastCalledWith({
+            query: { kind: "step_runs", workflow_id: "wf1", step_label: "s", limit: "50" },
+        });
+    });
+
+    it("writes include_workflow_jobs=false when runs inside workflows are excluded", async () => {
+        const { view, replace } = await mountView({ kind: "tool_runs", tool_id: "cat1" });
+        await view.find(".comparison-filter-workflow-jobs input").setValue(false);
+        expect(replace).toHaveBeenLastCalledWith({
+            query: { kind: "tool_runs", tool_id: "cat1", include_workflow_jobs: "false" },
+        });
+    });
+});

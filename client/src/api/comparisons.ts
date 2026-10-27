@@ -64,3 +64,20 @@ export async function fetchToolRuns(params: ToolRunsParams, signal?: AbortSignal
     }
     return { table: data, total: totalMatches(response) };
 }
+
+export type ComparisonRequest =
+    | { kind: "step_runs"; params: StepRunsParams }
+    | { kind: "output_runs"; params: OutputRunsParams }
+    | { kind: "tool_runs"; params: ToolRunsParams };
+
+/** Fetches whichever comparison `request.kind` names. */
+export function fetchComparison(request: ComparisonRequest, signal?: AbortSignal): Promise<ComparisonResult> {
+    switch (request.kind) {
+        case "step_runs":
+            return fetchStepRuns(request.params, signal);
+        case "output_runs":
+            return fetchOutputRuns(request.params, signal);
+        default:
+            return fetchToolRuns(request.params, signal);
+    }
+}

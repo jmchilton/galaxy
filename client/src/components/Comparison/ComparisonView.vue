@@ -1,0 +1,284 @@
+<script setup lang="ts">
+import { faTimes } from "@fortawesome/free-solid-svg-icons";
+import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
+import { computed, ref, watch } from "vue";
+import { type LocationQuery, useRouter } from "vue-router";
+
+import {
+    type ComparisonRequest,
+    type ComparisonTable as ComparisonTableModel,
+    fetchComparison,
+} from "@/api/comparisons";
+import { getWorkflowInfo } from "@/api/workflows";
+import type { BreadcrumbItem } from "@/components/Common";
+import { useToolStore } from "@/stores/toolStore";
+
+import {
+    cleanUrlQuery,
+    type ComparisonUrlValue,
+    DEFAULT_LIMIT,
+    displayStorageKey,
+    PAGE_SIZES,
+    parseComparisonQuery,
+    STATE_OPTIONS,
+} from "./comparisonQuery";
+import { requestedMetadata } from "./comparisonUtils";
+import { useComparisonDisplay, useComparisonFetch } from "./useComparison";
+
+import ComparisonPager from "./ComparisonPager.vue";
+import ComparisonTable from "./ComparisonTable.vue";
+import GAlert from "@/components/BaseComponents/GAlert.vue";
+import GButton from "@/components/BaseComponents/GButton.vue";
+import GCheckbox from "@/components/BaseComponents/GCheckbox.vue";
+import GCheckboxGroup from "@/components/BaseComponents/GCheckboxGroup.vue";
+import GSelect from "@/components/BaseComponents/GSelect.vue";
+import BreadcrumbHeading from "@/components/Common/BreadcrumbHeading.vue";
+import LoadingSpan from "@/components/LoadingSpan.vue";
+
+const props = defineProps<{
+    /** The route's query: `kind` plus the matching endpoint's parameters. */
+    query: LocationQuery;
+}>();
+
+const router = useRouter();
+const toolStore = useToolStore();
+
+const parsed = computed(() => parseComparisonQuery(props.query));
+const request = computed(() => (parsed.value.kind ? (parsed.value as ComparisonRequest) : undefined));
+const kind = computed(() => request.value?.kind);
+const urlParams = computed(() => (request.value?.params ?? {}) as Record<string, ComparisonUrlValue>);
+
+const table = ref<ComparisonTableModel>();
+const storageKey = computed(() => (table.value ? displayStorageKey(table.value.query) : undefined));
+const { transpose, columnDisplay, visibleColumns, toggleColumn, resetColumns } = useComparisonDisplay(
+    storageKey,
+    table,
+);
+
+// The URL's parameters as they are, plus the metadata the column displays need.
+const fetchRequest = computed<ComparisonRequest | undefined>(() => {
+    if (!request.value) {
+        return undefined;
+    }
+    const fromUrl = (request.value.params.metadata_elements as string[] | undefined) ?? [];
+    const metadata = [...new Set([...fromUrl, ...requestedMetadata(columnDisplay.value)])].sort();
+    return {
+        ...request.value,
+        params: { ...request.value.params, metadata_elements: metadata.length ? metadata : undefined },
+    } as ComparisonRequest;
+});
+const { total, loading, error } = useComparisonFetch(fetchRequest, fetchComparison, table);
+
+watch(kind, () => {
+    table.value = undefined;
+});
+
+const limit = computed(() => Number(urlParams.value.limit) || DEFAULT_LIMIT);
+const offset = computed(() => Number(urlParams.value.offset) || 0);
+
+function listParam(key: string): string[] {
+    const value = urlParams.value[key];
+    return Array.isArray(value) ? value.filter((item): item is string => item !== null) : [];
+}
+
+/** Writes filters or paging to the URL; any change but paging returns to the first page. */
+function updateUrl(patch: Record<string, ComparisonUrlValue>) {
+    const next: Record<string, ComparisonUrlValue> = { ...props.query, ...patch };
+    if (!("offset" in patch) || !patch.offset) {
+        delete next.offset;
+    }
+    router.replace({ query: cleanUrlQuery(next) });
+}
+
+const states = computed({
+    get: () => listParam("states"),
+    set: (value: string[]) => updateUrl({ states: value }),
+});
+const stateOptions = computed(() => {
+    const options = kind.value ? STATE_OPTIONS[kind.value] : [];
+    return [...new Set([...options, ...states.value])].map((state) => ({ text: state, value: state }));
+});
+
+const toolVersions = computed({
+    get: () => listParam("tool_versions"),
+    set: (value: string[]) => updateUrl({ tool_versions: value }),
+});
+const toolVersionOptions = computed(() =>
+    [...new Set([...(table.value?.tool_versions_available ?? []), ...toolVersions.value])].map((version) => ({
+        text: version,
+        value: version,
+    })),
+);
+
+const includeWorkflowJobs = computed({
+    get: () => urlParams.value.include_workflow_jobs !== false,
+    set: (value: boolean) => updateUrl({ include_workflow_jobs: value ? undefined : false }),
+});
+
+const historyFilterName = computed(() => {
+    const historyId = urlParams.value.history_id;
+    return table.value?.rows.find((row) => row.history.id === historyId)?.history.name || historyId;
+});
+
+// Output labels seen while unfiltered; the server leaves unselected ones out of a filtered table.
+const seenOutputLabels = ref<string[]>([]);
+watch(table, (value) => {
+    if (value?.query.kind === "output_runs" && !value.query.output_labels?.length) {
+        const labels = value.columns.filter((column) => column.role === "output").map((column) => column.label);
+        seenOutputLabels.value = [...new Set([...seenOutputLabels.value, ...labels])];
+    }
+});
+const outputLabels = computed({
+    get: () => listParam("output_labels"),
+    set: (value: string[]) => updateUrl({ output_labels: value }),
+});
+const outputLabelOptions = computed(() =>
+    [...new Set([...seenOutputLabels.value, ...outputLabels.value])].map((label) => ({ text: label, value: label })),
+);
+
+const pageSize = computed({
+    get: () => limit.value,
+    set: (value: number) => updateUrl({ limit: value === DEFAULT_LIMIT ? undefined : value }),
+});
+const pageSizeOptions = computed(() =>
+    [...new Set([...PAGE_SIZES, limit.value])].sort((a, b) => a - b).map((size) => ({ text: `${size}`, value: size })),
+);
+
+const workflowName = ref<string>();
+watch(
+    () => (kind.value === "tool_runs" ? undefined : urlParams.value.workflow_id),
+    async (workflowId) => {
+        workflowName.value = undefined;
+        if (!workflowId) {
+            return;
+        }
+        try {
+            const workflow = await getWorkflowInfo(String(workflowId), undefined, urlParams.value.instance === true);
+            workflowName.value = workflow.name;
+        } catch {
+            // The heading falls back to a generic name; the table shows any access error.
+        }
+    },
+    { immediate: true },
+);
+
+const toolId = computed(() => (kind.value === "tool_runs" ? String(urlParams.value.tool_id) : undefined));
+watch(
+    toolId,
+    async (id) => {
+        if (id && !toolStore.getToolForId(id)) {
+            try {
+                await toolStore.fetchToolForId(id);
+            } catch {
+                // An uninstalled tool still has runs; the heading shows its id.
+            }
+        }
+    },
+    { immediate: true },
+);
+
+const breadcrumbs = computed<BreadcrumbItem[]>(() => {
+    if (kind.value === "tool_runs") {
+        return [{ title: `Runs of ${toolStore.getToolNameById(toolId.value!, toolId.value)}` }];
+    }
+    // The echoed id is the stored workflow's even when the URL named a version with `instance`.
+    const storedId = table.value && "workflow_id" in table.value.query ? table.value.query.workflow_id : undefined;
+    const workflow = {
+        title: workflowName.value ?? "Workflow",
+        to: storedId ? `/workflows/${storedId}/invocations` : undefined,
+    };
+    const last = kind.value === "step_runs" ? `Runs of step "${urlParams.value.step_label}"` : "Compare outputs";
+    return [{ title: "Workflows", to: "/workflows/list" }, workflow, { title: last }];
+});
+</script>
+
+<template>
+    <div class="comparison-view">
+        <GAlert v-if="!request" variant="danger" show>{{ "error" in parsed ? parsed.error : "" }}</GAlert>
+        <template v-else>
+            <BreadcrumbHeading :items="breadcrumbs" />
+            <p class="comparison-view-description text-muted mb-2">
+                <template v-if="kind === 'step_runs'">
+                    Every run of the step labelled <code>{{ urlParams.step_label }}</code
+                    >, across the versions of this workflow that have it.
+                </template>
+                <template v-else-if="kind === 'output_runs'">
+                    Labelled inputs and outputs of every run of this workflow, merged across versions. Columns only
+                    older versions have go last.
+                </template>
+                <template v-else>
+                    Every submission of <code>{{ toolId }}</code
+                    >, across tool versions. A mapped-over batch is one row.
+                </template>
+            </p>
+
+            <div class="comparison-filters d-flex flex-wrap align-items-start mb-2">
+                <GCheckboxGroup
+                    v-model="states"
+                    class="comparison-filter-states mr-4"
+                    label="State"
+                    :options="stateOptions"
+                    size="small" />
+                <GCheckboxGroup
+                    v-if="kind === 'output_runs' && outputLabelOptions.length"
+                    v-model="outputLabels"
+                    class="comparison-filter-outputs mr-4"
+                    label="Outputs (none checked shows all)"
+                    :options="outputLabelOptions"
+                    size="small" />
+                <template v-if="kind === 'tool_runs'">
+                    <GCheckboxGroup
+                        v-if="toolVersionOptions.length"
+                        v-model="toolVersions"
+                        class="comparison-filter-tool-versions mr-4"
+                        label="Tool version"
+                        :options="toolVersionOptions"
+                        size="small" />
+                    <div class="mr-4">
+                        <GCheckbox v-model="includeWorkflowJobs" class="comparison-filter-workflow-jobs" switch>
+                            Include runs inside workflows
+                        </GCheckbox>
+                        <GButton
+                            v-if="urlParams.history_id"
+                            class="comparison-filter-history mt-1"
+                            size="small"
+                            outline
+                            title="Show runs from every history"
+                            @click="updateUrl({ history_id: undefined })">
+                            History: {{ historyFilterName }}
+                            <FontAwesomeIcon :icon="faTimes" />
+                        </GButton>
+                    </div>
+                </template>
+            </div>
+
+            <GAlert v-if="error" variant="danger" show>{{ error }}</GAlert>
+            <LoadingSpan v-if="loading && !table" message="Loading runs" />
+            <template v-if="table">
+                <ComparisonTable
+                    v-model:transpose="transpose"
+                    v-model:column-display="columnDisplay"
+                    :table="table"
+                    :visible-columns="visibleColumns"
+                    :loading="loading"
+                    empty-message="No runs match these filters."
+                    @toggle-column="toggleColumn"
+                    @reset-columns="resetColumns" />
+                <ComparisonPager
+                    :total="total"
+                    :limit="limit"
+                    :offset="offset"
+                    :row-count="table.rows.length"
+                    @update:offset="updateUrl({ offset: $event })">
+                    <label class="mb-0 mr-1 text-nowrap" for="comparison-page-size"><small>Per page</small></label>
+                    <GSelect
+                        id="comparison-page-size"
+                        v-model="pageSize"
+                        class="comparison-page-size"
+                        :options="pageSizeOptions"
+                        size="small" />
+                </ComparisonPager>
+            </template>
+        </template>
+    </div>
+</template>
