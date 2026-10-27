@@ -11,6 +11,7 @@ A sharable Galaxy object:
 """
 
 import logging
+from collections.abc import Iterable
 from typing import (
     Any,
     TypeVar,
@@ -20,6 +21,7 @@ from slugify import slugify
 from sqlalchemy import (
     exists,
     false,
+    or_,
     select,
     true,
 )
@@ -113,6 +115,22 @@ class SharableModelManager(
         if user in item.users_shared_with_dot_users:
             return True
         return False
+
+    def accessible_ids(self, user_id: int, ids: Iterable[int]) -> set[int]:
+        """Ids of the items the user owns, can import or has been shared, in one query; ignores admin status."""
+        ids = set(ids)
+        if not ids:
+            return set()
+        model_class = self.model_class
+        stmt = select(model_class.id).where(
+            model_class.id.in_(ids),
+            or_(
+                model_class.user_id == user_id,
+                model_class.importable == true(),
+                model_class.users_shared_with.any(user_id=user_id),
+            ),
+        )
+        return set(self.session().scalars(stmt))
 
     # .... importable
     def make_importable(self, item, flush=True):

@@ -2,6 +2,7 @@ import os
 import random
 import uuid
 from tempfile import NamedTemporaryFile
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import (
@@ -609,6 +610,50 @@ class TestMappings(BaseModelTestCase):
         security_agent.make_dataset_public(d1.dataset)
         assert security_agent.can_access_dataset(u_to.all_roles(), d1.dataset)
         assert security_agent.can_access_dataset(u_other.all_roles(), d1.dataset)
+
+    def test_accessible_dataset_ids(self):
+        security_agent = GalaxyRBACAgent(self.model.session)
+        u_from, u_to, u_other = self._three_users("accessible_dataset_ids")
+
+        h = model.History(name="History for accessible ids", user=u_from)
+        public, shared, private, both = (
+            model.HistoryDatasetAssociation(
+                extension="txt", history=h, create_dataset=True, sa_session=self.model.session
+            )
+            for _ in range(4)
+        )
+        self.persist(h, public, shared, private, both)
+        access = security_agent.permitted_actions.DATASET_ACCESS
+        from_role = security_agent.get_private_user_role(u_from, auto_create=True)
+        to_role = security_agent.get_private_user_role(u_to, auto_create=True)
+        security_agent.privately_share_dataset(shared.dataset, [u_to])
+        security_agent.set_dataset_permission(private.dataset, {access: [from_role]})
+        # every access role is required
+        security_agent.set_dataset_permission(both.dataset, {access: [from_role, to_role]})
+        dataset_ids = [public.dataset.id, shared.dataset.id, private.dataset.id, both.dataset.id]
+
+        def accessible(user):
+            return security_agent.accessible_dataset_ids([role.id for role in user.all_roles()], dataset_ids)
+
+        assert accessible(u_other) == {public.dataset.id}
+        assert accessible(u_to) == {public.dataset.id, shared.dataset.id}
+        assert accessible(u_from) == {public.dataset.id, private.dataset.id}
+        assert security_agent.accessible_dataset_ids([], []) == set()
+
+        # parity with the per-item and released batch rules
+        datasets = [hda.dataset for hda in (public, shared, private, both)]
+        trans = SimpleNamespace(sa_session=self.model.session)
+        public_map = security_agent.datasets_are_public(trans, datasets)
+        assert {d.id for d in datasets if public_map[d.id]} == security_agent.accessible_dataset_ids([], dataset_ids)
+        for user in (u_from, u_to, u_other):
+            roles = user.all_roles()
+            ids = accessible(user)
+            access_map = security_agent.dataset_access_mapping(trans, roles, datasets)
+            for dataset in datasets:
+                action_tuples = [(action.action, action.role_id) for action in dataset.actions]
+                assert security_agent.can_access_dataset(roles, dataset) == (dataset.id in ids)
+                assert security_agent.can_access_datasets(roles, action_tuples) == (dataset.id in ids)
+                assert access_map[dataset.id] == (dataset.id in ids)
 
     def test_set_all_dataset_permissions(self):
         security_agent = GalaxyRBACAgent(self.model.session)
