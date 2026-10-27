@@ -1,6 +1,7 @@
 import "@tests/vitest/mockHelpPopovers";
 
 import { createTestingPinia } from "@pinia/testing";
+import { getFakeRegisteredUser } from "@tests/test-data";
 import { getLocalVue } from "@tests/vitest/helpers";
 import { mount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
@@ -287,4 +288,57 @@ describe("JobInformation/JobInformation.vue rerun indicator", () => {
 
         expect(wrapper.find("[title='Rerun this job']").exists()).toBe(true);
     });
+});
+
+describe("JobInformation/JobInformation.vue other runs link", () => {
+    let toolId;
+    beforeEach(() => {
+        toolId = "toolshed.example.org/repos/u/r/cat/1.0";
+        server.use(
+            http.get("/api/configuration/decode/{encoded_id}", ({ response }) => {
+                return response(200).json({ decoded_id: 123 });
+            }),
+            http.get("/api/jobs/{job_id}", ({ response }) => {
+                return response(200).json({ ...jobResponse, tool_id: toolId });
+            }),
+            http.get("/api/invocations", ({ response }) => {
+                return response(200).json([]);
+            }),
+            http.get("/api/jobs/{job_id}/console_output", ({ response }) => {
+                return response(200).json({ stdout: "stdout", stderr: "stderr" });
+            }),
+        );
+    });
+
+    async function mountWith(props, currentUser = getFakeRegisteredUser()) {
+        const pinia = createTestingPinia({
+            createSpy: vi.fn,
+            stubActions: false,
+            initialState: { userStore: { currentUser } },
+        });
+        const wrapper = mount(JobInformation, {
+            props: { jobId: JOB_ID, ...props },
+            global: { ...localVue, plugins: [...(localVue.plugins ?? []), pinia] },
+        });
+        await flushPromises();
+        return wrapper;
+    }
+
+    const hasLink = (wrapper) => wrapper.find("[id^='g-card-action-job-other-runs']").exists();
+
+    it("offers the link to registered users who ask for it, and only them", async () => {
+        expect(hasLink(await mountWith({ includeOtherRunsLink: true }))).toBe(true);
+        expect(hasLink(await mountWith({}))).toBe(false);
+        const anonymous = { isAnonymous: true, total_disk_usage: 0, nice_total_disk_usage: "0 bytes" };
+        expect(hasLink(await mountWith({ includeOtherRunsLink: true }, anonymous))).toBe(false);
+    });
+
+    it.each(["__DATA_FETCH__", "upload1", "__SET_METADATA__"])(
+        "leaves it off for internal tool %s, unlike a Tool Shed tool",
+        async (id) => {
+            expect(hasLink(await mountWith({ includeOtherRunsLink: true }))).toBe(true);
+            toolId = id;
+            expect(hasLink(await mountWith({ includeOtherRunsLink: true }))).toBe(false);
+        },
+    );
 });
