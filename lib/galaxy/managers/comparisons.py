@@ -16,9 +16,14 @@ from typing import (
 from sqlalchemy import (
     and_,
     or_,
+    Row,
     select,
+    Select,
 )
-from sqlalchemy.orm import InstrumentedAttribute
+from sqlalchemy.orm import (
+    aliased,
+    InstrumentedAttribute,
+)
 from sqlalchemy.sql.elements import ColumnElement
 
 from galaxy.exceptions import ObjectNotFound
@@ -75,12 +80,16 @@ from galaxy.schema.comparisons import (
     OutputRunsQuery,
     ReusedState,
     StepRunsQuery,
+    ToolRunsQuery,
     ValueCell,
+    WorkflowRunVia,
 )
 from galaxy.schema.states import (
     DatasetCollectionPopulatedState,
     InvocationState,
 )
+from galaxy.tool_util.version import parse_tool_version
+from galaxy.util.tool_version import versionless_tool_id
 
 INPUT_STEP_TYPES = ("data_input", "data_collection_input", "parameter_input")
 NOT_SCHEDULED_INVOCATION_STATES = (
@@ -271,6 +280,154 @@ class ComparisonsManager:
             io[invocation_id][column_key] = output_value
         return io
 
+    def tool_runs(self, access: ComparisonAccess, query: ToolRunsQuery) -> tuple[ComparisonTable, int]:
+        """One row per submission of a tool: a plain job, or a mapped batch shown by its first job."""
+        tool_predicates = _tool_predicates(access.user_id, query.tool_id)
+        icjja = ImplicitCollectionJobsJobAssociation
+        sibling = aliased(ImplicitCollectionJobsJobAssociation)
+        earlier_sibling = (
+            select(sibling.id)
+            .where(
+                sibling.implicit_collection_jobs_id == icjja.implicit_collection_jobs_id,
+                or_(
+                    sibling.order_index < icjja.order_index,
+                    and_(sibling.order_index == icjja.order_index, sibling.job_id < icjja.job_id),
+                ),
+            )
+            .exists()
+        )
+        stmt = (
+            select(
+                Job.id,
+                icjja.implicit_collection_jobs_id,
+                Job.create_time,
+                Job.update_time,
+                History.id,
+                History.name,
+                History.deleted,
+                History.purged,
+            )
+            .join(History, History.id == Job.history_id)
+            .outerjoin(icjja, icjja.job_id == Job.id)
+            .where(*tool_predicates, ~earlier_sibling)
+        )
+        if query.tool_versions:
+            stmt = stmt.where(Job.tool_version.in_(query.tool_versions))
+        if query.history_id is not None:
+            stmt = stmt.where(Job.history_id == query.history_id)
+        if query.states:
+            stmt = stmt.where(_submission_state_predicate(query.states))
+        if not query.include_workflow_jobs:
+            wis = WorkflowInvocationStep
+            in_workflow = (
+                select(wis.id)
+                .where(or_(wis.job_id == Job.id, wis.implicit_collection_jobs_id == icjja.implicit_collection_jobs_id))
+                .exists()
+            )
+            stmt = stmt.where(~in_workflow)
+        page_rows, total = self._count_and_page(stmt, Job.id, Job.update_time, query)
+        page = [ToolRunPageRow(*row) for row in page_rows]
+        columns, rows = self._tool_rows(access, page, query)
+        table = ComparisonTable(
+            query=query, columns=columns, rows=rows, tool_versions_available=self._tool_versions(tool_predicates)
+        )
+        return table, total
+
+    def _tool_rows(
+        self, access: ComparisonAccess, page: list[ToolRunPageRow], query: ToolRunsQuery
+    ) -> tuple[list[ComparisonColumn], list[ComparisonRow]]:
+        jobs = self.cell_builder.load_jobs([row.job_id for row in page if row.implicit_collection_jobs_id is None])
+        icjs = self.cell_builder.load_implicit_collection_jobs(
+            [row.implicit_collection_jobs_id for row in page if row.implicit_collection_jobs_id is not None]
+        )
+        job_inputs, icj_inputs = self._submission_inputs(jobs, icjs)
+        job_outputs = self.cell_builder.job_outputs(list(jobs))
+        icj_outputs = self.cell_builder.implicit_collection_outputs(list(icjs))
+        via = self._workflow_runs_via(list(jobs), list(icjs))
+
+        io_by_row: list[dict[str, ItemRef]] = []
+        specs: dict[str, ColumnSpec] = {}
+        declared: dict[str | None, set[str]] = defaultdict(set)
+        for row in page:
+            icj_id = row.implicit_collection_jobs_id
+            if icj_id is None:
+                inputs, outputs = job_inputs.get(row.job_id, {}), job_outputs.get(row.job_id, {})
+                tool_version = jobs[row.job_id].tool_version if row.job_id in jobs else None
+            else:
+                inputs, outputs = icj_inputs.get(icj_id, {}), icj_outputs.get(icj_id, {})
+                representative = icjs[icj_id].representative if icj_id in icjs else None
+                tool_version = representative.tool_version if representative else None
+            io = {**_keyed("input", inputs), **_keyed("output", outputs)}
+            io_by_row.append(io)
+            declared[tool_version].update(io)
+            for key in io:
+                specs.setdefault(key, _column_spec(key))
+        columns = align_columns({0: list(specs.values())}, 0)
+        item_cells = self.cell_builder.item_cells(
+            (ref for io in io_by_row for ref in io.values()),
+            access,
+            query.metadata_elements,
+            query.inline_expression_values,
+        )
+        metadata_keys: dict[str, set[str]] = defaultdict(set)
+        rows = []
+        for row, io in zip(page, io_by_row):
+            icj_id = row.implicit_collection_jobs_id
+            job = jobs.get(row.job_id) if icj_id is None else None
+            icj = icjs.get(icj_id) if icj_id is not None else None
+            representative = job or (icj.representative if icj else None)
+            run = _step_job_ref(job, icj)
+            if run is None:
+                continue
+            state = _step_state(None, job, icj)
+            tool_version = representative.tool_version if representative else None
+            reason = missing_reason(True, state, state, state not in Job.non_ready_states)
+            # a tool version's columns are only known from its rows on this page
+            cells = _cells(columns, io, item_cells, metadata_keys, declared[tool_version], reason)
+            rows.append(
+                ComparisonRow(
+                    run=run,
+                    via=via.get((icj_id is not None, icj_id if icj_id is not None else row.job_id)),
+                    create_time=row.create_time,
+                    update_time=row.update_time,
+                    state=state,
+                    tool_id=representative.tool_id if representative else None,
+                    tool_version=tool_version,
+                    reused=_reused(job, icj),
+                    history=_history_ref(row),
+                    cells=cells,
+                )
+            )
+        _set_metadata_keys(columns, metadata_keys)
+        return columns, rows
+
+    def _workflow_runs_via(self, job_ids: list[int], icj_ids: list[int]) -> dict[tuple[bool, int], WorkflowRunVia]:
+        """The invocation step that ran each job or mapped batch, keyed by (is_batch, id)."""
+        if not job_ids and not icj_ids:
+            return {}
+        wis = WorkflowInvocationStep
+        stmt = (
+            select(
+                wis.job_id,
+                wis.implicit_collection_jobs_id,
+                wis.workflow_invocation_id,
+                WorkflowStep.label,
+                Workflow.name,
+            )
+            .join(WorkflowStep, WorkflowStep.id == wis.workflow_step_id)
+            .join(Workflow, Workflow.id == WorkflowStep.workflow_id)
+            .where(or_(wis.job_id.in_(job_ids), wis.implicit_collection_jobs_id.in_(icj_ids)))
+        )
+        via: dict[tuple[bool, int], WorkflowRunVia] = {}
+        for job_id, icj_id, invocation_id, step_label, workflow_name in self.sa_session.execute(stmt):
+            key = (True, icj_id) if icj_id is not None else (False, job_id)
+            via[key] = WorkflowRunVia(invocation_id=invocation_id, step_label=step_label, workflow_name=workflow_name)
+        return via
+
+    def _tool_versions(self, tool_predicates: list[ColumnElement[bool]]) -> list[str]:
+        stmt = select(Job.tool_version).where(*tool_predicates, Job.tool_version.is_not(None)).distinct()
+        return sorted(self.sa_session.scalars(stmt), key=parse_tool_version)
+
     def _version_map(self, stored_workflow_id: int) -> dict[int, int]:
         """0-based version of each Workflow of a StoredWorkflow, as ``StoredWorkflow.version_of`` numbers them."""
         stmt = select(Workflow.id).where(Workflow.stored_workflow_id == stored_workflow_id).order_by(Workflow.id)
@@ -300,14 +457,24 @@ class ComparisonsManager:
         )
         if state_predicate is not None:
             stmt = stmt.where(state_predicate)
+        page_rows, total = self._count_and_page(stmt, WorkflowInvocation.id, WorkflowInvocation.update_time, query)
+        return [InvocationPageRow(*row) for row in page_rows], total
+
+    def _count_and_page(
+        self,
+        stmt: Select[Any],
+        id_column: InstrumentedAttribute[int],
+        update_time_column: InstrumentedAttribute[datetime],
+        query: ComparisonQueryBase,
+    ) -> tuple[list[Row[Any]], int]:
+        """Total matches of ``stmt`` and the requested page of it, in the query's sort order."""
         total = get_count(self.sa_session, stmt)
         # create_time is unindexed; id order matches it
-        order_by: list[InstrumentedAttribute[Any]] = [WorkflowInvocation.id]
+        order_by: list[InstrumentedAttribute[Any]] = [id_column]
         if query.sort_by == "update_time":
-            order_by.insert(0, WorkflowInvocation.update_time)
+            order_by.insert(0, update_time_column)
         stmt = stmt.order_by(*(column.desc() if query.sort_desc else column.asc() for column in order_by))
-        stmt = stmt.limit(query.limit).offset(query.offset)
-        return [InvocationPageRow(*row) for row in self.sa_session.execute(stmt)], total
+        return list(self.sa_session.execute(stmt.limit(query.limit).offset(query.offset))), total
 
     def _step_rows(
         self,
@@ -341,10 +508,7 @@ class ComparisonsManager:
                 io.update(_keyed("output", outputs.get(step.id, {})))
             io_by_invocation[invocation.id] = io
             for key in io:
-                role, name = key.split(":", 1)
-                declared[version].setdefault(
-                    key, ColumnSpec(key=key, label=name, role="input" if role == "input" else "output")
-                )
+                declared[version].setdefault(key, _column_spec(key))
 
         newest_version = max(declared) if declared else 0
         columns = align_columns({v: list(specs.values()) for v, specs in declared.items()}, newest_version)
@@ -491,6 +655,26 @@ def _step_state_predicate(step_ids: list[int], states: list[str]) -> ColumnEleme
     return or_(*clauses)
 
 
+def _tool_predicates(user_id: int, tool_id: str) -> list[ColumnElement[bool]]:
+    """The user's jobs of a tool at any version; a Tool Shed id matches its versioned guids."""
+    base = versionless_tool_id(tool_id)
+    return [Job.user_id == user_id, or_(Job.tool_id == base, Job.tool_id.startswith(f"{base}/", autoescape=True))]
+
+
+def _submission_state_predicate(states: list[str]) -> ColumnElement[bool]:
+    """A plain job matches on its state, a mapped batch when any member job is in one of ``states``."""
+    icjja = ImplicitCollectionJobsJobAssociation
+    member = aliased(ImplicitCollectionJobsJobAssociation)
+    member_job = aliased(Job)
+    member_in_states = (
+        select(member.id)
+        .join(member_job, member_job.id == member.job_id)
+        .where(member.implicit_collection_jobs_id == icjja.implicit_collection_jobs_id, member_job.state.in_(states))
+        .exists()
+    )
+    return or_(and_(icjja.implicit_collection_jobs_id.is_(None), Job.state.in_(states)), member_in_states)
+
+
 def _hdca_ref(hdca_id: int) -> ItemRef:
     return ItemRef("hdca", hdca_id)
 
@@ -555,6 +739,12 @@ def _keyed(role: str, items: dict[str, ItemRef]) -> dict[str, ItemRef]:
         else:
             keyed.setdefault(key, ref)
     return keyed
+
+
+def _column_spec(key: str) -> ColumnSpec:
+    """Column of a role-prefixed key from ``_keyed``."""
+    role, name = key.split(":", 1)
+    return ColumnSpec(key=key, label=name, role="input" if role == "input" else "output")
 
 
 def _step_state(
