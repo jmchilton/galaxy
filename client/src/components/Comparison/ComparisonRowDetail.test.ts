@@ -23,6 +23,10 @@ function mountDetail(row: ComparisonRow, query: ComparisonQuery = TABLE.query) {
     });
 }
 
+function alertText(wrapper: ReturnType<typeof mountDetail>) {
+    return wrapper.find(".comparison-row-detail-message").text().replace(/\s+/g, " ").trim();
+}
+
 describe("ComparisonRowDetail", () => {
     it("shows the output history items and the step job", () => {
         const row = TABLE.rows[1]!;
@@ -58,11 +62,48 @@ describe("ComparisonRowDetail", () => {
         );
     });
 
-    it("explains a scheduled step without a job, such as a pause", () => {
-        const row = { ...TABLE.rows[0]!, state: "scheduled" };
+    it("explains a step the run ended before reaching", () => {
+        const row = { ...TABLE.rows[0]!, run: { ...TABLE.rows[0]!.run, state: "failed" } } as ComparisonRow;
         const wrapper = mountDetail(row);
-        expect(wrapper.text()).toContain("This step has no job: pause and input steps run without one.");
-        expect(wrapper.text()).not.toContain("no job for this step yet");
+        expect(alertText(wrapper)).toBe("This run ended before reaching this step.");
+    });
+
+    it("explains a step mapped over an empty collection", () => {
+        const step_job = {
+            model: "ImplicitCollectionJobs",
+            id: "icj1",
+            populated_state: "ok",
+            states: {},
+            representative_job_id: null,
+            job_count: 0,
+        } as const;
+        const row = { ...TABLE.rows[0]!, state: "ok", step_job, step_type: "tool" } as ComparisonRow;
+        const wrapper = mountDetail(row);
+        expect(wrapper.findComponent(JOB_TABS_STUB).exists()).toBe(false);
+        expect(wrapper.text()).not.toContain("Job 1 of 0");
+        expect(alertText(wrapper)).toBe("Mapped over an empty collection: no jobs ran.");
+    });
+
+    it.each([
+        ["ready", null, "Waiting for review: the run is paused at this step."],
+        ["scheduled", true, "Reviewed: the run continued past this pause."],
+        ["cancelled", false, "Review rejected: the run was cancelled at this pause."],
+        ["cancelled", null, "This pause step was not reviewed before the run ended."],
+    ])("explains a pause step in a %s run with action %s", (runState, action, message) => {
+        const base = TABLE.rows[0]!;
+        const row = {
+            ...base,
+            run: { ...base.run, state: runState },
+            state: "scheduled",
+            step_type: "pause",
+            step_action: action,
+        } as ComparisonRow;
+        expect(alertText(mountDetail(row))).toBe(message);
+    });
+
+    it.each(["data_input", "parameter_input"])("explains a %s step has no job", (stepType) => {
+        const row = { ...TABLE.rows[0]!, state: "scheduled", step_type: stepType } as ComparisonRow;
+        expect(alertText(mountDetail(row))).toBe("Input steps run without a job.");
     });
 
     it("has no single job for a workflow-outputs row", () => {
