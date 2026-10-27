@@ -3,9 +3,10 @@ import { faColumns } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { computed, onMounted, ref } from "vue";
 
-import { GalaxyApi } from "@/api";
+import { GalaxyApi, isRegisteredUser } from "@/api";
 import type { StoredWorkflowDetailed } from "@/api/workflows";
 import { comparisonPath } from "@/components/Comparison/comparisonQuery";
+import { useUserStore } from "@/stores/userStore";
 import { rethrowSimple } from "@/utils/simple-error";
 
 import GridInvocation from "../Grid/GridInvocation.vue";
@@ -18,6 +19,10 @@ interface Props {
     storedWorkflowId: string;
 }
 const props = defineProps<Props>();
+
+const userStore = useUserStore();
+// Comparisons list the current user's runs; anonymous users have none.
+const canCompare = computed(() => isRegisteredUser(userStore.currentUser));
 
 const loading = ref(true);
 const workflow = ref<StoredWorkflowDetailed>();
@@ -50,6 +55,7 @@ onMounted(async () => {
     <div v-if="!loading && workflow">
         <BreadcrumbHeading :items="breadcrumbItems">
             <GButton
+                v-if="canCompare"
                 class="stored-workflow-compare-outputs text-nowrap"
                 color="blue"
                 size="small"

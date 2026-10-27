@@ -1,6 +1,7 @@
 import "@tests/vitest/mockHelpPopovers";
 
 import { createTestingPinia } from "@pinia/testing";
+import { getFakeRegisteredUser } from "@tests/test-data";
 import { getLocalVue } from "@tests/vitest/helpers";
 import { mount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
@@ -307,17 +308,31 @@ describe("JobInformation/JobInformation.vue other runs link", () => {
         );
     });
 
-    async function mountWith(props) {
+    async function mountWith(props, currentUser = getFakeRegisteredUser()) {
+        const pinia = createTestingPinia({
+            createSpy: vi.fn,
+            stubActions: false,
+            initialState: { userStore: { currentUser } },
+        });
         const wrapper = mount(JobInformation, {
             props: { jobId: JOB_ID, ...props },
-            global: {
-                ...localVue,
-                plugins: [...(localVue.plugins ?? []), createTestingPinia({ createSpy: vi.fn, stubActions: false })],
-            },
+            global: { ...localVue, plugins: [...(localVue.plugins ?? []), pinia] },
         });
         await flushPromises();
         return wrapper;
     }
+
+    it("hides the link from anonymous users, who have no runs to compare", async () => {
+        const wrapper = await mountWith(
+            { includeOtherRunsLink: true },
+            {
+                isAnonymous: true,
+                total_disk_usage: 0,
+                nice_total_disk_usage: "0 bytes",
+            },
+        );
+        expect(wrapper.find("[id^='g-card-action-job-other-runs']").exists()).toBe(false);
+    });
 
     it("links to the tool's runs only when asked to", async () => {
         const without = await mountWith({});

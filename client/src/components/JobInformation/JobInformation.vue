@@ -4,11 +4,13 @@ import { BSkeleton } from "bootstrap-vue";
 import { computed, ref, toRef, watch } from "vue";
 import { useRoute } from "vue-router";
 
+import { isRegisteredUser } from "@/api";
 import { fetchInvocationForJob } from "@/api/invocations";
 import type { CardAction } from "@/components/Common/GCard.types";
 import { comparisonPath } from "@/components/Comparison/comparisonQuery";
 import { useJobConsoleOutput, useJobDetails } from "@/composables/jobDetails";
 import { useRerunnableTool } from "@/composables/rerunnableTool";
+import { useUserStore } from "@/stores/userStore";
 import { errorMessageAsString } from "@/utils/simple-error";
 import { stateIsTerminal } from "@/utils/utils";
 
@@ -53,6 +55,7 @@ const emit = defineEmits<{
 }>();
 
 const route = useRoute();
+const userStore = useUserStore();
 
 /** Whether the collapsible job information card is collapsed. */
 const internalCollapsed = ref(false);
@@ -111,7 +114,8 @@ const primaryActions = computed<CardAction[]>(() => {
             variant: "link",
         });
     }
-    if (props.includeOtherRunsLink && job.value?.tool_id) {
+    // Comparisons list the current user's runs; anonymous users have none.
+    if (props.includeOtherRunsLink && job.value?.tool_id && isRegisteredUser(userStore.currentUser)) {
         actions.push({
             id: "job-other-runs",
             class: "text-decoration-none",
