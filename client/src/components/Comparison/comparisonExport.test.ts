@@ -2,7 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import type { ComparisonQuery, ComparisonRow, ComparisonTable } from "@/api/comparisons";
 
-import { cellText, exportFilename, exportLines, metaText, toDelimited } from "./comparisonExport";
+import {
+    cellText,
+    exportBlob,
+    exportFilename,
+    exportLines,
+    metaText,
+    spreadsheetSafe,
+    toDelimited,
+} from "./comparisonExport";
 import STEP_RUNS from "./test-data/step_runs.json";
 
 const TABLE = STEP_RUNS as unknown as ComparisonTable;
@@ -86,6 +94,34 @@ describe("toDelimited", () => {
                 "tsv",
             ),
         ).toBe("a b\tc d\r\ne\tf\r\n");
+    });
+
+    it("escapes formula-like fields in both formats", () => {
+        expect(toDelimited([["=1+1", "@x"]], "csv")).toBe("'=1+1,'@x\r\n");
+        expect(toDelimited([["\tx", "+x"]], "tsv")).toBe("' x\t'+x\r\n");
+    });
+});
+
+describe("spreadsheetSafe", () => {
+    it("prefixes text a spreadsheet would read as a formula", () => {
+        for (const text of ["=SUM(A1)", "+x", "-x", "-", "@x", "\tx", "\rx"]) {
+            expect(spreadsheetSafe(text)).toBe(`'${text}`);
+        }
+    });
+
+    it("keeps numbers and plain text as they are", () => {
+        for (const text of ["-1", "-0.5", "+2", "1e5", "-1.5E-3", ".5", "a=b", "", "v2"]) {
+            expect(spreadsheetSafe(text)).toBe(text);
+        }
+    });
+});
+
+describe("exportBlob", () => {
+    const bytes = async (blob: Blob) => [...new Uint8Array(await blob.arrayBuffer())].slice(0, 3);
+
+    it("marks CSV as UTF-8 for spreadsheets, not TSV", async () => {
+        expect(await bytes(exportBlob([["é"]], "csv"))).toEqual([0xef, 0xbb, 0xbf]);
+        expect(await bytes(exportBlob([["a"]], "tsv"))).toEqual([0x61, 0x0d, 0x0a]);
     });
 });
 

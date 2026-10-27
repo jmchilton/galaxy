@@ -103,6 +103,13 @@ export function exportLines(table: ComparisonTable, options: ExportOptions): str
     return [fields.map((field) => field.label), ...table.rows.map((row) => fields.map((field) => field.text(row)))];
 }
 
+const NUMBER = /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/;
+
+/** Prefixes `'` to text a spreadsheet would read as a formula; numbers stay numbers. */
+export function spreadsheetSafe(text: string): string {
+    return /^[=+\-@\t\r]/.test(text) && !NUMBER.test(text) ? `'${text}` : text;
+}
+
 function csvField(text: string): string {
     return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
@@ -113,7 +120,7 @@ function tsvField(text: string): string {
 
 export function toDelimited(lines: string[][], format: ExportFormat): string {
     const [field, separator] = format === "csv" ? [csvField, ","] : [tsvField, "\t"];
-    return lines.map((line) => line.map(field).join(separator) + "\r\n").join("");
+    return lines.map((line) => line.map((text) => field(spreadsheetSafe(text))).join(separator) + "\r\n").join("");
 }
 
 const EXPORT_MIME_TYPES: Record<ExportFormat, string> = {
@@ -121,8 +128,12 @@ const EXPORT_MIME_TYPES: Record<ExportFormat, string> = {
     tsv: "text/tab-separated-values",
 };
 
+// Without a byte order mark, Excel reads a CSV in the system code page.
+const UTF8_BOM = "﻿";
+
 export function exportBlob(lines: string[][], format: ExportFormat): Blob {
-    return new Blob([toDelimited(lines, format)], { type: `${EXPORT_MIME_TYPES[format]};charset=utf-8` });
+    const bom = format === "csv" ? UTF8_BOM : "";
+    return new Blob([bom + toDelimited(lines, format)], { type: `${EXPORT_MIME_TYPES[format]};charset=utf-8` });
 }
 
 function comparisonName(query: ComparisonQuery): string {

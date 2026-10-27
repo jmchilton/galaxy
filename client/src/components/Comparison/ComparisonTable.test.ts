@@ -328,7 +328,7 @@ describe("ComparisonTable", () => {
         const [blob, filename] = vi.mocked(downloadBlob).mock.calls[0]!;
         expect(filename).toBe("runs_of_second_cat_1-6.csv");
         const lines = (await blob.text()).split("\r\n");
-        expect(lines[0]).toBe("Invoked,State,out_file1 (output)");
+        expect(lines[0]).toBe("﻿Invoked,State,out_file1 (output)");
         expect(lines[2]).toBe(`${TABLE.rows[1]!.create_time},successful,1`);
         expect(lines).toHaveLength(TABLE.rows.length + 2);
 
