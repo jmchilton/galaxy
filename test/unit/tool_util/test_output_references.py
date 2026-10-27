@@ -45,8 +45,7 @@ def test_legacy_alias_in_repeat_keeps_its_index():
 
 
 def test_legacy_alias_targeting_another_alias_is_kept():
-    # cond|input1 is also the legacy alias of cond|inner|input1, so rewriting input1 to it would
-    # resolve the nested input when the flat one is inactive.
+    # cond|input1 is also the legacy alias of cond|inner|input1, so input1 must not be rewritten to it.
     resolved = _resolve("input1")
     assert resolved.qualified_key == "cond|input1"
     assert resolved.runtime_key == "input1"

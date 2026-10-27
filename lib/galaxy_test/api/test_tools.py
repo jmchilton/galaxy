@@ -2451,8 +2451,7 @@ class TestToolsApi(ApiTestCase, TestsTools):
 
     @skip_without_tool("format_source_internal_keys")
     def test_format_source_internal_keys_collection_for_multiple_input(self, history_id):
-        # A collection given to a multiple data input is expanded into input1, input2, ... and
-        # recorded under the input's name; format_source may name the input but not an element.
+        # format_source may name a multiple input fed a collection, not its expanded element keys.
         bed = self.dataset_populator.new_dataset(history_id, content="chr1\t1\t2\n", file_type="bed", wait=True)
         fasta = self.dataset_populator.new_dataset(history_id, content=">seq\nACGT\n", file_type="fasta", wait=True)
         forward_reverse = self.dataset_collection_populator.create_list_in_history(
