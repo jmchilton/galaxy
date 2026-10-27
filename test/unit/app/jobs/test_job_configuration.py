@@ -8,7 +8,9 @@ from pykwalify.core import Core
 
 from galaxy.config import GALAXY_SCHEMAS_PATH
 from galaxy.job_metrics import JobMetrics
+from galaxy.model import Job
 from galaxy.jobs import JobConfiguration
+from galaxy.jobs.manager import JobManager
 from galaxy.util import galaxy_directory
 from galaxy.util.path import StrPath
 from galaxy.util.resources import (
@@ -352,6 +354,26 @@ class TestAdvancedJobConfXmlParser(BaseJobConfXmlParserTestCase):
 
 class TestAdvancedJobConfYamlParser(TestAdvancedJobConfXmlParser):
     extension = "yml"
+
+
+class TestJobManagerEnqueueHandler(BaseJobConfXmlParserTestCase):
+    def setUp(self):
+        super().setUp()
+        self._with_handlers_config(assign_with="db-preassign", handlers=[{"id": "h1"}, {"id": "h2"}])
+        self.app.job_config = self.job_config
+        self.tool = mock.Mock(id="cat1")
+        self.tool.get_configured_job_handler.return_value = "h1"
+
+    def _enqueue(self, job_handler=None):
+        job = Job()
+        JobManager(self.app).enqueue(job, tool=self.tool, flush=False, job_handler=job_handler)
+        return job.handler
+
+    def test_explicit_job_handler_overrides_tool_handler(self):
+        assert self._enqueue(job_handler="h2") == "h2"
+
+    def test_no_job_handler_uses_tool_handler(self):
+        assert self._enqueue() == "h1"
 
 
 def test_yaml_advanced_validation():
