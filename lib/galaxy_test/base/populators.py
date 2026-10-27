@@ -2939,8 +2939,11 @@ steps: []
         inputs: dict | None = None,
         request: dict | None = None,
         assert_ok: bool = True,
+        inputs_by: str = "step_index",
     ) -> Response:
-        invoke_return = self.invoke_workflow(workflow_id, history_id=history_id, inputs=inputs, request=request)
+        invoke_return = self.invoke_workflow(
+            workflow_id, history_id=history_id, inputs=inputs, request=request, inputs_by=inputs_by
+        )
         assert invoke_return.status_code < 300, invoke_return.json()
         invoke_return.raise_for_status()
         invocation_id = invoke_return.json()["id"]
