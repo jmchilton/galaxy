@@ -20,6 +20,16 @@ export const META_FIELDS: Record<ComparisonKind, MetaField[]> = {
     tool_runs: ["run", "tool_version", "state", "reused", "history"],
 };
 
+/** The anchor field, which is always shown, then the shown run fields and data columns. */
+export function visibleFields(kind: ComparisonKind, columns: ComparisonColumn[], visibleColumns: string[]) {
+    const [anchor, ...optional] = META_FIELDS[kind];
+    return {
+        anchor: anchor!,
+        metaFields: optional.filter((field) => visibleColumns.includes(field)),
+        columns: columns.filter((column) => visibleColumns.includes(column.key)),
+    };
+}
+
 export const META_LABELS: Record<MetaField, string> = {
     invoked: "Invoked",
     run: "Ran",

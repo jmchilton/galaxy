@@ -6,7 +6,7 @@ import { computed, ref } from "vue";
 import type { ComparisonColumn, ComparisonQuery, ComparisonRow } from "@/api/comparisons";
 
 import { type CellComparison, compareCells, compareMeta } from "./comparisonChanges";
-import { type CellDisplay, META_FIELDS, META_LABELS, type MetaField, noJobReason, rowJob } from "./comparisonUtils";
+import { type CellDisplay, META_LABELS, type MetaField, noJobReason, rowJob, visibleFields } from "./comparisonUtils";
 
 import ComparisonCell from "./cells/ComparisonCell.vue";
 import ComparisonColumnLabel from "./ComparisonColumnLabel.vue";
@@ -25,6 +25,8 @@ const props = withDefaults(
         query: ComparisonQuery;
         /** Each column's cell display, as the table shows it. */
         displays: Record<string, CellDisplay>;
+        /** Keys of the run fields and columns the table shows. */
+        visibleColumns: string[];
         currentRunId?: string;
         requestedMetadata?: string[];
         loading?: boolean;
@@ -45,14 +47,14 @@ interface DiffLine {
     column?: ComparisonColumn;
 }
 
-const metaFields = computed(() => META_FIELDS[props.query.kind]);
-const anchorField = computed(() => metaFields.value[0]!);
+const visible = computed(() => visibleFields(props.query.kind, props.columns, props.visibleColumns));
+const anchorField = computed(() => visible.value.anchor);
 
 const lines = computed<DiffLine[]>(() => {
     const [a, b] = props.rows;
     return [
-        ...metaFields.value.slice(1).map((meta) => ({ key: meta, meta, comparison: compareMeta(meta, a, b) })),
-        ...props.columns.map((column) => ({
+        ...visible.value.metaFields.map((meta) => ({ key: meta, meta, comparison: compareMeta(meta, a, b) })),
+        ...visible.value.columns.map((column) => ({
             key: column.key,
             column,
             comparison: compareCells(a.cells[column.key], b.cells[column.key], column, props.displays[column.key]!),

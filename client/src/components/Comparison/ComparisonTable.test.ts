@@ -18,7 +18,7 @@ const DETAIL_STUB = { name: "ComparisonRowDetail", props: ["row", "columns", "qu
 const LINK_STUB = { name: "ItemPopoverLink", props: ["itemId", "itemSrc", "to"], template: "<a><slot /></a>" };
 const DIFF_STUB = {
     name: "ComparisonDiff",
-    props: ["rows", "columns", "query", "displays", "currentRunId", "requestedMetadata", "loading"],
+    props: ["rows", "columns", "query", "displays", "visibleColumns", "currentRunId", "requestedMetadata", "loading"],
     emits: ["close"],
     template: "<div />",
 };
@@ -269,6 +269,7 @@ describe("ComparisonTable", () => {
         // in table order, whatever order they were picked in
         expect(diff.props("rows")).toEqual([TABLE.rows[1], TABLE.rows[3]]);
         expect(diff.props("displays")).toEqual({ "input:input1": "link", "output:out_file1": "link" });
+        expect(diff.props("visibleColumns")).toEqual(ALL_COLUMNS);
         expect(diff.props("currentRunId")).toBe(TABLE.rows[1]!.run.id);
         expect(compare().attributes("aria-expanded")).toBe("true");
         expect(compare().attributes("aria-disabled")).toBeUndefined();
