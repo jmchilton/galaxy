@@ -25,6 +25,7 @@ import CollectionEditView from "@/components/Collections/common/CollectionEditVi
 import DisplayCollectionAsSheet from "@/components/Collections/common/DisplayCollectionAsSheet.vue";
 import ListWizard from "@/components/Collections/ListWizard.vue";
 import RulesStandalone from "@/components/Collections/RulesStandalone.vue";
+import ComparisonView from "@/components/Comparison/ComparisonView.vue";
 import DatasetCopy from "@/components/Dataset/DatasetCopy.vue";
 import DatasetList from "@/components/Dataset/DatasetList.vue";
 import DatasetView from "@/components/Dataset/DatasetView.vue";
@@ -893,6 +894,13 @@ export function getRouter(Galaxy) {
                             pluralName: "Workflows",
                             modelClass: "Workflow",
                         }),
+                    },
+                    {
+                        path: "comparisons",
+                        component: ComparisonView,
+                        props: (route) => ({ query: route.query }),
+                        meta: { keepMountedOnQueryChange: true },
+                        redirect: redirectAnon(),
                     },
                     {
                         path: "workflows/:storedWorkflowId/invocations",
