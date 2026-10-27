@@ -13,11 +13,14 @@ import Heading from "@/components/Common/Heading.vue";
 import GenericHistoryItem from "@/components/History/Content/GenericItem.vue";
 import JobDetailsTabs from "@/components/History/Graph/JobDetailsTabs.vue";
 import ToolExecutionJobs from "@/components/History/Graph/ToolExecutionJobs.vue";
+import JobParametersDiff from "@/components/JobParameters/JobParametersDiff.vue";
 
 const props = defineProps<{
     row: ComparisonRow;
     columns: ComparisonColumn[];
     query: ComparisonQuery;
+    /** The viewed run's job, to diff this run's parameters against. */
+    currentJobId?: string;
 }>();
 
 const outputs = computed(() =>
@@ -32,6 +35,10 @@ const isInvocationRow = computed(() => props.query.kind === "output_runs");
 const link = computed(() => runLink(props.row, props.query));
 const openLabel = computed(() => (props.row.run.model === "WorkflowInvocation" ? "Open invocation" : "Open job"));
 const noJobMessage = computed(() => noJobReason(props.row));
+const diffJobId = computed(() => {
+    const jobId = isInvocationRow.value ? undefined : job.value?.jobId;
+    return jobId && props.currentJobId && jobId !== props.currentJobId ? jobId : undefined;
+});
 </script>
 
 <template>
@@ -46,6 +53,16 @@ const noJobMessage = computed(() => noJobReason(props.row));
                     v-else-if="cell?.type === 'dataset' || cell?.type === 'collection'"
                     :item-id="cell.id"
                     :item-src="cell.type === 'dataset' ? 'hda' : 'hdca'" />
+            </div>
+            <div v-if="diffJobId && currentJobId" class="comparison-row-detail-parameters">
+                <Heading size="sm" separator>Parameters against the run you are viewing</Heading>
+                <p v-if="job?.jobCount" class="text-muted small mb-1">Compares job 1 of the batch.</p>
+                <JobParametersDiff
+                    :job-id-a="diffJobId"
+                    :job-id-b="currentJobId"
+                    label-a="This run"
+                    label-b="Run you are viewing"
+                    :only-differences="false" />
             </div>
         </div>
         <div class="comparison-row-detail-job">
