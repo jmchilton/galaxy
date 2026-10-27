@@ -180,10 +180,7 @@ class TestComparisons(SeleniumTestCase):
         )
         workflow_id = summary.workflow_id
         older_ids = [invocation["id"] for invocation in self.workflow_populator.workflow_invocations(workflow_id)]
-        response = self.workflow_populator.refactor_workflow(
-            workflow_id, [{"action_type": "update_name", "name": "two cats v2"}]
-        )
-        response.raise_for_status()
+        self.workflow_populator.rename_workflow(workflow_id, "two cats v2")
         newest_id = self.workflow_populator.invoke_workflow_and_wait(
             workflow_id, request=summary.workflow_request
         ).json()["id"]

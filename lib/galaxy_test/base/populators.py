@@ -3050,6 +3050,11 @@ steps: []
         put_response = self._put(raw_url, data, json=True)
         return put_response
 
+    def rename_workflow(self, workflow_id: str, name: str) -> None:
+        """Rename a stored workflow; this saves a new version of it."""
+        response = self.refactor_workflow(workflow_id, [{"action_type": "update_name", "name": name}])
+        api_asserts.assert_status_code_is_ok(response)
+
     @contextlib.contextmanager
     def export_for_update(self, workflow_id):
         workflow_object = self.download_workflow(workflow_id)
