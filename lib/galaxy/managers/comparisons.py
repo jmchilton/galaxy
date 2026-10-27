@@ -167,7 +167,8 @@ class ComparisonsManager:
         page, total = self._page_invocations(access.user_id, workflow_ids, query, state_predicate)
         step_by_workflow = {workflow_id: step_id for workflow_id, (step_id, _) in steps_by_workflow.items()}
         columns, rows = self._step_rows(access, page, step_by_workflow, step_types, query, version_map)
-        versions_available = sorted(version_map[workflow_id] for workflow_id in steps_by_workflow)
+        invoked = self.sa_session.scalars(_invoked_workflows_stmt(access.user_id, steps_by_workflow).distinct())
+        versions_available = sorted(version_map[workflow_id] for workflow_id in invoked)
         table = ComparisonTable(query=query, columns=columns, rows=rows, versions_available=versions_available)
         return table, total
 
@@ -181,23 +182,20 @@ class ComparisonsManager:
         page, total = self._page_invocations(access.user_id, workflow_ids, query, state_predicate)
         columns, rows = self._output_rows(access, page, query, version_map)
         output_labels = self._invoked_output_labels(access.user_id, version_map)
+        invoked = self.sa_session.scalars(_invoked_workflows_stmt(access.user_id, version_map).distinct())
         table = ComparisonTable(
             query=query,
             columns=columns,
             rows=rows,
             output_labels_available=output_labels,
-            versions_available=sorted(version_map.values()),
+            versions_available=sorted(version_map[workflow_id] for workflow_id in invoked),
         )
         return table, total
 
     def _invoked_output_labels(self, user_id: int, version_map: dict[int, int]) -> list[str]:
         """Output labels of every version the user has invoked, newest version first, then step order."""
-        invoked = (
-            select(WorkflowInvocation.workflow_id)
-            .join(History, History.id == WorkflowInvocation.history_id)
-            .where(WorkflowInvocation.workflow_id.in_(version_map), History.user_id == user_id)
-        )
         labels: dict[int, list[str]] = defaultdict(list)
+        invoked = _invoked_workflows_stmt(user_id, version_map)
         for workflow_id, label in self.sa_session.execute(_output_labels_stmt(invoked)):
             labels[workflow_id].append(label)
         newest_first = sorted(labels, key=version_map.__getitem__, reverse=True)
@@ -748,6 +746,15 @@ def _step_state_predicate(step_ids: list[int], states: list[str]) -> ColumnEleme
     if "new" in states:
         clauses.append(~select(wis.id).where(step_of_invocation).exists())
     return or_(*clauses)
+
+
+def _invoked_workflows_stmt(user_id: int, workflow_ids: Collection[int]) -> Select[tuple[int]]:
+    """Each invocation by the user of one of ``workflow_ids``, as its workflow id."""
+    return (
+        select(WorkflowInvocation.workflow_id)
+        .join(History, History.id == WorkflowInvocation.history_id)
+        .where(WorkflowInvocation.workflow_id.in_(workflow_ids), History.user_id == user_id)
+    )
 
 
 def _output_labels_stmt(workflow_ids: Collection[int] | Select[Any]) -> Select[Any]:

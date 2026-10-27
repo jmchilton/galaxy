@@ -293,6 +293,17 @@ class TestComparisonsApi(ApiTestCase):
             assert len(table["rows"]) == 2
 
     @skip_without_tool("cat1")
+    def test_versions_available_lists_invoked_versions(self):
+        with self.dataset_populator.test_history() as history_id:
+            summary = self._run_two_cat(history_id)
+            self._refactor(summary.workflow_id, {"action_type": "update_name", "name": "renamed workflow"})
+            assert self._step_runs_table(summary.workflow_id, "second_cat")["versions_available"] == [0]
+            assert self._output_runs_table(summary.workflow_id)["versions_available"] == [0]
+            self._rerun(summary)
+            assert self._step_runs_table(summary.workflow_id, "second_cat")["versions_available"] == [0, 1]
+            assert self._output_runs_table(summary.workflow_id)["versions_available"] == [0, 1]
+
+    @skip_without_tool("cat1")
     def test_step_runs_label_change(self):
         with self.dataset_populator.test_history() as history_id:
             summary = self._run_two_cat(history_id)
