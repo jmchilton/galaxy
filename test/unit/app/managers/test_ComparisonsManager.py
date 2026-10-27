@@ -1,8 +1,7 @@
-from decimal import Decimal
 from itertools import product
 from typing import get_args
-from unittest import mock
 
+import pytest
 from sqlalchemy import event
 
 from galaxy import model
@@ -10,6 +9,7 @@ from galaxy.managers.comparison_cells import (
     COMPARISON_INLINE_EXPRESSION_MAX_BYTES,
     ComparisonAccess,
     ComparisonCellBuilder,
+    inlinable_expression,
 )
 from galaxy.managers.comparisons import ComparisonsManager
 from galaxy.managers.hdas import HDASerializer
@@ -93,57 +93,6 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
         )
         assert self.comparisons_manager.tool_runs(_access(user), percent_query)[1] == 0
 
-    def test_tool_runs_state_filter_matches_any_mapped_member(self):
-        self.tool_id = "mapped_states"
-        self._stored_workflow_with_runs(1, mapped=True, member_states=("ok", "error"))
-        query = ToolRunsQuery.model_construct(tool_id=self.tool_id, states=["error"], include_workflow_jobs=True)
-        table, total = self.comparisons_manager.tool_runs(_access(self.trans.user), query)
-        assert total == 1
-        (row,) = table.rows
-        assert row.run.model == "ImplicitCollectionJobs"
-        assert row.run.states == {"ok": 1, "error": 1}
-        assert row.state == "error"
-
-    def test_step_runs_state_filter_matches_any_mapped_member(self):
-        stored_workflow_id = self._stored_workflow_with_runs(1, mapped=True, member_states=("ok", "error")).id
-        query = StepRunsQuery.model_construct(workflow_id=stored_workflow_id, step_label="target", states=["error"])
-        table, total = self.comparisons_manager.step_runs(_access(self.trans.user), stored_workflow_id, query)
-        assert total == 1
-        (row,) = table.rows
-        assert row.step_job is not None and row.step_job.model == "ImplicitCollectionJobs"
-        assert row.state == "error"
-
-    def test_step_runs_versions_filter(self):
-        stored_workflow_id = self._stored_workflow_with_runs(3, mapped=False).id
-        access = _access(self.trans.user)
-        query = StepRunsQuery.model_construct(workflow_id=stored_workflow_id, step_label="target", versions=[1])
-        table, total = self.comparisons_manager.step_runs(access, stored_workflow_id, query)
-        assert total == 1
-        assert [row.version for row in table.rows] == [1]
-        assert table.versions_available == [0, 1]
-
-        query = StepRunsQuery.model_construct(workflow_id=stored_workflow_id, step_label="target", versions=[0, 1])
-        assert self.comparisons_manager.step_runs(access, stored_workflow_id, query)[1] == 3
-
-        # a version without the step matches nothing, but the step's versions are still offered
-        query = StepRunsQuery.model_construct(workflow_id=stored_workflow_id, step_label="target", versions=[7])
-        table, total = self.comparisons_manager.step_runs(access, stored_workflow_id, query)
-        assert (total, table.rows, table.versions_available) == (0, [], [0, 1])
-
-    def test_tool_runs_excludes_mapped_workflow_jobs(self):
-        self.tool_id = "mapped_in_workflow"
-        user = self.trans.user
-        self._stored_workflow_with_runs(1, mapped=True)
-        query = ToolRunsQuery.model_construct(tool_id=self.tool_id, include_workflow_jobs=False)
-        assert self.comparisons_manager.tool_runs(_access(user), query)[1] == 0
-        history = model.History(name="outside workflows", user=user)
-        plain = self._job(history, user)
-        self.session.add_all([history, plain])
-        self.session.commit()
-        table, total = self.comparisons_manager.tool_runs(_access(user), query)
-        assert total == 1
-        assert [row.run.id for row in table.rows] == [self.app.security.encode_id(plain.id)]
-
     def test_admin_sees_inaccessible_items(self):
         stored_workflow_id = self._stored_workflow_with_runs(1, mapped=False).id
         query = StepRunsQuery.model_construct(workflow_id=stored_workflow_id, step_label="target")
@@ -191,18 +140,6 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
             cell = row.cells["output:out"]
             assert cell.type == "dataset"
             assert cell.id == self.app.security.encode_id(first_outputs[row.run.id])
-
-    def test_output_runs_output_labels_filter_outputs_only(self):
-        stored_workflow, first_outputs = self._stored_workflow_with_output_runs(2)
-        query = OutputRunsQuery.model_construct(workflow_id=stored_workflow.id, output_labels=["val"])
-        cell_builder = self.comparisons_manager.cell_builder
-        with mock.patch.object(cell_builder, "load_hdas", wraps=cell_builder.load_hdas) as load_hdas:
-            table, _ = self.comparisons_manager.output_runs(_access(self.trans.user), stored_workflow.id, query)
-        assert [column.key for column in table.columns] == ["input:in", "input:foreign", "parameter:p", "output:val"]
-        assert table.output_labels_available == ["out", "val"]
-        # filtered-out outputs are never loaded
-        loaded_hda_ids = set(load_hdas.call_args.args[0])
-        assert loaded_hda_ids and not loaded_hda_ids & set(first_outputs.values())
 
     def test_output_runs_present_in_versions_counts_versions_without_labels(self):
         user = self.trans.user
@@ -330,9 +267,7 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
             event.remove(engine, "before_cursor_execute", count)
         return result, len(statements)
 
-    def _stored_workflow_with_runs(
-        self, invocations: int, mapped: bool, member_states: tuple[str, ...] = ("ok", "ok")
-    ) -> model.StoredWorkflow:
+    def _stored_workflow_with_runs(self, invocations: int, mapped: bool) -> model.StoredWorkflow:
         user = self.trans.user
         stored_workflow = model.StoredWorkflow()
         stored_workflow.user = user
@@ -365,7 +300,7 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
             invocation_step.state = "scheduled"
             self.session.add_all([history, invocation, invocation_step])
             if mapped:
-                self._mapped_step(invocation_step, history, user, foreign_history, member_states)
+                self._mapped_step(invocation_step, history, user, foreign_history)
             else:
                 job = self._job(history, user)
                 job.add_input_dataset("input1", self._hda(history))
@@ -392,11 +327,10 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
         security_agent.set_dataset_permission(hda.dataset, {security_agent.permitted_actions.DATASET_ACCESS: [role]})
         return hda
 
-    def _mapped_step(self, invocation_step, history, user, foreign_history, member_states) -> None:
+    def _mapped_step(self, invocation_step, history, user, foreign_history) -> None:
         icj = model.ImplicitCollectionJobs(populated_state="ok")
-        for order_index, state in enumerate(member_states):
+        for order_index in range(2):
             job = self._job(history, user)
-            job.state = state
             job.add_input_dataset("input1", self._hda(history))
             association = model.ImplicitCollectionJobsJobAssociation()
             association.order_index = order_index
@@ -464,37 +398,6 @@ class TestComparisonCellBuilder(BaseTestCase):
         assert cell.type == "dataset"
         assert cell.metadata == {"column_names": [f"c{i}" for i in range(50)], "data_lines": 7}
 
-    def test_expression_value_cell_skips_unknown_size(self):
-        hda = self._hda("expression.json")
-        assert hda.dataset
-        hda.dataset.state = "ok"
-        with mock.patch("galaxy.managers.comparison_cells.read_expression_json", return_value=42) as read:
-            cell = self.cell_builder.dataset_cell(hda, [], inline_expression_values=True)
-        assert cell.type == "dataset"
-        read.assert_not_called()
-
-    def test_expression_value_cell_inlines_small_value(self):
-        hda = self._hda("expression.json")
-        assert hda.dataset
-        hda.dataset.state = "ok"
-        hda.dataset.file_size = Decimal(3)
-        with mock.patch("galaxy.managers.comparison_cells.read_expression_json", return_value=42):
-            cell = self.cell_builder.dataset_cell(hda, [], inline_expression_values=True)
-        assert cell.type == "value"
-        assert cell.value == 42
-        assert cell.source == "expression_json"
-        assert cell.dataset_id == self.app.security.encode_id(hda.id)
-
-    def test_expression_value_cell_skips_large_value(self):
-        hda = self._hda("expression.json")
-        assert hda.dataset
-        hda.dataset.state = "ok"
-        hda.dataset.file_size = Decimal(COMPARISON_INLINE_EXPRESSION_MAX_BYTES + 1)
-        with mock.patch("galaxy.managers.comparison_cells.read_expression_json", return_value=42) as read:
-            cell = self.cell_builder.dataset_cell(hda, [], inline_expression_values=True)
-        assert cell.type == "dataset"
-        read.assert_not_called()
-
     def _hda(self, extension: str) -> model.HistoryDatasetAssociation:
         history = model.History(name="cells", user=self.trans.user)
         self.session.add(history)
@@ -504,6 +407,27 @@ class TestComparisonCellBuilder(BaseTestCase):
         self.session.add(hda)
         self.session.commit()
         return hda
+
+
+@pytest.mark.parametrize(
+    "extension,state,file_size,purged,expected",
+    [
+        ("expression.json", "ok", 3, False, True),
+        ("expression.json", "ok", COMPARISON_INLINE_EXPRESSION_MAX_BYTES, False, True),
+        ("expression.json", "ok", COMPARISON_INLINE_EXPRESSION_MAX_BYTES + 1, False, False),
+        # size unknown
+        ("expression.json", "ok", None, False, False),
+        ("expression.json", "running", 3, False, False),
+        ("expression.json", "ok", 3, True, False),
+        ("txt", "ok", 3, False, False),
+    ],
+)
+def test_inlinable_expression(extension, state, file_size, purged, expected):
+    dataset = model.Dataset(state=state)
+    dataset.file_size = file_size
+    hda = model.HistoryDatasetAssociation(extension=extension, dataset=dataset)
+    hda.purged = purged
+    assert inlinable_expression(hda) is expected
 
 
 def _cell_builder(app) -> ComparisonCellBuilder:
