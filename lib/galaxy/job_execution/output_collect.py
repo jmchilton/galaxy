@@ -231,8 +231,7 @@ def collect_dynamic_outputs(
                     input_collections,
                     default_format,
                 )
-            # Collectors parsed from a collection that declared format_source leave their default
-            # unset, including when tool loading dropped that format_source as unresolvable.
+            # Collectors leave default_ext unset when format_source was declared, even if tool loading dropped it.
             for collector in dataset_collectors:
                 if collector.default_ext is None:
                     collector.default_ext = default_format

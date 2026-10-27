@@ -79,9 +79,7 @@ def output_reference_problem(resolved: ResolvedReference, attribute: OutputRefer
 class InputReferences:
     """Input parameter paths as runtime keys them, with repeat indices normalized to ``_0``.
 
-    ``qualified`` includes every conditional, section and repeat. ``legacy`` is the alias
-    ``visit_input_values`` also records, which omits only the innermost conditional or
-    section name.
+    ``legacy`` is the ``visit_input_values`` alias, omitting the innermost conditional or section name.
     """
 
     def __init__(self, tool_source: "ToolSource") -> None:
@@ -155,21 +153,20 @@ class InputReferences:
         if legacy:
             matches = [r for r in self.references if r.legacy == normalized]
         qualified_key = None
+        runtime_key = reference
         qualified_names = {r.qualified for r in matches}
         if len(qualified_names) == 1:
             (qualified,) = qualified_names
-            qualified_key = self._reindex(qualified, path)
-            if qualified_key is not None:
-                qualified_key += selector
-        runtime_key = reference
-        # Runtime looks a legacy alias up only after real keys, and job creation adds real keys
-        # (input1 for a multiple input, conversion names) that can shadow it, so use the
-        # qualified key. Unless that is itself another input's legacy alias, which would make
-        # the reference resolve to an input it never named.
-        if legacy and qualified_key is not None:
-            if not any(r.legacy == qualified and r.qualified != qualified for r in self.references):
-                runtime_key = qualified_key
+            reindexed = self._reindex(qualified, path)
+            if reindexed is not None:
+                qualified_key = reindexed + selector
+                # Job creation keys (expanded multiple inputs, conversions) can shadow a legacy alias; skip if ambiguous.
+                if legacy and not self._is_other_legacy_alias(qualified):
+                    runtime_key = qualified_key
         return ResolvedReference(reference, path, selector, matches, legacy, qualified_key, runtime_key)
+
+    def _is_other_legacy_alias(self, qualified: str) -> bool:
+        return any(r.legacy == qualified and r.qualified != qualified for r in self.references)
 
     def _reindex(self, qualified: str, path: str) -> str | None:
         # A legacy alias drops conditional and section names but keeps every repeat segment, in order.

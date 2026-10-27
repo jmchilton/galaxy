@@ -1857,9 +1857,7 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
     def _resolve_output_references(self, tool_source: ToolSource) -> None:
         """Rewrite output references to the runtime key of the declared input they name.
 
-        Job creation also records keys for expanded inputs (``input2``, conversion names) that a
-        reference must not reach, and a legacy alias can collide with one of them. A collection's
-        ``type_source`` must already be qualified.
+        A collection's ``type_source`` must already be qualified.
         """
         type_sources = [
             (name, collection.structure.collection_type_source)
