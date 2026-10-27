@@ -17,11 +17,11 @@ const props = withDefaults(
     defineProps<{
         kind: ComparisonKind;
         states: string[];
-        /** Selected 0-based workflow versions, as URL strings; undefined when the comparison has no version filter. */
-        versions?: string[];
+        /** Selected 0-based workflow versions, as URL strings. */
+        versions: string[];
         versionsAvailable?: number[] | null;
     }>(),
-    { versions: undefined, versionsAvailable: undefined },
+    { versionsAvailable: undefined },
 );
 
 const emit = defineEmits<{
@@ -53,13 +53,13 @@ function updateStates(values: string[]) {
 const versionOptions = computed(() =>
     offeredOptions(
         (props.versionsAvailable ?? []).map(String),
-        props.versions ?? [],
+        props.versions,
         (version) => versionLabel(Number(version)) || version,
     ).sort((a, b) => Number(a.value) - Number(b.value)),
 );
-// One version has nothing to choose between.
+// Tool runs have no workflow version; one version has nothing to choose between.
 const showVersions = computed(
-    () => props.versions !== undefined && (versionOptions.value.length > 1 || props.versions.length > 0),
+    () => props.kind !== "tool_runs" && (versionOptions.value.length > 1 || props.versions.length > 0),
 );
 </script>
 

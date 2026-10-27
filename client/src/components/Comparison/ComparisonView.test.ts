@@ -216,7 +216,7 @@ describe("ComparisonView", () => {
 
     it("describes the loaded sort order", async () => {
         const { view } = await mountView({ kind: "tool_runs", tool_id: "cat1" });
-        expect(view.findComponent(ComparisonPager).props()).toMatchObject({ sortBy: "create_time", sortDesc: true });
+        expect(view.find(".comparison-summary").text()).toContain(" · newest first · ");
     });
 
     it("retries a failed fetch", async () => {
