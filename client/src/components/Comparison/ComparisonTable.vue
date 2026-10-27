@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { faAngleDown, faAngleRight, faColumns, faDownload, faExchangeAlt } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
-import { computed, ref, watch } from "vue";
+import { computed, toRef } from "vue";
 
 import type { ComparisonColumn, ComparisonRow, ComparisonTable } from "@/api/comparisons";
 import { downloadBlob } from "@/utils/download";
@@ -12,12 +12,13 @@ import {
     type CellDisplay,
     displayFor,
     fieldKeys,
+    META_FIELD_SPECS,
     META_FIELDS,
-    META_LABELS,
     type MetaField,
     rowJob,
     visibleFields,
 } from "./comparisonUtils";
+import { MAX_SELECTED, useRunSelection } from "./useRunSelection";
 
 import ComparisonCell from "./cells/ComparisonCell.vue";
 import ComparisonColumnHeader from "./ComparisonColumnHeader.vue";
@@ -89,7 +90,7 @@ const visibleDataColumns = computed(() => visible.value.columns);
 const keys = computed(() => fieldKeys(props.table.columns));
 
 const columnOptions = computed(() => [
-    ...optionalMetaFields.value.map((field) => ({ key: field, label: META_LABELS[field] })),
+    ...optionalMetaFields.value.map((field) => ({ key: field, label: META_FIELD_SPECS[field].label })),
     ...props.table.columns.map((column) => ({ key: column.key, label: `${column.label} (${column.role})` })),
 ]);
 
@@ -120,41 +121,9 @@ function isChanged(row: ComparisonRow, column: ComparisonColumn) {
     return Boolean(changed.value.get(row.run.id)?.has(column.key));
 }
 
-// Up to two runs picked for a side-by-side diff, by id so the choice survives transposing.
-const MAX_SELECTED = 2;
-const selectedRunIds = ref<string[]>([]);
-const selectedSet = computed(() => new Set(selectedRunIds.value));
-const diffOpen = ref(false);
-
-/** Selecting past the limit drops the run selected first. */
-function setSelected(runId: string, selected: boolean) {
-    const others = selectedRunIds.value.filter((id) => id !== runId);
-    selectedRunIds.value = selected ? [...others, runId].slice(-MAX_SELECTED) : others;
-}
-
-watch(
-    () => props.table.rows,
-    (rows) => {
-        const onPage = new Set(rows.map((row) => row.run.id));
-        selectedRunIds.value = selectedRunIds.value.filter((id) => onPage.has(id));
-    },
+const { selectedRunIds, selectedSet, selectedIndices, diffOpen, diffRows, setSelected } = useRunSelection(
+    toRef(() => props.table.rows),
 );
-watch(
-    () => selectedRunIds.value.length,
-    (count) => {
-        if (count < MAX_SELECTED) {
-            diffOpen.value = false;
-        }
-    },
-);
-
-const selectedIndices = computed(() =>
-    props.table.rows.flatMap((row, index) => (selectedSet.value.has(row.run.id) ? [index] : [])),
-);
-const diffRows = computed(() => {
-    const rows = props.table.rows.filter((row) => selectedSet.value.has(row.run.id));
-    return diffOpen.value && rows.length === MAX_SELECTED ? (rows as [ComparisonRow, ComparisonRow]) : undefined;
-});
 const displays = computed(() => Object.fromEntries(props.table.columns.map((column) => [column.key, display(column)])));
 
 /** Saves the page as shown: visible columns, each in its display, transposed or not. */
@@ -170,8 +139,8 @@ function exportPage(format: ExportFormat) {
 // Runs as rows.
 const runFields = computed(() => [
     { key: "_expand", label: "" },
-    { key: anchorField.value, label: META_LABELS[anchorField.value] },
-    ...visibleMetaFields.value.map((field) => ({ key: field, label: META_LABELS[field] })),
+    { key: anchorField.value, label: META_FIELD_SPECS[anchorField.value].label },
+    ...visibleMetaFields.value.map((field) => ({ key: field, label: META_FIELD_SPECS[field].label })),
     ...visibleDataColumns.value.map((column) => ({ key: keys.value[column.key]!, label: column.label })),
 ]);
 const runItems = computed<RunItem[]>(() =>
@@ -379,7 +348,7 @@ const tableKey = computed(() => `${props.transpose}:${props.table.rows.map((row)
                         :rows="table.rows"
                         :display="display(item.column)"
                         @update:display="setDisplay(item.column, $event)" />
-                    <span v-else class="font-weight-bold">{{ META_LABELS[item.meta as MetaField] }}</span>
+                    <span v-else class="font-weight-bold">{{ META_FIELD_SPECS[item.meta as MetaField].label }}</span>
                 </template>
                 <template
                     v-for="(row, index) in table.rows"

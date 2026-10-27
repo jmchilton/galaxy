@@ -9,6 +9,7 @@ import {
     formatValue,
     missingText,
     missingTitle,
+    offeredOptions,
     requestedMetadata,
     rowJob,
     runLink,
@@ -146,5 +147,19 @@ describe("rowJob", () => {
             jobCount: 3,
             implicitCollectionJobsId: mapped!.step_job!.id,
         });
+    });
+});
+
+describe("offeredOptions", () => {
+    it("keeps selected values the page didn't report, after the available ones", () => {
+        expect(offeredOptions(["b", "a"], ["a", "z"])).toEqual([
+            { text: "b", value: "b" },
+            { text: "a", value: "a" },
+            { text: "z", value: "z" },
+        ]);
+    });
+
+    it("names options with the given text", () => {
+        expect(offeredOptions(["ok"], [], (state) => state.toUpperCase())).toEqual([{ text: "OK", value: "ok" }]);
     });
 });

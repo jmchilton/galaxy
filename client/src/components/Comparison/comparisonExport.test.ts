@@ -2,15 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import type { ComparisonCell, ComparisonQuery, ComparisonRow, DatasetCell } from "@/api/comparisons";
 
-import {
-    cellText,
-    exportBlob,
-    exportFilename,
-    exportLines,
-    metaText,
-    spreadsheetSafe,
-    toDelimited,
-} from "./comparisonExport";
+import { cellText, exportBlob, exportFilename, exportLines, spreadsheetSafe, toDelimited } from "./comparisonExport";
+import { META_FIELD_SPECS } from "./comparisonUtils";
 import { STEP_RUNS_TABLE } from "./test-utils";
 
 const TABLE = STEP_RUNS_TABLE;
@@ -47,13 +40,13 @@ describe("cellText", () => {
     });
 });
 
-describe("metaText", () => {
+describe("META_FIELD_SPECS text", () => {
     it("writes run fields as text, with the full time", () => {
-        expect(metaText("invoked", V2_RUN)).toBe(V2_RUN.create_time);
-        expect(metaText("version", V2_RUN)).toBe("v2");
-        expect(metaText("state", V2_RUN)).toBe("successful");
-        expect(metaText("reused", V2_RUN)).toBe("no");
-        expect(metaText("history", V2_RUN)).toBe("test_history");
+        expect(META_FIELD_SPECS.invoked.text(V2_RUN)).toBe(V2_RUN.create_time);
+        expect(META_FIELD_SPECS.version.text(V2_RUN)).toBe("v2");
+        expect(META_FIELD_SPECS.state.text(V2_RUN)).toBe("successful");
+        expect(META_FIELD_SPECS.reused.text(V2_RUN)).toBe("no");
+        expect(META_FIELD_SPECS.history.text(V2_RUN)).toBe("test_history");
     });
 });
 

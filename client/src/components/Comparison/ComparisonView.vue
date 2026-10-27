@@ -22,7 +22,7 @@ import {
     PAGE_SIZES,
     parseComparisonQuery,
 } from "./comparisonQuery";
-import { requestedMetadata } from "./comparisonUtils";
+import { offeredOptions } from "./comparisonUtils";
 import { useComparisonDisplay, useComparisonFetch } from "./useComparison";
 
 import ComparisonFilters from "./ComparisonFilters.vue";
@@ -51,14 +51,13 @@ const urlParams = computed(() => (request.value?.params ?? {}) as Record<string,
 
 const table = ref<ComparisonTableModel>();
 // With `instance` the URL names a workflow version, so wait for the echoed stored workflow id.
-const storageKey = computed(() => {
-    if (request.value && urlParams.value.instance !== true) {
-        return displayStorageKey({ kind: request.value.kind, ...request.value.params } as DisplayKeyQuery);
-    }
-    return table.value ? displayStorageKey(table.value.query) : undefined;
-});
-const { transpose, columnDisplay, visibleColumns, toggleColumn, resetColumns } = useComparisonDisplay(
-    storageKey,
+const knownStorageKey = computed(() =>
+    request.value && urlParams.value.instance !== true
+        ? displayStorageKey({ kind: request.value.kind, ...request.value.params } as DisplayKeyQuery)
+        : undefined,
+);
+const { transpose, columnDisplay, metadataElements, visibleColumns, toggleColumn, resetColumns } = useComparisonDisplay(
+    knownStorageKey,
     table,
 );
 
@@ -68,7 +67,7 @@ const fetchRequest = computed<ComparisonRequest | undefined>(() => {
         return undefined;
     }
     const fromUrl = (request.value.params.metadata_elements as string[] | undefined) ?? [];
-    const metadata = [...new Set([...fromUrl, ...requestedMetadata(columnDisplay.value)])].sort();
+    const metadata = [...new Set([...fromUrl, ...metadataElements.value])].sort();
     return {
         ...request.value,
         params: { ...request.value.params, metadata_elements: metadata.length ? metadata : undefined },
@@ -93,6 +92,14 @@ function listParam(key: string): string[] {
     return Array.isArray(value) ? value.filter((item): item is string => item !== null) : [];
 }
 
+/** A list filter kept in the URL. */
+function urlList(key: string) {
+    return computed({
+        get: () => listParam(key),
+        set: (value: string[]) => updateUrl({ [key]: value }),
+    });
+}
+
 /** Writes filters or paging to the URL; any change but paging returns to the first page. */
 function updateUrl(patch: Record<string, ComparisonUrlValue>) {
     const next: Record<string, ComparisonUrlValue> = { ...props.query, ...patch };
@@ -102,24 +109,15 @@ function updateUrl(patch: Record<string, ComparisonUrlValue>) {
     router.replace({ query: cleanUrlQuery(next) });
 }
 
-const states = computed({
-    get: () => listParam("states"),
-    set: (value: string[]) => updateUrl({ states: value }),
-});
+const states = urlList("states");
 const versions = computed({
     get: () => (kind.value === "tool_runs" ? undefined : listParam("versions")),
     set: (value: string[] | undefined) => updateUrl({ versions: value }),
 });
 
-const toolVersions = computed({
-    get: () => listParam("tool_versions"),
-    set: (value: string[]) => updateUrl({ tool_versions: value }),
-});
+const toolVersions = urlList("tool_versions");
 const toolVersionOptions = computed(() =>
-    [...new Set([...(table.value?.tool_versions_available ?? []), ...toolVersions.value])].map((version) => ({
-        text: version,
-        value: version,
-    })),
+    offeredOptions(table.value?.tool_versions_available ?? [], toolVersions.value),
 );
 
 const includeWorkflowJobs = computed({
@@ -132,15 +130,9 @@ const historyFilterName = computed(() => {
     return table.value?.rows.find((row) => row.history.id === historyId)?.history.name || historyId;
 });
 
-const outputLabels = computed({
-    get: () => listParam("output_labels"),
-    set: (value: string[]) => updateUrl({ output_labels: value }),
-});
+const outputLabels = urlList("output_labels");
 const outputLabelOptions = computed(() =>
-    [...new Set([...(table.value?.output_labels_available ?? []), ...outputLabels.value])].map((label) => ({
-        text: label,
-        value: label,
-    })),
+    offeredOptions(table.value?.output_labels_available ?? [], outputLabels.value),
 );
 
 const pageSize = computed({

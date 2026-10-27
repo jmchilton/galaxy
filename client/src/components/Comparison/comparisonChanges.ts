@@ -1,6 +1,6 @@
 import type { ComparisonCell, ComparisonColumn, ComparisonRow } from "@/api/comparisons";
 
-import { type CellDisplay, metadataKeyOf, type MetaField } from "./comparisonUtils";
+import { type CellDisplay, META_FIELD_SPECS, metadataKeyOf, type MetaField } from "./comparisonUtils";
 
 /** Whether two cells show the same thing; `uncompared` when only item identity would tell them apart. */
 export type CellComparison = "same" | "differs" | "uncompared";
@@ -59,29 +59,12 @@ export function compareCells(
     return left === right ? "same" : "differs";
 }
 
-function metaIdentity(field: MetaField, row: ComparisonRow): unknown {
-    switch (field) {
-        case "version":
-            return row.version;
-        case "tool_version":
-            return row.tool_version;
-        case "state":
-            return row.state;
-        case "reused":
-            return row.reused;
-        case "history":
-            return row.history.id;
-        default:
-            return UNCOMPARED;
-    }
-}
-
 export function compareMeta(field: MetaField, a: ComparisonRow, b: ComparisonRow): CellComparison {
-    const left = metaIdentity(field, a);
-    if (left === UNCOMPARED) {
+    const identity = META_FIELD_SPECS[field].identity;
+    if (!identity) {
         return "uncompared";
     }
-    return (left ?? null) === (metaIdentity(field, b) ?? null) ? "same" : "differs";
+    return (identity(a) ?? null) === (identity(b) ?? null) ? "same" : "differs";
 }
 
 /** Column keys of each row's cells that differ from the current run's row; empty unless that row is on the page. */
