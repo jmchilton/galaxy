@@ -1,3 +1,4 @@
+from galaxy_test.base.workflow_fixtures import WORKFLOW_NESTED_SIMPLE
 from .framework import (
     retry_assertion_during_transitions,
     selenium_test,
@@ -123,9 +124,14 @@ class TestComparisons(SeleniumTestCase):
         comparisons.column_header(key="output:second_out").wait_for_visible()
         comparisons.column_header(key="input:input1").wait_for_visible()
 
+        # the menu stays open while ticking more than one state
+        comparisons.state_filter_toggle.wait_for_and_click()
         comparisons.state_filter(state="failed").wait_for_and_click()
+        comparisons.state_filter(state="cancelled").wait_for_and_click()
         self.assert_current_url_contains("states=failed")
+        self.assert_current_url_contains("states=cancelled")
         self._assert_empty("No runs match these filters.")
+        self._screenshot_settled("comparisons_state_filter_menu", comparisons.state_filter(state="cancelled"))
         assert len(comparisons.rows.all()) == 0
 
         steps = self.workflow_populator.get_invocation(newest_id, step_details=True)["steps"]
@@ -152,6 +158,22 @@ class TestComparisons(SeleniumTestCase):
         self._assert_comparison_page("step_runs")
         self.assert_current_url_contains("step_label=second_cat")
         self._assert_rows(newest_id, *older_ids)
+
+    @selenium_test
+    def test_subworkflow_step_all_runs_disabled(self):
+        summary = self.workflow_populator.run_workflow(
+            WORKFLOW_NESTED_SIMPLE,
+            test_data={"outer_input": {"value": "1.bed", "type": "File"}},
+            history_id=self.current_history_id(),
+        )
+        steps = self.workflow_populator.get_invocation(summary.invocation_id, step_details=True)["steps"]
+        (nested,) = [step for step in steps if step["workflow_step_label"] == "nested_workflow"]
+        self.get(f"workflows/invocations/{nested['subworkflow_invocation_id']}")
+        self.invocation_graph_wait_for_polling_to_stop()
+        self.invocation_graph_click_node("random_lines")
+        self.assert_invocation_step_card_title("random_lines")
+        self._assert_all_runs_tab_disabled()
+        self.screenshot("comparisons_subworkflow_all_runs_disabled")
 
     @selenium_test
     def test_mapped_step_reused_job(self):
@@ -207,14 +229,14 @@ class TestComparisons(SeleniumTestCase):
             assert details["copied_from_job_id"], f"Expected the job cache to reuse a job: {details}"
 
     def _screenshot_settled(self, label: str, subject):
-        """Screenshot with subject in view, once loading spinners are gone and fade-ins have run."""
+        """Screenshot with subject in view, once loading messages are gone."""
+        # a page can show several loading messages at once; a target wait checks only the first
         self._wait_on(
-            lambda: not any(
-                span.is_displayed() for span in self.find_elements_by_selector('[data-description="loading message"]')
-            ),
+            lambda: not any(span.is_displayed() for span in self.components._.loading_message.all()),
             "visible loading messages to clear",
             wait_type=self.wait_types.DATABASE_OPERATION,
         )
+        # no DOM signal marks the end of fade-in transitions, so give them a render cycle
         self.sleep_for(self.wait_types.UX_RENDER)
         self.scroll_into_view(subject.wait_for_visible())
         self.screenshot(label)
@@ -231,8 +253,14 @@ class TestComparisons(SeleniumTestCase):
 
     @retry_assertion_during_transitions
     def _assert_invocation_grid_rows(self, count: int):
-        rows = self.find_elements_by_selector('.grid-table [data-description="grid item"]')
+        rows = self.components.invocations.workflow_invocations_table_rows.all()
         assert len(rows) == count, f"Expected {count} invocation rows, found {len(rows)}"
+
+    @retry_assertion_during_transitions
+    def _assert_all_runs_tab_disabled(self):
+        tab = self.components.comparisons.step_all_runs_tab.wait_for_visible()
+        assert tab.get_attribute("aria-disabled") == "true", tab.get_attribute("aria-disabled")
+        assert "subworkflow" in tab.get_attribute("data-tab-title"), tab.get_attribute("data-tab-title")
 
     @retry_assertion_during_transitions
     def _assert_table_overflows(self, times: int):
