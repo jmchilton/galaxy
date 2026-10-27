@@ -19,9 +19,7 @@ const props = defineProps<{
 
 const link = computed(() => runLink(props.row, props.query));
 const job = computed(() => rowJob(props.row));
-const batchNote = computed(() =>
-    job.value?.jobCount !== undefined ? `mapped over ${job.value.jobCount} jobs · details from job 1` : "",
-);
+const batchNote = computed(() => (job.value?.jobCount !== undefined ? `mapped over ${job.value.jobCount} jobs` : ""));
 const runKind = computed(() => {
     const run = props.row.run;
     return run.model === "ImplicitCollectionJobs" ? `batch of ${run.job_count} jobs` : "job";

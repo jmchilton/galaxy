@@ -83,6 +83,7 @@ describe("missingText", () => {
     it("renders versions 1-based", () => {
         expect(versionLabel(0)).toBe("v1");
         expect(versionLabel(null)).toBe("");
+        expect(versionLabel(Number("x"))).toBe("");
     });
 });
 
@@ -131,6 +132,10 @@ describe("rowJob", () => {
         const [notRun, plain, , , mapped] = TABLE.rows;
         expect(rowJob(notRun!)).toBeUndefined();
         expect(rowJob(plain!)).toEqual({ jobId: plain!.step_job!.id });
-        expect(rowJob(mapped!)).toEqual({ jobId: "cb227cec8ca83994", jobCount: 3 });
+        expect(rowJob(mapped!)).toEqual({
+            jobId: "cb227cec8ca83994",
+            jobCount: 3,
+            implicitCollectionJobsId: mapped!.step_job!.id,
+        });
     });
 });
