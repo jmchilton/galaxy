@@ -62,6 +62,13 @@ describe("ComparisonTable", () => {
         expect(rows[5]!.text()).toContain("deleted history");
     });
 
+    it("names run states as the invocation view does", () => {
+        const states = mountTable()
+            .findAll("tbody tr")
+            .map((tr) => tr.findAll("td")[3]!.text());
+        expect(states).toEqual(["new", "successful", "successful", "successful", "successful", "successful"]);
+    });
+
     it("highlights the current run", () => {
         const current = TABLE.rows[2]!.run.id;
         const rows = mountTable({ currentRunId: current }).findAll("tbody tr");

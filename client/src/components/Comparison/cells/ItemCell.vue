@@ -4,10 +4,10 @@ import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { computed } from "vue";
 
 import type { CollectionCell, DatasetCell } from "@/api/comparisons";
-import { type GraphStepState, iconClasses } from "@/composables/useInvocationGraph";
 
 import { historyLink } from "../comparisonUtils";
 
+import StateLabel from "./StateLabel.vue";
 import ItemPopoverLink from "@/components/Common/ItemPopoverLink.vue";
 
 const props = defineProps<{
@@ -18,22 +18,12 @@ const isCollection = computed(() => props.cell.type === "collection");
 const purged = computed(() => props.cell.type === "dataset" && props.cell.purged);
 // Collections have no dataset page; open their history.
 const to = computed(() => (isCollection.value ? historyLink(props.cell.history_id) : undefined));
-const stateIcon = computed(() => {
-    const state = props.cell.type === "dataset" ? props.cell.state : props.cell.populated_state;
-    return state === "ok" ? undefined : iconClasses[state as GraphStepState];
-});
-const stateTitle = computed(() => (props.cell.type === "dataset" ? props.cell.state : props.cell.populated_state));
+const state = computed(() => (props.cell.type === "dataset" ? props.cell.state : props.cell.populated_state));
 </script>
 
 <template>
     <span class="comparison-item">
-        <FontAwesomeIcon
-            v-if="stateIcon"
-            :icon="stateIcon.icon"
-            :spin="stateIcon.spin"
-            :class="stateIcon.class"
-            :title="stateTitle"
-            fixed-width />
+        <StateLabel v-if="state !== 'ok'" class="comparison-item-state" :state="state" icon-only />
         <ItemPopoverLink
             :item-id="cell.id"
             :item-src="isCollection ? 'hdca' : 'hda'"

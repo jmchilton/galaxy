@@ -4,10 +4,10 @@ import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { computed } from "vue";
 
 import type { ComparisonQuery, ComparisonRow } from "@/api/comparisons";
-import { type GraphStepState, iconClasses } from "@/composables/useInvocationGraph";
 
 import { historyLink, type MetaField, rowJob, runLink, versionLabel } from "./comparisonUtils";
 
+import StateLabel from "./cells/StateLabel.vue";
 import UtcDate from "@/components/UtcDate.vue";
 
 const props = defineProps<{
@@ -18,7 +18,6 @@ const props = defineProps<{
 }>();
 
 const link = computed(() => runLink(props.row, props.query));
-const stateIcon = computed(() => iconClasses[props.row.state as GraphStepState]);
 const job = computed(() => rowJob(props.row));
 const batchNote = computed(() =>
     job.value?.jobCount !== undefined ? `mapped over ${job.value.jobCount} jobs · details from job 1` : "",
@@ -53,15 +52,11 @@ const via = computed(() => {
     </span>
     <span v-else-if="field === 'version'">{{ versionLabel(row.version) }}</span>
     <code v-else-if="field === 'tool_version'" class="text-reset">{{ row.tool_version }}</code>
-    <span v-else-if="field === 'state'" class="comparison-state" :class="`comparison-state-${row.state}`">
-        <FontAwesomeIcon
-            v-if="stateIcon"
-            :icon="stateIcon.icon"
-            :spin="stateIcon.spin"
-            :class="stateIcon.class"
-            fixed-width />
-        {{ row.state }}
-    </span>
+    <StateLabel
+        v-else-if="field === 'state'"
+        class="comparison-state"
+        :class="`comparison-state-${row.state}`"
+        :state="row.state" />
     <span v-else-if="field === 'reused'">
         <span v-if="row.reused === 'yes'" class="badge badge-info" title="Job cache: copied from an earlier job">
             reused

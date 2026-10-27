@@ -43,6 +43,13 @@ describe("ComparisonCell links", () => {
         expect(wrapper.find(".badge").exists()).toBe(false);
     });
 
+    it("marks a dataset that is not ok with its state icon", () => {
+        expect(mountCell(DATASET).find(".comparison-item-state").exists()).toBe(false);
+        const state = mountCell({ ...DATASET, state: "error" }).find(".comparison-item-state");
+        expect(state.attributes("title")).toBe("failed");
+        expect(state.text()).toBe("");
+    });
+
     it("links a collection to its history", () => {
         const link = mountCell(COLLECTION).findComponent(LINK_STUB);
         expect(link.props("itemSrc")).toBe("hdca");
