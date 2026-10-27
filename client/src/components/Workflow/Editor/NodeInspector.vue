@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { faCog, faTimes } from "@fortawesome/free-solid-svg-icons";
+import { faCog, faColumns, faTimes } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 //@ts-ignore deprecated package without types (vue 2, remove this comment on vue 3 migration)
 import { ArrowLeftFromLine, ArrowRightToLine } from "lucide-vue-next";
 import { computed } from "vue";
 
+import { comparisonPath } from "@/components/Comparison/comparisonQuery";
 import { useWorkflowNodeInspectorStore } from "@/stores/workflowNodeInspectorStore";
 import type { PostJobActions, Step } from "@/stores/workflowStepStore";
 
@@ -23,6 +24,9 @@ import IdleLoad from "@/components/Common/IdleLoad.vue";
 const props = defineProps<{
     step: Step;
     datatypes: string[];
+    /** The saved stored workflow being edited, if any. */
+    storedWorkflowId?: string;
+    hasChanges?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -48,6 +52,13 @@ const cssVars = computed(() => ({
 const isTool = computed(() => props.step.type === "tool");
 
 const title = computed(() => `${props.step.id + 1}: ${props.step.label ?? props.step.name}`);
+
+// an unsaved label may match no saved version
+const compareRunsLink = computed(() =>
+    props.storedWorkflowId && props.step.label && !props.hasChanges
+        ? comparisonPath("step_runs", { workflow_id: props.storedWorkflowId, step_label: props.step.label })
+        : undefined,
+);
 
 function close() {
     inspectorStore.generalMaximized = false;
@@ -122,6 +133,16 @@ function updateStored(v: boolean) {
         </div>
 
         <div class="inspector-content">
+            <GButton
+                v-if="compareRunsLink"
+                class="node-inspector-compare-runs mb-2"
+                size="small"
+                outline
+                :to="compareRunsLink"
+                title="Compare your runs of this step across workflow versions">
+                <FontAwesomeIcon :icon="faColumns" />
+                Compare runs of this step
+            </GButton>
             <IdleLoad :key="props.step.id" spinner center class="w-100 h-50">
                 <FormTool
                     v-if="isTool"
