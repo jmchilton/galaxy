@@ -862,7 +862,7 @@ class GalaxyManagerApplication(MinimalManagerApp, MinimalGalaxyApplication):
         self._register_singleton(FileSourceInstancesManager)
 
         # Load security policy.
-        self.security_agent = self.model.security_agent
+        self.security_agent = self._register_singleton(galaxy.model.security.GalaxyRBACAgent, self.model.security_agent)
         self.host_security_agent = galaxy.model.security.HostAgent(
             self.security_agent.sa_session,
             permitted_actions=self.security_agent.permitted_actions,
