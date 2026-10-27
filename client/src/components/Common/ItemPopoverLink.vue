@@ -46,12 +46,16 @@ const dataset = computed(() => {
 const collection = ref<HDCASummary>();
 const collectionLoading = ref(false);
 const collectionError = ref<string>();
+// Bumped when the item changes, so a summary fetched for the old item is dropped.
+let collectionRequest = 0;
 
 watch(
     () => [props.itemId, props.itemSrc],
     () => {
+        collectionRequest++;
         collection.value = undefined;
         collectionError.value = undefined;
+        collectionLoading.value = false;
     },
 );
 
@@ -75,14 +79,22 @@ async function ensureDetails() {
         await datasetStore.fetchDataset({ id: props.itemId });
         return;
     }
+    const request = ++collectionRequest;
     collectionLoading.value = true;
     collectionError.value = undefined;
     try {
-        collection.value = await fetchCollectionSummary({ hdca_id: props.itemId });
+        const summary = await fetchCollectionSummary({ hdca_id: props.itemId });
+        if (request === collectionRequest) {
+            collection.value = summary;
+        }
     } catch (e) {
-        collectionError.value = errorMessageAsString(e);
+        if (request === collectionRequest) {
+            collectionError.value = errorMessageAsString(e);
+        }
     } finally {
-        collectionLoading.value = false;
+        if (request === collectionRequest) {
+            collectionLoading.value = false;
+        }
     }
 }
 </script>

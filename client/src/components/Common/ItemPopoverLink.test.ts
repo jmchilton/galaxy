@@ -74,12 +74,18 @@ describe("ItemPopoverLink ids", () => {
 
 describe("ItemPopoverLink collections", () => {
     let summaryRequests: string[];
+    // While set, the first collection's summary waits for it.
+    let firstSummaryGate: Promise<void> | undefined;
 
     beforeEach(() => {
         summaryRequests = [];
+        firstSummaryGate = undefined;
         server.use(
-            http.get("/api/dataset_collections/{hdca_id}", ({ request, params, response }) => {
+            http.get("/api/dataset_collections/{hdca_id}", async ({ request, params, response }) => {
                 summaryRequests.push(new URL(request.url).searchParams.get("view") ?? "");
+                if (params.hdca_id === HDCA_ID) {
+                    await firstSummaryGate;
+                }
                 const summary =
                     params.hdca_id === HDCA_ID
                         ? HDCA_SUMMARY
@@ -122,6 +128,23 @@ describe("ItemPopoverLink collections", () => {
         expect(summaryRequests).toHaveLength(2);
         expect(host.find(".item-details-popover").text()).toContain("other list");
         expect(host.find(".item-details-popover").text()).not.toContain("my list");
+    });
+
+    it("ignores a summary that lands after the item changed", async () => {
+        let release: () => void = () => {};
+        firstSummaryGate = new Promise((resolve) => (release = resolve));
+        const host = mountCollection({ to: "/histories/view?id=history-id-1" });
+        await host.findComponent(RouterLinkStub).trigger("focus");
+        await flushPromises();
+        await host.setProps({ itemId: "hdca-id-2" });
+        await host.findComponent(RouterLinkStub).trigger("focus");
+        await flushPromises();
+        release();
+        await flushPromises();
+        expect(summaryRequests).toHaveLength(2);
+        const body = host.find(".item-details-popover").text();
+        expect(body).toContain("other list");
+        expect(body).not.toContain("my list");
     });
 
     it("renders a button trigger when no route is given", () => {
