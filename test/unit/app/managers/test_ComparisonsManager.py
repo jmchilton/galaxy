@@ -1,3 +1,4 @@
+from decimal import Decimal
 from itertools import product
 from unittest import mock
 
@@ -102,7 +103,7 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
         table, total = self.comparisons_manager.step_runs(_access(self.trans.user), stored_workflow_id, query)
         assert total == 1
         (row,) = table.rows
-        assert row.step_job.model == "ImplicitCollectionJobs"
+        assert row.step_job is not None and row.step_job.model == "ImplicitCollectionJobs"
         assert row.state == "error"
 
     def test_tool_runs_excludes_mapped_workflow_jobs(self):
@@ -238,7 +239,7 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
             assert all(cell.type != "missing" for cell in row.cells.values())
         return statement_count
 
-    def _stored_workflow_with_output_runs(self, invocations: int) -> tuple[model.StoredWorkflow, dict[int, int]]:
+    def _stored_workflow_with_output_runs(self, invocations: int) -> tuple[model.StoredWorkflow, dict[str, int]]:
         """Two versions with labelled inputs and outputs; the second declares output label ``out`` twice."""
         user = self.trans.user
         stored_workflow = model.StoredWorkflow()
@@ -451,7 +452,7 @@ class TestComparisonCellBuilder(BaseTestCase):
         hda = self._hda("expression.json")
         assert hda.dataset
         hda.dataset.state = "ok"
-        hda.dataset.file_size = 3
+        hda.dataset.file_size = Decimal(3)
         with mock.patch("galaxy.managers.comparison_cells.read_expression_json", return_value=42):
             cell = self.cell_builder.dataset_cell(hda, [], inline_expression_values=True)
         assert cell.type == "value"
@@ -463,7 +464,7 @@ class TestComparisonCellBuilder(BaseTestCase):
         hda = self._hda("expression.json")
         assert hda.dataset
         hda.dataset.state = "ok"
-        hda.dataset.file_size = COMPARISON_INLINE_EXPRESSION_MAX_BYTES + 1
+        hda.dataset.file_size = Decimal(COMPARISON_INLINE_EXPRESSION_MAX_BYTES + 1)
         with mock.patch("galaxy.managers.comparison_cells.read_expression_json", return_value=42) as read:
             cell = self.cell_builder.dataset_cell(hda, [], inline_expression_values=True)
         assert cell.type == "dataset"
