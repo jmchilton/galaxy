@@ -521,6 +521,20 @@ class TestHDASerializer(HDATestCase):
         assert result == {"data_lines": 0, "columns": 0}
         assert self.hda_serializer.serialize_metadata(hda, "metadata", included=[]) == {}
 
+    def test_serialize_prefixed_metadata_keys(self):
+        hda = self._create_vanilla_hda(extension="tabular")
+        keys = ["name", "metadata_columns", "metadata_delimiter", "metadata_not_an_element"]
+        assert self.hda_serializer.serialize(hda, keys) == {
+            "name": hda.name,
+            "metadata_columns": 0,
+            "metadata_delimiter": "\t",
+        }
+        everything = self.hda_serializer.serialize(hda, ["metadata_columns", "metadata"])
+        assert set(everything) == {
+            f"metadata_{name}"
+            for name in ("dbkey", "data_lines", "comment_lines", "columns", "column_types", "column_names", "delimiter")
+        }
+
     def test_serializing_inaccessible(self):
         owner = self.user_manager.create(**user2_data)
         non_owner = self.user_manager.create(**user3_data)

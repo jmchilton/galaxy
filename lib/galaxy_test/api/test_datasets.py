@@ -321,6 +321,16 @@ class TestDatasetsApi(ApiTestCase):
         summary = self._get(f"datasets/{hda['id']}?view=summary").json()
         assert not [key for key in summary if key.startswith("metadata_")]
 
+    def test_show_single_metadata_key(self, history_id):
+        hda = self.dataset_populator.new_dataset(history_id, content="1\t2\n3\t4\n", file_type="tabular", wait=True)
+        contents_url = f"histories/{history_id}/contents/datasets/{hda['id']}"
+        shown = self._get(f"{contents_url}?keys=name,metadata_columns,metadata_not_an_element").json()
+        assert shown == {"name": hda["name"], "metadata_columns": 2}
+        shown = self._get(f"datasets/{hda['id']}?view=summary&keys=metadata_columns").json()
+        assert [key for key in shown if key.startswith("metadata_")] == ["metadata_columns"]
+        both = self._get(f"{contents_url}?keys=metadata_columns,metadata").json()
+        assert set(both) == TABULAR_METADATA_KEYS
+
     def test_show_permission_denied(self, history_id):
         hda = self.dataset_populator.new_dataset(history_id)
         self.dataset_populator.make_private(history_id=history_id, dataset_id=hda["id"])
