@@ -130,3 +130,15 @@ export function useComparisonDisplay(knownKey: Ref<string | undefined>, table: R
 
     return { transpose, columnDisplay, metadataElements, visibleColumns, toggleColumn, resetColumns };
 }
+
+/** A comparison's display preferences and fetched page; params are rebuilt from the metadata the displays need. */
+export function useComparison<P>(
+    knownKey: Ref<string | undefined>,
+    buildParams: (metadataElements: string[]) => P | undefined,
+    fetcher: (params: P, signal: AbortSignal) => Promise<ComparisonResult>,
+) {
+    const table = ref<ComparisonTable>();
+    const display = useComparisonDisplay(knownKey, table);
+    const params = computed(() => buildParams(display.metadataElements.value));
+    return { ...display, ...useComparisonFetch(params, fetcher, table) };
+}

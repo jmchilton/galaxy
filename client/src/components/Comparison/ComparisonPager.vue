@@ -2,30 +2,22 @@
 import { BPagination } from "bootstrap-vue";
 import { computed } from "vue";
 
-import type { ComparisonSortBy } from "@/api/comparisons";
+import type { ComparisonSortBy, ComparisonTable } from "@/api/comparisons";
 
 const SORT_ORDER: Record<ComparisonSortBy, [descending: string, ascending: string]> = {
     create_time: ["newest first", "oldest first"],
     update_time: ["recently updated first", "least recently updated first"],
 };
 
-const props = withDefaults(
-    defineProps<{
-        /** Runs matching the query, from `total_matches`. */
-        total: number;
-        limit: number;
-        /** The page asked for. */
-        offset: number;
-        /** Offset of the loaded rows, which the summary describes while the next page loads. */
-        loadedOffset: number;
-        /** Runs on the loaded page. */
-        rowCount: number;
-        /** Sort of the loaded rows. */
-        sortBy?: ComparisonSortBy;
-        sortDesc?: boolean;
-    }>(),
-    { sortBy: "create_time", sortDesc: true },
-);
+const props = defineProps<{
+    /** The loaded page, which the summary describes while the next page loads. */
+    table: ComparisonTable;
+    /** Runs matching the query, from `total_matches`. */
+    total: number;
+    limit: number;
+    /** The page asked for. */
+    offset: number;
+}>();
 
 const emit = defineEmits<{
     (e: "update:offset", value: number): void;
@@ -37,12 +29,13 @@ const page = computed({
 });
 
 const summary = computed(() => {
-    if (!props.rowCount) {
+    const { query, rows } = props.table;
+    if (!rows.length) {
         return "";
     }
-    const firstRow = props.loadedOffset + 1;
-    const order = SORT_ORDER[props.sortBy][props.sortDesc ? 0 : 1];
-    return `Showing ${firstRow}–${firstRow + props.rowCount - 1} of ${props.total} · ${order} · your runs only`;
+    const firstRow = query.offset + 1;
+    const order = SORT_ORDER[query.sort_by ?? "create_time"][(query.sort_desc ?? true) ? 0 : 1];
+    return `Showing ${firstRow}–${firstRow + rows.length - 1} of ${props.total} · ${order} · your runs only`;
 });
 </script>
 

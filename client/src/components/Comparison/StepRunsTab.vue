@@ -3,10 +3,10 @@ import { faExternalLinkAlt } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { computed, ref, watch } from "vue";
 
-import { type ComparisonTable as ComparisonTableModel, fetchStepRuns, type StepRunsParams } from "@/api/comparisons";
+import { fetchStepRuns, type StepRunsParams } from "@/api/comparisons";
 
 import { comparisonPath, DEFAULT_LIMIT, displayStorageKey } from "./comparisonQuery";
-import { useComparisonDisplay, useComparisonFetch } from "./useComparison";
+import { useComparison } from "./useComparison";
 
 import ComparisonFilters from "./ComparisonFilters.vue";
 import ComparisonPager from "./ComparisonPager.vue";
@@ -33,7 +33,6 @@ const offset = ref(0);
 const states = ref<string[]>([]);
 // 0-based workflow versions, as strings like the page's URL holds them.
 const versions = ref<string[]>([]);
-const table = ref<ComparisonTableModel>();
 // Keyed by the stored workflow, so every version shares one setting; the echoed id only when not given.
 const knownStorageKey = computed(() => {
     const storedId = props.storedWorkflowId ?? (props.instance ? undefined : props.workflowId);
@@ -41,16 +40,11 @@ const knownStorageKey = computed(() => {
         ? displayStorageKey({ kind: "step_runs", workflow_id: storedId, step_label: props.stepLabel })
         : undefined;
 });
-const { transpose, columnDisplay, metadataElements, visibleColumns, toggleColumn, resetColumns } = useComparisonDisplay(
-    knownStorageKey,
-    table,
-);
 
-const params = computed<StepRunsParams | undefined>(() => {
+function params(metadata: string[]): StepRunsParams | undefined {
     if (!props.stepLabel) {
         return undefined;
     }
-    const metadata = metadataElements.value;
     return {
         workflow_id: props.workflowId,
         instance: props.instance || undefined,
@@ -61,8 +55,9 @@ const params = computed<StepRunsParams | undefined>(() => {
         states: states.value.length ? states.value : undefined,
         versions: versions.value.length ? versions.value.map(Number) : undefined,
     };
-});
-const { total, loading, error, reload } = useComparisonFetch(params, fetchStepRuns, table);
+}
+const { table, total, loading, error, reload, transpose, columnDisplay, visibleColumns, toggleColumn, resetColumns } =
+    useComparison(knownStorageKey, params, fetchStepRuns);
 
 // Another step drops the old table, so its rows and page link don't show while the new one loads.
 watch(
@@ -140,14 +135,7 @@ const pageLink = computed(() => {
                         </GButton>
                     </template>
                 </ComparisonTable>
-                <ComparisonPager
-                    v-model:offset="offset"
-                    :total="total"
-                    :limit="DEFAULT_LIMIT"
-                    :loaded-offset="table.query.offset"
-                    :sort-by="table.query.sort_by"
-                    :sort-desc="table.query.sort_desc"
-                    :row-count="table.rows.length" />
+                <ComparisonPager v-model:offset="offset" :table="table" :total="total" :limit="DEFAULT_LIMIT" />
             </template>
         </template>
     </div>

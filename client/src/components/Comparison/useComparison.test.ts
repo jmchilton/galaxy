@@ -7,7 +7,7 @@ import { type EffectScope, effectScope, ref } from "vue";
 import type { ComparisonResult } from "@/api/comparisons";
 
 import { displayPrefsKey, seedDisplayPrefs, STEP_RUNS_TABLE } from "./test-utils";
-import { MAX_STORED_DISPLAYS, useComparisonDisplay, useComparisonFetch } from "./useComparison";
+import { MAX_STORED_DISPLAYS, useComparison, useComparisonDisplay, useComparisonFetch } from "./useComparison";
 
 const TABLE = STEP_RUNS_TABLE;
 
@@ -61,5 +61,23 @@ describe("useComparisonDisplay", () => {
         expect(keys.slice(-2)).toEqual(["k0", "new"]);
         expect(keys).not.toContain("k1");
         expect(stored.k0).toEqual({ transpose: false });
+    });
+});
+
+describe("useComparison", () => {
+    it("refetches with the metadata a column display needs and keeps the page's display", async () => {
+        const fetcher = vi
+            .fn<(params: { metadata: string[] }) => Promise<ComparisonResult>>()
+            .mockResolvedValue({ table: TABLE, total: 6 });
+        const comparison = scope.run(() => useComparison(ref("k"), (metadata) => ({ metadata }), fetcher))!;
+        await flushPromises();
+        expect(comparison.table.value).toEqual(TABLE);
+        expect(comparison.total.value).toBe(6);
+        comparison.columnDisplay.value = { "output:out_file1": "meta:columns" };
+        await flushPromises();
+        expect(fetcher.mock.calls.map(([params]) => params.metadata)).toEqual([[], ["columns"]]);
+        expect(JSON.parse(localStorage.getItem(displayPrefsKey())!)).toEqual({
+            k: { columnDisplay: { "output:out_file1": "meta:columns" } },
+        });
     });
 });
