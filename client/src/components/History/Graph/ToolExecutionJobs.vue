@@ -3,7 +3,7 @@ import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { BPagination } from "bootstrap-vue";
 import { computed, ref, watch } from "vue";
 
-import { type ExecutionJobsSource, useExecutionJobs } from "./useExecutionJobs";
+import { type ExecutionJobsSource, useExecutionJobs } from "@/composables/useExecutionJobs";
 
 import JobDetailsTabs from "./JobDetailsTabs.vue";
 import GAlert from "@/components/BaseComponents/GAlert.vue";

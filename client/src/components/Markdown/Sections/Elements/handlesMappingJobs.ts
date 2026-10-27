@@ -1,7 +1,7 @@
 import { format, parseISO } from "date-fns";
 import { computed, type Ref, ref, watch } from "vue";
 
-import { type ExecutionJobsSource, useExecutionJobs } from "@/components/History/Graph/useExecutionJobs";
+import { type ExecutionJobsSource, useExecutionJobs } from "@/composables/useExecutionJobs";
 
 export interface SelectOption {
     value: string;
@@ -22,7 +22,7 @@ export function useMappingJobs(
     });
     const source = computed<ExecutionJobsSource | undefined>(() =>
         implicitCollectionJobsId.value
-            ? { implicitCollectionJobsId: implicitCollectionJobsId.value, recentlyUpdatedFirst: true }
+            ? { implicitCollectionJobsId: implicitCollectionJobsId.value, orderBy: "update_time" }
             : undefined,
     );
     const { jobs } = useExecutionJobs(source);
