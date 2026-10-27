@@ -9,6 +9,7 @@ staging read it from a path on Galaxy's disk, the checks below would fail.
 import os
 import string
 import time
+from contextlib import contextmanager
 from unittest import mock
 
 import requests
@@ -16,8 +17,9 @@ from sqlalchemy import select
 
 from galaxy import model
 from galaxy.managers import job_object_staging
-from galaxy.security.staging_signer import input_url
+from galaxy.managers.job_object_staging import JobObjectStagingManager
 from galaxy.model.base import ensure_object_added_to_session
+from galaxy.security.staging_signer import input_url
 from galaxy_test.base.populators import DatasetPopulator
 from galaxy_test.driver import integration_util
 from galaxy_test.driver.integration_util import docker_rm
@@ -160,6 +162,16 @@ class TestPulsarObjectStagingStream(BaseObjectStoreIntegrationTestCase):
 class TestPulsarObjectStagingRedirect(TestPulsarObjectStagingStream):
     staging_mode = "redirect"
 
+    def test_tool_input_is_staged_from_the_object_store(self):
+        with _redirected_kinds() as redirected:
+            super().test_tool_input_is_staged_from_the_object_store()
+        assert redirected == {"dataset"}
+
+    def test_bam_input_and_its_index_are_staged(self):
+        with _redirected_kinds() as redirected:
+            super().test_bam_input_and_its_index_are_staged()
+        assert redirected == {"dataset", "metadata_file"}
+
     def test_staging_url_redirects_to_the_object_store(self):
         history_id = self.dataset_populator.new_history()
         hda_dict = self.dataset_populator.new_dataset(history_id, content=INPUT_CONTENT, wait=True)
@@ -210,3 +222,19 @@ class TestPulsarObjectStagingRedirect(TestPulsarObjectStagingStream):
         sa_session.add(job)
         sa_session.commit()
         return job
+
+
+@contextmanager
+def _redirected_kinds():
+    """Collect the kinds of input Galaxy answered with a redirect to the object store."""
+    redirected: set[str] = set()
+    staged_input = JobObjectStagingManager.staged_input
+
+    def record(manager, job_id, kind, *args, **kwds):
+        staged = staged_input(manager, job_id, kind, *args, **kwds)
+        if staged.redirect_url is not None:
+            redirected.add(kind)
+        return staged
+
+    with mock.patch.object(JobObjectStagingManager, "staged_input", record):
+        yield redirected
