@@ -786,6 +786,24 @@ interface Rootjob_details extends Component {
     galaxy_tool_with_id: SelectorTemplate;
     tool_exit_code: SelectorTemplate;
 }
+interface Rootcomparisons extends Component {
+    _: SelectorTemplate;
+    step_all_runs_tab: SelectorTemplate;
+    view_all_link: SelectorTemplate;
+    table: SelectorTemplate;
+    rows: SelectorTemplate;
+    row: SelectorTemplate;
+    row_link: SelectorTemplate;
+    row_expand: SelectorTemplate;
+    row_detail: SelectorTemplate;
+    transposed_run_links: SelectorTemplate;
+    transpose_toggle: SelectorTemplate;
+    empty_message: SelectorTemplate;
+    summary: SelectorTemplate;
+    state_filter: SelectorTemplate;
+    compare_outputs_button: SelectorTemplate;
+    other_runs_action: SelectorTemplate;
+}
 export interface root_component {
     _: Root_;
     masthead: Rootmasthead;
@@ -833,5 +851,6 @@ export interface root_component {
     rule_builder: Rootrule_builder;
     charts: Rootcharts;
     job_details: Rootjob_details;
+    comparisons: Rootcomparisons;
 }
 export const ROOT_COMPONENT = raw_root_component as unknown as root_component;

@@ -29,26 +29,39 @@ class TestComparisons(SeleniumTestCase):
     def test_step_all_runs_across_versions(self):
         workflow_id, older_ids, newest_id = self._runs_across_two_versions()
         self.invocation_open_latest()
-        self.components.workflow_editor.node._(label="second_cat").title.wait_for_and_click()
-        self._assert_step_card_title("second_cat")
+        self.invocation_graph_wait_for_polling_to_stop()
+        self.invocation_graph_click_node("second_cat")
+        self.assert_invocation_step_card_title("second_cat")
 
         comparisons = self.components.comparisons
         comparisons.step_all_runs_tab.wait_for_and_click()
-        for run_id in [newest_id, *older_ids]:
-            comparisons.row(run_id=run_id).wait_for_visible()
-        assert len(comparisons.rows.all()) == 3
+        self._assert_rows(newest_id, *older_ids)
         assert "v2" in comparisons.row(run_id=newest_id).wait_for_visible().text
         assert "v1" in comparisons.row(run_id=older_ids[0]).wait_for_visible().text
         self.screenshot("comparisons_step_all_runs")
 
+        comparisons.row_expand(run_id=newest_id).wait_for_and_click()
+        comparisons.row_detail.wait_for_visible()
+        comparisons.row_expand(run_id=newest_id).wait_for_and_click()
+
         comparisons.transpose_toggle.wait_for_and_click()
-        comparisons.table.wait_for_visible()
+        self._assert_transposed(True)
+        assert len(comparisons.transposed_run_links.all()) == 3
+        comparisons.row(run_id=newest_id).assert_absent()
         self.screenshot("comparisons_step_all_runs_transposed")
         comparisons.transpose_toggle.wait_for_and_click()
+        self._assert_transposed(False)
+        comparisons.row(run_id=newest_id).wait_for_visible()
+
+        comparisons.view_all_link.wait_for_and_click()
+        comparisons._.wait_for_visible()
+        self.assert_current_url_contains("kind=step_runs")
+        self._assert_rows(newest_id, *older_ids)
+        self._assert_summary("Showing 1–3 of 3 · newest first · your runs only")
 
         # On dev the invocation view ignores ?step_label= until #24173 lands; only check we land on the run.
         comparisons.row_link(run_id=older_ids[0]).wait_for_and_click()
-        self._assert_url_contains(f"/workflows/invocations/{older_ids[0]}")
+        self.assert_current_url_contains(f"/workflows/invocations/{older_ids[0]}")
 
     @selenium_test
     def test_comparison_pages_from_entry_points(self):
@@ -57,19 +70,21 @@ class TestComparisons(SeleniumTestCase):
         comparisons = self.components.comparisons
         comparisons.compare_outputs_button.wait_for_and_click()
         comparisons._.wait_for_visible()
-        for run_id in [newest_id, *older_ids]:
-            comparisons.row(run_id=run_id).wait_for_visible()
-        self._assert_url_contains("kind=output_runs")
+        self._assert_rows(newest_id, *older_ids)
+        self.assert_current_url_contains("kind=output_runs")
         self.screenshot("comparisons_compare_outputs_page")
 
         comparisons.state_filter(state="failed").wait_for_and_click()
-        self._assert_url_contains("states=failed")
-        comparisons.row(run_id=newest_id).wait_for_absent()
+        self.assert_current_url_contains("states=failed")
+        self._assert_empty("No runs match these filters.")
+        assert len(comparisons.rows.all()) == 0
 
-        job_id = self.workflow_populator.get_invocation(newest_id, step_details=True)["steps"][-1]["jobs"][0]["id"]
+        steps = self.workflow_populator.get_invocation(newest_id, step_details=True)["steps"]
+        (second_cat,) = [step for step in steps if step["workflow_step_label"] == "second_cat"]
+        job_id = second_cat["jobs"][0]["id"]
         self.get(f"jobs/{job_id}/view")
         comparisons.other_runs_action.wait_for_and_click()
-        self._assert_url_contains("kind=tool_runs")
+        self.assert_current_url_contains("kind=tool_runs")
         comparisons.row(run_id=job_id).wait_for_visible()
         self.screenshot("comparisons_tool_runs_page")
 
@@ -90,11 +105,23 @@ class TestComparisons(SeleniumTestCase):
         assert len(older_ids) == 2 and newest_id not in older_ids
         return workflow_id, older_ids, newest_id
 
-    @retry_assertion_during_transitions
-    def _assert_step_card_title(self, label: str):
-        title = self.components.invocations.step_card_title.wait_for_visible().text
-        assert label in title, f"Expected step card for {label}, found {title!r}"
+    def _assert_rows(self, *run_ids: str):
+        comparisons = self.components.comparisons
+        for run_id in run_ids:
+            comparisons.row(run_id=run_id).wait_for_visible()
+        assert len(comparisons.rows.all()) == len(run_ids)
 
     @retry_assertion_during_transitions
-    def _assert_url_contains(self, fragment: str):
-        assert fragment in self.current_url, f"Expected {fragment!r} in {self.current_url!r}"
+    def _assert_transposed(self, transposed: bool):
+        pressed = self.components.comparisons.transpose_toggle.wait_for_visible().get_attribute("aria-pressed")
+        assert pressed == ("true" if transposed else "false"), f"Expected transposed={transposed}, got {pressed!r}"
+
+    @retry_assertion_during_transitions
+    def _assert_empty(self, message: str):
+        text = self.components.comparisons.empty_message.wait_for_visible().text
+        assert text.strip() == message, f"Expected {message!r}, found {text!r}"
+
+    @retry_assertion_during_transitions
+    def _assert_summary(self, summary: str):
+        text = self.components.comparisons.summary.wait_for_visible().text
+        assert text.strip() == summary, f"Expected {summary!r}, found {text!r}"

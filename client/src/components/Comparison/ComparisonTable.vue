@@ -146,7 +146,9 @@ const tableKey = computed(() => `${props.transpose}:${props.table.rows.map((row)
             </template>
         </ListHeader>
 
-        <GAlert v-if="!table.rows.length && !loading" variant="info" show>{{ emptyMessage }}</GAlert>
+        <GAlert v-if="!table.rows.length && !loading" class="comparison-empty" variant="info" show>
+            {{ emptyMessage }}
+        </GAlert>
 
         <div v-else class="comparison-table-scroll">
             <GTable
