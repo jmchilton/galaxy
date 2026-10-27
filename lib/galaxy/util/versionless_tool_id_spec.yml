@@ -1,0 +1,22 @@
+# Shared by versionless_tool_id (galaxy.util.tool_version) and versionlessToolId (client/src/utils/tool-version.ts).
+- doc: A plain tool id has no version to drop.
+  tool_id: cat1
+  versionless: cat1
+- doc: A Tool Shed id drops its version.
+  tool_id: toolshed.g2.bx.psu.edu/repos/devteam/fastqc/fastqc/0.74+galaxy0
+  versionless: toolshed.g2.bx.psu.edu/repos/devteam/fastqc/fastqc
+- doc: A Tool Shed id without a version is kept.
+  tool_id: toolshed.g2.bx.psu.edu/repos/devteam/fastqc/fastqc
+  versionless: toolshed.g2.bx.psu.edu/repos/devteam/fastqc/fastqc
+- doc: A Tool Shed host with a port drops the version.
+  tool_id: localhost:9009/repos/owner/repo_name/tool_a/1.0.0
+  versionless: localhost:9009/repos/owner/repo_name/tool_a
+- doc: A local id with slashes is kept.
+  tool_id: some/local/tool
+  versionless: some/local/tool
+- doc: A local id keeps a version-like last segment.
+  tool_id: local_tool/1.0
+  versionless: local_tool/1.0
+- doc: A Tool Shed id drops a non-numeric last segment too.
+  tool_id: toolshed.g2.bx.psu.edu/repos/o/r/tool/latest
+  versionless: toolshed.g2.bx.psu.edu/repos/o/r/tool

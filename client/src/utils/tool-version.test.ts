@@ -8,6 +8,7 @@ import {
     parseRequestedToolParts,
     versionlessToolId,
 } from "./tool-version";
+import VERSIONLESS_SPEC from "./versionless_tool_id_spec.yml";
 
 describe("Tool Version Utilities", () => {
     describe("extractBaseToolId", () => {
@@ -180,23 +181,9 @@ describe("Tool Version Utilities", () => {
     });
 
     describe("versionlessToolId", () => {
-        it.each([
-            ["cat1", "cat1"],
-            [
-                "toolshed.g2.bx.psu.edu/repos/devteam/fastqc/fastqc/0.74+galaxy0",
-                "toolshed.g2.bx.psu.edu/repos/devteam/fastqc/fastqc",
-            ],
-            [
-                "toolshed.g2.bx.psu.edu/repos/devteam/fastqc/fastqc",
-                "toolshed.g2.bx.psu.edu/repos/devteam/fastqc/fastqc",
-            ],
-            ["localhost:9009/repos/owner/repo_name/tool_a/1.0.0", "localhost:9009/repos/owner/repo_name/tool_a"],
-            ["some/local/tool", "some/local/tool"],
-            // Unlike extractBaseToolId, keeps a non-shed id's last segment and drops a shed id's non-numeric one.
-            ["local_tool/1.0", "local_tool/1.0"],
-            ["toolshed.g2.bx.psu.edu/repos/o/r/tool/latest", "toolshed.g2.bx.psu.edu/repos/o/r/tool"],
-        ])("mirrors the server's versionless_tool_id for %s", (toolId, expected) => {
-            expect(versionlessToolId(toolId)).toBe(expected);
+        // Shared with the server's versionless_tool_id tests.
+        it.each(VERSIONLESS_SPEC)("$doc ($tool_id)", ({ tool_id, versionless }) => {
+            expect(versionlessToolId(tool_id)).toBe(versionless);
         });
     });
 });
