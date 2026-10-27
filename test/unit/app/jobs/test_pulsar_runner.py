@@ -484,14 +484,15 @@ def test_materialized_inputs_keep_path_staging():
     client_inputs = runner._client_inputs(
         _staging_job_wrapper(dataset_id=None), _staging_compute_environment("stream"), {}
     )
-    assert next(iter(client_inputs)).url is None
+    assert getattr(next(iter(client_inputs)), "url", None) is None
 
 
 def test_inputs_keep_path_staging_without_object_store_staging():
     runner, job_wrapper = _staging_runner(), _staging_job_wrapper()
     compute_environment = _staging_compute_environment(None, {METADATA_CACHE_PATH: 9})
     client_inputs = runner._client_inputs(job_wrapper, compute_environment, {})
-    assert [client_input.url for client_input in client_inputs] == [None, None]
+    # Built without ``url``, so pulsar-galaxy-lib releases lacking it still accept these inputs.
+    assert [getattr(client_input, "url", None) for client_input in client_inputs] == [None, None]
     assert job_wrapper.job_io.sync_cache is True
 
 

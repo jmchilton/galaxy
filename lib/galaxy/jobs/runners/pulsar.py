@@ -779,7 +779,7 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
             if issue_url and input_dataset_wrapper.dataset_id is not None:
                 url = issue_url("dataset", input_dataset_wrapper.dataset_id)
             client_inputs_list.append(
-                ClientInput(path, CLIENT_INPUT_PATH_TYPES.INPUT_PATH, object_store_ref=object_store_ref, url=url)
+                _client_input(path, CLIENT_INPUT_PATH_TYPES.INPUT_PATH, url, object_store_ref=object_store_ref)
             )
 
         for input_extra_path in compute_environment.path_rewrites_input_extra.keys():
@@ -792,7 +792,7 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
             if issue_url and metadata_file_id is not None:
                 url = issue_url("metadata_file", metadata_file_id)
             client_inputs_list.append(
-                ClientInput(input_metadata_path, CLIENT_INPUT_PATH_TYPES.INPUT_METADATA_PATH, url=url)
+                _client_input(input_metadata_path, CLIENT_INPUT_PATH_TYPES.INPUT_METADATA_PATH, url)
             )
         return ClientInputs(client_inputs_list)
 
@@ -1438,6 +1438,13 @@ class PulsarEmbeddedJobRunner(PulsarJobRunner):
 
 class PulsarEmbeddedMQJobRunner(PulsarMQJobRunner):
     default_build_pulsar_app = True
+
+
+def _client_input(path, input_type, url, **kwds) -> ClientInput:
+    """Pass ``url`` only when staging issued one: pulsar-galaxy-lib 0.16.0 does not accept it."""
+    if url is not None:
+        kwds["url"] = url
+    return ClientInput(path, input_type, **kwds)
 
 
 def _metadata_file_with_path(dataset, path) -> model.MetadataFile | None:
