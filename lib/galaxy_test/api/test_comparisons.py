@@ -11,7 +11,19 @@ from galaxy_test.base.populators import (
     wait_on,
     WorkflowPopulator,
 )
+from galaxy_test.base.workflow_fixtures import (
+    default_file_dataset_input_location,
+    WORKFLOW_WITH_DEFAULT_FILE_DATASET_INPUT,
+)
 from ._framework import ApiTestCase
+
+# no labelled inputs or outputs
+WORKFLOW_FORTY_TWO = """
+class: GalaxyWorkflow
+steps:
+  forty_two:
+    tool_id: expression_forty_two
+"""
 
 WORKFLOW_TWO_CAT = """
 class: GalaxyWorkflow
@@ -515,6 +527,24 @@ class TestComparisonsApi(ApiTestCase):
             ]
 
     @skip_without_tool("cat1")
+    def test_step_runs_defaulted_data_input(self, test_http_server):
+        with self.dataset_populator.test_history() as history_id:
+            workflow = WORKFLOW_WITH_DEFAULT_FILE_DATASET_INPUT.format(
+                location=default_file_dataset_input_location(test_http_server)
+            )
+            summary = self.workflow_populator.run_workflow(workflow, history_id=history_id)
+            invocation = self.workflow_populator.get_invocation(summary.invocation_id, step_details=True)
+            default_id = invocation["steps"][0]["outputs"]["output"]["id"]
+
+            table = self._step_runs_table(summary.workflow_id, "default_file_input")
+            assert [(column["key"], column["role"]) for column in table["columns"]] == [
+                ("input:default_file_input", "input")
+            ]
+            (row,) = table["rows"]
+            cell = row["cells"]["input:default_file_input"]
+            assert (cell["type"], cell["id"]) == ("dataset", default_id)
+
+    @skip_without_tool("cat1")
     def test_step_runs_skipped_step(self):
         with self.dataset_populator.test_history() as history_id:
             hda = self.dataset_populator.new_dataset(history_id, content="maybe\n", wait=True)
@@ -735,6 +765,20 @@ class TestComparisonsApi(ApiTestCase):
             assert absent.headers["total_matches"] == "0"
             assert (absent.json()["rows"], absent.json()["versions_available"]) == ([], [0, 1])
             self._output_runs(summary.workflow_id, expected_status=400, versions="v1")
+
+    @skip_without_tool("expression_forty_two")
+    def test_output_runs_version_without_labelled_io(self):
+        with self.dataset_populator.test_history() as history_id:
+            summary = self.workflow_populator.run_workflow(WORKFLOW_FORTY_TWO, history_id=history_id)
+            self._add_workflow_output(summary.workflow_id, "forty_two", "out1", "n")
+            self._rerun(summary)
+
+            table = self._output_runs_table(summary.workflow_id)
+            assert [(column["key"], column["present_in_versions"]) for column in table["columns"]] == [
+                ("output:n", [1])
+            ]
+            assert [row["version"] for row in table["rows"]] == [1, 0]
+            assert table["rows"][1]["cells"]["output:n"] == {"type": "missing", "reason": "not_in_version"}
 
     @skip_without_tool("cat1")
     @skip_without_tool("expression_forty_two")
