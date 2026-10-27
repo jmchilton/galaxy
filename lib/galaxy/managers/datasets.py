@@ -5,6 +5,7 @@ Manager and Serializer for Datasets.
 import glob
 import logging
 import os
+from collections.abc import Iterable
 from typing import (
     Any,
     TypeVar,
@@ -736,18 +737,19 @@ class _UnflattenedMetadataDatasetAssociationSerializer(base.ModelSerializer[T], 
                 )
         return meta_files
 
-    def serialize_metadata(self, item, key, excluded=None, **context):
+    def serialize_metadata(self, item, key, excluded=None, included: Iterable[str] | None = None, **context):
         """
-        Cycle through metadata and return as dictionary.
+        Cycle through metadata and return as dictionary; ``included`` limits it to those names.
         """
         dataset_assoc = item
         # dbkey is a repeat actually (metadata_dbkey == genome_build)
         # excluded = [ 'dbkey' ] if excluded is None else excluded
         excluded = [] if excluded is None else excluded
+        included = None if included is None else set(included)
 
         metadata = {}
         for name, spec in dataset_assoc.metadata.spec.items():
-            if name in excluded:
+            if name in excluded or (included is not None and name not in included):
                 continue
             val = dataset_assoc.metadata.get(name)
             # NOTE: no files
