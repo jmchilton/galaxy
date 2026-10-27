@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { faArrowRight, faInfoCircle, faRedo } from "@fortawesome/free-solid-svg-icons";
+import { faArrowRight, faColumns, faInfoCircle, faRedo } from "@fortawesome/free-solid-svg-icons";
 import { BSkeleton } from "bootstrap-vue";
 import { computed, ref, toRef, watch } from "vue";
 import { useRoute } from "vue-router";
 
+import { isRegisteredUser } from "@/api";
 import { fetchInvocationForJob } from "@/api/invocations";
 import type { CardAction } from "@/components/Common/GCard.types";
+import { comparisonPath } from "@/components/Comparison/comparisonQuery";
 import { useJobConsoleOutput, useJobDetails } from "@/composables/jobDetails";
 import { useRerunnableTool } from "@/composables/rerunnableTool";
+import { useUserStore } from "@/stores/userStore";
 import { errorMessageAsString } from "@/utils/simple-error";
 import { stateIsTerminal } from "@/utils/utils";
 
@@ -32,6 +35,8 @@ const props = withDefaults(
         includeRerunIndicator?: boolean;
         /** If `true`, we render a "View full details" button */
         includeViewFullDetailsButton?: boolean;
+        /** If `true`, link to the user's other runs of this job's tool. */
+        includeOtherRunsLink?: boolean;
         /** If provided, this component will skip fetching the invocation ID for the job. */
         invocationId?: string;
         /** If `true`, the section is collapsible */
@@ -50,6 +55,7 @@ const emit = defineEmits<{
 }>();
 
 const route = useRoute();
+const userStore = useUserStore();
 
 /** Whether the collapsible job information card is collapsed. */
 const internalCollapsed = ref(false);
@@ -90,11 +96,8 @@ const stderr_text = computed(() =>
 
 const routeToInvocation = computed(() => `/workflows/invocations/${fetchedInvocationId.value}`);
 
-// Curious as to why we're trying to access tool_version and traceback like this, when they don't exist on
-// `ShowFullJobResponse`? Possibly historical reasons or maybe the `JobProvider` can return different types (doesn't seem like it)?
-const toolVersion = computed(() =>
-    job.value && "tool_version" in job.value ? (job.value?.tool_version as string) : null,
-);
+const toolVersion = computed(() => job.value?.tool_version ?? null);
+// `traceback` isn't on `ShowFullJobResponse`; possibly historical.
 const traceback = computed(() => (job.value && "traceback" in job.value ? (job.value?.traceback as string) : null));
 
 const primaryActions = computed<CardAction[]>(() => {
@@ -107,6 +110,19 @@ const primaryActions = computed<CardAction[]>(() => {
             icon: faArrowRight,
             title: "View full job details",
             to: `/jobs/${props.jobId}/view`,
+            size: "md",
+            variant: "link",
+        });
+    }
+    // Comparisons list the current user's runs; anonymous users have none.
+    if (props.includeOtherRunsLink && job.value?.tool_id && isRegisteredUser(userStore.currentUser)) {
+        actions.push({
+            id: "job-other-runs",
+            class: "text-decoration-none",
+            label: "Other runs of this tool",
+            icon: faColumns,
+            title: "Compare your runs of this tool across versions",
+            to: comparisonPath("tool_runs", { tool_id: job.value.tool_id }),
             size: "md",
             variant: "link",
         });

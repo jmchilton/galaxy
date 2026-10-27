@@ -26,4 +26,19 @@ describe("JobDetails", () => {
 
         expect(wrapper.text()).toContain("Traceback (most recent call last): ...");
     });
+
+    it.each([
+        [true, true],
+        [false, false],
+    ])("with showHeader=%s offers other runs of the tool: %s", (showHeader, expected) => {
+        const wrapper = mount(JobDetails as object, {
+            props: { jobId: "job1", showHeader },
+            global: {
+                ...localVue,
+                stubs: { JobHeader: true, JobInformation: true, JobParameters: true, JobMetrics: true },
+            },
+        });
+        const info = wrapper.findComponent({ name: "JobInformation" });
+        expect(info.props("includeOtherRunsLink")).toBe(expected);
+    });
 });
