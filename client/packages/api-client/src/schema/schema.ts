@@ -7274,6 +7274,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workflows/{workflow_id}/step_runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Compare runs of a labelled workflow step across the workflow's invocations. */
+        get: operations["step_runs_api_workflows__workflow_id__step_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workflows/{workflow_id}/tags": {
         parameters: {
             query?: never;
@@ -9338,6 +9355,45 @@ export interface components {
             /** Collection Type */
             collection_type?: string | null;
         };
+        /** CollectionCell */
+        CollectionCell: {
+            /**
+             * Collection Type
+             * @description The type of the collection, can be `list`, `paired`, or define subcollections using `:` as separator like `list:paired` or `list:list`.
+             */
+            collection_type: string;
+            /** Deleted */
+            deleted: boolean;
+            /**
+             * Element Count
+             * @description The number of elements contained in the dataset collection. It may be None or undefined if the collection could not be populated.
+             */
+            element_count?: number | null;
+            /** Hid */
+            hid?: number | null;
+            /**
+             * History ID
+             * @example 0123456789ABCDEF
+             */
+            history_id: string;
+            /**
+             * Id
+             * @example 0123456789ABCDEF
+             */
+            id: string;
+            /** Name */
+            name?: string | null;
+            /**
+             * Populated State
+             * @description Indicates the general state of the elements in the dataset collection:- 'new': new dataset collection, unpopulated elements.- 'ok': collection elements populated (HDAs may or may not have errors).- 'failed': some problem populating, won't be populated.
+             */
+            populated_state: components["schemas"]["DatasetCollectionPopulatedState"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "collection";
+        };
         /** CollectionElementCollectionRequestUri */
         CollectionElementCollectionRequestUri: {
             /**
@@ -9496,6 +9552,109 @@ export interface components {
             type: "color";
             /** Value */
             value?: string | null;
+        };
+        /** ComparisonColumn */
+        ComparisonColumn: {
+            /**
+             * Duplicate
+             * @description Some version declares more than one item with this label.
+             * @default false
+             */
+            duplicate: boolean;
+            /**
+             * Key
+             * @description Role-prefixed name, e.g. `output:out_file1`; keys `ComparisonRow.cells`.
+             */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Metadata Keys
+             * @description Scalar metadata element names seen in this column's datasets.
+             * @default []
+             */
+            metadata_keys: string[];
+            /**
+             * Present In Versions
+             * @description Versions on the page that have this column; null when every version has it.
+             */
+            present_in_versions?: number[] | null;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "input" | "output" | "parameter";
+        };
+        /** ComparisonRow */
+        ComparisonRow: {
+            /**
+             * Cells
+             * @description One cell per column key.
+             */
+            cells: {
+                [key: string]:
+                    | components["schemas"]["DatasetCell"]
+                    | components["schemas"]["CollectionCell"]
+                    | components["schemas"]["ValueCell"]
+                    | components["schemas"]["MissingCell"];
+            };
+            /**
+             * Create Time
+             * Format: date-time
+             */
+            create_time: string;
+            history: components["schemas"]["HistoryRef"];
+            /**
+             * Reused
+             * @description Whether job outputs came from the job cache.
+             */
+            reused?: ("no" | "partial" | "yes") | null;
+            /** Run */
+            run:
+                | components["schemas"]["InvocationRunRef"]
+                | components["schemas"]["JobRunRef"]
+                | components["schemas"]["ImplicitCollectionJobsRunRef"];
+            /** State */
+            state: string;
+            /**
+             * Step Job
+             * @description The job or mapped batch that ran the compared step.
+             */
+            step_job?:
+                | (components["schemas"]["JobRunRef"] | components["schemas"]["ImplicitCollectionJobsRunRef"])
+                | null;
+            /** Subworkflow Invocation Id */
+            subworkflow_invocation_id?: string | null;
+            /** Tool Id */
+            tool_id?: string | null;
+            /** Tool Version */
+            tool_version?: string | null;
+            /**
+             * Update Time
+             * Format: date-time
+             */
+            update_time: string;
+            /**
+             * Version
+             * @description 0-based workflow version of the run.
+             */
+            version?: number | null;
+            /** @description The invocation a tool run belongs to. */
+            via?: components["schemas"]["WorkflowRunVia"] | null;
+        };
+        /** ComparisonTable */
+        ComparisonTable: {
+            /** Columns */
+            columns: components["schemas"]["ComparisonColumn"][];
+            /** Query */
+            query:
+                | components["schemas"]["StepRunsQuery"]
+                | components["schemas"]["OutputRunsQuery"]
+                | components["schemas"]["ToolRunsQuery"];
+            /** Rows */
+            rows: components["schemas"]["ComparisonRow"][];
+            /** Tool Versions Available */
+            tool_versions_available?: string[] | null;
         };
         /** CompositeDataElement */
         CompositeDataElement: {
@@ -11861,6 +12020,47 @@ export interface components {
              * @default []
              */
             modify_item_roles: string[][];
+        };
+        /** DatasetCell */
+        DatasetCell: {
+            /** Deleted */
+            deleted: boolean;
+            /** Extension */
+            extension?: string | null;
+            /** Hid */
+            hid?: number | null;
+            /**
+             * History ID
+             * @example 0123456789ABCDEF
+             */
+            history_id: string;
+            /**
+             * Id
+             * @example 0123456789ABCDEF
+             */
+            id: string;
+            /**
+             * Metadata
+             * @description Requested metadata elements that are set on the dataset.
+             * @default {}
+             */
+            metadata: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name?: string | null;
+            /** Purged */
+            purged: boolean;
+            /**
+             * State
+             * @description The current state of this dataset.
+             */
+            state: components["schemas"]["DatasetState"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "dataset";
         };
         /** DatasetCollectionAttributesResult */
         DatasetCollectionAttributesResult: {
@@ -16732,6 +16932,20 @@ export interface components {
             nodes: components["schemas"]["GraphNode"][];
             truncated: components["schemas"]["TruncationInfo"];
         };
+        /** HistoryRef */
+        HistoryRef: {
+            /** Deleted */
+            deleted: boolean;
+            /**
+             * Id
+             * @example 0123456789ABCDEF
+             */
+            id: string;
+            /** Name */
+            name: string | null;
+            /** Purged */
+            purged: boolean;
+        };
         /**
          * HistorySummary
          * @description History summary information.
@@ -16843,6 +17057,39 @@ export interface components {
              * @description The text placeholder for the link.
              */
             text: string;
+        };
+        /** ImplicitCollectionJobsRunRef */
+        ImplicitCollectionJobsRunRef: {
+            /**
+             * Id
+             * @example 0123456789ABCDEF
+             */
+            id: string;
+            /** Job Count */
+            job_count: number;
+            /**
+             * @description The name of the database model class. (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            model: "ImplicitCollectionJobs";
+            /**
+             * Populated State
+             * @description Indicates the general state of the elements in the dataset collection:- 'new': new dataset collection, unpopulated elements.- 'ok': collection elements populated (HDAs may or may not have errors).- 'failed': some problem populating, won't be populated.
+             */
+            populated_state: components["schemas"]["DatasetCollectionPopulatedState"];
+            /**
+             * Representative Job Id
+             * @description First job of the mapped batch.
+             */
+            representative_job_id?: string | null;
+            /**
+             * States
+             * @description A dictionary of job states and the number of jobs in that state.
+             * @default {}
+             */
+            states: {
+                [key: string]: number;
+            };
         };
         /** ImplicitCollectionJobsStateSummary */
         ImplicitCollectionJobsStateSummary: {
@@ -18171,6 +18418,20 @@ export interface components {
              */
             username: string;
         };
+        /** InvocationRunRef */
+        InvocationRunRef: {
+            /**
+             * Id
+             * @example 0123456789ABCDEF
+             */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            model: "WorkflowInvocation";
+            state: components["schemas"]["InvocationState"];
+        };
         /**
          * InvocationSerializationView
          * @enum {string}
@@ -19114,6 +19375,20 @@ export interface components {
             tool_version?: string | null;
             /** use_cached_jobs */
             use_cached_jobs?: boolean | null;
+        };
+        /** JobRunRef */
+        JobRunRef: {
+            /**
+             * Id
+             * @example 0123456789ABCDEF
+             */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            model: "Job";
+            state: components["schemas"]["JobState"];
         };
         /**
          * JobSourceType
@@ -20455,6 +20730,19 @@ export interface components {
              */
             file_type: string;
         };
+        /** MissingCell */
+        MissingCell: {
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "not_in_version" | "skipped" | "not_run_yet" | "no_output";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "missing";
+        };
         /**
          * ModelStoreFormat
          * @description Available types of model stores for export.
@@ -21119,6 +21407,67 @@ export interface components {
              * @default output
              */
             output_name: string | null;
+        };
+        /** OutputRunsQuery */
+        OutputRunsQuery: {
+            /**
+             * Inline Expression Values
+             * @description Render small `expression.json` outputs as their value instead of a dataset.
+             * @default true
+             */
+            inline_expression_values: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "output_runs";
+            /**
+             * Limit
+             * @description Maximum number of rows to return.
+             * @default 25
+             */
+            limit: number;
+            /**
+             * Metadata Elements
+             * @description Metadata element names to include in dataset cells, e.g. `data_lines`.
+             * @default []
+             */
+            metadata_elements: string[];
+            /**
+             * Offset
+             * @description Number of rows to skip.
+             * @default 0
+             */
+            offset: number;
+            /**
+             * Output Labels
+             * @description Only include these labelled outputs and inputs.
+             */
+            output_labels?: string[] | null;
+            /**
+             * Sort By
+             * @description Sort rows by this run attribute.
+             * @default create_time
+             * @enum {string}
+             */
+            sort_by: "create_time" | "update_time";
+            /**
+             * Sort Desc
+             * @description Sort rows in descending order.
+             * @default true
+             */
+            sort_desc: boolean;
+            /**
+             * States
+             * @description Only include runs in one of these states.
+             */
+            states?: string[] | null;
+            /**
+             * Workflow Id
+             * @description The StoredWorkflow id.
+             * @example 0123456789ABCDEF
+             */
+            workflow_id: string;
         };
         /** PackageRequirement */
         PackageRequirement: {
@@ -24364,6 +24713,67 @@ export interface components {
              */
             order_index: number;
         };
+        /** StepRunsQuery */
+        StepRunsQuery: {
+            /**
+             * Inline Expression Values
+             * @description Render small `expression.json` outputs as their value instead of a dataset.
+             * @default true
+             */
+            inline_expression_values: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "step_runs";
+            /**
+             * Limit
+             * @description Maximum number of rows to return.
+             * @default 25
+             */
+            limit: number;
+            /**
+             * Metadata Elements
+             * @description Metadata element names to include in dataset cells, e.g. `data_lines`.
+             * @default []
+             */
+            metadata_elements: string[];
+            /**
+             * Offset
+             * @description Number of rows to skip.
+             * @default 0
+             */
+            offset: number;
+            /**
+             * Sort By
+             * @description Sort rows by this run attribute.
+             * @default create_time
+             * @enum {string}
+             */
+            sort_by: "create_time" | "update_time";
+            /**
+             * Sort Desc
+             * @description Sort rows in descending order.
+             * @default true
+             */
+            sort_desc: boolean;
+            /**
+             * States
+             * @description Only include runs in one of these states.
+             */
+            states?: string[] | null;
+            /**
+             * Step Label
+             * @description Label of the step to compare across invocations.
+             */
+            step_label: string;
+            /**
+             * Workflow Id
+             * @description The StoredWorkflow id.
+             * @example 0123456789ABCDEF
+             */
+            workflow_id: string;
+        };
         /** StorageItemCleanupError */
         StorageItemCleanupError: {
             /** Error */
@@ -26343,6 +26753,77 @@ export interface components {
             /** Err Msg */
             err_msg: string;
         };
+        /** ToolRunsQuery */
+        ToolRunsQuery: {
+            /**
+             * History Id
+             * @description Only include runs in this history.
+             */
+            history_id?: string | null;
+            /**
+             * Include Workflow Jobs
+             * @description Include jobs run as part of a workflow invocation.
+             * @default true
+             */
+            include_workflow_jobs: boolean;
+            /**
+             * Inline Expression Values
+             * @description Render small `expression.json` outputs as their value instead of a dataset.
+             * @default true
+             */
+            inline_expression_values: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "tool_runs";
+            /**
+             * Limit
+             * @description Maximum number of rows to return.
+             * @default 25
+             */
+            limit: number;
+            /**
+             * Metadata Elements
+             * @description Metadata element names to include in dataset cells, e.g. `data_lines`.
+             * @default []
+             */
+            metadata_elements: string[];
+            /**
+             * Offset
+             * @description Number of rows to skip.
+             * @default 0
+             */
+            offset: number;
+            /**
+             * Sort By
+             * @description Sort rows by this run attribute.
+             * @default create_time
+             * @enum {string}
+             */
+            sort_by: "create_time" | "update_time";
+            /**
+             * Sort Desc
+             * @description Sort rows in descending order.
+             * @default true
+             */
+            sort_desc: boolean;
+            /**
+             * States
+             * @description Only include runs in one of these states.
+             */
+            states?: string[] | null;
+            /**
+             * Tool Id
+             * @description Tool id; a Tool Shed version suffix is ignored.
+             */
+            tool_id: string;
+            /**
+             * Tool Versions
+             * @description Only include runs of these tool versions.
+             */
+            tool_versions?: string[] | null;
+        };
         /** ToolStep */
         ToolStep: {
             /**
@@ -28058,6 +28539,26 @@ export interface components {
              */
             username?: string;
         };
+        /** ValueCell */
+        ValueCell: {
+            /**
+             * Dataset Id
+             * @description The dataset an expression value was read from.
+             */
+            dataset_id?: string | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "parameter" | "output_value" | "expression_json";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "value";
+            /** Value */
+            value: unknown;
+        };
         /** VariableResponse */
         VariableResponse: {
             /**
@@ -29131,6 +29632,18 @@ export interface components {
              * @description Total tokens consumed by the generation
              */
             total_tokens?: number | null;
+        };
+        /** WorkflowRunVia */
+        WorkflowRunVia: {
+            /**
+             * Invocation Id
+             * @example 0123456789ABCDEF
+             */
+            invocation_id: string;
+            /** Step Label */
+            step_label?: string | null;
+            /** Workflow Name */
+            workflow_name?: string | null;
         };
         /** WorkflowTypeVersion */
         WorkflowTypeVersion: {
@@ -56559,6 +57072,68 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    step_runs_api_workflows__workflow_id__step_runs_get: {
+        parameters: {
+            query: {
+                /** @description Label of the step to compare across invocations. */
+                step_label: string;
+                instance?: boolean;
+                /** @description Maximum number of rows to return. */
+                limit?: number;
+                /** @description Number of rows to skip. */
+                offset?: number;
+                /** @description Sort rows by this run attribute. */
+                sort_by?: "create_time" | "update_time";
+                /** @description Sort rows in descending order. */
+                sort_desc?: boolean;
+                /** @description Render small `expression.json` outputs as their value instead of a dataset. */
+                inline_expression_values?: boolean;
+                /** @description Only include runs in one of these states. A comma-separated list or repeated parameter. */
+                states?: string[] | null;
+                /** @description Metadata element names to include in dataset cells, e.g. `data_lines`. A comma-separated list or repeated parameter. */
+                metadata_elements?: string[] | null;
+            };
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                /** @description The encoded id of the Stored Workflow, or of a Workflow version with `instance=true`. */
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComparisonTable"];
+                };
             };
             /** @description Request Error */
             "4XX": {
