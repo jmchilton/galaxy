@@ -42,6 +42,31 @@ describe("DatasetPopoverLink", () => {
     });
 });
 
+describe("DatasetPopoverLink link wiring", () => {
+    function mountWithRouterLinkStub() {
+        return shallowMount(DatasetPopoverLink as object, {
+            props: { datasetId: DATASET_ID },
+            global: {
+                plugins: [createTestingPinia({ createSpy: vi.fn })],
+                stubs: { RouterLink: RouterLinkStub },
+            },
+        });
+    }
+
+    it("targets the popover at the link's DOM id", () => {
+        const wrapper = mountWithRouterLinkStub();
+        const linkId = wrapper.findComponent(RouterLinkStub).attributes("id");
+        expect(linkId).toBeTruthy();
+        expect(wrapper.findComponent(GPopover).props("target")).toBe(linkId);
+    });
+
+    it("shows the dataset id and routes to the dataset details", () => {
+        const link = mountWithRouterLinkStub().findComponent(RouterLinkStub);
+        expect(link.text()).toBe(DATASET_ID);
+        expect(link.props("to")).toBe(`/datasets/${DATASET_ID}/details`);
+    });
+});
+
 describe("DatasetPopoverLink loading", () => {
     let datasetRequests: number;
     let historyRequests: number;
