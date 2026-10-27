@@ -67,6 +67,7 @@ from galaxy.model import (
     WorkflowRequestToInputDatasetAssociation,
     WorkflowRequestToInputDatasetCollectionAssociation,
     WorkflowStep,
+    WorkflowStepInput,
 )
 from galaxy.model.scoped_session import galaxy_scoped_session
 from galaxy.schema.comparisons import (
@@ -164,7 +165,8 @@ class ComparisonsManager:
         version_map = self._version_map(stored_workflow_id)
         workflow_ids = _selected_versions({wid: version_map[wid] for wid in steps_by_workflow}, query.versions)
         page, total = self._page_invocations(access.user_id, workflow_ids, query, state_predicate)
-        columns, rows = self._step_rows(access, page, step_ids, step_types, query, version_map)
+        step_by_workflow = {workflow_id: step_id for workflow_id, (step_id, _) in steps_by_workflow.items()}
+        columns, rows = self._step_rows(access, page, step_by_workflow, step_types, query, version_map)
         versions_available = sorted(version_map[workflow_id] for workflow_id in steps_by_workflow)
         table = ComparisonTable(query=query, columns=columns, rows=rows, versions_available=versions_available)
         return table, total
@@ -534,12 +536,13 @@ class ComparisonsManager:
         self,
         access: ComparisonAccess,
         page: list[InvocationPageRow],
-        step_ids: list[int],
+        step_by_workflow: dict[int, int],
         step_types: dict[int, str],
         query: StepRunsQuery,
         version_map: dict[int, int],
     ) -> tuple[list[ComparisonColumn], list[ComparisonRow]]:
         invocation_ids = [invocation.id for invocation in page]
+        step_ids = list(step_by_workflow.values())
         steps = self._invocation_steps(invocation_ids, step_ids)
         outputs = self._step_outputs([step.id for step in steps.values()])
         jobs = self.cell_builder.load_jobs({step.job_id for step in steps.values() if step.job_id})
@@ -571,6 +574,14 @@ class ComparisonsManager:
             io_by_invocation[invocation.id] = io
             for key in io:
                 declared[version].setdefault(key, _column_spec(key))
+        # a version's step definition also declares inputs its runs on this page left empty
+        observed = {key for specs in declared.values() for key in specs}
+        page_workflow_ids = {invocation.workflow_id for invocation in page}
+        defined = self._defined_step_inputs([step_by_workflow[workflow_id] for workflow_id in page_workflow_ids])
+        for workflow_id in page_workflow_ids:
+            for key in defined.get(step_by_workflow[workflow_id], ()):
+                if key in observed:
+                    declared[version_map[workflow_id]].setdefault(key, _column_spec(key))
 
         newest_version = max(declared) if declared else 0
         columns = align_columns({v: list(specs.values()) for v, specs in declared.items()}, newest_version)
@@ -614,6 +625,19 @@ class ComparisonsManager:
             )
         _set_metadata_keys(columns, metadata_keys)
         return columns, rows
+
+    def _defined_step_inputs(self, step_ids: Collection[int]) -> dict[int, set[str]]:
+        """Input column keys each step's definition connects."""
+        defined: dict[int, set[str]] = defaultdict(set)
+        if not step_ids:
+            return defined
+        stmt = select(WorkflowStepInput.workflow_step_id, WorkflowStepInput.name).where(
+            WorkflowStepInput.workflow_step_id.in_(step_ids)
+        )
+        for step_id, name in self.sa_session.execute(stmt):
+            if name:
+                defined[step_id].add(f"input:{normalize_io_name(name)}")
+        return defined
 
     def _submission_inputs(
         self, jobs: dict[int, JobRecord], icjs: dict[int, ImplicitCollectionJobsRecord]
