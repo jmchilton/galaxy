@@ -17,6 +17,7 @@ import {
     cleanUrlQuery,
     type ComparisonUrlValue,
     DEFAULT_LIMIT,
+    type DisplayKeyQuery,
     displayStorageKey,
     PAGE_SIZES,
     parseComparisonQuery,
@@ -49,7 +50,13 @@ const kind = computed(() => request.value?.kind);
 const urlParams = computed(() => (request.value?.params ?? {}) as Record<string, ComparisonUrlValue>);
 
 const table = ref<ComparisonTableModel>();
-const storageKey = computed(() => (table.value ? displayStorageKey(table.value.query) : undefined));
+// With `instance` the URL names a workflow version, so wait for the echoed stored workflow id.
+const storageKey = computed(() => {
+    if (request.value && urlParams.value.instance !== true) {
+        return displayStorageKey({ kind: request.value.kind, ...request.value.params } as DisplayKeyQuery);
+    }
+    return table.value ? displayStorageKey(table.value.query) : undefined;
+});
 const { transpose, columnDisplay, visibleColumns, toggleColumn, resetColumns } = useComparisonDisplay(
     storageKey,
     table,

@@ -1,10 +1,11 @@
 import { getLocalVue } from "@tests/vitest/helpers";
 import { mount, type VueWrapper } from "@vue/test-utils";
 import flushPromises from "flush-promises";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useServerMock } from "@/api/client/__mocks__";
 import type { ComparisonTable as Table } from "@/api/comparisons";
+import { useHashedUserId } from "@/composables/hashedUserIdFromUserStore";
 
 import STEP_RUNS from "./test-data/step_runs.json";
 
@@ -12,7 +13,11 @@ import ComparisonTable from "./ComparisonTable.vue";
 import StepRunsTab from "./StepRunsTab.vue";
 
 const TABLE = STEP_RUNS as unknown as Table;
+const STORED_WORKFLOW_ID = TABLE.query.kind === "step_runs" ? TABLE.query.workflow_id : "";
 const { server, http } = useServerMock();
+
+// Display preferences persist per user; use the real storage.
+vi.unmock("@/composables/userLocalStorage");
 
 let requests: { workflowId: string; query: URLSearchParams }[];
 let total: string;
@@ -20,6 +25,7 @@ let fail: boolean;
 let wrapper: VueWrapper | undefined;
 
 beforeEach(() => {
+    localStorage.clear();
     requests = [];
     total = String(TABLE.rows.length);
     fail = false;
@@ -46,8 +52,12 @@ afterEach(() => {
     wrapper = undefined;
 });
 
-async function mountTab(props: Record<string, unknown> = {}) {
+async function mountTab(props: Record<string, unknown> = {}, storedPrefs?: Record<string, unknown>) {
     const localVue = getLocalVue();
+    if (storedPrefs) {
+        const { hashedUserId } = useHashedUserId();
+        localStorage.setItem(`comparison-display-${hashedUserId.value}`, JSON.stringify(storedPrefs));
+    }
     wrapper = mount(StepRunsTab as object, {
         props: {
             workflowId: "wf-instance",
@@ -108,6 +118,25 @@ describe("StepRunsTab", () => {
         expect(requests).toHaveLength(2);
         expect(requests[1]!.query.getAll("metadata_elements")).toEqual(["data_lines"]);
         expect(requests[1]!.query.get("offset")).toBe("0");
+    });
+
+    it("applies stored display preferences of this step's label to the first request", async () => {
+        const tab = await mountTab(
+            { storedWorkflowId: STORED_WORKFLOW_ID },
+            {
+                [`step_runs:${STORED_WORKFLOW_ID}:second_cat`]: {
+                    columnDisplay: { "output:out_file1": "meta:data_lines" },
+                    transpose: true,
+                },
+                [`step_runs:${STORED_WORKFLOW_ID}:other_step`]: { columnDisplay: { "input:input1": "meta:dbkey" } },
+                [`step_runs:another_workflow:second_cat`]: { hidden: ["state"] },
+            },
+        );
+        expect(requests).toHaveLength(1);
+        expect(requests[0]!.query.getAll("metadata_elements")).toEqual(["data_lines"]);
+        const table = tab.findComponent(ComparisonTable);
+        expect(table.props("transpose")).toBe(true);
+        expect(table.props("visibleColumns")).toContain("state");
     });
 
     it("hides a column the chooser toggles", async () => {

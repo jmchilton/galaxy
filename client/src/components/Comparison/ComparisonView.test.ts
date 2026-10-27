@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HttpResponse, useServerMock } from "@/api/client/__mocks__";
 import type { ComparisonTable as Table } from "@/api/comparisons";
+import { useHashedUserId } from "@/composables/hashedUserIdFromUserStore";
 
 import STEP_RUNS from "./test-data/step_runs.json";
 
@@ -15,6 +16,9 @@ import ComparisonView from "./ComparisonView.vue";
 const STEP_TABLE = STEP_RUNS as unknown as Table;
 const { server, http } = useServerMock();
 
+// Display preferences persist per user; use the real storage.
+vi.unmock("@/composables/userLocalStorage");
+
 let requests: { path: string; query: URLSearchParams }[];
 let wrapper: VueWrapper | undefined;
 
@@ -23,6 +27,7 @@ function tableFor(query: Record<string, unknown>): Table {
 }
 
 beforeEach(() => {
+    localStorage.clear();
     requests = [];
     const record = (request: Request) => {
         const url = new URL(request.url);
@@ -60,10 +65,14 @@ afterEach(() => {
     wrapper = undefined;
 });
 
-async function mountView(query: Record<string, string | string[]>) {
+async function mountView(query: Record<string, string | string[]>, storedPrefs?: Record<string, unknown>) {
     const router = createTestRouter();
     const replace = vi.spyOn(router, "replace").mockResolvedValue(undefined);
     const localVue = getLocalVue();
+    if (storedPrefs) {
+        const { hashedUserId } = useHashedUserId();
+        localStorage.setItem(`comparison-display-${hashedUserId.value}`, JSON.stringify(storedPrefs));
+    }
     wrapper = mount(ComparisonView as object, {
         props: { query },
         global: { ...withPlugins(localVue, router), stubs: { ...localVue.stubs, ComparisonTable: true } },
@@ -124,6 +133,19 @@ describe("ComparisonView", () => {
         expect(versions.findAll("input").map((input) => input.attributes("value"))).toEqual(["1.0", "2.0"]);
         expect(view.find(".comparison-filter-history").exists()).toBe(true);
         expect(view.find(".breadcrumb-heading").text()).toContain("Runs of Concatenate");
+    });
+
+    it("applies stored display preferences named by the URL to the first request", async () => {
+        await mountView(
+            { kind: "tool_runs", tool_id: "cat1" },
+            {
+                "tool_runs:cat1": { columnDisplay: { "output:out_file1": "meta:data_lines" } },
+                "tool_runs:cat2": { columnDisplay: { "input:input1": "meta:dbkey" } },
+            },
+        );
+        const [only, ...rest] = comparisonRequests();
+        expect(rest).toHaveLength(0);
+        expect(only!.query.getAll("metadata_elements")).toEqual(["data_lines"]);
     });
 
     it.each([

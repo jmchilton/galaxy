@@ -88,8 +88,14 @@ export function comparisonPath(kind: ComparisonKind, query: Record<string, Compa
     return `/comparisons?${search.toString()}`;
 }
 
+/** What names a comparison: the echoed query, or ids known before fetching. */
+export type DisplayKeyQuery =
+    | Pick<Extract<ComparisonQuery, { kind: "step_runs" }>, "kind" | "workflow_id" | "step_label">
+    | Pick<Extract<ComparisonQuery, { kind: "output_runs" }>, "kind" | "workflow_id">
+    | Pick<Extract<ComparisonQuery, { kind: "tool_runs" }>, "kind" | "tool_id">;
+
 /** Local-storage key for display preferences; the step tab and the page share it. */
-export function displayStorageKey(query: ComparisonQuery): string {
+export function displayStorageKey(query: DisplayKeyQuery): string {
     switch (query.kind) {
         case "step_runs":
             return `step_runs:${query.workflow_id}:${query.step_label}`;

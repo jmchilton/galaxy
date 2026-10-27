@@ -3,13 +3,21 @@ import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 import { defineComponent, h } from "vue";
 
+import { useWorkflowStore } from "@/stores/workflowStore";
+
 import StepAllRunsTab from "./StepAllRunsTab.vue";
 import GTab from "@/components/BaseComponents/GTab.vue";
 import GTabs from "@/components/BaseComponents/GTabs.vue";
 
 const RUNS_STUB = {
     name: "StepRunsTab",
-    props: { workflowId: String, instance: Boolean, stepLabel: String, currentInvocationId: String },
+    props: {
+        workflowId: String,
+        instance: Boolean,
+        storedWorkflowId: String,
+        stepLabel: String,
+        currentInvocationId: String,
+    },
     template: "<div />",
 };
 
@@ -33,6 +41,7 @@ function mountInTabs(props: { graphLabel?: string | null; invocationLabel?: stri
             }),
     });
     const localVue = getLocalVue();
+    useWorkflowStore().workflowsByInstanceId = { "wf-instance": { id: "stored-wf" } } as never;
     return mount(Host, { global: { ...localVue, stubs: { ...localVue.stubs, StepRunsTab: RUNS_STUB } } });
 }
 
@@ -58,6 +67,7 @@ describe("StepAllRunsTab", () => {
         expect(runs.props()).toEqual({
             workflowId: "wf-instance",
             instance: true,
+            storedWorkflowId: "stored-wf",
             stepLabel: "count_reads",
             currentInvocationId: "inv-1",
         });

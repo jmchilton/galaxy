@@ -4,6 +4,7 @@ import { computed } from "vue";
 import type { WorkflowInvocationElementView } from "@/api/invocations";
 import type { WorkflowStepTyped } from "@/api/workflows";
 import type { GraphStep } from "@/composables/useInvocationGraph";
+import { useWorkflowStore } from "@/stores/workflowStore";
 
 import StepRunsTab from "./StepRunsTab.vue";
 import GTab from "@/components/BaseComponents/GTab.vue";
@@ -13,6 +14,11 @@ const props = defineProps<{
     workflowStep: WorkflowStepTyped;
     graphStep?: GraphStep;
 }>();
+
+// The invocation page has loaded the workflow; this reads the store without fetching.
+const storedWorkflowId = computed(() =>
+    useWorkflowStore().getStoredWorkflowIdByInstanceId(props.invocation.workflow_id),
+);
 
 // The editor step carries the label; the invocation step has it once scheduled.
 const stepLabel = computed(
@@ -30,6 +36,7 @@ const stepLabel = computed(
         <StepRunsTab
             :workflow-id="invocation.workflow_id"
             instance
+            :stored-workflow-id="storedWorkflowId"
             :step-label="stepLabel"
             :current-invocation-id="invocation.id" />
     </GTab>

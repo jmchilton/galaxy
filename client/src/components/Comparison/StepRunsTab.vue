@@ -20,17 +20,25 @@ const props = withDefaults(
         /** StoredWorkflow id, or a Workflow version id with `instance`. */
         workflowId: string;
         instance?: boolean;
+        /** The StoredWorkflow behind an `instance` id, if known; display preferences load before the first fetch. */
+        storedWorkflowId?: string;
         stepLabel?: string | null;
         /** The invocation being viewed, highlighted in the table. */
         currentInvocationId?: string;
     }>(),
-    { instance: false, stepLabel: undefined, currentInvocationId: undefined },
+    { instance: false, storedWorkflowId: undefined, stepLabel: undefined, currentInvocationId: undefined },
 );
 
 const offset = ref(0);
 const table = ref<ComparisonTableModel>();
-// Keyed by the stored workflow the server resolved, so every version shares one setting.
-const storageKey = computed(() => (table.value ? displayStorageKey(table.value.query) : undefined));
+// Keyed by the stored workflow, so every version shares one setting; the echoed id only when not given.
+const storageKey = computed(() => {
+    const storedId = props.storedWorkflowId ?? (props.instance ? undefined : props.workflowId);
+    if (storedId && props.stepLabel) {
+        return displayStorageKey({ kind: "step_runs", workflow_id: storedId, step_label: props.stepLabel });
+    }
+    return table.value ? displayStorageKey(table.value.query) : undefined;
+});
 const { transpose, columnDisplay, visibleColumns, toggleColumn, resetColumns } = useComparisonDisplay(
     storageKey,
     table,
