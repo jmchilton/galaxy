@@ -87,6 +87,12 @@ const paginationPage = computed<number>({
                                 last-number
                                 hide-goto-end-buttons
                                 class="mb-0 mr-2" />
+                            <span
+                                v-if="currentJob.copied_from_job_id"
+                                class="badge badge-info tool-execution-job-reused mr-2"
+                                title="Job cache: copied from an earlier job">
+                                reused
+                            </span>
                         </template>
                     </JobHeader>
                 </template>
