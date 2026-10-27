@@ -133,9 +133,10 @@ function updateStored(v: boolean) {
         </div>
 
         <div class="inspector-content">
+            <!-- mb-3 clears the tool form header's underlay, which reaches 1rem above it -->
             <GButton
                 v-if="compareRunsLink"
-                class="node-inspector-compare-runs mb-2"
+                class="node-inspector-compare-runs mb-3"
                 size="small"
                 outline
                 :to="compareRunsLink"
