@@ -1,5 +1,5 @@
 import type { AnyHistory, components, HistorySortByLiteral, HistorySummary } from "@/api";
-import { GalaxyApi } from "@/api";
+import { GalaxyApi, totalMatches } from "@/api";
 import type { ArchivedHistorySummary } from "@/api/histories.archived";
 import { useUserStore } from "@/stores/userStore";
 import { rethrowSimple } from "@/utils/simple-error";
@@ -236,7 +236,7 @@ export async function getHistories<T = AnyHistoryEntry>(
         rethrowSimple(error);
     }
 
-    return { data: data as T[], total: parseInt(response.headers.get("total_matches") ?? "0") };
+    return { data: data as T[], total: totalMatches(response) };
 }
 
 /**
@@ -326,7 +326,7 @@ export async function getArchivedHistories(
         rethrowSimple(error);
     }
 
-    return { data: data as ArchivedHistorySummary[], total: parseInt(response.headers.get("total_matches") ?? "0") };
+    return { data: data as ArchivedHistorySummary[], total: totalMatches(response) };
 }
 
 /**

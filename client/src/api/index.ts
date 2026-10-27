@@ -363,3 +363,8 @@ export type ShareOption = components["schemas"]["SharingOptions"];
 export function isShareableHistoryWithStatus(item: AnyShareableItemWithStatus): item is ShareableHistoryWithStatus {
     return item.extra != null && "accessible_count" in item.extra;
 }
+
+/** Rows matching a paged index query, from its `total_matches` header. */
+export function totalMatches(response: Response): number {
+    return parseInt(response.headers.get("total_matches") ?? "0", 10) || 0;
+}
