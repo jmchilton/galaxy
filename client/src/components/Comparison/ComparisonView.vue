@@ -107,7 +107,7 @@ const states = computed({
     set: (value: string[]) => updateUrl({ states: value }),
 });
 const versions = computed({
-    get: () => (kind.value === "step_runs" ? listParam("versions") : undefined),
+    get: () => (kind.value === "tool_runs" ? undefined : listParam("versions")),
     set: (value: string[] | undefined) => updateUrl({ versions: value }),
 });
 

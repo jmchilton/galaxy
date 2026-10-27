@@ -52,6 +52,7 @@ beforeEach(() => {
             const table = {
                 ...tableFor({ kind: "output_runs", output_labels: query.getAll("output_labels") }),
                 output_labels_available: ["a", "b"],
+                versions_available: [0, 1],
             };
             return response(200).json(table, { headers: { total_matches: "6" } });
         }),
@@ -261,26 +262,24 @@ describe("ComparisonView", () => {
         });
     });
 
-    it("offers the step's workflow versions and writes the filter to the URL", async () => {
-        const { view, replace } = await mountView({
-            kind: "step_runs",
-            workflow_id: "wf1",
-            step_label: "second_cat",
-            versions: "0",
-        });
-        expect(comparisonRequests()[0]!.query.getAll("versions")).toEqual(["0"]);
-        const versions = view.findAll(".comparison-filter-versions input");
-        expect(
-            versions.map((input) => [input.attributes("value"), (input.element as HTMLInputElement).checked]),
-        ).toEqual([
-            ["0", true],
-            ["1", false],
-        ]);
-        await view.find(".comparison-filter-versions input[value='1']").setValue(true);
-        expect(replace).toHaveBeenLastCalledWith({
-            query: { kind: "step_runs", workflow_id: "wf1", step_label: "second_cat", versions: ["0", "1"] },
-        });
-    });
+    it.each<Record<string, string>>([{ kind: "step_runs", step_label: "second_cat" }, { kind: "output_runs" }])(
+        "offers the workflow versions of $kind and writes the filter to the URL",
+        async (base) => {
+            const { view, replace } = await mountView({ ...base, workflow_id: "wf1", versions: "0" });
+            expect(comparisonRequests()[0]!.query.getAll("versions")).toEqual(["0"]);
+            const versions = view.findAll(".comparison-filter-versions input");
+            expect(
+                versions.map((input) => [input.attributes("value"), (input.element as HTMLInputElement).checked]),
+            ).toEqual([
+                ["0", true],
+                ["1", false],
+            ]);
+            await view.find(".comparison-filter-versions input[value='1']").setValue(true);
+            expect(replace).toHaveBeenLastCalledWith({
+                query: { ...base, workflow_id: "wf1", versions: ["0", "1"] },
+            });
+        },
+    );
 
     it("writes paging and page size to the URL", async () => {
         const { view, replace } = await mountView({ kind: "step_runs", workflow_id: "wf1", step_label: "s" });
