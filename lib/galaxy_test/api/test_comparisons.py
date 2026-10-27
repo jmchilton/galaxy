@@ -127,6 +127,9 @@ inputs:
   input1: data
   run_cat:
     type: boolean
+outputs:
+  cat_out:
+    outputSource: maybe_cat/out_file1
 steps:
   maybe_cat:
     tool_id: cat1
@@ -619,6 +622,13 @@ class TestComparisonsApi(ApiTestCase):
             (skipped_tool_row,) = [row for row in tool_rows if row["state"] == "skipped"]
             assert skipped_tool_row["cells"]["output:out_file1"] == {"type": "missing", "reason": "skipped"}
 
+            # a workflow output the skipped step produced reads the same
+            for inline in (True, False):
+                output_rows = self._output_runs_table(workflow_id, inline_expression_values=inline)["rows"]
+                assert [row["run"]["id"] for row in output_rows] == [ran_id, skipped_id]
+                assert output_rows[0]["cells"]["output:cat_out"]["type"] == "dataset"
+                assert output_rows[1]["cells"]["output:cat_out"] == {"type": "missing", "reason": "skipped"}
+
     @skip_without_tool("data_optional")
     def test_step_runs_unsupplied_optional_input_is_in_version(self):
         with self.dataset_populator.test_history() as history_id:
@@ -658,13 +668,10 @@ class TestComparisonsApi(ApiTestCase):
             assert [column["key"] for column in table["columns"]] == ["output:inner_out"]
             assert table["columns"][0]["present_in_versions"] is None
             assert ran_row["cells"]["output:inner_out"]["type"] == "dataset"
-            # the subworkflow still runs, its skipped inner step recording a null placeholder
-            skipped_cell = skipped_row["cells"]["output:inner_out"]
-            assert (skipped_cell["type"], skipped_cell["value"], skipped_cell["source"]) == (
-                "value",
-                None,
-                "expression_json",
-            )
+            # the subworkflow still runs; its output is the skipped inner step's placeholder
+            assert skipped_row["cells"]["output:inner_out"] == {"type": "missing", "reason": "skipped"}
+            raw = self._step_runs_table(workflow_id, "maybe_inner", inline_expression_values=False)
+            assert raw["rows"][1]["cells"]["output:inner_out"] == {"type": "missing", "reason": "skipped"}
 
     @skip_without_tool("multi_data_param")
     def test_tool_runs_multiple_data_input(self):

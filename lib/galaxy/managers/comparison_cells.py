@@ -122,10 +122,15 @@ class ComparisonCellBuilder:
         hdas, hdcas = self.load_items(refs, with_metadata=bool(metadata_elements))
         accessible_dataset_ids, accessible_history_ids = self._accessible(hdas, hdcas, access)
         inaccessible = ItemCell(MissingCell(reason="inaccessible"), [])
+        skipped = ItemCell(MissingCell(reason="skipped"), [])
         item_cells: dict[ItemRef, ItemCell] = {}
         for hda in hdas.values():
             if hda.dataset_id not in accessible_dataset_ids:
                 item_cells[ItemRef("hda", hda.id)] = inaccessible
+                continue
+            # a skipped step's placeholder output, in every mode and wherever it is used
+            if hda.is_skipped:
+                item_cells[ItemRef("hda", hda.id)] = skipped
                 continue
             cell = self.dataset_cell(hda, metadata_elements, inline_expression_values)
             item_cells[ItemRef("hda", hda.id)] = ItemCell(cell, self.metadata_keys(hda))
