@@ -175,6 +175,7 @@ describe("ComparisonTable", () => {
         expect(output.find(".comparison-showing").text()).toBe("name");
         const items = output.findAll("[role='menuitemradio']");
         expect(items.map((i) => i.text())).toEqual(["Name with popover", "Value", "data_lines", "dbkey"]);
+        expect(items.map((i) => i.classes().includes("active"))).toEqual([true, false, false, false]);
         await items[2]!.trigger("click");
         expect(wrapper.emitted("update:columnDisplay")).toEqual([[{ "output:out_file1": "meta:data_lines" }]]);
     });

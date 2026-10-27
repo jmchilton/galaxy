@@ -67,6 +67,7 @@ function choose(display: CellDisplay, disabled?: boolean) {
                         :key="option.display"
                         role="menuitemradio"
                         :aria-checked="display === option.display ? 'true' : 'false'"
+                        :active="display === option.display"
                         :disabled="option.disabled"
                         @click="choose(option.display, option.disabled)">
                         {{ option.label }}
@@ -79,6 +80,7 @@ function choose(display: CellDisplay, disabled?: boolean) {
                         :key="option.display"
                         role="menuitemradio"
                         :aria-checked="display === option.display ? 'true' : 'false'"
+                        :active="display === option.display"
                         @click="choose(option.display)">
                         <code>{{ option.label }}</code>
                     </GDropdownItem>
