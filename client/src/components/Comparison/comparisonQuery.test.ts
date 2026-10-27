@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { cleanUrlQuery, comparisonPath, displayStorageKey, parseComparisonQuery } from "./comparisonQuery";
+import {
+    cleanUrlQuery,
+    comparisonPath,
+    displayStorageKey,
+    parseComparisonQuery,
+    STATE_OPTIONS,
+} from "./comparisonQuery";
 
 describe("parseComparisonQuery", () => {
     it.each([
@@ -76,5 +82,21 @@ describe("displayStorageKey", () => {
         expect(
             displayStorageKey({ kind: "tool_runs", tool_id: "toolshed.g2.bx.psu.edu/repos/devteam/cat/cat1/2.0" }),
         ).toBe("tool_runs:toolshed.g2.bx.psu.edu/repos/devteam/cat/cat1");
+    });
+});
+
+describe("STATE_OPTIONS", () => {
+    it("offers every state a row of each kind can show, once", () => {
+        expect(STATE_OPTIONS.step_runs).toEqual(
+            expect.arrayContaining(["new", "ready", "scheduled", "waiting", "finishing", "failed", "stop"]),
+        );
+        expect(STATE_OPTIONS.tool_runs).toEqual(expect.arrayContaining(["waiting", "finishing", "failed", "stop"]));
+        expect(STATE_OPTIONS.tool_runs).not.toContain("ready");
+        expect(STATE_OPTIONS.output_runs).toEqual(
+            expect.arrayContaining(["new", "requires_materialization", "cancelling", "completed"]),
+        );
+        for (const options of Object.values(STATE_OPTIONS)) {
+            expect(new Set(options).size).toBe(options.length);
+        }
     });
 });

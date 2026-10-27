@@ -58,7 +58,14 @@ export function offeredOptions(
     selected: readonly string[],
     text: (value: string) => string = (value) => value,
 ): { text: string; value: string }[] {
-    return [...new Set([...available, ...selected])].map((value) => ({ text: text(value), value }));
+    const seen = new Set<string>();
+    return [...new Set([...available, ...selected])].map((value) => {
+        const name = text(value);
+        // e.g. job states error and failed both read "failed"
+        const option = { text: seen.has(name) ? `${name} (${value})` : name, value };
+        seen.add(name);
+        return option;
+    });
 }
 
 export const ROLE_LABELS: Record<ComparisonColumn["role"], string> = {
