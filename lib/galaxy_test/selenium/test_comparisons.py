@@ -159,6 +159,8 @@ class TestComparisons(SeleniumTestCase):
         reused_id = self.workflow_populator.invoke_workflow_and_wait(
             summary.workflow_id, request={**summary.workflow_request, "use_cached_job": True}
         ).json()["id"]
+        # a job cache miss would otherwise only show as a timeout waiting for the reused badge
+        self._assert_jobs_reused(reused_id, count=2)
         self.get(f"comparisons?kind=step_runs&workflow_id={summary.workflow_id}&step_label=mapped_cat")
 
         comparisons = self.components.comparisons
@@ -196,6 +198,13 @@ class TestComparisons(SeleniumTestCase):
         ).json()["id"]
         assert len(older_ids) == 2 and newest_id not in older_ids
         return workflow_id, older_ids, newest_id
+
+    def _assert_jobs_reused(self, invocation_id: str, count: int):
+        jobs = self.dataset_populator.invocation_jobs(invocation_id)
+        assert len(jobs) == count, jobs
+        for job in jobs:
+            details = self.dataset_populator.get_job_details(job["id"], full=True).json()
+            assert details["copied_from_job_id"], f"Expected the job cache to reuse a job: {details}"
 
     def _screenshot_settled(self, label: str, subject):
         """Screenshot with subject in view, once loading spinners are gone and fade-ins have run."""
