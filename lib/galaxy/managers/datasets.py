@@ -5,6 +5,7 @@ Manager and Serializer for Datasets.
 import glob
 import logging
 import os
+from collections.abc import Iterable
 from typing import (
     Any,
     TypeVar,
@@ -50,6 +51,8 @@ from galaxy.structured_app import MinimalManagerApp
 from galaxy.util.hash_util import memory_bound_hexdigest
 
 log = logging.getLogger(__name__)
+
+METADATA_KEY_PREFIX = "metadata_"
 
 T = TypeVar("T")
 
@@ -736,18 +739,19 @@ class _UnflattenedMetadataDatasetAssociationSerializer(base.ModelSerializer[T], 
                 )
         return meta_files
 
-    def serialize_metadata(self, item, key, excluded=None, **context):
+    def serialize_metadata(self, item, key, excluded=None, included: Iterable[str] | None = None, **context):
         """
-        Cycle through metadata and return as dictionary.
+        Cycle through metadata and return as dictionary; ``included`` limits it to those names.
         """
         dataset_assoc = item
         # dbkey is a repeat actually (metadata_dbkey == genome_build)
         # excluded = [ 'dbkey' ] if excluded is None else excluded
         excluded = [] if excluded is None else excluded
+        included = None if included is None else set(included)
 
         metadata = {}
         for name, spec in dataset_assoc.metadata.spec.items():
-            if name in excluded:
+            if name in excluded or (included is not None and name not in included):
                 continue
             val = dataset_assoc.metadata.get(name)
             # NOTE: no files
@@ -825,12 +829,21 @@ class DatasetAssociationSerializer(_UnflattenedMetadataDatasetAssociationSeriali
         # TODO: remove these when metadata is sub-object
         KEYS_HANDLED_SEPARATELY = ("metadata",)
         left_to_handle = self._pluck_from_list(keys, KEYS_HANDLED_SEPARATELY)
+        # a ``metadata_<name>`` key asks for that one element
+        metadata_names = [
+            key[len(METADATA_KEY_PREFIX) :]
+            for key in keys
+            if key.startswith(METADATA_KEY_PREFIX)
+            and key not in self.serializers
+            and key not in self.serializable_keyset
+        ]
         serialized = super().serialize(item, keys, **context)
 
         # add metadata directly to the dict instead of as a sub-object
         if "metadata" in left_to_handle:
-            metadata = self._prefixed_metadata(item)
-            serialized.update(metadata)
+            serialized.update(self._prefixed_metadata(item))
+        elif metadata_names:
+            serialized.update(self._prefixed_metadata(item, included=metadata_names))
         return serialized
 
     # TODO: this is more util/gen. use
@@ -847,18 +860,18 @@ class DatasetAssociationSerializer(_UnflattenedMetadataDatasetAssociationSeriali
                 pass
         return found
 
-    def _prefixed_metadata(self, dataset_assoc):
+    def _prefixed_metadata(self, dataset_assoc, included: Iterable[str] | None = None):
         """
         Adds (a prefixed version of) the DatasetInstance metadata to the dict,
         prefixing each key with 'metadata_'.
         """
         # build the original, nested dictionary
-        metadata = self.serialize_metadata(dataset_assoc, "metadata")
+        metadata = self.serialize_metadata(dataset_assoc, "metadata", included=included)
 
         # prefix each key within and return
         prefixed = {}
         for key, val in metadata.items():
-            prefixed_key = f"metadata_{key}"
+            prefixed_key = f"{METADATA_KEY_PREFIX}{key}"
             prefixed[prefixed_key] = val
         return prefixed
 

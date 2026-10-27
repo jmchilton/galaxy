@@ -321,6 +321,18 @@ class TestDatasetsApi(ApiTestCase):
         summary = self._show_summary(hda["id"])
         assert not [key for key in summary if key.startswith("metadata_")]
 
+    def test_show_single_metadata_key(self, history_id):
+        hda = self.dataset_populator.new_dataset(history_id, content="1\t2\n3\t4\n", file_type="tabular", wait=True)
+        keys = "name,metadata_columns,metadata_not_an_element"
+        shown = self.dataset_populator.get_history_dataset_details(history_id, dataset=hda, keys=keys)
+        assert shown == {"name": hda["name"], "metadata_columns": 2}
+        shown = self._show_summary(hda["id"], keys="metadata_columns")
+        assert [key for key in shown if key.startswith("metadata_")] == ["metadata_columns"]
+        both = self.dataset_populator.get_history_dataset_details(
+            history_id, dataset=hda, keys="metadata_columns,metadata"
+        )
+        assert set(both) == TABULAR_METADATA_KEYS
+
     def _show_summary(self, dataset_id: str, **params) -> dict[str, Any]:
         response = self._get(f"datasets/{dataset_id}", data={"view": "summary", **params})
         self._assert_status_code_is(response, 200)
