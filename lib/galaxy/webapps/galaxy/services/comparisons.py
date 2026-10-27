@@ -1,13 +1,18 @@
+from typing import TypeVar
+
 from galaxy.managers.comparison_cells import ComparisonAccess
 from galaxy.managers.comparisons import ComparisonsManager
 from galaxy.managers.context import ProvidesUserContext
 from galaxy.managers.workflows import WorkflowsManager
 from galaxy.schema.comparisons import (
     ComparisonTable,
+    OutputRunsQuery,
     StepRunsQuery,
 )
 from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.webapps.galaxy.services.base import ServiceBase
+
+WorkflowQueryT = TypeVar("WorkflowQueryT", StepRunsQuery, OutputRunsQuery)
 
 
 class ComparisonsService(ServiceBase):
@@ -26,14 +31,33 @@ class ComparisonsService(ServiceBase):
     def step_runs(
         self, trans: ProvidesUserContext, query: StepRunsQuery, instance: bool = False
     ) -> tuple[ComparisonTable, int]:
+        query = self._with_stored_workflow_id(trans, query, instance)
+        access = _access(trans)
+        if access is None:
+            return _empty(query)
+        return self._comparisons_manager.step_runs(access, query.workflow_id, query)
+
+    def output_runs(
+        self, trans: ProvidesUserContext, query: OutputRunsQuery, instance: bool = False
+    ) -> tuple[ComparisonTable, int]:
+        query = self._with_stored_workflow_id(trans, query, instance)
+        access = _access(trans)
+        if access is None:
+            return _empty(query)
+        return self._comparisons_manager.output_runs(access, query.workflow_id, query)
+
+    def _with_stored_workflow_id(
+        self, trans: ProvidesUserContext, query: WorkflowQueryT, instance: bool
+    ) -> WorkflowQueryT:
+        """Check the workflow is accessible and normalize ``workflow_id`` to the StoredWorkflow id."""
         stored_workflow = self._workflows_manager.get_stored_accessible_workflow(
             trans, query.workflow_id, by_stored_id=not instance
         )
-        query = query.model_copy(update={"workflow_id": stored_workflow.id})
-        access = _access(trans)
-        if access is None:
-            return ComparisonTable(query=query, columns=[], rows=[]), 0
-        return self._comparisons_manager.step_runs(access, stored_workflow.id, query)
+        return query.model_copy(update={"workflow_id": stored_workflow.id})
+
+
+def _empty(query: StepRunsQuery | OutputRunsQuery) -> tuple[ComparisonTable, int]:
+    return ComparisonTable(query=query, columns=[], rows=[]), 0
 
 
 def _access(trans: ProvidesUserContext) -> ComparisonAccess | None:
