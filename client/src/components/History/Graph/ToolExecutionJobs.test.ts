@@ -1,0 +1,80 @@
+import { getLocalVue } from "@tests/vitest/helpers";
+import { mount } from "@vue/test-utils";
+import flushPromises from "flush-promises";
+import { beforeEach, describe, expect, it } from "vitest";
+
+import { HttpResponse, useServerMock } from "@/api/client/__mocks__";
+
+import ToolExecutionJobs from "./ToolExecutionJobs.vue";
+
+const { server, http } = useServerMock();
+
+const TABS_STUB = { name: "JobDetailsTabs", props: ["jobId", "infoTitle", "infoIcon"], template: "<div />" };
+const HEADER_STUB = { name: "JobHeader", props: ["jobId"], template: "<div><slot name='pagination' /></div>" };
+
+function toolRequest(jobIds: string[]) {
+    return {
+        id: "tr1",
+        request: {},
+        state: "submitted",
+        implicit_collections: [],
+        jobs: jobIds.map((id) => ({ src: "job", id })),
+    };
+}
+
+let failRequest: boolean;
+let jobIds: string[];
+
+beforeEach(() => {
+    failRequest = false;
+    jobIds = ["j1", "j2", "j3"];
+    server.use(
+        http.untyped.get("/api/tool_requests/:id", () =>
+            failRequest
+                ? HttpResponse.json({ err_msg: "nope", err_code: 500 }, { status: 500 })
+                : HttpResponse.json(toolRequest(jobIds)),
+        ),
+    );
+});
+
+async function mountJobs(props: Record<string, unknown> = {}) {
+    const localVue = getLocalVue();
+    const wrapper = mount(ToolExecutionJobs as object, {
+        props: { toolExecutionId: "tr1", ...props },
+        global: { ...localVue, stubs: { ...localVue.stubs, JobDetailsTabs: TABS_STUB, JobHeader: HEADER_STUB } },
+    });
+    await flushPromises();
+    return wrapper;
+}
+
+describe("ToolExecutionJobs", () => {
+    it("shows the first job of a tool execution and pages through the others", async () => {
+        const wrapper = await mountJobs({ infoTitle: "Step" });
+        const tabs = wrapper.findComponent(TABS_STUB);
+        expect(tabs.props("jobId")).toBe("j1");
+        expect(tabs.props("infoTitle")).toBe("Step");
+        await wrapper.find("button[aria-label='Go to page 3']").trigger("click");
+        expect(wrapper.findComponent(TABS_STUB).props("jobId")).toBe("j3");
+        expect(wrapper.findComponent(HEADER_STUB).props("jobId")).toBe("j3");
+    });
+
+    it("shows no pager for a single job", async () => {
+        jobIds = ["j1"];
+        const wrapper = await mountJobs();
+        expect(wrapper.findComponent(TABS_STUB).props("jobId")).toBe("j1");
+        expect(wrapper.find("button[aria-label='Go to page 2']").exists()).toBe(false);
+    });
+
+    it("explains a tool execution without jobs", async () => {
+        jobIds = [];
+        const wrapper = await mountJobs();
+        expect(wrapper.text()).toContain("No job associated with this tool execution.");
+        expect(wrapper.findComponent(TABS_STUB).exists()).toBe(false);
+    });
+
+    it("explains a failed load", async () => {
+        failRequest = true;
+        const wrapper = await mountJobs();
+        expect(wrapper.text()).toContain("Failed to load tool execution details.");
+    });
+});
