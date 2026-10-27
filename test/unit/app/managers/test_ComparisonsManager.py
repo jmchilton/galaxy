@@ -15,7 +15,10 @@ from galaxy.managers.comparison_cells import (
     inlinable_expression,
     scalar_metadata_keys,
 )
-from galaxy.managers.comparison_records import ComparisonRecordLoader
+from galaxy.managers.comparison_records import (
+    ComparisonRecordLoader,
+    LabelledStep,
+)
 from galaxy.managers.comparison_states import SUMMARY_STATES
 from galaxy.managers.comparisons import ComparisonsManager
 from galaxy.managers.hdas import HDASerializer
@@ -141,6 +144,29 @@ class TestComparisonsManager(BaseTestCase):
                 shown_states[row.run.id] = state
         # every batch matches exactly the state it shows
         assert None not in shown_states.values()
+
+    def test_labelled_steps_only_versions_with_the_label(self):
+        stored_workflow = model.StoredWorkflow()
+        stored_workflow.user = self.trans.user
+        stored_workflow.name = "relabelled"
+        steps = []
+        for label, step_type in (("before", "data_input"), ("target", "tool")):
+            workflow = model.Workflow()
+            workflow.name = "relabelled"
+            workflow.stored_workflow = stored_workflow
+            step = model.WorkflowStep()
+            step.order_index = 0
+            step.type = step_type
+            step.label = label
+            workflow.steps.append(step)
+            steps.append((workflow, step))
+        stored_workflow.latest_workflow = steps[-1][0]
+        self.session.add(stored_workflow)
+        self.session.commit()
+        records = ComparisonRecordLoader(self.session)
+        workflow, step = steps[1]
+        assert records.labelled_steps(stored_workflow.id, "target") == {workflow.id: LabelledStep(step.id, "tool")}
+        assert records.labelled_steps(stored_workflow.id, "missing") == {}
 
     def test_admin_sees_inaccessible_items(self):
         stored_workflow_id = self._stored_workflow_with_runs(1, mapped=False).id
