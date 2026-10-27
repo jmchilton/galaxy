@@ -1,13 +1,16 @@
 import { getLocalVue } from "@tests/vitest/helpers";
 import { mount } from "@vue/test-utils";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { ComparisonTable as Table, DatasetCell } from "@/api/comparisons";
+import { downloadBlob } from "@/utils/download";
 
 import STEP_RUNS from "./test-data/step_runs.json";
 
 import ComparisonTable from "./ComparisonTable.vue";
 import ListHeader from "@/components/Common/ListHeader.vue";
+
+vi.mock("@/utils/download", () => ({ downloadBlob: vi.fn() }));
 
 const TABLE = STEP_RUNS as unknown as Table;
 const ALL_COLUMNS = ["version", "state", "reused", "history", ...TABLE.columns.map((c) => c.key)];
@@ -308,6 +311,35 @@ describe("ComparisonTable", () => {
         await wrapper.setProps({ table: { ...TABLE, rows: TABLE.rows.slice(1) } } as object);
         expect(selectedRows(wrapper)).toEqual([false, false, false, true, false]);
         expect(wrapper.findComponent(DIFF_STUB).exists()).toBe(false);
+    });
+
+    it("exports the page as shown, as CSV or TSV", async () => {
+        const wrapper = mountTable({
+            visibleColumns: ["state", "output:out_file1"],
+            columnDisplay: { "output:out_file1": "meta:data_lines" },
+        });
+        vi.mocked(downloadBlob).mockClear();
+        await wrapper.find(".comparison-export-csv").trigger("click");
+        const [blob, filename] = vi.mocked(downloadBlob).mock.calls[0]!;
+        expect(filename).toBe("runs_of_second_cat_1-6.csv");
+        const lines = (await blob.text()).split("\r\n");
+        expect(lines[0]).toBe("Invoked,State,out_file1 (output)");
+        expect(lines[2]).toBe(`${TABLE.rows[1]!.create_time},successful,1`);
+        expect(lines).toHaveLength(TABLE.rows.length + 2);
+
+        await wrapper.setProps({ transpose: true } as object);
+        await wrapper.find(".comparison-export-tsv").trigger("click");
+        const [tsv, tsvName] = vi.mocked(downloadBlob).mock.calls[1]!;
+        expect(tsvName).toBe("runs_of_second_cat_1-6.tsv");
+        expect((await tsv.text()).split("\r\n")[1]!.split("\t")).toEqual([
+            "State",
+            "new",
+            "successful",
+            "successful",
+            "successful",
+            "successful",
+            "successful",
+        ]);
     });
 
     it("explains an empty page", () => {
