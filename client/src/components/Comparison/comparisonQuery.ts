@@ -37,7 +37,7 @@ const COMMON_PARAMS = {
 
 /** The URL keys each kind takes: its endpoint's parameters, and no others. */
 const PARAMS = {
-    step_runs: { ...COMMON_PARAMS, workflow_id: "string", instance: "boolean", step_label: "string" },
+    step_runs: { ...COMMON_PARAMS, workflow_id: "string", instance: "boolean", step_label: "string", versions: "list" },
     output_runs: { ...COMMON_PARAMS, workflow_id: "string", instance: "boolean", output_labels: "list" },
     tool_runs: {
         ...COMMON_PARAMS,
