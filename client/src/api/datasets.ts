@@ -7,6 +7,7 @@ import {
     type GalaxyApiPaths,
     type HDADetailed,
     type HistoryItemSummary,
+    totalMatches,
 } from "@/api";
 import { withPrefix } from "@/utils/redirect";
 import { rethrowSimple, rethrowSimpleWithStatus } from "@/utils/simple-error";
@@ -59,11 +60,9 @@ export async function loadDatasets(options: LoadDatasetsOptions): Promise<LoadDa
     if (error) {
         rethrowSimple(error);
     }
-
-    const totalMatches = parseInt(response.headers.get("total_matches") ?? "0", 10) || 0;
     const data = datasets as unknown as HistoryItemSummary[];
 
-    return { data, totalMatches };
+    return { data, totalMatches: totalMatches(response) };
 }
 
 export async function fetchDatasetTextContentDetails(params: { id: string }): Promise<DatasetTextContentDetails> {

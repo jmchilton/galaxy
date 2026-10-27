@@ -1,4 +1,4 @@
-import { type components, GalaxyApi, type GalaxyApiPaths } from "@/api";
+import { type components, GalaxyApi, type GalaxyApiPaths, totalMatches } from "@/api";
 import { rethrowSimple } from "@/utils/simple-error";
 
 export type ArchivedHistorySummary = components["schemas"]["ArchivedHistorySummary"];
@@ -48,17 +48,16 @@ export async function fetchArchivedHistories(options: GetArchivedHistoriesOption
         rethrowSimple(error);
     }
 
-    const totalMatches = parseInt(response.headers.get("total_matches") ?? "0");
     if (params.view === "detailed") {
         return {
             histories: data as ArchivedHistoryDetailed[],
-            totalMatches,
+            totalMatches: totalMatches(response),
         };
     }
 
     return {
         histories: data as ArchivedHistorySummary[],
-        totalMatches,
+        totalMatches: totalMatches(response),
     };
 }
 

@@ -1,3 +1,4 @@
+import { totalMatches } from "@/api";
 import type { components } from "@/api/schema";
 import { rethrowSimple } from "@/utils/simple-error";
 
@@ -94,11 +95,9 @@ export async function loadWorkflows({
     if (error) {
         rethrowSimple(error);
     }
-
-    const totalMatches = parseInt(response.headers.get("Total_matches") || "0", 10) || 0;
     const data = workflows as unknown as WorkflowSummary[];
 
-    return { data, totalMatches };
+    return { data, totalMatches: totalMatches(response) };
 }
 
 export async function getWorkflowInfo(workflowId: string, version?: number, instance?: boolean) {

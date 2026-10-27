@@ -1,7 +1,7 @@
 import { faArrowLeft, faEye, faPlay } from "@fortawesome/free-solid-svg-icons";
 import { useEventBus } from "@vueuse/core";
 
-import { GalaxyApi } from "@/api";
+import { GalaxyApi, totalMatches } from "@/api";
 import type { WorkflowInvocation } from "@/api/invocations";
 import type { StoredWorkflowDetailed } from "@/api/workflows";
 import { useHistoryStore } from "@/stores/historyStore";
@@ -55,8 +55,7 @@ async function getData(
     }
 
     fetchHistories(data);
-    const totalMatches = parseInt(response.headers.get("total_matches") ?? "0");
-    return [data, totalMatches];
+    return [data, totalMatches(response)];
 }
 
 /**

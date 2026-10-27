@@ -1,4 +1,4 @@
-import { type components, GalaxyApi } from "@/api";
+import { type components, GalaxyApi, totalMatches } from "@/api";
 import { rethrowSimple } from "@/utils/simple-error";
 
 export type VisualizationSummary = components["schemas"]["VisualizationSummary"];
@@ -63,7 +63,5 @@ export async function loadVisualizations(options: LoadVisualizationsOptions = {}
         rethrowSimple(error);
     }
 
-    const totalMatches = parseInt(response.headers.get("total_matches") ?? "0", 10) || 0;
-
-    return { data, totalMatches };
+    return { data, totalMatches: totalMatches(response) };
 }
