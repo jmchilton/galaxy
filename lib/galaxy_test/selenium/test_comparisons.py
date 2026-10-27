@@ -44,6 +44,16 @@ class TestComparisons(SeleniumTestCase):
         comparisons.row_detail.wait_for_visible()
         comparisons.row_expand(run_id=newest_id).wait_for_and_click()
 
+        comparisons.row_select(run_id=newest_id).wait_for_and_click()
+        comparisons.row_select(run_id=older_ids[0]).wait_for_and_click()
+        comparisons.compare_selected.wait_for_and_click()
+        comparisons.diff_panel.wait_for_visible()
+        version_line = comparisons.diff_changed_line(key="version").wait_for_visible()
+        assert "v2" in version_line.text and "v1" in version_line.text, version_line.text
+        self.screenshot("comparisons_step_all_runs_diff")
+        comparisons.compare_selected.wait_for_and_click()
+        comparisons.diff_panel.wait_for_absent_or_hidden()
+
         comparisons.transpose_toggle.wait_for_and_click()
         self._assert_transposed(True)
         assert len(comparisons.transposed_run_links.all()) == 3

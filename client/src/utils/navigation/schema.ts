@@ -796,6 +796,10 @@ interface Rootcomparisons extends Component {
     row_link: SelectorTemplate;
     row_expand: SelectorTemplate;
     row_detail: SelectorTemplate;
+    row_select: SelectorTemplate;
+    compare_selected: SelectorTemplate;
+    diff_panel: SelectorTemplate;
+    diff_changed_line: SelectorTemplate;
     transposed_run_links: SelectorTemplate;
     transpose_toggle: SelectorTemplate;
     empty_message: SelectorTemplate;
