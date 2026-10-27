@@ -86,6 +86,18 @@ describe("exportLines", () => {
         });
         expect(lines[2]![2]).toBe("1");
     });
+
+    it("writes an empty input as not supplied and an empty output as no output", () => {
+        const empty = { type: "missing", reason: "no_output" } as const;
+        const row = { ...V2_RUN, cells: { ...V2_RUN.cells, "input:input1": empty, "output:out_file1": empty } };
+        const table = { ...TABLE, rows: [row] };
+        const lines = exportLines(table, {
+            visibleColumns: ["input:input1", "output:out_file1"],
+            transpose: false,
+            displayOf: link,
+        });
+        expect(lines[1]!.slice(-2)).toEqual(["not supplied", "no output"]);
+    });
 });
 
 describe("toDelimited", () => {

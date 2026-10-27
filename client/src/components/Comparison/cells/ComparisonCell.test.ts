@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import type {
     CollectionCell,
     ComparisonCell as Cell,
+    ComparisonColumn,
     ComparisonTable,
     DatasetCell,
     MissingCell,
@@ -30,10 +31,11 @@ function mountCell(
     display: CellDisplay = "link",
     requestedMetadata: string[] = [],
     loading = false,
+    role?: ComparisonColumn["role"],
 ) {
     const localVue = getLocalVue();
     return mount(ComparisonCell as object, {
-        props: { cell, row: { version: 1 }, display, requestedMetadata, loading },
+        props: { cell, row: { version: 1 }, display, role, requestedMetadata, loading },
         global: {
             ...localVue,
             stubs: { ...localVue.stubs, ItemPopoverLink: LINK_STUB, GPopover: POPOVER_STUB, FontAwesomeIcon: true },
@@ -177,6 +179,12 @@ describe("ComparisonCell missing", () => {
         expect(wrapper.find(".badge").text()).toBe(text);
         expect(wrapper.find(".comparison-missing").attributes("title")).toBeTruthy();
         expect(wrapper.findComponent(LINK_STUB).exists()).toBe(false);
+    });
+
+    it("reads an empty input as not supplied", () => {
+        const wrapper = mountCell({ type: "missing", reason: "no_output" }, "link", [], false, "input");
+        expect(wrapper.find(".badge").text()).toBe("not supplied");
+        expect(wrapper.find(".comparison-missing").attributes("title")).toBe("This run did not supply this input");
     });
 
     it("never reveals anything about an inaccessible item", () => {
