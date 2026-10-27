@@ -8,6 +8,7 @@ from galaxy.schema.comparisons import (
     ComparisonTable,
     OutputRunsQuery,
     StepRunsQuery,
+    ToolRunsQuery,
 )
 from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.webapps.galaxy.services.base import ServiceBase
@@ -46,6 +47,12 @@ class ComparisonsService(ServiceBase):
             return _empty(query)
         return self._comparisons_manager.output_runs(access, query.workflow_id, query)
 
+    def tool_runs(self, trans: ProvidesUserContext, query: ToolRunsQuery) -> tuple[ComparisonTable, int]:
+        access = _access(trans)
+        if access is None:
+            return _empty(query)
+        return self._comparisons_manager.tool_runs(access, query)
+
     def _with_stored_workflow_id(
         self, trans: ProvidesUserContext, query: WorkflowQueryT, instance: bool
     ) -> WorkflowQueryT:
@@ -56,7 +63,7 @@ class ComparisonsService(ServiceBase):
         return query.model_copy(update={"workflow_id": stored_workflow.id})
 
 
-def _empty(query: StepRunsQuery | OutputRunsQuery) -> tuple[ComparisonTable, int]:
+def _empty(query: StepRunsQuery | OutputRunsQuery | ToolRunsQuery) -> tuple[ComparisonTable, int]:
     return ComparisonTable(query=query, columns=[], rows=[]), 0
 
 
