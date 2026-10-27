@@ -309,11 +309,13 @@ const tableKey = computed(() => `${props.transpose}:${props.table.rows.map((row)
                     </span>
                 </template>
                 <template v-slot:row-details="{ item }">
-                    <ComparisonRowDetail
-                        :row="item.row"
-                        :columns="table.columns"
-                        :query="table.query"
-                        :current-job-id="currentJobId" />
+                    <div class="comparison-row-detail-pin">
+                        <ComparisonRowDetail
+                            :row="item.row"
+                            :columns="table.columns"
+                            :query="table.query"
+                            :current-job-id="currentJobId" />
+                    </div>
                 </template>
             </GTable>
 
@@ -387,6 +389,17 @@ const tableKey = computed(() => `${props.transpose}:${props.table.rows.map((row)
     :deep(.g-table-details-row td) {
         white-space: normal;
         background: var(--color-grey-100);
+    }
+    // Outranks GTable's compact cell padding, so the pinned detail spans the whole scroller.
+    :deep(.g-table-container .g-table .g-table-details-row > td) {
+        padding: 0;
+    }
+    // Keeps the detail in view as the table scrolls sideways; GTable's container query box spans the scroller.
+    .comparison-row-detail-pin {
+        position: sticky;
+        left: 0;
+        width: 100cqi;
+        container-type: inline-size;
     }
     :deep(.comparison-current-row > td),
     :deep(.comparison-current-cell) {
