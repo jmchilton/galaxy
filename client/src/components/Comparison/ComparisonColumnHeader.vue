@@ -37,7 +37,7 @@ function choose(display: CellDisplay, disabled?: boolean) {
 </script>
 
 <template>
-    <span class="comparison-column-header">
+    <span class="comparison-column-header" :data-column-key="column.key">
         <span class="d-inline-flex align-items-center flex-wrap">
             <ComparisonColumnLabel :column="column" />
             <span v-if="versions.length" class="badge badge-warning ml-1" :title="versionsTitle">
