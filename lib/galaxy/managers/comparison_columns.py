@@ -2,47 +2,37 @@
 
 import re
 from collections import defaultdict
-from collections.abc import (
-    Collection,
-    Mapping,
-)
+from collections.abc import Mapping
 from typing import (
     Any,
     NamedTuple,
+    TypeVar,
 )
 
 from galaxy.schema.comparisons import (
     ComparisonColumn,
     ComparisonColumnRole,
-    MissingReason,
-    ReusedState,
 )
-from galaxy.schema.states import JobState
 
 NEW_PRIMARY_FILE_PREFIX = "__new_primary_file_"
 PART_SEPARATOR = "|__part__|"
-ERROR_STATES = (JobState.ERROR, JobState.FAILED, JobState.DELETED)
-RUNNING_STATES = (JobState.RUNNING, JobState.FINISHING)
-QUEUED_STATES = (JobState.QUEUED, JobState.WAITING, JobState.RESUBMITTED, JobState.UPLOAD)
-OTHER_STATES = (JobState.PAUSED, JobState.STOPPING, JobState.STOPPED, JobState.DELETING)
-# a mapped batch shows the first group any member job is in, else skipped when all are, else ok
-SUMMARY_STATE_GROUPS: tuple[tuple[str, tuple[JobState, ...]], ...] = (
-    (JobState.ERROR.value, ERROR_STATES),
-    (JobState.RUNNING.value, RUNNING_STATES),
-    (JobState.QUEUED.value, QUEUED_STATES),
-    (JobState.NEW.value, (JobState.NEW,)),
-    *((state.value, (state,)) for state in OTHER_STATES),
-)
-SUMMARY_OK_RANK = len(SUMMARY_STATE_GROUPS)
-SUMMARY_SKIPPED_RANK = SUMMARY_OK_RANK + 1
-SUMMARY_STATES = (*(label for label, _ in SUMMARY_STATE_GROUPS), JobState.OK.value, JobState.SKIPPED.value)
 TRAILING_DIGITS = re.compile(r"\d+$")
+IoValueT = TypeVar("IoValueT")
 
 
 class ColumnSpec(NamedTuple):
     key: str
     label: str
     role: ComparisonColumnRole
+
+    @classmethod
+    def of_key(cls, key: str) -> "ColumnSpec":
+        """Column of a role-prefixed key, e.g. ``output:out_file1``."""
+        role, name = key.split(":", 1)
+        column_role: ComparisonColumnRole = (
+            "parameter" if role == "parameter" else "input" if role == "input" else "output"
+        )
+        return cls(key=key, label=name, role=column_role)
 
 
 def normalize_io_name(name: str) -> str:
@@ -52,6 +42,19 @@ def normalize_io_name(name: str) -> str:
     if PART_SEPARATOR in name:
         return name.split(PART_SEPARATOR, 1)[0]
     return name
+
+
+def keyed_io(role: str, items: Mapping[str, IoValueT]) -> dict[str, IoValueT]:
+    """Role-prefix normalized io names; an exact name wins over names folded into it."""
+    keyed: dict[str, IoValueT] = {}
+    for name, ref in items.items():
+        normalized = normalize_io_name(name)
+        key = f"{role}:{normalized}"
+        if normalized == name:
+            keyed[key] = ref
+        else:
+            keyed.setdefault(key, ref)
+    return keyed
 
 
 def multiple_input_members(ids_by_name: Mapping[str, Any]) -> dict[str, list[str]]:
@@ -106,46 +109,3 @@ def align_columns(declared: Mapping[int, list[ColumnSpec]], newest_version: int)
         )
         for key in order
     ]
-
-
-def missing_reason(
-    column_in_version: bool, step_state: str | None, job_state: str | None, run_terminal: bool
-) -> MissingReason:
-    """Why a row has no value for a column; ``step_state`` is None when the step has not been scheduled."""
-    if not column_in_version:
-        return "not_in_version"
-    if step_state is None:
-        return "not_run_yet"
-    if job_state == JobState.SKIPPED:
-        return "skipped"
-    if not run_terminal:
-        return "not_run_yet"
-    return "no_output"
-
-
-def reused_state(copied: int, total: int) -> ReusedState:
-    """Job cache reuse of a submission from its copied and total job counts."""
-    if copied == 0 or total == 0:
-        return "no"
-    return "yes" if copied >= total else "partial"
-
-
-def summary_rank(state: str | None) -> int:
-    """Precedence of a member job's state in its batch's summary state; the lowest rank wins."""
-    for rank, (_, states) in enumerate(SUMMARY_STATE_GROUPS):
-        if state in states:
-            return rank
-    return SUMMARY_SKIPPED_RANK if state == JobState.SKIPPED else SUMMARY_OK_RANK
-
-
-def summary_ranks(states: Collection[str]) -> list[int]:
-    """Ranks whose summary state is one of ``states``."""
-    return [rank for rank, state in enumerate(SUMMARY_STATES) if state in states]
-
-
-def summary_state(states: Mapping[str, int]) -> str:
-    """Single state for a mapped batch from per-state job counts; mirrors the client's JobStateSummary."""
-    present = [state for state, count in states.items() if count]
-    if not present:
-        return JobState.NEW.value
-    return SUMMARY_STATES[min(summary_rank(state) for state in present)]

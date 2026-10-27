@@ -11,7 +11,8 @@ from galaxy.managers.comparison_cells import (
     ComparisonCellBuilder,
     inlinable_expression,
 )
-from galaxy.managers.comparison_columns import SUMMARY_STATES
+from galaxy.managers.comparison_records import ComparisonRecordLoader
+from galaxy.managers.comparison_states import SUMMARY_STATES
 from galaxy.managers.comparisons import ComparisonsManager
 from galaxy.managers.hdas import HDASerializer
 from galaxy.managers.histories import HistoryManager
@@ -35,7 +36,7 @@ class TestComparisonsManager(BaseTestCase):
         super().set_up_managers()
         self.session = self.app.model.session
         cell_builder = _cell_builder(self.app)
-        self.comparisons_manager = ComparisonsManager(self.session, cell_builder)
+        self.comparisons_manager = ComparisonsManager(self.session, ComparisonRecordLoader(self.session), cell_builder)
         Security.security = self.app.security
         self.foreign_users = 0
         self.tool_id = "cat1"
