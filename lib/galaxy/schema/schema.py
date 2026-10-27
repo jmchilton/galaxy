@@ -1975,6 +1975,7 @@ class JobIndexQueryPayload(Model):
     user_id: DecodedDatabaseIdField | None = None
     tool_ids: list[str] | None = None
     tool_ids_like: list[str] | None = None
+    tool_versions: list[str] | None = None
     date_range_min: OffsetNaiveDatetime | date | None = None
     date_range_max: OffsetNaiveDatetime | date | None = None
     history_id: DecodedDatabaseIdField | None = None
