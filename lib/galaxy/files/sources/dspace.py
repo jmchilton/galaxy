@@ -103,7 +103,7 @@ class DSpaceFilesSource(BaseFilesSource[DSpaceFileSourceTemplateConfiguration, D
                 # this endpoint has no search, so filter all top communities by name
                 communities = self._directories("communities", self._all(config, endpoint, {}, "communities"))
                 return self._filter_and_page(communities, limit, offset, query)
-            objects, total = self._objects(config, endpoint, {}, "communities", limit, offset)
+            objects, total = self._page(config, endpoint, self._page_params({}, limit, offset), "communities")
             return self._directories("communities", objects), total
         if len(parts) == 2 and parts[0] == "communities":
             children = self._directories(
@@ -117,7 +117,7 @@ class DSpaceFilesSource(BaseFilesSource[DSpaceFileSourceTemplateConfiguration, D
             if query:
                 # DSpace matches whole words only; a trailing * also finds partial ones, but breaks words like "a-b"
                 params["query"] = " ".join(f"{word}*" if re.fullmatch(r"\w+", word) else word for word in query.split())
-            items, total = self._objects(config, "discover/search/objects", params, "searchResult", limit, offset)
+            items, total = self._search_page(config, self._page_params(params, limit, offset))
             return self._directories("items", items), total
         if len(parts) == 2 and parts[0] == "items":
             bitstreams = self._bitstreams(config, parts[1])
@@ -182,23 +182,14 @@ class DSpaceFilesSource(BaseFilesSource[DSpaceFileSourceTemplateConfiguration, D
             for path in [f"/{kind}/{obj['uuid']}"]
         ]
 
-    def _objects(
-        self,
-        config: DSpaceFileSourceConfiguration,
-        endpoint: str,
-        params: dict[str, str],
-        key: str,
-        limit: int | None,
-        offset: int | None,
-    ) -> tuple[list[dict[str, Any]], int]:
-        """List one page of objects from the server."""
+    def _page_params(self, params: dict[str, str], limit: int | None, offset: int | None) -> dict[str, str]:
         if limit is None:
             # shortcut: unpaged listings (the file set wizards) get the first PAGE_SIZE objects, not a whole
             # collection; page through here if users need more.
             limit = PAGE_SIZE
         # shortcut: DSpace pages by page number, so an offset that is not a multiple of limit is rounded down;
         # fetch two pages and slice if a client ever sends unaligned offsets.
-        return self._page(config, endpoint, {**params, "size": str(limit), "page": str((offset or 0) // limit)}, key)
+        return {**params, "size": str(limit), "page": str((offset or 0) // limit)}
 
     def _all(
         self, config: DSpaceFileSourceConfiguration, endpoint: str, params: dict[str, str], key: str
@@ -215,12 +206,17 @@ class DSpaceFilesSource(BaseFilesSource[DSpaceFileSourceTemplateConfiguration, D
     def _page(
         self, config: DSpaceFileSourceConfiguration, endpoint: str, params: dict[str, str], key: str
     ) -> tuple[list[dict[str, Any]], int]:
-        data = self._get_json(config, self._url(config.api_url, endpoint), params)
-        if key == "searchResult":
-            data = data.get("_embedded", {}).get("searchResult", {})
-            objects = [obj["_embedded"]["indexableObject"] for obj in data.get("_embedded", {}).get("objects", [])]
-        else:
-            objects = data.get("_embedded", {}).get(key, [])
+        return self._embedded(self._get_json(config, self._url(config.api_url, endpoint), params), key)
+
+    def _search_page(
+        self, config: DSpaceFileSourceConfiguration, params: dict[str, str]
+    ) -> tuple[list[dict[str, Any]], int]:
+        data = self._get_json(config, self._url(config.api_url, "discover/search/objects"), params)
+        results, total = self._embedded(data.get("_embedded", {}).get("searchResult", {}), "objects")
+        return [result["_embedded"]["indexableObject"] for result in results], total
+
+    def _embedded(self, data: dict[str, Any], key: str) -> tuple[list[dict[str, Any]], int]:
+        objects = data.get("_embedded", {}).get(key, [])
         return objects, data.get("page", {}).get("totalElements", len(objects))
 
     def _filter_and_page(
