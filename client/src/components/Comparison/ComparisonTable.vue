@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { faAngleDown, faAngleRight, faExchangeAlt } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
-import { computed, ref, watch } from "vue";
+import { computed } from "vue";
 
 import type { ComparisonColumn, ComparisonRow, ComparisonTable } from "@/api/comparisons";
 
@@ -119,21 +119,6 @@ const lineItems = computed<LineItem[]>(() => [
 
 // GTable keeps expansion by index; remount it whenever the runs or the axes change.
 const tableKey = computed(() => `${props.transpose}:${props.table.rows.map((row) => row.run.id).join(",")}`);
-const expanded = ref<Set<string>>(new Set());
-watch(tableKey, () => {
-    expanded.value = new Set();
-});
-
-function toggleRow(item: RunItem, toggleDetails: () => void) {
-    const next = new Set(expanded.value);
-    if (next.has(item.runId)) {
-        next.delete(item.runId);
-    } else {
-        next.add(item.runId);
-    }
-    expanded.value = next;
-    toggleDetails();
-}
 </script>
 
 <template>
@@ -175,16 +160,17 @@ function toggleRow(item: RunItem, toggleDetails: () => void) {
                 :striped="false"
                 :overlay-loading="loading"
                 compact>
-                <template v-slot:cell(_expand)="{ item, toggleDetails }">
+                <template v-slot:cell(_expand)="{ detailsShowing, toggleDetails }">
                     <GButton
                         class="comparison-expand"
                         transparent
                         icon-only
                         size="small"
-                        :aria-expanded="expanded.has(item.runId) ? 'true' : 'false'"
-                        :title="expanded.has(item.runId) ? 'Hide run details' : 'Show run details'"
-                        @click="toggleRow(item, toggleDetails)">
-                        <FontAwesomeIcon :icon="expanded.has(item.runId) ? faAngleDown : faAngleRight" fixed-width />
+                        :aria-expanded="detailsShowing ? 'true' : 'false'"
+                        :aria-label="detailsShowing ? 'Hide run details' : 'Show run details'"
+                        :title="detailsShowing ? 'Hide run details' : 'Show run details'"
+                        @click="toggleDetails">
+                        <FontAwesomeIcon :icon="detailsShowing ? faAngleDown : faAngleRight" fixed-width />
                     </GButton>
                 </template>
                 <template

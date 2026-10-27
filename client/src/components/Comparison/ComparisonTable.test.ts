@@ -99,11 +99,13 @@ describe("ComparisonTable", () => {
         expect(wrapper.findAllComponents(DETAIL_STUB)).toHaveLength(0);
         const toggle = wrapper.findAll(".comparison-expand")[1]!;
         expect(toggle.attributes("aria-expanded")).toBe("false");
+        expect(toggle.attributes("aria-label")).toBe("Show run details");
         await toggle.trigger("click");
         const details = wrapper.findAllComponents(DETAIL_STUB);
         expect(details).toHaveLength(1);
         expect(details[0]!.props("row")).toEqual(TABLE.rows[1]);
         expect(wrapper.findAll(".comparison-expand")[1]!.attributes("aria-expanded")).toBe("true");
+        expect(wrapper.findAll(".comparison-expand")[1]!.attributes("aria-label")).toBe("Hide run details");
         await wrapper.findAll(".comparison-expand")[1]!.trigger("click");
         expect(wrapper.findAllComponents(DETAIL_STUB)).toHaveLength(0);
     });
