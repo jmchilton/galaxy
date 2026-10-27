@@ -32,6 +32,7 @@ from galaxy.model import (
 )
 from galaxy.model.metadata import (
     FileParameter,
+    MetadataSpecCollection,
     PythonObjectParameter,
 )
 from galaxy.model.scoped_session import galaxy_scoped_session
@@ -122,7 +123,7 @@ class ComparisonCellBuilder:
                 item_cells[ItemRef("hda", hda.id)] = skipped
                 continue
             cell = self.dataset_cell(hda, metadata_elements, inline_expression_values)
-            item_cells[ItemRef("hda", hda.id)] = ItemCell(cell, self.metadata_keys(hda))
+            item_cells[ItemRef("hda", hda.id)] = ItemCell(cell, scalar_metadata_keys(hda.datatype.metadata_spec))
         for hdca in hdcas.values():
             if hdca.history_id not in accessible_history_ids:
                 item_cells[ItemRef("hdca", hdca.id)] = inaccessible
@@ -173,12 +174,6 @@ class ComparisonCellBuilder:
         )
         return {hdca.id: hdca for hdca in self.sa_session.scalars(stmt).unique()}
 
-    def metadata_keys(self, hda: HistoryDatasetAssociation) -> list[str]:
-        """Metadata element names a dataset's datatype declares, without file or object values."""
-        # the datatype's spec, not hda.metadata, which loads the deferred metadata column
-        spec = hda.datatype.metadata_spec
-        return [name for name, element in spec.items() if not isinstance(element.param, NON_SCALAR_METADATA_PARAMS)]
-
     def dataset_cell(
         self, hda: HistoryDatasetAssociation, metadata_elements: list[str], inline_expression_values: bool
     ) -> DatasetCell | ValueCell:
@@ -188,9 +183,9 @@ class ComparisonCellBuilder:
                 return value_cell
         metadata: dict[str, Any] = {}
         if metadata_elements:
-            included = set(metadata_elements).intersection(self.metadata_keys(hda))
+            included = set(metadata_elements).intersection(scalar_metadata_keys(hda.datatype.metadata_spec))
             serialized = self.hda_serializer.serialize_metadata(hda, "metadata", included=included)
-            metadata = {name: _cap(value) for name, value in serialized.items() if value is not None}
+            metadata = {name: cap_metadata_value(value) for name, value in serialized.items() if value is not None}
         return DatasetCell(
             id=hda.id,
             hid=hda.hid,
@@ -238,7 +233,14 @@ def inlinable_expression(hda: HistoryDatasetAssociation) -> bool:
     return size <= COMPARISON_INLINE_EXPRESSION_MAX_BYTES
 
 
-def _cap(value: Any) -> Any:
+def scalar_metadata_keys(spec: MetadataSpecCollection) -> list[str]:
+    """Element names of a datatype's metadata spec, without file or object values."""
+    # read from the datatype's spec, not hda.metadata, which loads the deferred metadata column
+    return [name for name, element in spec.items() if not isinstance(element.param, NON_SCALAR_METADATA_PARAMS)]
+
+
+def cap_metadata_value(value: Any) -> Any:
+    """At most ``COMPARISON_METADATA_MAX_ITEMS`` items of a list, tuple or dict value."""
     if isinstance(value, (list, tuple)):
         return list(value[:COMPARISON_METADATA_MAX_ITEMS])
     if isinstance(value, dict):

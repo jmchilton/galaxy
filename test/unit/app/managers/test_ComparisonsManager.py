@@ -5,11 +5,15 @@ import pytest
 from sqlalchemy import event
 
 from galaxy import model
+from galaxy.datatypes.binary import Bam
 from galaxy.managers.comparison_cells import (
+    cap_metadata_value,
     COMPARISON_INLINE_EXPRESSION_MAX_BYTES,
+    COMPARISON_METADATA_MAX_ITEMS,
     ComparisonAccess,
     ComparisonCellBuilder,
     inlinable_expression,
+    scalar_metadata_keys,
 )
 from galaxy.managers.comparison_records import ComparisonRecordLoader
 from galaxy.managers.comparison_states import SUMMARY_STATES
@@ -405,38 +409,25 @@ class TestComparisonsManager(BaseTestCase):
         return hdca
 
 
-class TestComparisonCellBuilder(BaseTestCase):
-    def set_up_managers(self):
-        super().set_up_managers()
-        self.session = self.app.model.session
-        self.cell_builder = _cell_builder(self.app)
-        Security.security = self.app.security
+def test_scalar_metadata_keys_skip_file_metadata():
+    keys = scalar_metadata_keys(Bam.metadata_spec)
+    assert "bam_index" in Bam.metadata_spec
+    assert "bam_index" not in keys
+    assert "bam_version" in keys
 
-    def test_dataset_cell_skips_file_metadata(self):
-        hda = self._hda("bam")
-        assert "bam_index" in hda.metadata.spec
-        assert "bam_index" not in self.cell_builder.metadata_keys(hda)
-        cell = self.cell_builder.dataset_cell(hda, ["bam_index"], inline_expression_values=False)
-        assert cell.type == "dataset"
-        assert cell.metadata == {}
 
-    def test_dataset_cell_caps_list_metadata(self):
-        hda = self._hda("tabular")
-        hda.metadata.column_names = [f"c{i}" for i in range(60)]
-        hda.metadata.data_lines = 7
-        cell = self.cell_builder.dataset_cell(hda, ["column_names", "data_lines"], inline_expression_values=False)
-        assert cell.type == "dataset"
-        assert cell.metadata == {"column_names": [f"c{i}" for i in range(50)], "data_lines": 7}
-
-    def _hda(self, extension: str) -> model.HistoryDatasetAssociation:
-        history = model.History(name="cells", user=self.trans.user)
-        self.session.add(history)
-        hda = model.HistoryDatasetAssociation(
-            history=history, extension=extension, create_dataset=True, sa_session=self.session
-        )
-        self.session.add(hda)
-        self.session.commit()
-        return hda
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        (list(range(60)), list(range(COMPARISON_METADATA_MAX_ITEMS))),
+        (tuple(range(60)), list(range(COMPARISON_METADATA_MAX_ITEMS))),
+        ({f"k{i}": i for i in range(60)}, {f"k{i}": i for i in range(COMPARISON_METADATA_MAX_ITEMS)}),
+        (["a", "b"], ["a", "b"]),
+        (7, 7),
+    ],
+)
+def test_cap_metadata_value(value, expected):
+    assert cap_metadata_value(value) == expected
 
 
 @pytest.mark.parametrize(

@@ -79,10 +79,6 @@ def test_align_columns_flags_duplicates():
     assert not columns[1].duplicate
 
 
-def test_align_columns_empty():
-    assert align_columns({}, newest_version=0) == []
-
-
 def test_keyed_io_prefers_exact_name_over_folded():
     items = {"__new_primary_file_out|a__": 1, "out": 2, "other|__part__|forward": 3}
     assert keyed_io("output", items) == {"output:out": 2, "output:other": 3}

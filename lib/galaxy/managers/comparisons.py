@@ -107,9 +107,9 @@ class ToolRunPageRow(NamedTuple):
 
     @property
     def submission_key(self) -> SubmissionKey:
-        if self.implicit_collection_jobs_id is not None:
-            return ("icj", self.implicit_collection_jobs_id)
-        return ("job", self.job_id)
+        key = submission_key(self.job_id, self.implicit_collection_jobs_id)
+        assert key is not None
+        return key
 
 
 class ComparisonsManager:
