@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 
-import type { ComparisonCell, ComparisonRow } from "@/api/comparisons";
+import type { ComparisonCell, ComparisonColumn, ComparisonRow } from "@/api/comparisons";
 
 import { type CellDisplay, metadataKeyOf } from "../comparisonUtils";
 
@@ -16,6 +16,8 @@ const props = defineProps<{
     cell?: ComparisonCell;
     row: Pick<ComparisonRow, "version" | "tool_version">;
     display: CellDisplay;
+    /** The column's role, for role-specific missing text. */
+    role?: ComparisonColumn["role"];
     /** Metadata elements the loaded table was fetched with. */
     requestedMetadata?: string[];
     /** Whether the next table is being fetched. */
@@ -27,7 +29,7 @@ const metadataElement = computed(() => metadataKeyOf(props.display));
 
 <template>
     <span v-if="!cell" class="text-muted" title="No cell for this run">&mdash;</span>
-    <MissingCell v-else-if="cell.type === 'missing'" :cell="cell" :row="row" />
+    <MissingCell v-else-if="cell.type === 'missing'" :cell="cell" :row="row" :role="role" />
     <template v-else-if="cell.type === 'value'">
         <ItemPopoverLink v-if="display === 'link' && cell.dataset_id" :item-id="cell.dataset_id">
             <ValueCell :value="cell.value" />
