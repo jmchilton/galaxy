@@ -5,8 +5,9 @@ import { computed } from "vue";
 
 import type { ComparisonColumn, ComparisonRow } from "@/api/comparisons";
 
-import { type CellDisplay, displayLabel, displayOptions, ROLE_LABELS, versionLabel } from "./comparisonUtils";
+import { type CellDisplay, displayLabel, displayOptions, versionLabel } from "./comparisonUtils";
 
+import ComparisonColumnLabel from "./ComparisonColumnLabel.vue";
 import GDropdown from "@/components/BaseComponents/GDropdown.vue";
 import GDropdownGroup from "@/components/BaseComponents/GDropdownGroup.vue";
 import GDropdownItem from "@/components/BaseComponents/GDropdownItem.vue";
@@ -38,10 +39,7 @@ function choose(display: CellDisplay, disabled?: boolean) {
 <template>
     <span class="comparison-column-header">
         <span class="d-inline-flex align-items-center flex-wrap">
-            <span class="comparison-role badge" :class="`comparison-role-${column.role}`" :title="column.role">
-                {{ ROLE_LABELS[column.role] }}
-            </span>
-            <code class="comparison-column-label">{{ column.label }}</code>
+            <ComparisonColumnLabel :column="column" />
             <span v-if="versions.length" class="badge badge-warning ml-1" :title="versionsTitle">
                 {{ versions.length === 1 ? `${versions[0]} only` : `in ${versions.join(", ")}` }}
             </span>
@@ -90,24 +88,3 @@ function choose(display: CellDisplay, disabled?: boolean) {
         <small class="comparison-showing d-block text-muted font-weight-normal">{{ displayLabel(display) }}</small>
     </span>
 </template>
-
-<style scoped lang="scss">
-.comparison-role {
-    font-size: 0.65rem;
-    text-transform: uppercase;
-    border: 1px solid currentColor;
-    margin-right: 0.3rem;
-}
-.comparison-role-input {
-    color: var(--color-blue-600);
-}
-.comparison-role-output {
-    color: var(--color-green-700);
-}
-.comparison-role-parameter {
-    color: var(--color-orange-700);
-}
-.comparison-column-label {
-    color: inherit;
-}
-</style>
