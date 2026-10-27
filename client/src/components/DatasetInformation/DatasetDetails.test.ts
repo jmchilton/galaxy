@@ -18,7 +18,12 @@ function stubComponent(name: string, render?: (props: Record<string, any>) => st
     return {
         default: {
             name,
-            props: ["dataset", "datasetId", "jobId", "datasetName", "dependencies"],
+            props: {
+                ...Object.fromEntries(
+                    ["dataset", "datasetId", "jobId", "datasetName", "dependencies"].map((p) => [p, null]),
+                ),
+                includeOtherRunsLink: Boolean,
+            },
             render(this: { $props: Record<string, any> }, h: (tag: string, data: object, text?: string) => unknown) {
                 return h("div", { class: name }, render?.(this.$props));
             },
@@ -89,6 +94,14 @@ describe("DatasetDetails", () => {
         expect(wrapper.find(".JobInformation").exists()).toBe(true);
         expect(wrapper.find(".dataset-peek").text()).toBe("first peek");
         expect(wrapper.text()).not.toContain("Job Not Found");
+    });
+
+    it("offers other runs of the creating job's tool", async () => {
+        serveDataset(dataset);
+        const wrapper = await mountDatasetDetails();
+        const info = wrapper.findComponent({ name: "JobInformation" });
+        expect(info.props("jobId")).toBe(JOB_ID);
+        expect(info.props("includeOtherRunsLink")).toBe(true);
     });
 
     it("explains a dataset without a creating job", async () => {
