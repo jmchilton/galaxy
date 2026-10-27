@@ -17,6 +17,9 @@ from time import (
 )
 from typing import (
     Any,
+    cast,
+    get_args,
+    Literal,
     Optional,
     TYPE_CHECKING,
 )
@@ -102,7 +105,8 @@ MINIMUM_PULSAR_VERSIONS = {
     "dataset_collector_descriptions": Version("0.15.13.dev0"),  # Support for directory-aware pattern matching
     "object_store_staging_redirect": Version("0.15.16"),  # curl transport follows redirects
 }
-OBJECT_STORE_STAGING_MODES = ("stream", "redirect")
+ObjectStoreStagingMode = Literal["stream", "redirect"]
+OBJECT_STORE_STAGING_MODES: tuple[ObjectStoreStagingMode, ...] = get_args(ObjectStoreStagingMode)
 
 NO_REMOTE_GALAXY_FOR_METADATA_MESSAGE = "Pulsar misconfiguration - Pulsar client configured to set metadata remotely, but remote Pulsar isn't properly configured with a galaxy_home directory."
 NO_REMOTE_DATATYPES_CONFIG = "Pulsar client is configured to use remote datatypes configuration when setting metadata externally, but Pulsar is not configured with this information. Defaulting to datatypes_conf.xml."
@@ -573,9 +577,12 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
             needed_features = self.__needed_features(client)
             PulsarJobRunner.check_job_config(remote_job_config, check_features=needed_features)
             rewrite_parameters = PulsarJobRunner.__rewrite_parameters(client)
+            object_store_staging = _object_store_staging(client.destination_params, rewrite_parameters)
             prepare_kwds = {}
             if rewrite_parameters:
-                compute_environment = PulsarComputeEnvironment(client, job_wrapper, remote_job_config)
+                compute_environment = PulsarComputeEnvironment(
+                    client, job_wrapper, remote_job_config, object_store_staging=object_store_staging
+                )
                 prepare_kwds["compute_environment"] = compute_environment
 
             try:
@@ -747,11 +754,7 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
         """
         issue_url = None
         staging = compute_environment.object_store_staging
-        if staging is not None and staging not in OBJECT_STORE_STAGING_MODES:
-            raise ConfigurationError(
-                f"object_store_staging must be one of {OBJECT_STORE_STAGING_MODES}, not {staging!r}"
-            )
-        if staging in OBJECT_STORE_STAGING_MODES:
+        if staging is not None:
             redirect = (
                 staging == "redirect"
                 and self.pulsar_version(remote_job_config) >= MINIMUM_PULSAR_VERSIONS["object_store_staging_redirect"]
@@ -1446,8 +1449,26 @@ def _client_input(path, input_type, url, **kwds) -> ClientInput:
     return ClientInput(path, input_type, **kwds)
 
 
+def _object_store_staging(destination_params, rewrite_parameters: bool) -> ObjectStoreStagingMode | None:
+    """Validated ``object_store_staging`` mode of a destination, ``None`` when unset."""
+    staging = destination_params.get("object_store_staging")
+    if staging is None:
+        return None
+    if staging not in OBJECT_STORE_STAGING_MODES:
+        raise ConfigurationError(f"object_store_staging must be one of {OBJECT_STORE_STAGING_MODES}, not {staging!r}")
+    if not rewrite_parameters:
+        raise ConfigurationError("object_store_staging requires rewrite_parameters")
+    return cast(ObjectStoreStagingMode, staging)
+
+
 class PulsarComputeEnvironment(ComputeEnvironment):
-    def __init__(self, pulsar_client, job_wrapper, remote_job_config):
+    def __init__(
+        self,
+        pulsar_client,
+        job_wrapper,
+        remote_job_config,
+        object_store_staging: ObjectStoreStagingMode | None = None,
+    ):
         self.pulsar_client = pulsar_client
         self.job_wrapper = job_wrapper
         self.local_path_config = job_wrapper.default_compute_environment()
@@ -1456,7 +1477,7 @@ class PulsarComputeEnvironment(ComputeEnvironment):
         self.path_rewrites_input_extra = {}
         self.path_rewrites_input_metadata = {}
         # Inputs are staged by object store identity; metadata file ids are keyed by local path.
-        self.object_store_staging = pulsar_client.destination_params.get("object_store_staging")
+        self.object_store_staging = object_store_staging
         self.input_metadata_file_ids: dict[str, int] = {}
 
         # job_wrapper.prepare is going to expunge the job backing the following
@@ -1479,7 +1500,7 @@ class PulsarComputeEnvironment(ComputeEnvironment):
         return self.job_wrapper.job_io.get_output_basenames()
 
     def input_path_rewrite(self, dataset):
-        if self.object_store_staging in OBJECT_STORE_STAGING_MODES:
+        if self.object_store_staging is not None:
             # Staged by identity: only the input's path is needed here, not its bytes.
             local_input_path = str(self.job_wrapper.job_io.get_input_path(dataset, sync_cache=False))
         else:
@@ -1512,7 +1533,7 @@ class PulsarComputeEnvironment(ComputeEnvironment):
         return remote_extra_files_path_rewrite
 
     def input_metadata_file_path(self, metadata_file):
-        if self.object_store_staging not in OBJECT_STORE_STAGING_MODES:
+        if self.object_store_staging is None:
             return super().input_metadata_file_path(metadata_file)
         # Staged by identity: only the file's path is needed here, not its bytes.
         path = metadata_file.get_file_name(sync_cache=False)

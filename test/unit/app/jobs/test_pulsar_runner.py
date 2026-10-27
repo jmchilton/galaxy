@@ -45,6 +45,7 @@ from galaxy.jobs.runners import (
     pulsar as pulsar_runner,
 )
 from galaxy.jobs.runners.pulsar import (  # type: ignore[attr-defined]
+    _object_store_staging,
     build_client_manager,
     PulsarComputeEnvironment,
     PulsarJobRunner,
@@ -534,10 +535,29 @@ def test_input_metadata_file_path_records_the_metadata_file_staged_by_identity(t
     assert compute_environment.input_metadata_file_ids == {metadata_path: bam_index.id}
 
 
-def test_unknown_object_store_staging_mode_is_a_configuration_error():
-    runner = _staging_runner()
+@pytest.mark.parametrize(
+    "params,rewrite_parameters,expected",
+    [
+        ({}, True, None),
+        ({}, False, None),
+        ({"object_store_staging": "stream"}, True, "stream"),
+        ({"object_store_staging": "redirect"}, True, "redirect"),
+    ],
+)
+def test_object_store_staging_mode_is_read_from_the_destination(params, rewrite_parameters, expected):
+    assert _object_store_staging(params, rewrite_parameters) == expected
+
+
+@pytest.mark.parametrize(
+    "params,rewrite_parameters",
+    [
+        ({"object_store_staging": "true"}, True),
+        ({"object_store_staging": "stream"}, False),
+    ],
+)
+def test_invalid_object_store_staging_is_a_configuration_error(params, rewrite_parameters):
     with pytest.raises(ConfigurationError):
-        runner._client_inputs(_staging_job_wrapper(), _staging_compute_environment("true"), {})
+        _object_store_staging(params, rewrite_parameters)
 
 
 def test_input_path_rewrite_keeps_the_local_path_without_object_store_staging():
