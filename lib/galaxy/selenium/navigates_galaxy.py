@@ -2229,6 +2229,10 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         title = self.components.invocations.step_card_title.wait_for_visible().text
         assert label in title, f"Expected step card for {label}, found {title!r}"
 
+    @retry_assertion_during_transitions
+    def assert_current_url_contains(self, fragment: str):
+        assert fragment in self.current_url, f"Expected {fragment!r} in {self.current_url!r}"
+
     def open_toolbox(self) -> None:
         self.sleep_for(self.wait_types.UX_RENDER)
 
