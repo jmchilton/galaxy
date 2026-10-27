@@ -2,7 +2,7 @@
 import { faHdd } from "@fortawesome/free-solid-svg-icons";
 import { computed, ref } from "vue";
 
-import { GalaxyApi, type HDASummary, type HistorySortByLiteral, type HistorySummary } from "@/api";
+import { GalaxyApi, type HDASummary, type HistorySortByLiteral, type HistorySummary, totalMatches } from "@/api";
 import { getMyHistories } from "@/api/histories";
 import type { TableField } from "@/components/Common/GTable.types";
 import { HistoriesFilters } from "@/components/History/HistoriesFilters";
@@ -196,7 +196,7 @@ async function datasetsProvider(ctx: ItemsProviderContext, selectedHistory: Hist
             return [];
         }
 
-        totalItems.value = parseInt(response.headers.get("total_matches") ?? "0");
+        totalItems.value = totalMatches(response);
 
         items.value = (data as HDASummary[]).map(datasetEntryToRecord);
 
@@ -287,10 +287,10 @@ function onCancel() {
         :search-title="searchTitle"
         :title="title"
         :filter-class="datasetsVisible ? undefined : HistoriesFilters"
-        @onOk="onOk"
-        @onUndo="onUndo"
-        @onCancel="onCancel"
-        @onSelectAll="selectAll"
-        @onOpen="onHistoryClick"
-        @onClick="onDatasetClick" />
+        @on-ok="onOk"
+        @on-undo="onUndo"
+        @on-cancel="onCancel"
+        @on-select-all="selectAll"
+        @on-open="onHistoryClick"
+        @on-click="onDatasetClick" />
 </template>

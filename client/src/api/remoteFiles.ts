@@ -1,4 +1,4 @@
-import { type components, GalaxyApi } from "@/api";
+import { type components, GalaxyApi, totalMatches } from "@/api";
 import { rethrowSimple } from "@/utils/simple-error";
 
 /** The browsing mode:
@@ -96,9 +96,7 @@ export async function browseRemoteFiles(
         rethrowSimple(error);
     }
 
-    const totalMatches = parseInt(response.headers.get("total_matches") ?? "0");
-
     // Since we specified format=uri in the query, we can safely cast the data to the expected type.
     const entries = data as RemoteEntry[];
-    return { entries, totalMatches };
+    return { entries, totalMatches: totalMatches(response) };
 }
