@@ -334,6 +334,7 @@ const tableKey = computed(() => `${props.transpose}:${props.table.rows.map((row)
                             :cell="item.row.cells[column.key]"
                             :row="item.row"
                             :display="display(column)"
+                            :role="column.role"
                             :requested-metadata="requestedMetadata"
                             :loading="loading" />
                     </span>
@@ -389,6 +390,7 @@ const tableKey = computed(() => `${props.transpose}:${props.table.rows.map((row)
                             :cell="row.cells[item.column.key]"
                             :row="row"
                             :display="display(item.column)"
+                            :role="item.column.role"
                             :requested-metadata="requestedMetadata"
                             :loading="loading" />
                     </span>

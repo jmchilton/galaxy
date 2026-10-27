@@ -120,7 +120,7 @@ export function displayOptions(column: ComparisonColumn, rows: ComparisonRow[]):
     return options;
 }
 
-export const MISSING_TITLES: Record<MissingCell["reason"], string> = {
+const MISSING_TITLES: Record<MissingCell["reason"], string> = {
     not_in_version: "This version has no input or output with this name",
     not_run_yet: "This run has not reached this step yet",
     skipped: "This step was skipped in this run",
@@ -128,7 +128,25 @@ export const MISSING_TITLES: Record<MissingCell["reason"], string> = {
     inaccessible: "You do not have access to this item",
 };
 
-export function missingText(cell: MissingCell, row: Pick<ComparisonRow, "version" | "tool_version">): string {
+const NOT_SUPPLIED_TITLE = "This run did not supply this input";
+
+/** An input left empty reads "not supplied" rather than "no output". */
+function notSupplied(cell: MissingCell, role?: ComparisonColumn["role"]): boolean {
+    return cell.reason === "no_output" && role === "input";
+}
+
+export function missingTitle(cell: MissingCell, role?: ComparisonColumn["role"]): string {
+    return notSupplied(cell, role) ? NOT_SUPPLIED_TITLE : MISSING_TITLES[cell.reason];
+}
+
+export function missingText(
+    cell: MissingCell,
+    row: Pick<ComparisonRow, "version" | "tool_version">,
+    role?: ComparisonColumn["role"],
+): string {
+    if (notSupplied(cell, role)) {
+        return "not supplied";
+    }
     switch (cell.reason) {
         case "not_in_version":
             if (row.version !== null && row.version !== undefined) {
