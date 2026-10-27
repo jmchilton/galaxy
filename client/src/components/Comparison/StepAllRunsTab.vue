@@ -26,18 +26,23 @@ const inSubworkflow = computed(() => Boolean(storedWorkflow.value?.hidden));
 const stepLabel = computed(
     () => props.graphStep?.label || props.invocation.steps[props.workflowStep.id]?.workflow_step_label || undefined,
 );
-const title = computed(() => {
+/** Why the tab is disabled; undefined when it is enabled. */
+const disabledReason = computed(() => {
     if (inSubworkflow.value) {
         return "Steps inside a subworkflow can't be compared across runs yet";
     }
-    return stepLabel.value ? "All runs" : "Label this step to compare its runs";
+    return stepLabel.value ? undefined : "Label this step to compare its runs";
 });
 </script>
 
 <template>
     <!-- Lazy, so step cards don't fetch runs until the tab is opened. -->
     <!-- The title prop is the tab's tooltip; the label stays short so a disabled tab doesn't wrap. -->
-    <GTab lazy title-item-class="invocation-step-all-runs-tab" :disabled="inSubworkflow || !stepLabel" :title="title">
+    <GTab
+        lazy
+        title-item-class="invocation-step-all-runs-tab"
+        :disabled="Boolean(disabledReason)"
+        :title="disabledReason ?? 'All runs'">
         <template v-slot:title>All runs</template>
         <StepRunsTab
             :workflow-id="invocation.workflow_id"
