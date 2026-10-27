@@ -7,6 +7,7 @@ import {
 import { createWorkbook, createWorkbookForCollection, type SampleSheetCollectionType } from "@/api/datasetCollections";
 import { stripExtension } from "@/components/Collections/common/stripExtension";
 import type { ParsedSampleSheetWorkbook, PrefixColumnsType } from "@/components/Collections/wizard/types";
+import { downloadBlob } from "@/utils/download";
 
 export async function downloadWorkbook(
     columnDefinitions: SampleSheetColumnDefinitions,
@@ -25,7 +26,7 @@ export async function downloadWorkbook(
             collection_type: collectionType,
             prefix_values: initialRows,
         });
-        createAndClickDownloadLink(workbookBlob, "sample_sheet_workbook.xlsx");
+        downloadBlob(workbookBlob, "sample_sheet_workbook.xlsx");
     } catch (error) {
         // TODO: handle error better
         console.error("Error downloading workbook:", error);
@@ -41,7 +42,7 @@ export async function downloadWorkbookForCollection(columnDefinitions: SampleShe
         const workbookBlob = await createWorkbookForCollection(hdca_id, {
             column_definitions: columnDefinitions,
         });
-        createAndClickDownloadLink(workbookBlob, "sample_sheet_workbook.xlsx");
+        downloadBlob(workbookBlob, "sample_sheet_workbook.xlsx");
     } catch (error) {
         // TODO: handle error better
         console.error("Error downloading workbook:", error);
@@ -105,17 +106,6 @@ export function withAutoListIdentifiers(rows: string[][]): string[][] {
         }
         return row;
     });
-}
-
-function createAndClickDownloadLink(blob: Blob, filename: string) {
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", filename); // Set the desired filename for the download
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link); // Clean up the temporary link
-    window.URL.revokeObjectURL(url); // Release the object URL
 }
 
 /** Keep loaded dataset and pair objects while applying workbook metadata in workbook row order. */
