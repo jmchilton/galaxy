@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 
 import type { HDCASummary } from "@/api";
 import { fetchCollectionSummary } from "@/api/datasetCollections";
@@ -47,6 +47,14 @@ const collection = ref<HDCASummary>();
 const collectionLoading = ref(false);
 const collectionError = ref<string>();
 
+watch(
+    () => [props.itemId, props.itemSrc],
+    () => {
+        collection.value = undefined;
+        collectionError.value = undefined;
+    },
+);
+
 const loading = computed(() =>
     isCollection.value ? collectionLoading.value : datasetStore.isLoadingDataset(props.itemId),
 );
@@ -90,16 +98,18 @@ async function ensureDetails() {
             @focus="ensureDetails">
             <slot>{{ itemId }}</slot>
         </router-link>
-        <span
+        <button
             v-else
             :id="targetId"
+            type="button"
+            class="item-popover-trigger btn btn-link p-0 align-baseline"
             :class="linkClass"
-            role="button"
-            tabindex="0"
+            aria-haspopup="dialog"
             @mouseenter="ensureDetails"
-            @focus="ensureDetails">
+            @focus="ensureDetails"
+            @click="ensureDetails">
             <slot>{{ itemId }}</slot>
-        </span>
+        </button>
 
         <GPopover
             interactive
@@ -110,7 +120,7 @@ async function ensureDetails() {
             placement="right"
             @shown="popoverShown = true"
             @hidden="popoverShown = false">
-            <div class="item-details-popover" :class="{ 'dataset-details-popover': !isCollection }">
+            <div class="item-details-popover">
                 <div v-if="loading">
                     <LoadingSpan
                         :message="localize(isCollection ? 'Loading collection details' : 'Loading dataset details')" />

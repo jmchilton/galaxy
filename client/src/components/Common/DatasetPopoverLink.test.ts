@@ -122,7 +122,7 @@ describe("DatasetPopoverLink loading", () => {
         await flushPromises();
         expect(datasetRequests).toBe(1);
         expect(link.find("#dataset-details").exists()).toBe(true);
-        expect(link.find(".dataset-details-popover").text()).not.toContain("Loading dataset details");
+        expect(link.find(".item-details-popover").text()).not.toContain("Loading dataset details");
     });
 
     it("shows loading during a retry backoff and the dataset once the retry succeeds", async () => {
@@ -134,12 +134,12 @@ describe("DatasetPopoverLink loading", () => {
         await flushPromises();
         expect(datasetRequests).toBe(1);
         expect(historyRequests).toBe(0);
-        expect(link.find(".dataset-details-popover").text()).toContain("Loading dataset details");
+        expect(link.find(".item-details-popover").text()).toContain("Loading dataset details");
 
         await vi.advanceTimersByTimeAsync(RETRY_BACKOFF_CAP_MS);
         await flushPromises();
         expect(datasetRequests).toBe(2);
-        expect(link.find(".dataset-details-popover").text()).not.toContain("Loading dataset details");
+        expect(link.find(".item-details-popover").text()).not.toContain("Loading dataset details");
         expect(link.find("#dataset-details").exists()).toBe(true);
         // Nothing in the popover reads the dataset's history.
         expect(historyRequests).toBe(0);

@@ -78,9 +78,13 @@ describe("ItemPopoverLink collections", () => {
     beforeEach(() => {
         summaryRequests = [];
         server.use(
-            http.get("/api/dataset_collections/{hdca_id}", ({ request, response }) => {
+            http.get("/api/dataset_collections/{hdca_id}", ({ request, params, response }) => {
                 summaryRequests.push(new URL(request.url).searchParams.get("view") ?? "");
-                return response.untyped(HttpResponse.json(HDCA_SUMMARY));
+                const summary =
+                    params.hdca_id === HDCA_ID
+                        ? HDCA_SUMMARY
+                        : { ...HDCA_SUMMARY, id: params.hdca_id, name: "other list" };
+                return response.untyped(HttpResponse.json(summary));
             }),
         );
     });
@@ -107,10 +111,24 @@ describe("ItemPopoverLink collections", () => {
         expect(body).toContain("a list with 3 txt datasets");
     });
 
-    it("renders a focusable trigger when no route is given", () => {
+    it("describes the new collection when the item changes", async () => {
+        const host = mountCollection({ to: "/histories/view?id=history-id-1" });
+        await host.findComponent(RouterLinkStub).trigger("focus");
+        await flushPromises();
+        expect(host.find(".item-details-popover").text()).toContain("my list");
+        await host.setProps({ itemId: "hdca-id-2" });
+        await host.findComponent(RouterLinkStub).trigger("focus");
+        await flushPromises();
+        expect(summaryRequests).toHaveLength(2);
+        expect(host.find(".item-details-popover").text()).toContain("other list");
+        expect(host.find(".item-details-popover").text()).not.toContain("my list");
+    });
+
+    it("renders a button trigger when no route is given", () => {
         const host = mountCollection();
         expect(host.findComponent(RouterLinkStub).exists()).toBe(false);
-        const trigger = host.find("span[tabindex='0']");
+        const trigger = host.find("button[type='button']");
         expect(trigger.attributes("id")).toBe(host.findComponent(POPOVER_STUB).props("target"));
+        expect(trigger.attributes("aria-haspopup")).toBe("dialog");
     });
 });
