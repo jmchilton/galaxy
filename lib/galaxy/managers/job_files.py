@@ -20,6 +20,19 @@ from galaxy.objectstore import BaseObjectStore
 from galaxy.security.idencoding import IdEncodingHelper
 
 APPENDABLE_FILE_NAMES = ("tool_stdout", "tool_stderr")
+INPUTS_PURGED_MESSAGE = "Input dataset(s) for job have been purged."
+
+
+def get_active_job(sa_session: galaxy_scoped_session, job_id: int) -> Job:
+    """The job a remote job runner acts for, refused once it is no longer queued or running."""
+    job = sa_session.get(Job, job_id)
+    if not job:
+        raise exceptions.ObjectNotFound("Job not found.")
+    if job.state not in Job.non_ready_states:
+        raise exceptions.ItemAccessibilityException(
+            "Attempting to read or modify the files of a job that has already completed."
+        )
+    return job
 
 
 class JobFilesManager:
@@ -54,7 +67,7 @@ class JobFilesManager:
         if re.match(r"(galaxy_)?dataset_(.*)\.dat", os.path.basename(path)):
             input_datasets = [jtid.dataset.dataset for jtid in job.input_datasets if jtid.dataset]
             if any(dataset and dataset.purged for dataset in input_datasets):
-                raise exceptions.ItemDeletionException("Input dataset(s) for job have been purged.")
+                raise exceptions.ItemDeletionException(INPUTS_PURGED_MESSAGE)
         raise exceptions.ObjectNotFound("File not found.")
 
     def authorize_write(self, encoded_job_id: str, path: str | None, job_key: str | None) -> str:
@@ -71,7 +84,7 @@ class JobFilesManager:
 
     def assert_job_active(self, encoded_job_id: str) -> None:
         """Check that a job whose write was already authorized is still queued or running."""
-        self._active_job(self._security.decode_id(encoded_job_id))
+        get_active_job(self._sa_session, self._security.decode_id(encoded_job_id))
 
     def nginx_upload_path(self, file_path: str) -> str:
         upload_store = self._config.nginx_upload_job_files_store
@@ -114,17 +127,7 @@ class JobFilesManager:
         job_id = self._security.decode_id(encoded_job_id)
         if not util.safe_str_cmp(job_key, self._security.encode_id(job_id, kind="jobs_files")):
             raise exceptions.ItemAccessibilityException("Invalid job_key supplied.")
-        return self._active_job(job_id), path
-
-    def _active_job(self, job_id: int) -> Job:
-        job = self._sa_session.get(Job, job_id)
-        if not job:
-            raise exceptions.ObjectNotFound("Job not found.")
-        if job.state not in Job.non_ready_states:
-            raise exceptions.ItemAccessibilityException(
-                "Attempting to read or modify the files of a job that has already completed."
-            )
-        return job
+        return get_active_job(self._sa_session, job_id), path
 
     def _output_dataset_path(self, job: Job, path: str) -> str | None:
         """Return the file of the output dataset that ``path`` is, or is an extra file of."""

@@ -16,6 +16,10 @@ from typing import (
 )
 
 from galaxy import exceptions
+from galaxy.managers.job_files import (
+    get_active_job,
+    INPUTS_PURGED_MESSAGE,
+)
 from galaxy.model import (
     Dataset,
     Job,
@@ -99,12 +103,10 @@ class JobObjectStagingManager:
     ) -> StagedInput:
         if not self._signer.verify(job_id, kind, object_id, "", expires, signature):
             raise exceptions.ItemAccessibilityException("Invalid or expired staging URL.")
-        job = self._sa_session.get(Job, job_id)
-        if job is None or job.state not in Job.non_ready_states:
-            raise exceptions.ItemAccessibilityException("Attempting to stage an input of a job that is not active.")
+        job = get_active_job(self._sa_session, job_id)
         obj, dataset, path_kwargs = self._input_object(job, kind, object_id)
         if dataset.purged:
-            raise exceptions.ItemDeletionException("Input dataset(s) for job have been purged.")
+            raise exceptions.ItemDeletionException(INPUTS_PURGED_MESSAGE)
 
         size = self._object_store.size(obj, **path_kwargs)
         if head:
