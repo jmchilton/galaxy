@@ -229,6 +229,20 @@ def retry_during_transitions(
     return _retry
 
 
+def exception_is_assertion_or_transition(e: Exception) -> bool:
+    """Drive the retry_assertion_during_transitions decorator.
+
+    Reuse logic for checking for transition exceptions but also retry
+    if there is an assertion error.
+    """
+    return exception_seems_to_indicate_transition(e) or isinstance(e, AssertionError)
+
+
+retry_assertion_during_transitions = partial(
+    retry_during_transitions, exception_check=exception_is_assertion_or_transition
+)
+
+
 def retry_index_during_transitions():
 
     def exception_check(e):
@@ -2202,6 +2216,22 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         invocations.state_details.wait_for_visible()
 
         invocations.activity.wait_for_and_click()
+
+    def invocation_graph_wait_for_polling_to_stop(self):
+        # The graph keeps re-rendering until job polling ends; settle it before clicking or screenshotting.
+        self.components.invocations.polling_indicator.wait_for_absent(wait_type=self.wait_types.JOB_COMPLETION)
+
+    def invocation_graph_click_node(self, label: str):
+        self.components.workflow_editor.node._(label=label).title.wait_for_and_click()
+
+    @retry_assertion_during_transitions
+    def assert_invocation_step_card_title(self, label: str):
+        title = self.components.invocations.step_card_title.wait_for_visible().text
+        assert label in title, f"Expected step card for {label}, found {title!r}"
+
+    @retry_assertion_during_transitions
+    def assert_current_url_contains(self, fragment: str):
+        assert fragment in self.current_url, f"Expected {fragment!r} in {self.current_url!r}"
 
     def open_toolbox(self) -> None:
         self.sleep_for(self.wait_types.UX_RENDER)
