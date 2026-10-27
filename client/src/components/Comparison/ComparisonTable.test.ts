@@ -94,6 +94,53 @@ describe("ComparisonTable", () => {
         expect(wrapper.findAll("thead th")[3]!.text()).toContain("this run");
     });
 
+    it("marks cells that differ from the current run's", () => {
+        const current = TABLE.rows[1]!.run.id;
+        const changed = (cell: { classes: () => string[] }) => cell.classes().includes("comparison-cell-changed");
+        const rows = mountTable({ currentRunId: current }).findAll("tbody tr");
+        // input then output; outputs shown as links are never compared
+        expect(rows.map((tr) => tr.findAll("td").slice(-2).map(changed))).toEqual([
+            [true, true],
+            [false, false],
+            [true, false],
+            [true, false],
+            [true, false],
+            [true, false],
+        ]);
+        expect(rows[0]!.findAll("td").slice(0, -2).some(changed)).toBe(false);
+        expect(rows[2]!.find(".comparison-cell-changed [title='Differs from the run you are viewing']").exists()).toBe(
+            true,
+        );
+    });
+
+    it("compares cells by their display", () => {
+        const rows = mountTable({
+            currentRunId: TABLE.rows[1]!.run.id,
+            columnDisplay: { "output:out_file1": "meta:data_lines" },
+        }).findAll("tbody tr");
+        const outputChanged = rows.map((tr) => tr.findAll("td").at(-1)!.classes().includes("comparison-cell-changed"));
+        // not run, the same line count, a collection, and a dataset without the element
+        expect(outputChanged).toEqual([true, false, false, false, true, true]);
+    });
+
+    it("marks changed cells in the run's column when transposed", () => {
+        const wrapper = mountTable({ transpose: true, currentRunId: TABLE.rows[1]!.run.id });
+        const inputLine = wrapper.find("tbody tr[data-pk='input:input1']");
+        expect(inputLine.findAll("td").map((td) => td.classes().includes("comparison-cell-changed"))).toEqual([
+            false,
+            true,
+            false,
+            true,
+            true,
+            true,
+            true,
+        ]);
+    });
+
+    it("marks nothing without a current run", () => {
+        expect(mountTable().find(".comparison-cell-changed").exists()).toBe(false);
+    });
+
     it("links rows to the invocation with the step selected", () => {
         const link = mountTable().find("tbody tr .comparison-run-link");
         expect(link.attributes("href")).toContain(
