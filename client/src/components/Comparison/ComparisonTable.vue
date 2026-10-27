@@ -5,6 +5,7 @@ import { computed } from "vue";
 
 import type { ComparisonColumn, ComparisonRow, ComparisonTable } from "@/api/comparisons";
 
+import { changedCells } from "./comparisonDiff";
 import { type CellDisplay, displayFor, fieldKeys, META_FIELDS, META_LABELS, type MetaField } from "./comparisonUtils";
 
 import ComparisonCell from "./cells/ComparisonCell.vue";
@@ -51,13 +52,18 @@ interface RunItem {
     row: ComparisonRow;
     current: boolean;
     class?: string;
+    cellClass?: Record<string, string>;
 }
 
 interface LineItem {
     lineKey: string;
     meta?: MetaField;
     column?: ComparisonColumn;
+    cellClass?: Record<string, string>;
 }
+
+const CHANGED_CLASS = "comparison-cell-changed";
+const CHANGED_TITLE = "Differs from the run you are viewing";
 
 const metaFields = computed(() => META_FIELDS[props.table.query.kind]);
 /** The field that anchors each run: it links to the run and is never hidden. */
@@ -86,6 +92,13 @@ function setDisplay(column: ComparisonColumn, value: CellDisplay) {
 
 const requestedMetadata = computed(() => props.table.query.metadata_elements ?? []);
 
+// Column keys per run whose cells differ from the current run's.
+const changed = computed(() => changedCells(props.table.rows, props.table.columns, display, props.currentRunId));
+
+function isChanged(row: ComparisonRow, column: ComparisonColumn) {
+    return Boolean(changed.value.get(row.run.id)?.has(column.key));
+}
+
 // Runs as rows.
 const runFields = computed(() => [
     { key: "_expand", label: "" },
@@ -99,6 +112,9 @@ const runItems = computed<RunItem[]>(() =>
         row,
         current: isCurrent(row),
         class: isCurrent(row) ? "comparison-current-row" : undefined,
+        cellClass: Object.fromEntries(
+            [...(changed.value.get(row.run.id) ?? [])].map((key) => [keys.value[key]!, CHANGED_CLASS]),
+        ),
     })),
 );
 
@@ -114,7 +130,13 @@ const lineFields = computed(() => [
 ]);
 const lineItems = computed<LineItem[]>(() => [
     ...visibleMetaFields.value.map((meta) => ({ lineKey: meta, meta })),
-    ...visibleDataColumns.value.map((column) => ({ lineKey: column.key, column })),
+    ...visibleDataColumns.value.map((column) => ({
+        lineKey: column.key,
+        column,
+        cellClass: Object.fromEntries(
+            props.table.rows.flatMap((row, index) => (isChanged(row, column) ? [[`r${index}`, CHANGED_CLASS]] : [])),
+        ),
+    })),
 ]);
 
 // GTable keeps expansion by index; remount it whenever the runs or the axes change.
@@ -195,12 +217,14 @@ const tableKey = computed(() => `${props.transpose}:${props.table.rows.map((row)
                     v-for="column in visibleDataColumns"
                     :key="`c-${column.key}`"
                     v-slot:[`cell(${keys[column.key]})`]="{ item }">
-                    <ComparisonCell
-                        :cell="item.row.cells[column.key]"
-                        :row="item.row"
-                        :display="display(column)"
-                        :requested-metadata="requestedMetadata"
-                        :loading="loading" />
+                    <span :title="isChanged(item.row, column) ? CHANGED_TITLE : undefined">
+                        <ComparisonCell
+                            :cell="item.row.cells[column.key]"
+                            :row="item.row"
+                            :display="display(column)"
+                            :requested-metadata="requestedMetadata"
+                            :loading="loading" />
+                    </span>
                 </template>
                 <template v-slot:row-details="{ item }">
                     <ComparisonRowDetail :row="item.row" :columns="table.columns" :query="table.query" />
@@ -238,13 +262,14 @@ const tableKey = computed(() => `${props.transpose}:${props.table.rows.map((row)
                     v-for="(row, index) in table.rows"
                     :key="`c-${row.run.id}`"
                     v-slot:[`cell(r${index})`]="{ item }">
-                    <ComparisonCell
-                        v-if="item.column"
-                        :cell="row.cells[item.column.key]"
-                        :row="row"
-                        :display="display(item.column)"
-                        :requested-metadata="requestedMetadata"
-                        :loading="loading" />
+                    <span v-if="item.column" :title="isChanged(row, item.column) ? CHANGED_TITLE : undefined">
+                        <ComparisonCell
+                            :cell="row.cells[item.column.key]"
+                            :row="row"
+                            :display="display(item.column)"
+                            :requested-metadata="requestedMetadata"
+                            :loading="loading" />
+                    </span>
                     <ComparisonMetaCell
                         v-else
                         :field="item.meta!"
@@ -273,6 +298,10 @@ const tableKey = computed(() => `${props.transpose}:${props.table.rows.map((row)
     :deep(.comparison-current-row > td),
     :deep(.comparison-current-cell) {
         background: var(--color-blue-100);
+    }
+    :deep(td.comparison-cell-changed) {
+        background: var(--color-yellow-200);
+        box-shadow: inset 3px 0 0 var(--color-yellow-600);
     }
 }
 </style>
