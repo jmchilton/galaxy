@@ -1861,13 +1861,26 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
         reference must not reach, and a legacy alias can collide with one of them. A collection's
         ``type_source`` must already be qualified.
         """
-        input_references: InputReferences | None = None
-        for name, output_collection in self.output_collections.items():
-            type_source = output_collection.structure.collection_type_source
-            if not type_source:
-                continue
-            if input_references is None:
-                input_references = InputReferences(tool_source)
+        type_sources = [
+            (name, collection.structure.collection_type_source)
+            for name, collection in self.output_collections.items()
+            if collection.structure.collection_type_source
+        ]
+        outputs: list[ToolOutputBase] = []
+        for output in self.outputs.values():
+            outputs.append(output)
+            if isinstance(output, ToolOutputCollection):
+                outputs.extend(output.outputs.values())
+        references = [
+            (output, attribute, reference)
+            for output in outputs
+            for attribute in OUTPUT_REFERENCE_PARAM_TYPES
+            if isinstance(reference := getattr(output, attribute, None), str)
+        ]
+        if not type_sources and not references:
+            return
+        input_references = InputReferences(tool_source)
+        for name, type_source in type_sources:
             resolved = input_references.resolve(type_source)
             legacy_matches = sorted({r.qualified for r in resolved.matches if r.param_type in DATA_INPUT_TYPES})
             if resolved.legacy and legacy_matches:
@@ -1877,27 +1890,16 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
                     + " or ".join(f"'{q}'" for q in qualified)
                     + "."
                 )
-        outputs: list[ToolOutputBase] = []
-        for output in self.outputs.values():
-            outputs.append(output)
-            if isinstance(output, ToolOutputCollection):
-                outputs.extend(output.outputs.values())
-        for output in outputs:
-            for attribute in OUTPUT_REFERENCE_PARAM_TYPES:
-                reference = getattr(output, attribute, None)
-                if not isinstance(reference, str):
-                    continue
-                if input_references is None:
-                    input_references = InputReferences(tool_source)
-                resolved = input_references.resolve(reference)
-                if problem := output_reference_problem(resolved, attribute):
-                    message = f"Tool [{self.id}] output '{output.name}' {attribute}='{reference}' {problem}."
-                    if self.profile >= 26.2:
-                        raise ToolLoadError(message)
-                    log.warning(f"{message} Ignoring it; tools with profile 26.2 or newer fail to load.")
-                    setattr(output, attribute, None)
-                else:
-                    setattr(output, attribute, resolved.runtime_key)
+        for output, attribute, reference in references:
+            resolved = input_references.resolve(reference)
+            if problem := output_reference_problem(resolved, attribute):
+                message = f"Tool [{self.id}] output '{output.name}' {attribute}='{reference}' {problem}."
+                if self.profile >= 26.2:
+                    raise ToolLoadError(message)
+                log.warning(f"{message} Ignoring it; tools with profile 26.2 or newer fail to load.")
+                setattr(output, attribute, None)
+            else:
+                setattr(output, attribute, resolved.runtime_key)
 
     def _parse_citations(self, tool_source):
         citation_models = tool_source.parse_citations()

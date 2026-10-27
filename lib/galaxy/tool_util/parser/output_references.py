@@ -97,9 +97,11 @@ class InputReferences:
             input_type = input_source.parse_input_type()
             if input_type == "param":
                 self._add_param(input_source, qualified, legacy, in_repeat)
-            elif input_type not in ("conditional", "section", "repeat") or (name := input_source.get("name")) is None:
                 continue
-            elif input_type == "conditional":
+            name = input_source.get("name")
+            if name is None:
+                continue
+            if input_type == "conditional":
                 # A value_from conditional has no test param.
                 if not input_source.get("value_from"):
                     self._add_param(input_source.parse_test_input_source(), qualified + [name], qualified, in_repeat)
