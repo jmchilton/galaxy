@@ -9,7 +9,10 @@ from typing import (
 
 from galaxy.job_execution.datasets import DeferrableObjectsT
 from galaxy.job_execution.setup import JobIO
-from galaxy.model import Job
+from galaxy.model import (
+    Job,
+    MetadataFile,
+)
 
 
 def dataset_path_to_extra_path(path: str) -> str:
@@ -44,6 +47,10 @@ class ComputeEnvironment(metaclass=ABCMeta):
     @abstractmethod
     def output_extra_files_rewrite(self, dataset):
         """Output extra files path rewrite for specified dataset."""
+
+    def input_metadata_file_path(self, metadata_file: MetadataFile) -> str:
+        """Local path of an input metadata file, as later passed to ``input_metadata_rewrite``."""
+        return metadata_file.get_file_name()
 
     @abstractmethod
     def input_metadata_rewrite(self, dataset, metadata_value):

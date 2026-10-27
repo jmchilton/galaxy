@@ -515,7 +515,7 @@ def test_input_path_rewrite_does_not_pull_an_input_staged_by_identity():
     assert compute_environment.job_wrapper.job_io.sync_cache is False
 
 
-def test_input_metadata_rewrite_records_which_metadata_file_the_path_belongs_to(tmp_path):
+def test_input_metadata_file_path_records_the_metadata_file_staged_by_identity(tmp_path):
     app = GalaxyDataTestApp()
     hda = HistoryDatasetAssociation(extension="bam", create_dataset=True, sa_session=app.model.session)
     index = tmp_path / "index"
@@ -526,11 +526,12 @@ def test_input_metadata_rewrite_records_which_metadata_file_the_path_belongs_to(
         json_dict={"bam_index": MetadataTempFile.from_JSON({"kwds": {}, "filename": str(index)})}
     )
     app.model.session.commit()
-    metadata_path = hda.metadata.bam_index.get_file_name()
+    bam_index = hda.metadata.bam_index
 
     compute_environment = _staging_compute_environment_for_rewrites("stream")
-    compute_environment.input_metadata_rewrite(hda, metadata_path)
-    assert compute_environment.input_metadata_file_ids == {metadata_path: hda.metadata.bam_index.id}
+    metadata_path = compute_environment.input_metadata_file_path(bam_index)
+    assert metadata_path == bam_index.get_file_name(sync_cache=False)
+    assert compute_environment.input_metadata_file_ids == {metadata_path: bam_index.id}
 
 
 def test_unknown_object_store_staging_mode_is_a_configuration_error():
@@ -543,14 +544,3 @@ def test_input_path_rewrite_keeps_the_local_path_without_object_store_staging():
     compute_environment = _staging_compute_environment_for_rewrites(None)
     assert compute_environment.input_path_rewrite(object()) == "/pulsar/inputs/dataset_5.dat"
     assert compute_environment.job_wrapper.job_io.sync_cache is None  # the local path config was used
-
-
-def test_input_metadata_rewrite_records_nothing_for_a_path_that_is_no_metadata_file(tmp_path):
-    app = GalaxyDataTestApp()
-    hda = HistoryDatasetAssociation(extension="bam", create_dataset=True, sa_session=app.model.session)
-    app.model.session.add(hda)
-    app.model.session.commit()
-
-    compute_environment = _staging_compute_environment_for_rewrites("stream")
-    compute_environment.input_metadata_rewrite(hda, str(tmp_path / "not_a_metadata_file.dat"))
-    assert compute_environment.input_metadata_file_ids == {}

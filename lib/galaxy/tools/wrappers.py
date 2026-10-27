@@ -31,6 +31,7 @@ from galaxy.model import (
     DatasetInstance,
     HasTags,
     HistoryDatasetCollectionAssociation,
+    MetadataFile,
 )
 from galaxy.model.metadata import FileParameter
 from galaxy.model.none_like import NoneDataset
@@ -334,11 +335,16 @@ class DatasetFilenameWrapper(ToolParameterValueWrapper):
                     rval = self.metadata.spec[name].no_value
                 metadata_param = self.metadata.spec[name].param
 
-                rval = metadata_param.to_safe_string(rval)
                 if isinstance(metadata_param, FileParameter) and self.compute_environment:
+                    if isinstance(rval, MetadataFile):
+                        rval = self.compute_environment.input_metadata_file_path(rval)
+                    else:
+                        rval = metadata_param.to_safe_string(rval)
                     rewrite = self.compute_environment.input_metadata_rewrite(self.dataset, rval)
                     if rewrite is not None:
                         rval = rewrite
+                else:
+                    rval = metadata_param.to_safe_string(rval)
 
                 # Store this value, so we don't need to recalculate if needed
                 # again

@@ -137,6 +137,10 @@ class TestPulsarObjectStagingStream(BaseObjectStoreIntegrationTestCase):
         output = self.dataset_populator.get_history_dataset_content(history_id, dataset=run["outputs"][0])
         assert output.strip() == "chrM"
         assert not os.path.exists(self._cache_path(hda))
+        bam_index = self._app.model.session.scalars(
+            select(model.MetadataFile).filter_by(hda_id=self._hda(hda).id, name="bam_index")
+        ).one()
+        assert not os.path.exists(bam_index.get_file_name(sync_cache=False))
 
     def _hda(self, hda_dict) -> model.HistoryDatasetAssociation:
         hda = self._app.model.session.get(model.HistoryDatasetAssociation, self._app.security.decode_id(hda_dict["id"]))
