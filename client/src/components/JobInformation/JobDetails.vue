@@ -30,7 +30,12 @@ const remoteHost = computed(() => (props.job && "remote_host" in props.job ? (pr
 <template>
     <div v-if="id">
         <JobHeader v-if="props.showHeader" :job-id="id" />
-        <JobInformation :job-id="id" include-times :invocation-id="invocationId">
+        <!-- Only the job page shows the header; step cards and the admin list skip "Other runs". -->
+        <JobInformation
+            :job-id="id"
+            include-times
+            :include-other-runs-link="props.showHeader"
+            :invocation-id="invocationId">
             <template v-slot:extra-code-rows>
                 <!-- only needed for admin job component -->
                 <CodeRow v-if="traceback" :code-label="'Traceback'" :code-item="traceback" />
