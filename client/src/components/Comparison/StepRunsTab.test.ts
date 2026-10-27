@@ -119,6 +119,22 @@ describe("StepRunsTab", () => {
         expect(tab.find(".comparison-summary").text()).toBe("Showing 51–56 of 60 · newest first · your runs only");
     });
 
+    it("drops the previous step's table and page link while another step loads", async () => {
+        const tab = await mountTab();
+        expect(tab.find("a.comparison-view-all").exists()).toBe(true);
+        let release: () => void = () => {};
+        gate = new Promise((resolve) => (release = resolve));
+        await tab.setProps({ stepLabel: "first_cat" });
+        await flushPromises();
+        expect(requests.at(-1)!.query.get("step_label")).toBe("first_cat");
+        expect(tab.findComponent(ComparisonTable).exists()).toBe(false);
+        expect(tab.find("a.comparison-view-all").exists()).toBe(false);
+        expect(tab.text()).toContain("Loading runs of this step");
+        release();
+        await flushPromises();
+        expect(tab.findComponent(ComparisonTable).exists()).toBe(true);
+    });
+
     it("links to the full page by the stored workflow id the server echoed", async () => {
         const tab = await mountTab();
         expect(tab.find("a.comparison-view-all").attributes("href")).toBe(

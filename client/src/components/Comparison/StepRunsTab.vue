@@ -64,9 +64,11 @@ const params = computed<StepRunsParams | undefined>(() => {
 });
 const { total, loading, error, reload } = useComparisonFetch(params, fetchStepRuns, table);
 
+// Another step drops the old table, so its rows and page link don't show while the new one loads.
 watch(
     () => [props.workflowId, props.stepLabel],
     () => {
+        table.value = undefined;
         offset.value = 0;
         states.value = [];
         versions.value = [];
