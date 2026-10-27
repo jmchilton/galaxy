@@ -1989,6 +1989,7 @@ comparisons:
     row_link: '.comparison-table tr[data-pk="${run_id}"] a.comparison-run-link'
     row_expand: '.comparison-table tr[data-pk="${run_id}"] .comparison-expand'
     row_detail: '.comparison-table .comparison-row-detail'
+    row_detail_changed_parameter: '.comparison-row-detail .job-parameters-diff tr.job-parameters-diff-changed'
     row_select: '.comparison-table tr[data-pk="${run_id}"] .g-table-select-column label'
     compare_selected: '.comparison-table .comparison-compare-selected'
     diff_panel: '.comparison-table .comparison-diff'

@@ -796,6 +796,7 @@ interface Rootcomparisons extends Component {
     row_link: SelectorTemplate;
     row_expand: SelectorTemplate;
     row_detail: SelectorTemplate;
+    row_detail_changed_parameter: SelectorTemplate;
     row_select: SelectorTemplate;
     compare_selected: SelectorTemplate;
     diff_panel: SelectorTemplate;

@@ -40,9 +40,14 @@ class TestComparisons(SeleniumTestCase):
         assert "v1" in comparisons.row(run_id=older_ids[0]).wait_for_visible().text
         self.screenshot("comparisons_step_all_runs")
 
-        comparisons.row_expand(run_id=newest_id).wait_for_and_click()
+        # an older run's details diff its job's parameters against the viewed run's
+        comparisons.row_expand(run_id=older_ids[0]).wait_for_and_click()
         comparisons.row_detail.wait_for_visible()
-        comparisons.row_expand(run_id=newest_id).wait_for_and_click()
+        changed = comparisons.row_detail_changed_parameter.wait_for_visible()
+        assert "Concatenate Dataset" in changed.text, changed.text
+        self.screenshot("comparisons_step_all_runs_row_detail")
+        comparisons.row_expand(run_id=older_ids[0]).wait_for_and_click()
+        comparisons.row_detail.wait_for_absent_or_hidden()
 
         comparisons.row_select(run_id=newest_id).wait_for_and_click()
         comparisons.row_select(run_id=older_ids[0]).wait_for_and_click()
