@@ -66,6 +66,8 @@ describe("ComparisonTable", () => {
         expect(headers.slice(2, 7)).toEqual(["Invoked", "Version", "State", "Reused", "History"]);
         expect(columnHeader(wrapper, 7)).toEqual(["in", "input1"]);
         expect(columnHeader(wrapper, 8)).toEqual(["out", "out_file1"]);
+        const keys = wrapper.findAll("thead .comparison-column-header").map((h) => h.attributes("data-column-key"));
+        expect(keys).toEqual(["input:input1", "output:out_file1"]);
         const rows = wrapper.findAll("tbody tr");
         expect(rows.map((tr) => tr.attributes("data-pk"))).toEqual(TABLE.rows.map((r) => r.run.id));
     });
