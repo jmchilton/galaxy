@@ -1,7 +1,12 @@
 """Resolve comparison tables of runs across workflow invocations."""
 
 from collections import defaultdict
-from collections.abc import Collection
+from collections.abc import (
+    Callable,
+    Collection,
+    Container,
+    Mapping,
+)
 from datetime import datetime
 from typing import (
     Any,
@@ -21,6 +26,7 @@ from galaxy.managers.comparison_cells import (
     ComparisonAccess,
     ComparisonCellBuilder,
     ImplicitCollectionJobsRecord,
+    ItemCell,
     ItemRef,
     JobRecord,
 )
@@ -39,16 +45,24 @@ from galaxy.model import (
     Job,
     Workflow,
     WorkflowInvocation,
+    WorkflowInvocationOutputDatasetAssociation,
+    WorkflowInvocationOutputDatasetCollectionAssociation,
+    WorkflowInvocationOutputValue,
     WorkflowInvocationStep,
     WorkflowInvocationStepOutputDatasetAssociation,
     WorkflowInvocationStepOutputDatasetCollectionAssociation,
     WorkflowInvocationToSubworkflowInvocationAssociation,
+    WorkflowOutput,
+    WorkflowRequestInputStepParameter,
+    WorkflowRequestToInputDatasetAssociation,
+    WorkflowRequestToInputDatasetCollectionAssociation,
     WorkflowStep,
 )
 from galaxy.model.scoped_session import galaxy_scoped_session
 from galaxy.schema.comparisons import (
     AnyComparisonCell,
     ComparisonColumn,
+    ComparisonColumnRole,
     ComparisonQueryBase,
     ComparisonRow,
     ComparisonTable,
@@ -57,16 +71,40 @@ from galaxy.schema.comparisons import (
     InvocationRunRef,
     JobRunRef,
     MissingCell,
+    MissingReason,
+    OutputRunsQuery,
     ReusedState,
     StepRunsQuery,
+    ValueCell,
 )
-from galaxy.schema.states import DatasetCollectionPopulatedState
+from galaxy.schema.states import (
+    DatasetCollectionPopulatedState,
+    InvocationState,
+)
+
+INPUT_STEP_TYPES = ("data_input", "data_collection_input", "parameter_input")
+NOT_SCHEDULED_INVOCATION_STATES = (
+    InvocationState.NEW,
+    InvocationState.READY,
+    InvocationState.REQUIRES_MATERIALIZATION,
+)
 
 
 class InvocationPageRow(NamedTuple):
     id: int
     workflow_id: int
     state: str | None
+    create_time: datetime
+    update_time: datetime
+    history_id: int
+    history_name: str | None
+    history_deleted: bool
+    history_purged: bool
+
+
+class ToolRunPageRow(NamedTuple):
+    job_id: int
+    implicit_collection_jobs_id: int | None
     create_time: datetime
     update_time: datetime
     history_id: int
@@ -105,6 +143,133 @@ class ComparisonsManager:
         page, total = self._page_invocations(access.user_id, list(step_ids_by_workflow), query, state_predicate)
         columns, rows = self._step_rows(access, page, step_ids, query, self._version_map(stored_workflow_id))
         return ComparisonTable(query=query, columns=columns, rows=rows), total
+
+    def output_runs(
+        self, access: ComparisonAccess, stored_workflow_id: int, query: OutputRunsQuery
+    ) -> tuple[ComparisonTable, int]:
+        """One row per invocation of any version, with labelled workflow inputs and outputs as columns."""
+        version_map = self._version_map(stored_workflow_id)
+        state_predicate = WorkflowInvocation.state.in_(query.states) if query.states else None
+        page, total = self._page_invocations(access.user_id, list(version_map), query, state_predicate)
+        columns, rows = self._output_rows(access, page, query, version_map)
+        return ComparisonTable(query=query, columns=columns, rows=rows), total
+
+    def _output_rows(
+        self,
+        access: ComparisonAccess,
+        page: list[InvocationPageRow],
+        query: OutputRunsQuery,
+        version_map: dict[int, int],
+    ) -> tuple[list[ComparisonColumn], list[ComparisonRow]]:
+        declared = self._declared_workflow_io({invocation.workflow_id for invocation in page})
+        if query.output_labels is not None:
+            labels = set(query.output_labels)
+            declared = {wid: [spec for spec in specs if spec.label in labels] for wid, specs in declared.items()}
+        declared_by_version = {version_map[wid]: specs for wid, specs in declared.items()}
+        newest_version = max(declared_by_version) if declared_by_version else 0
+        columns = align_columns(declared_by_version, newest_version)
+        io_by_invocation = self._invocation_io([invocation.id for invocation in page])
+        item_cells = self.cell_builder.item_cells(
+            (value for io in io_by_invocation.values() for value in io.values() if isinstance(value, ItemRef)),
+            access,
+            query.metadata_elements,
+            query.inline_expression_values,
+        )
+        metadata_keys: dict[str, set[str]] = defaultdict(set)
+        rows = []
+        for invocation in page:
+            version = version_map[invocation.workflow_id]
+            state = invocation.state or InvocationState.NEW.value
+            in_version = {spec.key for spec in declared_by_version.get(version, ())}
+            scheduled = state not in NOT_SCHEDULED_INVOCATION_STATES
+            reason = missing_reason(True, state if scheduled else None, None, True)
+            io = io_by_invocation.get(invocation.id, {})
+            cells = _cells(columns, io, item_cells, metadata_keys, in_version, reason)
+            rows.append(
+                ComparisonRow(
+                    run=InvocationRunRef(id=invocation.id, state=state),
+                    create_time=invocation.create_time,
+                    update_time=invocation.update_time,
+                    state=state,
+                    version=version,
+                    history=_history_ref(invocation),
+                    cells=cells,
+                )
+            )
+        _set_metadata_keys(columns, metadata_keys)
+        return columns, rows
+
+    def _declared_workflow_io(self, workflow_ids: Collection[int]) -> dict[int, list[ColumnSpec]]:
+        """Labelled input steps then labelled outputs of each Workflow, in step order; duplicates kept."""
+        declared: dict[int, list[ColumnSpec]] = defaultdict(list)
+        if not workflow_ids:
+            return declared
+        input_stmt = (
+            select(WorkflowStep.workflow_id, WorkflowStep.label, WorkflowStep.type)
+            .where(
+                WorkflowStep.workflow_id.in_(workflow_ids),
+                WorkflowStep.type.in_(INPUT_STEP_TYPES),
+                WorkflowStep.label.is_not(None),
+            )
+            .order_by(WorkflowStep.order_index, WorkflowStep.id)
+        )
+        for workflow_id, label, step_type in self.sa_session.execute(input_stmt):
+            role: ComparisonColumnRole = "parameter" if step_type == "parameter_input" else "input"
+            declared[workflow_id].append(ColumnSpec(key=f"{role}:{label}", label=label, role=role))
+        output_stmt = (
+            select(WorkflowStep.workflow_id, WorkflowOutput.label)
+            .join(WorkflowStep, WorkflowStep.id == WorkflowOutput.workflow_step_id)
+            .where(WorkflowStep.workflow_id.in_(workflow_ids), WorkflowOutput.label.is_not(None))
+            .order_by(WorkflowStep.order_index, WorkflowOutput.id)
+        )
+        for workflow_id, label in self.sa_session.execute(output_stmt):
+            declared[workflow_id].append(ColumnSpec(key=f"output:{label}", label=label, role="output"))
+        return declared
+
+    def _invocation_io(self, invocation_ids: list[int]) -> dict[int, dict[str, ItemRef | AnyComparisonCell]]:
+        """Labelled inputs, parameters and outputs of each invocation; the first output by id wins a label."""
+        io: dict[int, dict[str, ItemRef | AnyComparisonCell]] = defaultdict(dict)
+        if not invocation_ids:
+            return io
+        input_sources: list[tuple[Any, str, Callable[[Any], ItemRef | AnyComparisonCell]]] = [
+            (WorkflowRequestToInputDatasetAssociation.dataset_id, "input", lambda v: ItemRef("hda", v)),
+            (WorkflowRequestToInputDatasetCollectionAssociation.dataset_collection_id, "input", _hdca_ref),
+            (WorkflowRequestInputStepParameter.parameter_value, "parameter", _parameter_cell),
+        ]
+        for value_column, role, to_value in input_sources:
+            assoc = value_column.class_
+            stmt = (
+                select(assoc.workflow_invocation_id, WorkflowStep.label, value_column)
+                .join(WorkflowStep, WorkflowStep.id == assoc.workflow_step_id)
+                .where(assoc.workflow_invocation_id.in_(invocation_ids), WorkflowStep.label.is_not(None))
+                .order_by(assoc.id)
+            )
+            for invocation_id, label, value in self.sa_session.execute(stmt):
+                if role == "input" and value is None:
+                    continue
+                io[invocation_id].setdefault(f"{role}:{label}", to_value(value))
+        output_sources: list[tuple[Any, Callable[[Any], ItemRef | AnyComparisonCell]]] = [
+            (WorkflowInvocationOutputDatasetAssociation.dataset_id, lambda v: ItemRef("hda", v)),
+            (WorkflowInvocationOutputDatasetCollectionAssociation.dataset_collection_id, _hdca_ref),
+            (WorkflowInvocationOutputValue.value, _output_value_cell),
+        ]
+        outputs: dict[tuple[int, str], tuple[int, ItemRef | AnyComparisonCell]] = {}
+        for value_column, to_value in output_sources:
+            assoc = value_column.class_
+            stmt = (
+                select(assoc.workflow_invocation_id, WorkflowOutput.id, WorkflowOutput.label, value_column)
+                .join(WorkflowOutput, WorkflowOutput.id == assoc.workflow_output_id)
+                .where(assoc.workflow_invocation_id.in_(invocation_ids), WorkflowOutput.label.is_not(None))
+            )
+            for invocation_id, output_id, label, value in self.sa_session.execute(stmt):
+                if value is None and to_value is not _output_value_cell:
+                    continue
+                output_key = (invocation_id, f"output:{label}")
+                if output_key not in outputs or output_id < outputs[output_key][0]:
+                    outputs[output_key] = (output_id, to_value(value))
+        for (invocation_id, column_key), (_, output_value) in outputs.items():
+            io[invocation_id][column_key] = output_value
+        return io
 
     def _version_map(self, stored_workflow_id: int) -> dict[int, int]:
         """0-based version of each Workflow of a StoredWorkflow, as ``StoredWorkflow.version_of`` numbers them."""
@@ -159,10 +324,7 @@ class ComparisonsManager:
         icjs = self.cell_builder.load_implicit_collection_jobs(
             {step.implicit_collection_jobs_id for step in steps.values() if step.implicit_collection_jobs_id}
         )
-        job_inputs = self.cell_builder.job_inputs(
-            [*jobs, *(icj.representative.id for icj in icjs.values() if icj.representative)]
-        )
-        icj_inputs = self.cell_builder.implicit_collection_inputs(list(icjs))
+        job_inputs, icj_inputs = self._submission_inputs(jobs, icjs)
         subworkflow_invocations = self._subworkflow_invocations(invocation_ids, step_ids)
 
         io_by_invocation: dict[int, dict[str, ItemRef]] = {}
@@ -174,12 +336,7 @@ class ComparisonsManager:
             if step:
                 job = jobs.get(step.job_id) if step.job_id else None
                 icj = icjs.get(step.implicit_collection_jobs_id) if step.implicit_collection_jobs_id else None
-                inputs = {}
-                if job:
-                    inputs = job_inputs.get(job.id, {})
-                elif icj:
-                    representative_inputs = job_inputs.get(icj.representative.id, {}) if icj.representative else {}
-                    inputs = {**representative_inputs, **icj_inputs.get(icj.id, {})}
+                inputs = job_inputs.get(job.id, {}) if job else icj_inputs.get(icj.id, {}) if icj else {}
                 io.update(_keyed("input", inputs))
                 io.update(_keyed("output", outputs.get(step.id, {})))
             io_by_invocation[invocation.id] = io
@@ -207,19 +364,10 @@ class ComparisonsManager:
             state = _step_state(step, job, icj)
             representative = job or (icj.representative if icj else None)
             terminal = state not in Job.non_ready_states
-            cells: dict[str, AnyComparisonCell] = {}
-            io = io_by_invocation[invocation.id]
-            for column in columns:
-                ref = io.get(column.key)
-                item_cell = item_cells.get(ref) if ref else None
-                if item_cell:
-                    cells[column.key] = item_cell.cell
-                    metadata_keys[column.key].update(item_cell.metadata_keys)
-                else:
-                    # a version's columns are only known from its scheduled steps on this page
-                    column_in_version = step is None or column.key in declared.get(version, ())
-                    reason = missing_reason(column_in_version, (step.state or "new") if step else None, state, terminal)
-                    cells[column.key] = MissingCell(reason=reason)
+            reason = missing_reason(True, (step.state or "new") if step else None, state, terminal)
+            # a version's columns are only known from its scheduled steps on this page
+            in_version = declared.get(version, {}) if step else None
+            cells = _cells(columns, io_by_invocation[invocation.id], item_cells, metadata_keys, in_version, reason)
             rows.append(
                 ComparisonRow(
                     run=InvocationRunRef(id=invocation.id, state=invocation.state or "new"),
@@ -232,18 +380,28 @@ class ComparisonsManager:
                     tool_id=representative.tool_id if representative else None,
                     tool_version=representative.tool_version if representative else None,
                     reused=_reused(job, icj),
-                    history=HistoryRef(
-                        id=invocation.history_id,
-                        name=invocation.history_name,
-                        deleted=invocation.history_deleted,
-                        purged=invocation.history_purged,
-                    ),
+                    history=_history_ref(invocation),
                     cells=cells,
                 )
             )
-        for column in columns:
-            column.metadata_keys = sorted(metadata_keys[column.key])
+        _set_metadata_keys(columns, metadata_keys)
         return columns, rows
+
+    def _submission_inputs(
+        self, jobs: dict[int, JobRecord], icjs: dict[int, ImplicitCollectionJobsRecord]
+    ) -> tuple[dict[int, dict[str, ItemRef]], dict[int, dict[str, ItemRef]]]:
+        """Inputs by job id and by mapped batch id; a batch has its first job's inputs plus the mapped-over ones."""
+        representatives = {icj.id: icj.representative.id for icj in icjs.values() if icj.representative}
+        job_inputs = self.cell_builder.job_inputs([*jobs, *representatives.values()])
+        mapped_inputs = self.cell_builder.implicit_collection_inputs(list(icjs))
+        icj_inputs = {
+            icj_id: {
+                **(job_inputs.get(representatives[icj_id], {}) if icj_id in representatives else {}),
+                **mapped_inputs.get(icj_id, {}),
+            }
+            for icj_id in icjs
+        }
+        return job_inputs, icj_inputs
 
     def _invocation_steps(self, invocation_ids: list[int], step_ids: list[int]) -> dict[int, InvocationStepRecord]:
         if not invocation_ids:
@@ -331,6 +489,59 @@ def _step_state_predicate(step_ids: list[int], states: list[str]) -> ColumnEleme
     if "new" in states:
         clauses.append(~select(wis.id).where(step_of_invocation).exists())
     return or_(*clauses)
+
+
+def _hdca_ref(hdca_id: int) -> ItemRef:
+    return ItemRef("hdca", hdca_id)
+
+
+def _parameter_cell(value: Any) -> ValueCell:
+    return ValueCell(value=value, source="parameter")
+
+
+def _output_value_cell(value: Any) -> ValueCell | MissingCell:
+    """A workflow output value; a skipped step's ``NoReplacement`` sentinel renders as skipped."""
+    if isinstance(value, dict) and value.get("__class__") == "NoReplacement":
+        return MissingCell(reason="skipped")
+    return ValueCell(value=value, source="output_value")
+
+
+def _cells(
+    columns: list[ComparisonColumn],
+    io: Mapping[str, ItemRef | AnyComparisonCell],
+    item_cells: Mapping[ItemRef, ItemCell],
+    metadata_keys: dict[str, set[str]],
+    in_version: Container[str] | None,
+    reason: MissingReason,
+) -> dict[str, AnyComparisonCell]:
+    """One cell per column: the item's cell, a ready-made cell, or why it is missing.
+
+    Columns not in ``in_version`` (None: unknown, assume present) are ``not_in_version``, other gaps ``reason``.
+    """
+    cells: dict[str, AnyComparisonCell] = {}
+    for column in columns:
+        value = io.get(column.key)
+        if isinstance(value, ItemRef):
+            item_cell = item_cells.get(value)
+            if item_cell:
+                cells[column.key] = item_cell.cell
+                metadata_keys[column.key].update(item_cell.metadata_keys)
+                continue
+        elif value is not None:
+            cells[column.key] = value
+            continue
+        in_row_version = in_version is None or column.key in in_version
+        cells[column.key] = MissingCell(reason=reason if in_row_version else "not_in_version")
+    return cells
+
+
+def _set_metadata_keys(columns: list[ComparisonColumn], metadata_keys: dict[str, set[str]]) -> None:
+    for column in columns:
+        column.metadata_keys = sorted(metadata_keys[column.key])
+
+
+def _history_ref(row: InvocationPageRow | ToolRunPageRow) -> HistoryRef:
+    return HistoryRef(id=row.history_id, name=row.history_name, deleted=row.history_deleted, purged=row.history_purged)
 
 
 def _keyed(role: str, items: dict[str, ItemRef]) -> dict[str, ItemRef]:
