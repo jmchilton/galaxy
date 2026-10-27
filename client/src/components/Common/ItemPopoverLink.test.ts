@@ -102,9 +102,9 @@ describe("ItemPopoverLink collections", () => {
         await link.trigger("focus");
         await flushPromises();
         expect(summaryRequests).toEqual(["collection"]);
-        const body = host.find(".item-details-popover").text();
+        const body = host.find(".item-details-popover").text().replace(/\s+/g, " ");
         expect(body).toContain("my list");
-        expect(body).toContain("3");
+        expect(body).toContain("a list with 3 txt datasets");
     });
 
     it("renders a focusable trigger when no route is given", () => {
