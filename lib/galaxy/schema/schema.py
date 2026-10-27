@@ -2528,6 +2528,11 @@ class JobBaseModel(Model, WithModelClass):
         description="The (major) version of Galaxy used to create this job.",
         examples=["21.05"],
     )
+    tool_version: str | None = Field(
+        default=None,
+        title="Tool Version",
+        description="Version of the tool that generated this job.",
+    )
 
 
 class JobImportHistoryResponse(JobBaseModel):
@@ -2595,6 +2600,11 @@ class JobSummary(JobBaseModel):
         None,
         title="User ID",
         description="The encoded ID of the user that owns this job.",
+    )
+    copied_from_job_id: EncodedDatabaseIdField | None = Field(
+        default=None,
+        title="Copied from Job-ID",
+        description="Reference to cached job if job execution was cached.",
     )
 
 

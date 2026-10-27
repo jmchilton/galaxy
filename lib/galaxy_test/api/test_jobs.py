@@ -405,10 +405,11 @@ steps:
             "update_time",
             "user_email",
             "user_id",
+            "tool_version",
+            "copied_from_job_id",
         }
         show_keys = index_keys | {
             "command_version",
-            "copied_from_job_id",
             "implicit_collection_jobs_id",
             "inputs",
             "output_collections",
@@ -429,6 +430,8 @@ steps:
         assert set(index_jobs[0].keys()) == index_keys
         assert set(show.keys()) == show_keys
         assert set(show_full.keys()) == show_full_keys
+        assert index_jobs[0]["tool_version"] == show["tool_version"] == "1.0.0"
+        assert index_jobs[0]["copied_from_job_id"] is None
 
     @requires_new_history
     def test_show_security(self, history_id):
