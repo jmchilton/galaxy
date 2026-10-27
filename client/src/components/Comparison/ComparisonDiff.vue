@@ -6,7 +6,14 @@ import { computed, ref } from "vue";
 import type { ComparisonColumn, ComparisonQuery, ComparisonRow } from "@/api/comparisons";
 
 import { type CellComparison, compareCells, compareMeta } from "./comparisonChanges";
-import { type CellDisplay, META_LABELS, type MetaField, noJobReason, rowJob, visibleFields } from "./comparisonUtils";
+import {
+    type CellDisplay,
+    META_FIELD_SPECS,
+    type MetaField,
+    noJobReason,
+    rowJob,
+    visibleFields,
+} from "./comparisonUtils";
 
 import ComparisonCell from "./cells/ComparisonCell.vue";
 import ComparisonColumnLabel from "./ComparisonColumnLabel.vue";
@@ -133,7 +140,7 @@ const batchNote = computed(() =>
                         :title="line.comparison === 'uncompared' ? UNCOMPARED_TITLE : undefined">
                         <th scope="row" class="comparison-diff-field font-weight-normal">
                             <ComparisonColumnLabel v-if="line.column" :column="line.column" />
-                            <span v-else class="font-weight-bold">{{ META_LABELS[line.meta!] }}</span>
+                            <span v-else class="font-weight-bold">{{ META_FIELD_SPECS[line.meta!].label }}</span>
                         </th>
                         <td v-for="row in rows" :key="row.run.id">
                             <ComparisonCell
