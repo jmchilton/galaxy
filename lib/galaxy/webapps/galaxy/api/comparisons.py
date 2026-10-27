@@ -59,7 +59,10 @@ OutputLabelsQueryParam = Annotated[
     list[str] | None,
     Query(
         title="Output labels",
-        description="Only include these labelled workflow inputs and outputs; repeat the parameter for several.",
+        description=(
+            "Only include these labelled workflow outputs; labelled inputs and parameters are always included. "
+            "Repeat the parameter for several."
+        ),
     ),
 ]
 

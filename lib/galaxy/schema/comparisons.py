@@ -88,7 +88,9 @@ class StepRunsQuery(ComparisonQueryBase):
 class OutputRunsQuery(ComparisonQueryBase):
     kind: Literal["output_runs"] = "output_runs"
     workflow_id: DecodedDatabaseIdField = Field(..., description="The StoredWorkflow id.")
-    output_labels: list[str] | None = Field(None, description="Only include these labelled outputs and inputs.")
+    output_labels: list[str] | None = Field(
+        None, description="Only include these labelled outputs; labelled inputs and parameters are always included."
+    )
 
 
 class ToolRunsQuery(ComparisonQueryBase):
@@ -186,7 +188,9 @@ class ComparisonColumn(Model):
         None, description="Versions on the page that have this column; null when every version has it."
     )
     duplicate: bool = Field(False, description="Some version declares more than one item with this label.")
-    metadata_keys: list[str] = Field([], description="Scalar metadata element names seen in this column's datasets.")
+    metadata_keys: list[str] = Field(
+        [], description="Scalar metadata element names declared by the datatypes of this column's datasets, set or not."
+    )
 
 
 class ComparisonRow(Model):

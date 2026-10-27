@@ -465,10 +465,11 @@ class TestComparisonsApi(ApiTestCase):
                 "expression.json",
             )
 
-            # output_labels filters columns only
-            filtered = self._output_runs_table(summary.workflow_id, output_labels=["n", "min_quality"])
-            assert [column["key"] for column in filtered["columns"]] == ["parameter:min_quality", "output:n"]
-            assert [set(row["cells"]) for row in filtered["rows"]] == [{"parameter:min_quality", "output:n"}] * 2
+            # output_labels filters output columns only
+            filtered = self._output_runs_table(summary.workflow_id, output_labels=["n"])
+            filtered_keys = ["input:input1", "parameter:min_quality", "output:n"]
+            assert [column["key"] for column in filtered["columns"]] == filtered_keys
+            assert [set(row["cells"]) for row in filtered["rows"]] == [set(filtered_keys)] * 2
 
             # states filter on the invocation state
             assert len(self._output_runs_table(summary.workflow_id, states="completed")["rows"]) == 2

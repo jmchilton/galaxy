@@ -173,11 +173,20 @@ class ComparisonsManager:
         declared = self._declared_workflow_io({invocation.workflow_id for invocation in page})
         if query.output_labels is not None:
             labels = set(query.output_labels)
-            declared = {wid: [spec for spec in specs if spec.label in labels] for wid, specs in declared.items()}
-        declared_by_version = {version_map[wid]: specs for wid, specs in declared.items()}
+            declared = {
+                wid: [spec for spec in specs if spec.role != "output" or spec.label in labels]
+                for wid, specs in declared.items()
+            }
+        # every version on the page counts, labelled io or not
+        declared_by_version: dict[int, list[ColumnSpec]] = {version_map[i.workflow_id]: [] for i in page}
+        declared_by_version.update((version_map[wid], specs) for wid, specs in declared.items())
         newest_version = max(declared_by_version) if declared_by_version else 0
         columns = align_columns(declared_by_version, newest_version)
-        io_by_invocation = self._invocation_io([invocation.id for invocation in page])
+        column_keys = {column.key for column in columns}
+        io_by_invocation = {
+            invocation_id: {key: value for key, value in io.items() if key in column_keys}
+            for invocation_id, io in self._invocation_io([invocation.id for invocation in page]).items()
+        }
         item_cells = self.cell_builder.item_cells(
             (value for io in io_by_invocation.values() for value in io.values() if isinstance(value, ItemRef)),
             access,
@@ -377,8 +386,8 @@ class ComparisonsManager:
             icj = icjs.get(icj_id) if icj_id is not None else None
             representative = job or (icj.representative if icj else None)
             run = _step_job_ref(job, icj)
-            if run is None:
-                continue
+            # the loaders return every paged id, so total_matches and rows agree
+            assert run is not None
             state = _step_state(None, job, icj)
             tool_version = representative.tool_version if representative else None
             reason = missing_reason(True, state, state, state not in Job.non_ready_states)

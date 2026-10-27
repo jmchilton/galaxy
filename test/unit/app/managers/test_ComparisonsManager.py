@@ -167,6 +167,53 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
             assert cell.type == "dataset"
             assert cell.id == self.app.security.encode_id(first_outputs[row.run.id])
 
+    def test_output_runs_output_labels_filter_outputs_only(self):
+        stored_workflow, first_outputs = self._stored_workflow_with_output_runs(2)
+        query = OutputRunsQuery.model_construct(workflow_id=stored_workflow.id, output_labels=["val"])
+        cell_builder = self.comparisons_manager.cell_builder
+        with mock.patch.object(cell_builder, "load_hdas", wraps=cell_builder.load_hdas) as load_hdas:
+            table, _ = self.comparisons_manager.output_runs(_access(self.trans.user), stored_workflow.id, query)
+        assert [column.key for column in table.columns] == ["input:in", "input:foreign", "parameter:p", "output:val"]
+        # filtered-out outputs are never loaded
+        loaded_hda_ids = set(load_hdas.call_args.args[0])
+        assert loaded_hda_ids and not loaded_hda_ids & set(first_outputs.values())
+
+    def test_output_runs_present_in_versions_counts_versions_without_labels(self):
+        user = self.trans.user
+        stored_workflow = model.StoredWorkflow()
+        stored_workflow.user = user
+        stored_workflow.name = "labels added later"
+        steps = []
+        for label in (None, "tool"):
+            workflow = model.Workflow()
+            workflow.name = stored_workflow.name
+            workflow.stored_workflow = stored_workflow
+            step = model.WorkflowStep()
+            step.order_index = 0
+            step.type = "tool"
+            step.label = label
+            workflow.steps.append(step)
+            steps.append(step)
+        output = model.WorkflowOutput(steps[1], output_name="out_file1", label="out")
+        stored_workflow.latest_workflow = steps[1].workflow
+        self.session.add(stored_workflow)
+        for step in steps:
+            history = model.History(name="run", user=user)
+            invocation = model.WorkflowInvocation()
+            invocation.workflow = step.workflow
+            invocation.history = history
+            invocation.state = "scheduled"
+            self.session.add_all([history, invocation])
+            if step is steps[1]:
+                invocation.add_output(output, step, self._hda(history))
+        self.session.commit()
+        query = OutputRunsQuery.model_construct(workflow_id=stored_workflow.id)
+        table, _ = self.comparisons_manager.output_runs(_access(user), stored_workflow.id, query)
+        (column,) = table.columns
+        assert (column.key, column.present_in_versions) == ("output:out", [1])
+        assert [row.version for row in table.rows] == [1, 0]
+        assert table.rows[1].cells["output:out"].model_dump() == {"type": "missing", "reason": "not_in_version"}
+
     def _output_runs_statement_count(self, invocations: int, metadata: bool) -> int:
         stored_workflow, _ = self._stored_workflow_with_output_runs(invocations)
         stored_workflow_id = stored_workflow.id
