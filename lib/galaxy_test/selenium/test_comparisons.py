@@ -103,6 +103,11 @@ class TestComparisons(SeleniumTestCase):
         comparisons.row(run_id=job_id).wait_for_visible()
         self.screenshot("comparisons_tool_runs_page")
 
+        self.get(f"datasets/{second_cat['outputs']['out_file1']['id']}/details")
+        comparisons.other_runs_action.wait_for_and_click()
+        self.assert_current_url_contains("kind=tool_runs")
+        comparisons.row(run_id=job_id).wait_for_visible()
+
     def _runs_across_two_versions(self) -> tuple[str, list[str], str]:
         """Two runs of v1, then a rename makes v2 and it runs once more."""
         summary = self.workflow_populator.run_workflow(
