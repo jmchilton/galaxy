@@ -354,12 +354,7 @@ class ComparisonCellBuilder:
         )
 
     def _expression_value_cell(self, hda: HistoryDatasetAssociation) -> ValueCell | None:
-        if hda.extension != "expression.json" or hda.state != "ok" or hda.purged:
-            return None
-        # size unknown without touching the object store
-        if not hda.dataset or hda.dataset.file_size is None:
-            return None
-        if hda.dataset.get_size(calculate_size=False) > COMPARISON_INLINE_EXPRESSION_MAX_BYTES:
+        if not inlinable_expression(hda):
             return None
         try:
             value = read_expression_json(hda)
@@ -367,6 +362,17 @@ class ComparisonCellBuilder:
             log.debug("Could not read expression.json dataset %s for a comparison cell", hda.id, exc_info=True)
             return None
         return ValueCell(value=value, source="expression_json", dataset_id=hda.id)
+
+
+def inlinable_expression(hda: HistoryDatasetAssociation) -> bool:
+    """Whether an ``expression.json`` dataset is ready and small enough to read into a cell."""
+    if hda.extension != "expression.json" or hda.state != "ok" or hda.purged:
+        return False
+    # size unknown without touching the object store
+    if not hda.dataset or hda.dataset.file_size is None:
+        return False
+    size: int = hda.dataset.get_size(calculate_size=False)
+    return size <= COMPARISON_INLINE_EXPRESSION_MAX_BYTES
 
 
 def _cap(value: Any) -> Any:
