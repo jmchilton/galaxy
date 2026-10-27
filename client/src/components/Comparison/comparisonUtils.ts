@@ -30,15 +30,36 @@ export function visibleFields(kind: ComparisonKind, columns: ComparisonColumn[],
     };
 }
 
-export const META_LABELS: Record<MetaField, string> = {
-    invoked: "Invoked",
-    run: "Ran",
-    version: "Version",
-    tool_version: "Tool version",
-    state: "State",
-    reused: "Reused",
-    history: "History",
+interface MetaFieldSpec {
+    label: string;
+    /** The field as text; times in full rather than elapsed. */
+    text: (row: ComparisonRow) => string;
+    /** What two runs are compared on; absent when every run differs. */
+    identity?: (row: ComparisonRow) => unknown;
+}
+
+export const META_FIELD_SPECS: Record<MetaField, MetaFieldSpec> = {
+    invoked: { label: "Invoked", text: (row) => row.create_time },
+    run: { label: "Ran", text: (row) => row.create_time },
+    version: { label: "Version", text: (row) => versionLabel(row.version), identity: (row) => row.version },
+    tool_version: {
+        label: "Tool version",
+        text: (row) => row.tool_version ?? "",
+        identity: (row) => row.tool_version,
+    },
+    state: { label: "State", text: (row) => stateText(row.state), identity: (row) => row.state },
+    reused: { label: "Reused", text: (row) => row.reused ?? "", identity: (row) => row.reused },
+    history: { label: "History", text: (row) => row.history.name || row.history.id, identity: (row) => row.history.id },
 };
+
+/** Select options for the available values plus any selected ones, so a selection stays offered. */
+export function offeredOptions(
+    available: readonly string[],
+    selected: readonly string[],
+    text: (value: string) => string = (value) => value,
+): { text: string; value: string }[] {
+    return [...new Set([...available, ...selected])].map((value) => ({ text: text(value), value }));
+}
 
 export const ROLE_LABELS: Record<ComparisonColumn["role"], string> = {
     input: "in",

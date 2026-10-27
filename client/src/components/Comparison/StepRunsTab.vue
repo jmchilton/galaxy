@@ -6,7 +6,6 @@ import { computed, ref, watch } from "vue";
 import { type ComparisonTable as ComparisonTableModel, fetchStepRuns, type StepRunsParams } from "@/api/comparisons";
 
 import { comparisonPath, DEFAULT_LIMIT, displayStorageKey } from "./comparisonQuery";
-import { requestedMetadata } from "./comparisonUtils";
 import { useComparisonDisplay, useComparisonFetch } from "./useComparison";
 
 import ComparisonFilters from "./ComparisonFilters.vue";
@@ -36,15 +35,14 @@ const states = ref<string[]>([]);
 const versions = ref<string[]>([]);
 const table = ref<ComparisonTableModel>();
 // Keyed by the stored workflow, so every version shares one setting; the echoed id only when not given.
-const storageKey = computed(() => {
+const knownStorageKey = computed(() => {
     const storedId = props.storedWorkflowId ?? (props.instance ? undefined : props.workflowId);
-    if (storedId && props.stepLabel) {
-        return displayStorageKey({ kind: "step_runs", workflow_id: storedId, step_label: props.stepLabel });
-    }
-    return table.value ? displayStorageKey(table.value.query) : undefined;
+    return storedId && props.stepLabel
+        ? displayStorageKey({ kind: "step_runs", workflow_id: storedId, step_label: props.stepLabel })
+        : undefined;
 });
-const { transpose, columnDisplay, visibleColumns, toggleColumn, resetColumns } = useComparisonDisplay(
-    storageKey,
+const { transpose, columnDisplay, metadataElements, visibleColumns, toggleColumn, resetColumns } = useComparisonDisplay(
+    knownStorageKey,
     table,
 );
 
@@ -52,7 +50,7 @@ const params = computed<StepRunsParams | undefined>(() => {
     if (!props.stepLabel) {
         return undefined;
     }
-    const metadata = requestedMetadata(columnDisplay.value);
+    const metadata = metadataElements.value;
     return {
         workflow_id: props.workflowId,
         instance: props.instance || undefined,
