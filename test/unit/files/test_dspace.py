@@ -153,3 +153,18 @@ def test_paths_outside_the_dspace_layout_are_not_found():
     with pytest.raises(ObjectNotFound):
         file_sources.get_file_source_path("gxfiles://dspace").file_source.list("/bitstreams/f1")
     assert not responses.calls
+
+
+@pytest.mark.parametrize("name", ["..", "x/..", "a/../b.txt"])
+@responses.activate
+def test_bitstream_name_only_names_the_dataset(name):
+    responses.get(f"{API}/core/bitstreams/f1/content", body=b"abc")
+    assert realize_to_temp_file(_source(), f"gxfiles://dspace/bitstreams/f1/{name}") == "abc"
+
+
+@pytest.mark.parametrize("path", ["bitstreams/../x", "bitstreams//x", "bitstreams/./x"])
+@responses.activate
+def test_bitstream_path_without_a_uuid_is_not_found(path):
+    with pytest.raises(ObjectNotFound):
+        realize_to_temp_file(_source(), f"gxfiles://dspace/{path}")
+    assert not responses.calls

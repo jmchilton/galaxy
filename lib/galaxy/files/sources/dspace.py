@@ -132,8 +132,9 @@ class DSpaceFilesSource(BaseFilesSource[DSpaceFileSourceTemplateConfiguration, D
         context: FilesSourceRuntimeContext[DSpaceFileSourceConfiguration],
     ) -> None:
         # the file name at the end only names the dataset; the bitstream uuid finds the file
-        parts = self._split(source_path, maxsplit=2)
-        if len(parts) != 3 or parts[0] != "bitstreams":
+        # split unnormalized, so a name like ".." cannot swallow the uuid
+        parts = source_path.lstrip("/").split("/", 2)
+        if len(parts) != 3 or parts[0] != "bitstreams" or parts[1] in ("", ".", ".."):
             raise ObjectNotFound(f"The specified DSpace path is not a file [{source_path}].")
         config = context.config
         with self._open_url(config, self._url(config.api_url, f"core/bitstreams/{parts[1]}/content")) as response:
@@ -316,9 +317,9 @@ class DSpaceFilesSource(BaseFilesSource[DSpaceFileSourceTemplateConfiguration, D
     def _url(self, api_url: str, endpoint: str) -> str:
         return f"{api_url.rstrip('/')}/{endpoint}"
 
-    def _split(self, path: str, maxsplit: int = -1) -> list[str]:
+    def _split(self, path: str) -> list[str]:
         path = posixpath.normpath(f"/{path or ''}").strip("/")
-        return path.split("/", maxsplit) if path else []
+        return path.split("/") if path else []
 
 
 __all__ = ("DSpaceFilesSource",)
