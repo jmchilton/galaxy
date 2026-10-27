@@ -42,7 +42,10 @@ beforeEach(() => {
     server.use(
         http.get("/api/workflows/{workflow_id}/step_runs", ({ request, response }) => {
             record(request);
-            return response(200).json(STEP_TABLE, { headers: { total_matches: "60" } });
+            return response(200).json(
+                { ...STEP_TABLE, versions_available: [0, 1] },
+                { headers: { total_matches: "60" } },
+            );
         }),
         http.get("/api/workflows/{workflow_id}/output_runs", ({ request, response }) => {
             const query = record(request);
@@ -255,6 +258,27 @@ describe("ComparisonView", () => {
         await view.find(".comparison-filter-states input[value='error']").setValue(true);
         expect(replace).toHaveBeenLastCalledWith({
             query: { kind: "step_runs", workflow_id: "wf1", step_label: "second_cat", states: ["error"] },
+        });
+    });
+
+    it("offers the step's workflow versions and writes the filter to the URL", async () => {
+        const { view, replace } = await mountView({
+            kind: "step_runs",
+            workflow_id: "wf1",
+            step_label: "second_cat",
+            versions: "0",
+        });
+        expect(comparisonRequests()[0]!.query.getAll("versions")).toEqual(["0"]);
+        const versions = view.findAll(".comparison-filter-versions input");
+        expect(
+            versions.map((input) => [input.attributes("value"), (input.element as HTMLInputElement).checked]),
+        ).toEqual([
+            ["0", true],
+            ["1", false],
+        ]);
+        await view.find(".comparison-filter-versions input[value='1']").setValue(true);
+        expect(replace).toHaveBeenLastCalledWith({
+            query: { kind: "step_runs", workflow_id: "wf1", step_label: "second_cat", versions: ["0", "1"] },
         });
     });
 
