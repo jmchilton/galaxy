@@ -60,6 +60,7 @@ const lines = computed<DiffLine[]>(() => {
     ];
 });
 const differing = computed(() => lines.value.filter((line) => line.comparison === "differs").length);
+const compared = computed(() => lines.value.filter((line) => line.comparison !== "uncompared").length);
 const shownLines = computed(() =>
     onlyDifferences.value ? lines.value.filter((line) => line.comparison !== "same") : lines.value,
 );
@@ -90,7 +91,7 @@ const batchNote = computed(() =>
         <div class="card-header d-flex flex-wrap align-items-center py-1 px-2">
             <Heading size="sm" class="mb-0 mr-3">Selected runs</Heading>
             <span class="comparison-diff-summary text-muted small mr-auto">
-                {{ differing ? `${differing} of ${lines.length} fields differ` : "No differences in these fields" }}
+                {{ differing ? `${differing} of ${compared} fields differ` : "No differences in these fields" }}
             </span>
             <GCheckbox v-model="onlyDifferences" class="comparison-diff-only mr-2 mb-0" switch size="small">
                 Only differences

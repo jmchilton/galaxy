@@ -42,7 +42,8 @@ describe("ComparisonDiff", () => {
             ["input:input1", "comparison-diff-differs"],
             ["output:out_file1", "comparison-diff-uncompared"],
         ]);
-        expect(wrapper.find(".comparison-diff-summary").text()).toBe("2 of 6 fields differ");
+        // the uncompared output isn't counted
+        expect(wrapper.find(".comparison-diff-summary").text()).toBe("2 of 5 fields differ");
         const version = wrapper.find("tr[data-diff-key='version']").findAll("td");
         expect(version.map((td) => td.text())).toEqual(["v2", "v1"]);
     });
