@@ -32,6 +32,8 @@ from galaxy.model import (
     JobToInputDatasetAssociation,
     JobToInputDatasetCollectionAssociation,
     JobToInputDatasetCollectionElementAssociation,
+    JobToOutputDatasetAssociation,
+    JobToOutputDatasetCollectionAssociation,
 )
 from galaxy.model.metadata import (
     FileParameter,
@@ -243,6 +245,44 @@ class ComparisonCellBuilder:
             inputs[icj_id].setdefault(name, ItemRef("hdca", input_hdca_id))
         return inputs
 
+    def job_outputs(self, job_ids: Collection[int]) -> dict[int, dict[str, ItemRef]]:
+        """Output datasets and collections of each job, keyed by association name."""
+        outputs: dict[int, dict[str, ItemRef]] = defaultdict(dict)
+        if not job_ids:
+            return outputs
+        jtoda = JobToOutputDatasetAssociation
+        stmt = (
+            select(jtoda.job_id, jtoda.name, jtoda.dataset_id)
+            .where(jtoda.job_id.in_(job_ids), jtoda.dataset_id.is_not(None))
+            .order_by(jtoda.id)
+        )
+        for job_id, name, hda_id in self.sa_session.execute(stmt):
+            outputs[job_id].setdefault(name, ItemRef("hda", hda_id))
+        jtodca = JobToOutputDatasetCollectionAssociation
+        collection_stmt = (
+            select(jtodca.job_id, jtodca.name, jtodca.dataset_collection_id)
+            .where(jtodca.job_id.in_(job_ids), jtodca.dataset_collection_id.is_not(None))
+            .order_by(jtodca.id)
+        )
+        for job_id, name, hdca_id in self.sa_session.execute(collection_stmt):
+            outputs[job_id][name] = ItemRef("hdca", hdca_id)
+        return outputs
+
+    def implicit_collection_outputs(self, icj_ids: Collection[int]) -> dict[int, dict[str, ItemRef]]:
+        """Collections a mapped batch created, keyed by output name."""
+        outputs: dict[int, dict[str, ItemRef]] = defaultdict(dict)
+        if not icj_ids:
+            return outputs
+        hdca = HistoryDatasetCollectionAssociation
+        stmt = (
+            select(hdca.implicit_collection_jobs_id, hdca.implicit_output_name, hdca.id)
+            .where(hdca.implicit_collection_jobs_id.in_(icj_ids), hdca.implicit_output_name.is_not(None))
+            .order_by(hdca.id)
+        )
+        for icj_id, name, hdca_id in self.sa_session.execute(stmt):
+            outputs[icj_id].setdefault(name, ItemRef("hdca", hdca_id))
+        return outputs
+
     def load_items(
         self, refs: Iterable[ItemRef], with_metadata: bool
     ) -> tuple[dict[int, HistoryDatasetAssociation], dict[int, HistoryDatasetCollectionAssociation]]:
@@ -272,9 +312,9 @@ class ComparisonCellBuilder:
 
     def metadata_keys(self, hda: HistoryDatasetAssociation) -> list[str]:
         """Metadata element names a dataset's datatype declares, without file or object values."""
-        return [
-            name for name, spec in hda.metadata.spec.items() if not isinstance(spec.param, NON_SCALAR_METADATA_PARAMS)
-        ]
+        # the datatype's spec, not hda.metadata, which loads the deferred metadata column
+        spec = hda.datatype.metadata_spec
+        return [name for name, element in spec.items() if not isinstance(element.param, NON_SCALAR_METADATA_PARAMS)]
 
     def dataset_cell(
         self, hda: HistoryDatasetAssociation, metadata_elements: list[str], inline_expression_values: bool
