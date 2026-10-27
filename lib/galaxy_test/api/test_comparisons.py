@@ -96,7 +96,6 @@ steps:
       input1: input_list
 """
 
-
 WORKFLOW_MAYBE_CAT = """
 class: GalaxyWorkflow
 inputs:
@@ -483,6 +482,38 @@ class TestComparisonsApi(ApiTestCase):
             skipped_output = skipped_row["cells"]["output:out_file1"]
             assert (skipped_output["type"], skipped_output["value"]) == ("value", None)
             assert ran_row["cells"]["output:out_file1"]["type"] == "dataset"
+
+    @skip_without_tool("multi_data_param")
+    def test_tool_runs_multiple_data_input(self):
+        with self.dataset_populator.test_history() as history_id:
+            hdas = [self.dataset_populator.new_dataset(history_id, content=f"{i}\n", wait=True) for i in range(3)]
+            inputs = {"f1": {"batch": False, "values": [_hda(hda) for hda in hdas]}, "f2": _hda(hdas[0])}
+            self._run_and_show("multi_data_param", inputs, history_id)
+            list_id = self._list_from(
+                history_id, [{"name": f"el{i}", "src": "hda", "id": hda["id"]} for i, hda in enumerate(hdas[:2])]
+            )
+            # a reduced collection records its elements as f11, f12... too
+            self._run_and_show(
+                "multi_data_param", {"f1": {"src": "hdca", "id": list_id}, "f2": _hda(hdas[0])}, history_id
+            )
+
+            table = self._tool_runs_table("multi_data_param", history_id=history_id)
+            assert [column["key"] for column in table["columns"]] == [
+                "input:f1",
+                "input:f2",
+                "output:out1",
+                "output:out2",
+            ]
+            reduced_row, row = table["rows"]
+            f1 = row["cells"]["input:f1"]
+            assert f1["type"] == "dataset_list"
+            assert [(item["type"], item["id"]) for item in f1["items"]] == [("dataset", hda["id"]) for hda in hdas]
+            # one dataset stays a plain cell
+            assert (row["cells"]["input:f2"]["type"], row["cells"]["input:f2"]["id"]) == ("dataset", hdas[0]["id"])
+            assert (reduced_row["cells"]["input:f1"]["type"], reduced_row["cells"]["input:f1"]["id"]) == (
+                "collection",
+                list_id,
+            )
 
     @skip_without_tool("fail_identifier")
     def test_runs_state_filter_matches_any_mapped_member(self):
