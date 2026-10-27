@@ -19,6 +19,8 @@ from typing import (
 
 from sqlalchemy import (
     and_,
+    case,
+    func,
     or_,
     Row,
     select,
@@ -46,11 +48,16 @@ from galaxy.managers.comparison_columns import (
     missing_reason,
     normalize_io_name,
     reused_state,
+    SUMMARY_OK_RANK,
+    summary_ranks,
+    SUMMARY_SKIPPED_RANK,
     summary_state,
+    SUMMARY_STATE_GROUPS,
 )
 from galaxy.managers.workflows import get_count
 from galaxy.model import (
     History,
+    ImplicitCollectionJobs,
     ImplicitCollectionJobsJobAssociation,
     Job,
     Workflow,
@@ -94,6 +101,7 @@ from galaxy.schema.comparisons import (
 from galaxy.schema.states import (
     DatasetCollectionPopulatedState,
     InvocationState,
+    JobState,
 )
 from galaxy.tool_util.version import parse_tool_version
 from galaxy.util.tool_version import versionless_tool_id
@@ -106,6 +114,11 @@ NOT_SCHEDULED_INVOCATION_STATES = (
     InvocationState.READY,
     InvocationState.REQUIRES_MATERIALIZATION,
 )
+# row state of a mapped batch without jobs, e.g. mapped over an empty collection; others are new
+EMPTY_BATCH_STATES = {
+    DatasetCollectionPopulatedState.OK.value: JobState.OK.value,
+    DatasetCollectionPopulatedState.FAILED.value: JobState.ERROR.value,
+}
 
 
 class InvocationPageRow(NamedTuple):
@@ -723,28 +736,56 @@ def _selected_versions(version_map: Mapping[int, int], versions: list[int] | Non
 
 
 def _step_state_predicate(step_ids: list[int], states: list[str]) -> ColumnElement[bool]:
-    """Invocations whose compared step is in one of ``states``; a step not scheduled yet counts as ``new``."""
+    """Invocations whose compared step shows one of ``states``; a step not scheduled yet counts as ``new``."""
     wis = WorkflowInvocationStep
-    icjja = ImplicitCollectionJobsJobAssociation
+    icj = ImplicitCollectionJobs
     step_of_invocation = and_(wis.workflow_invocation_id == WorkflowInvocation.id, wis.workflow_step_id.in_(step_ids))
+    step_states: ColumnElement[bool] = wis.state.in_(states)
+    if JobState.NEW in states:
+        step_states = or_(step_states, wis.state.is_(None))
     clauses: list[ColumnElement[bool]] = [
         select(wis.id).join(Job, Job.id == wis.job_id).where(step_of_invocation, Job.state.in_(states)).exists(),
         select(wis.id)
-        .join(icjja, icjja.implicit_collection_jobs_id == wis.implicit_collection_jobs_id)
-        .join(Job, Job.id == icjja.job_id)
-        .where(step_of_invocation, Job.state.in_(states))
-        .exists(),
-        select(wis.id)
+        .join(icj, icj.id == wis.implicit_collection_jobs_id)
         .where(
             step_of_invocation,
-            wis.job_id.is_(None),
-            wis.implicit_collection_jobs_id.is_(None),
-            wis.state.in_(states),
+            _batch_state_predicate(wis.implicit_collection_jobs_id, icj.populated_state, states),
         )
         .exists(),
+        select(wis.id)
+        .where(step_of_invocation, wis.job_id.is_(None), wis.implicit_collection_jobs_id.is_(None), step_states)
+        .exists(),
     ]
-    if "new" in states:
+    if JobState.NEW in states:
         clauses.append(~select(wis.id).where(step_of_invocation).exists())
+    return or_(*clauses)
+
+
+def _batch_state_predicate(
+    icj_id: InstrumentedAttribute[Any], populated_state: InstrumentedAttribute[Any] | None, states: list[str]
+) -> ColumnElement[bool]:
+    """A mapped batch whose summary state, as ``summary_state`` and ``EMPTY_BATCH_STATES`` show it, is in ``states``."""
+    member = aliased(ImplicitCollectionJobsJobAssociation)
+    member_job = aliased(Job)
+    rank_whens = [
+        (member_job.state.in_([state.value for state in group]), rank)
+        for rank, (_, group) in enumerate(SUMMARY_STATE_GROUPS)
+    ]
+    rank_whens.append((member_job.state == JobState.SKIPPED.value, SUMMARY_SKIPPED_RANK))
+    summary_rank = (
+        select(func.min(case(*rank_whens, else_=SUMMARY_OK_RANK)))
+        .select_from(member)
+        .join(member_job, member_job.id == member.job_id)
+        .where(member.implicit_collection_jobs_id == icj_id)
+        .scalar_subquery()
+    )
+    clauses: list[ColumnElement[bool]] = [summary_rank.in_(summary_ranks(states))]
+    if populated_state is not None:
+        empty_states = [populated for populated, state in EMPTY_BATCH_STATES.items() if state in states]
+        shown: ColumnElement[bool] = populated_state.in_(empty_states)
+        if JobState.NEW in states:
+            shown = or_(shown, populated_state.is_(None), populated_state.not_in(list(EMPTY_BATCH_STATES)))
+        clauses.append(and_(summary_rank.is_(None), shown))
     return or_(*clauses)
 
 
@@ -774,17 +815,11 @@ def _tool_predicates(user_id: int, tool_id: str) -> list[ColumnElement[bool]]:
 
 
 def _submission_state_predicate(states: list[str]) -> ColumnElement[bool]:
-    """A plain job matches on its state, a mapped batch when any member job is in one of ``states``."""
+    """A plain job matches on its state, a mapped batch on its summary state."""
     icjja = ImplicitCollectionJobsJobAssociation
-    member = aliased(ImplicitCollectionJobsJobAssociation)
-    member_job = aliased(Job)
-    member_in_states = (
-        select(member.id)
-        .join(member_job, member_job.id == member.job_id)
-        .where(member.implicit_collection_jobs_id == icjja.implicit_collection_jobs_id, member_job.state.in_(states))
-        .exists()
-    )
-    return or_(and_(icjja.implicit_collection_jobs_id.is_(None), Job.state.in_(states)), member_in_states)
+    plain_job = and_(icjja.implicit_collection_jobs_id.is_(None), Job.state.in_(states))
+    # tool runs only reach batches through their jobs, so never an empty one
+    return or_(plain_job, _batch_state_predicate(icjja.implicit_collection_jobs_id, None, states))
 
 
 def _hdca_ref(hdca_id: int) -> ItemRef:
@@ -891,7 +926,11 @@ def _step_state(
     if job:
         return job.state
     if icj:
-        return summary_state(icj.states) if icj.job_count else _empty_batch_state(icj.populated_state)
+        return (
+            summary_state(icj.states)
+            if icj.job_count
+            else EMPTY_BATCH_STATES.get(icj.populated_state, JobState.NEW.value)
+        )
     if step and step.state:
         return step.state
     return "new"
@@ -919,15 +958,6 @@ def _review_action(step: InvocationStepRecord | None) -> bool | None:
     if step is None or step.action is None:
         return None
     return bool(step.action)
-
-
-def _empty_batch_state(populated_state: str) -> str:
-    """Row state of a mapped batch without jobs, e.g. mapped over an empty collection."""
-    if populated_state == DatasetCollectionPopulatedState.OK:
-        return Job.states.OK.value
-    if populated_state == DatasetCollectionPopulatedState.FAILED:
-        return Job.states.ERROR.value
-    return Job.states.NEW.value
 
 
 def _reused(job: JobRecord | None, icj: ImplicitCollectionJobsRecord | None) -> ReusedState | None:

@@ -502,6 +502,10 @@ class TestComparisonsApi(ApiTestCase):
             assert row["reused"] is None
             assert row["cells"]["input:input1"]["id"] == empty_list
             assert row["cells"]["output:out_file1"]["element_count"] == 0
+            # the state filter matches the shown state
+            ok_rows = self._step_runs_table(workflow_id, "mapped_cat", states="ok")["rows"]
+            assert [ok_row["run"]["id"] for ok_row in ok_rows] == [row["run"]["id"]]
+            assert self._step_runs(workflow_id, "mapped_cat", states="new").headers["total_matches"] == "0"
 
     @skip_without_tool("cat1")
     @skip_without_tool("expression_forty_two")
@@ -649,7 +653,7 @@ class TestComparisonsApi(ApiTestCase):
             )
 
     @skip_without_tool("fail_identifier")
-    def test_runs_state_filter_matches_any_mapped_member(self):
+    def test_runs_state_filter_matches_mapped_batch_state(self):
         with self.dataset_populator.test_history() as history_id:
             hdas = [self.dataset_populator.new_dataset(history_id, content=f"{i}\n", wait=True) for i in range(2)]
             identifiers = [{"name": name, "src": "hda", "id": hda["id"]} for name, hda in zip(("fail", "pass"), hdas)]
@@ -659,17 +663,20 @@ class TestComparisonsApi(ApiTestCase):
                 workflow_id, history_id, {"input_list": {"src": "hdca", "id": list_id}}, assert_ok=False
             )
 
-            for state in ("error", "ok"):
-                (row,) = self._step_runs_table(workflow_id, "mapped_fail", states=state)["rows"]
-                assert row["step_job"]["model"] == "ImplicitCollectionJobs"
-                assert row["step_job"]["states"] == {"ok": 1, "error": 1}
-                assert row["state"] == "error"
-                (tool_row,) = self._tool_runs_table("fail_identifier", history_id=history_id, states=state)["rows"]
-                assert tool_row["run"]["model"] == "ImplicitCollectionJobs"
-                assert tool_row["run"]["states"] == {"ok": 1, "error": 1}
-                assert tool_row["state"] == "error"
-                assert tool_row["via"]["step_label"] == "mapped_fail"
-            assert self._step_runs(workflow_id, "mapped_fail", states="running").headers["total_matches"] == "0"
+            (row,) = self._step_runs_table(workflow_id, "mapped_fail", states="error")["rows"]
+            assert row["step_job"]["model"] == "ImplicitCollectionJobs"
+            assert row["step_job"]["states"] == {"ok": 1, "error": 1}
+            assert row["state"] == "error"
+            (tool_row,) = self._tool_runs_table("fail_identifier", history_id=history_id, states="error")["rows"]
+            assert tool_row["run"]["model"] == "ImplicitCollectionJobs"
+            assert tool_row["run"]["states"] == {"ok": 1, "error": 1}
+            assert tool_row["state"] == "error"
+            assert tool_row["via"]["step_label"] == "mapped_fail"
+            # an ok member doesn't make the error batch match ok
+            for state in ("ok", "running"):
+                assert self._step_runs(workflow_id, "mapped_fail", states=state).headers["total_matches"] == "0"
+                tool_runs = self._tool_runs("fail_identifier", history_id=history_id, states=state)
+                assert tool_runs.headers["total_matches"] == "0"
             # a mapped workflow step is a workflow job too
             without = self._tool_runs("fail_identifier", history_id=history_id, include_workflow_jobs=False)
             assert without.headers["total_matches"] == "0"
