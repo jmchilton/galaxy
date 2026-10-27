@@ -383,13 +383,15 @@ class TestComparisonsApi(ApiTestCase):
             new_rows = self._step_runs_table(workflow_id, "after_pause", states="new")["rows"]
             assert [row["run"]["id"] for row in new_rows] == [paused_id]
 
-            # a pause step never has a job, and reports "scheduled" both while paused and once resumed
+            # a pause step has no job and is "scheduled" both while paused and once resumed; its action differs
             wait_on(lambda: self._invocation_step(paused_id, order_index=1), "pause step reached")
             pause_rows = {row["run"]["id"]: row for row in self._step_runs_table(workflow_id, "the_pause")["rows"]}
-            assert {run_id: (row["state"], row["step_job"]) for run_id, row in pause_rows.items()} == {
-                resumed_id: ("scheduled", None),
-                paused_id: ("scheduled", None),
+            pause_fields = ("state", "step_job", "step_type", "step_action")
+            assert {run_id: tuple(row[f] for f in pause_fields) for run_id, row in pause_rows.items()} == {
+                resumed_id: ("scheduled", None, "pause", True),
+                paused_id: ("scheduled", None, "pause", None),
             }
+            assert (paused_row["step_type"], paused_row["step_action"]) == ("tool", None)
 
     @skip_without_tool("cat1")
     def test_step_runs_mapped_over_empty_list(self):
@@ -436,6 +438,8 @@ class TestComparisonsApi(ApiTestCase):
             assert columns["output:n"]["present_in_versions"] == [1]
             assert columns["output:cat_out"]["present_in_versions"] is None
             assert not any(column["duplicate"] for column in columns.values())
+            assert table["output_labels_available"] == ["n", "cat_out"]
+            assert table["tool_versions_available"] is None
 
             new_row, old_row = table["rows"]
             assert [(row["run"]["id"], row["version"]) for row in (new_row, old_row)] == [
@@ -478,6 +482,7 @@ class TestComparisonsApi(ApiTestCase):
             filtered_keys = ["input:input1", "parameter:min_quality", "output:n"]
             assert [column["key"] for column in filtered["columns"]] == filtered_keys
             assert [set(row["cells"]) for row in filtered["rows"]] == [set(filtered_keys)] * 2
+            assert filtered["output_labels_available"] == ["n", "cat_out"]
 
             # states filter on the invocation state
             assert len(self._output_runs_table(summary.workflow_id, states="completed")["rows"]) == 2

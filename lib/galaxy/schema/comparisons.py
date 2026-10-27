@@ -37,6 +37,10 @@ ComparisonSortBy = Literal["create_time", "update_time"]
 MissingReason = Literal["not_in_version", "skipped", "not_run_yet", "no_output", "inaccessible"]
 ComparisonColumnRole = Literal["input", "output", "parameter"]
 ReusedState = Literal["no", "partial", "yes"]
+# keys of galaxy.workflow.modules.module_types
+WorkflowStepModuleType = Literal[
+    "data_input", "data_collection_input", "parameter_input", "pause", "pick_value", "tool", "subworkflow"
+]
 
 METADATA_ELEMENT_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -197,6 +201,8 @@ class ComparisonRow(Model):
     run: AnyRunRef
     step_job: AnyStepJobRef | None = Field(None, description="The job or mapped batch that ran the compared step.")
     subworkflow_invocation_id: EncodedDatabaseIdField | None = None
+    step_type: WorkflowStepModuleType | None = Field(None, description="Module type of the compared step in this run.")
+    step_action: bool | None = Field(None, description="A pause step's review decision; null until reviewed.")
     via: WorkflowRunVia | None = Field(None, description="The invocation a tool run belongs to.")
     create_time: datetime
     update_time: datetime
@@ -214,3 +220,6 @@ class ComparisonTable(Model):
     columns: list[ComparisonColumn]
     rows: list[ComparisonRow]
     tool_versions_available: list[str] | None = None
+    output_labels_available: list[str] | None = Field(
+        None, description="Output labels of the page's workflow versions, whatever `output_labels` selects."
+    )

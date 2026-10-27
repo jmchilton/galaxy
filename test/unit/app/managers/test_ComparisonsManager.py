@@ -1,5 +1,6 @@
 from decimal import Decimal
 from itertools import product
+from typing import get_args
 from unittest import mock
 
 from sqlalchemy import event
@@ -17,9 +18,15 @@ from galaxy.schema.comparisons import (
     OutputRunsQuery,
     StepRunsQuery,
     ToolRunsQuery,
+    WorkflowStepModuleType,
 )
 from galaxy.schema.fields import Security
+from galaxy.workflow.modules import module_types
 from .base import BaseTestCase
+
+
+def test_step_module_type_names_every_module():
+    assert set(get_args(WorkflowStepModuleType)) == set(module_types)
 
 
 class TestComparisonsManagerStatementCount(BaseTestCase):
@@ -175,6 +182,7 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
         with mock.patch.object(cell_builder, "load_hdas", wraps=cell_builder.load_hdas) as load_hdas:
             table, _ = self.comparisons_manager.output_runs(_access(self.trans.user), stored_workflow.id, query)
         assert [column.key for column in table.columns] == ["input:in", "input:foreign", "parameter:p", "output:val"]
+        assert table.output_labels_available == ["out", "val"]
         # filtered-out outputs are never loaded
         loaded_hda_ids = set(load_hdas.call_args.args[0])
         assert loaded_hda_ids and not loaded_hda_ids & set(first_outputs.values())
