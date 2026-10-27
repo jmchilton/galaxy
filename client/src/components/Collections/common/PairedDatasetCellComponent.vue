@@ -108,6 +108,7 @@ export default defineComponent({
                 inline
                 size="small"
                 title="Swap forward and reverse"
+                data-description="swap forward and reverse"
                 @click="onSwap">
                 <FontAwesomeIcon size="2x" :icon="faUndo" class="paired-action-icon" />
             </GButton>
