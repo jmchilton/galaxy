@@ -87,8 +87,14 @@ List of behavior changes associated with profile versions:
 - Test output assertions that count columns (e.g. `has_n_columns`) and do not declare a `sep` split on the
   delimiter the datatype recorded for the output dataset - a comma for `csv` - instead of always splitting on
   tabs. Older profiles keep the tab default.
+
+### 27.0
+
 - An output `format_source` or `metadata_source` that does not name a declared input (see their documentation)
   fails tool loading. Older profiles log a warning and ignore the reference.
+- An unqualified output `format_source` or `metadata_source` whose qualified name is also another input's
+  unqualified name (e.g. `input1` naming `cond|input1` when `cond|inner|input1` exists) fails tool loading.
+  Older profiles keep the reference as written.
 
 ### Examples
 

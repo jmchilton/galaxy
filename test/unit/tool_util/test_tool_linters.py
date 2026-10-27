@@ -1214,6 +1214,15 @@ OUTPUTS_FORMAT_SOURCE_DISCOVERED_SHADOWED_LEGACY = """
 </tool>
 """
 
+OUTPUTS_FORMAT_SOURCE_SHADOWED_LEGACY_27_0 = OUTPUTS_FORMAT_SOURCE_DISCOVERED_SHADOWED_LEGACY.replace(
+    '<tool id="id" name="name">', '<tool id="id" name="name" profile="27.0">'
+).replace(
+    """<collection name="discovered" type="list" format_source="input1">
+            <discover_datasets pattern="__name__" />
+        </collection>""",
+    '<data name="output1" format_source="input1" />',
+)
+
 OUTPUTS_FORMAT_SOURCE_NOT_DATA = """
 <tool id="id" name="name">
     <inputs>
@@ -2898,7 +2907,7 @@ def test_outputs_format_source_discovered_legacy(lint_ctx):
     tool_source = get_xml_tool_source(OUTPUTS_FORMAT_SOURCE_DISCOVERED_LEGACY)
     run_lint_module(lint_ctx, output, tool_source)
     assert (
-        "Output 'discovered' uses unqualified format_source='input1', which discovered elements cannot resolve before Galaxy 26.2. Use the qualified name 'cond|input1'."
+        "Output 'discovered' uses unqualified format_source='input1', which discovered elements cannot resolve before Galaxy 27.0. Use the qualified name 'cond|input1'."
         in lint_ctx.error_messages
     )
     assert (
@@ -2914,6 +2923,37 @@ def test_outputs_format_source_discovered_shadowed_legacy(lint_ctx):
     assert (
         "Output 'discovered' uses unqualified format_source='input1', which discovered elements cannot resolve. Use the qualified name 'cond|input1'."
         in lint_ctx.error_messages
+    )
+
+
+def test_outputs_format_source_shadowed_legacy_profile_27_0(lint_ctx):
+    tool_source = get_xml_tool_source(OUTPUTS_FORMAT_SOURCE_SHADOWED_LEGACY_27_0)
+    assert '<data name="output1" format_source="input1" />' in OUTPUTS_FORMAT_SOURCE_SHADOWED_LEGACY_27_0
+    run_lint_module(lint_ctx, output, tool_source)
+    assert (
+        "Output 'output1' format_source='input1' is ambiguous. Use the qualified name 'cond|input1'."
+        in lint_ctx.error_messages
+    )
+
+
+def test_outputs_metadata_source_shadowed_legacy_profile_27_0(lint_ctx):
+    xml = OUTPUTS_FORMAT_SOURCE_SHADOWED_LEGACY_27_0.replace(
+        'format_source="input1"', 'format="txt" metadata_source="input1"'
+    )
+    run_lint_module(lint_ctx, output, get_xml_tool_source(xml))
+    assert (
+        "Output 'output1' metadata_source='input1' is ambiguous. Use the qualified name 'cond|input1'."
+        in lint_ctx.error_messages
+    )
+
+
+def test_outputs_format_source_shadowed_legacy_before_profile_27_0(lint_ctx):
+    xml = OUTPUTS_FORMAT_SOURCE_SHADOWED_LEGACY_27_0.replace('profile="27.0"', 'profile="26.2"')
+    run_lint_module(lint_ctx, output, get_xml_tool_source(xml))
+    assert not any("ambiguous" in str(m) for m in lint_ctx.error_messages)
+    assert (
+        "Output 'output1' uses unqualified format_source='input1'. Use the qualified name 'cond|input1'."
+        in lint_ctx.warn_messages
     )
 
 
@@ -2946,7 +2986,7 @@ def test_outputs_metadata_source(lint_ctx):
     )
     assert (
         "Output 'discovered' uses unqualified metadata_source='input1', which discovered elements cannot resolve "
-        "before Galaxy 26.2. Use the qualified name 'cond|input1'." in lint_ctx.error_messages
+        "before Galaxy 27.0. Use the qualified name 'cond|input1'." in lint_ctx.error_messages
     )
     assert not any("'qualified'" in str(m) for m in lint_ctx.error_messages + lint_ctx.warn_messages)
 

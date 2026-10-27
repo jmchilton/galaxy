@@ -58,6 +58,27 @@ outputs:
     format_source: input2
 """
 
+# cond|input1 is also the legacy alias of cond|inner|input1.
+SHADOWED_LEGACY_ALIAS_TOOL = """<tool id="test_tool" name="Test Tool" version="1.0" profile="$profile">
+    <command>echo a &gt; $$out</command>
+    <inputs>
+        <conditional name="cond">
+            <param name="select" type="select"><option value="flat">flat</option><option value="nested">nested</option></param>
+            <when value="flat"><param name="input1" type="data" format="data" /></when>
+            <when value="nested">
+                <conditional name="inner">
+                    <param name="inner_select" type="select"><option value="a">a</option></param>
+                    <when value="a"><param name="input1" type="data" format="data" /></when>
+                </conditional>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt" format_source="input1" />
+    </outputs>
+</tool>
+"""
+
 
 class TestOutputReferences(TestCase, tools_support.UsesTools):
     def setUp(self):
@@ -119,9 +140,21 @@ class TestOutputReferences(TestCase, tools_support.UsesTools):
         assert collection.outputs["forward"].format_source == "cond|input1"
         assert collection.outputs["reverse"].format_source is None
 
-    def test_unresolvable_reference_fails_load_from_profile_26_2(self):
+    def test_unresolvable_reference_fails_load_from_profile_27_0(self):
+        outputs = self._load('<data name="out" format="txt" format_source="input2" />', profile="26.2")
+        assert outputs["out"].format_source is None
         with pytest.raises(Exception, match="format_source='input2' does not match any declared input"):
-            self._load('<data name="out" format="txt" format_source="input2" />', profile="26.2")
+            self._load('<data name="out" format="txt" format_source="input2" />', profile="27.0")
+
+    def test_shadowed_legacy_alias_fails_load_from_profile_27_0(self):
+        outputs = self._load_shadowed("26.2")
+        assert outputs["out"].format_source == "input1"
+        with pytest.raises(Exception, match="format_source='input1' is ambiguous.*'cond\\|input1'"):
+            self._load_shadowed("27.0")
+
+    def _load_shadowed(self, profile: str):
+        self._init_tool(SHADOWED_LEGACY_ALIAS_TOOL, profile=profile)
+        return self.tool.outputs
 
     def test_yaml_tool_references_resolved(self):
         self._init_tool(YAML_OUTPUT_REFERENCES_TOOL, filename="tool.yml")

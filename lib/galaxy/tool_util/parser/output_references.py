@@ -51,9 +51,14 @@ class ResolvedReference(NamedTuple):
     """The qualified form of the reference, with its own repeat indices, when one input matches."""
     runtime_key: str
     """The key to look the reference up by at job runtime."""
+    shadowed: bool = False
+    """A legacy reference kept as written because its qualified key is another input's legacy alias."""
 
 
 OutputReferenceAttribute = Literal["format_source", "metadata_source"]
+
+# Tool profile from which an unresolvable or ambiguous output reference fails tool load.
+OUTPUT_REFERENCE_STRICT_PROFILE = "27.0"
 
 DATA_INPUT_TYPES = ("data", "hidden_data", "data_collection")
 
@@ -73,6 +78,13 @@ def output_reference_problem(resolved: ResolvedReference, attribute: OutputRefer
         return f"must name a {', '.join(param_types[:-1])} or {param_types[-1]} input"
     if resolved.selector and (attribute != "format_source" or not any(r.is_collection for r in resolved.matches)):
         return "selects an element of an input that is not a collection"
+    return None
+
+
+def output_reference_ambiguity(resolved: ResolvedReference) -> str | None:
+    """Why a legacy reference is ambiguous at job runtime, or ``None`` if it is not."""
+    if resolved.shadowed:
+        return f"is ambiguous. Use the qualified name '{resolved.qualified_key}'"
     return None
 
 
@@ -154,6 +166,7 @@ class InputReferences:
             matches = [r for r in self.references if r.legacy == normalized]
         qualified_key = None
         runtime_key = reference
+        shadowed = False
         qualified_names = {r.qualified for r in matches}
         if len(qualified_names) == 1:
             (qualified,) = qualified_names
@@ -161,9 +174,11 @@ class InputReferences:
             if reindexed is not None:
                 qualified_key = reindexed + selector
                 # Job creation keys (expanded multiple inputs, conversions) can shadow a legacy alias; skip if ambiguous.
-                if legacy and not self._is_other_legacy_alias(qualified):
-                    runtime_key = qualified_key
-        return ResolvedReference(reference, path, selector, matches, legacy, qualified_key, runtime_key)
+                if legacy:
+                    shadowed = self._is_other_legacy_alias(qualified)
+                    if not shadowed:
+                        runtime_key = qualified_key
+        return ResolvedReference(reference, path, selector, matches, legacy, qualified_key, runtime_key, shadowed)
 
     def _is_other_legacy_alias(self, qualified: str) -> bool:
         return any(r.legacy == qualified and r.qualified != qualified for r in self.references)

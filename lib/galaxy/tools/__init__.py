@@ -115,8 +115,10 @@ from galaxy.tool_util.parser.output_objects import (
 from galaxy.tool_util.parser.output_references import (
     DATA_INPUT_TYPES,
     InputReferences,
+    output_reference_ambiguity,
     OUTPUT_REFERENCE_PARAM_TYPES,
     output_reference_problem,
+    OUTPUT_REFERENCE_STRICT_PROFILE,
 )
 from galaxy.tool_util.parser.util import (
     parse_profile_version,
@@ -1888,14 +1890,19 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
                     + " or ".join(f"'{q}'" for q in qualified)
                     + "."
                 )
+        strict = Version(str(self.profile)) >= Version(OUTPUT_REFERENCE_STRICT_PROFILE)
         for output, attribute, reference in references:
             resolved = input_references.resolve(reference)
             if problem := output_reference_problem(resolved, attribute):
                 message = f"Tool [{self.id}] output '{output.name}' {attribute}='{reference}' {problem}."
-                if self.profile >= 26.2:
+                if strict:
                     raise ToolLoadError(message)
-                log.warning(f"{message} Ignoring it; tools with profile 26.2 or newer fail to load.")
+                log.warning(
+                    f"{message} Ignoring it; tools with profile {OUTPUT_REFERENCE_STRICT_PROFILE} or newer fail to load."
+                )
                 setattr(output, attribute, None)
+            elif strict and (ambiguity := output_reference_ambiguity(resolved)):
+                raise ToolLoadError(f"Tool [{self.id}] output '{output.name}' {attribute}='{reference}' {ambiguity}.")
             else:
                 setattr(output, attribute, resolved.runtime_key)
 

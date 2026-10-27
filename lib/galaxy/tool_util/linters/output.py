@@ -11,7 +11,9 @@ from ..parser.output_collection_def import NAMED_PATTERNS
 from ..parser.output_references import (
     InputReference,
     InputReferences,
+    output_reference_ambiguity,
     output_reference_problem,
+    OUTPUT_REFERENCE_STRICT_PROFILE,
     OutputReferenceAttribute,
 )
 
@@ -297,12 +299,15 @@ def _lint_output_references(
     if not tool_xml:
         return
     input_references = InputReferences(tool_source)
+    strict = Version(tool_source.parse_profile()) >= Version(OUTPUT_REFERENCE_STRICT_PROFILE)
     for output in (
         tool_xml.findall(f"./outputs/data[@{attribute}]")
         + tool_xml.findall(f"./outputs/collection[@{attribute}]")
         + tool_xml.findall(f"./outputs/collection/data[@{attribute}]")
     ):
-        _check_output_reference(lint_ctx, linter_name, output, output.attrib[attribute], attribute, input_references)
+        _check_output_reference(
+            lint_ctx, linter_name, output, output.attrib[attribute], attribute, input_references, strict
+        )
 
 
 def _check_output_reference(
@@ -312,6 +317,7 @@ def _check_output_reference(
     ref_value: str,
     attribute: OutputReferenceAttribute,
     input_references: InputReferences,
+    strict: bool,
 ) -> None:
     resolved = input_references.resolve(ref_value)
     matches = resolved.matches
@@ -333,13 +339,18 @@ def _check_output_reference(
             # Discovered elements resolve output references against the job's input associations, which are
             # keyed by qualified name only. Tool loading rewrites the reference to that name unless it
             # is ambiguous, but older Galaxy releases do not.
-            when = "" if resolved.runtime_key == ref_value else " before Galaxy 26.2"
+            when = "" if resolved.runtime_key == ref_value else " before Galaxy 27.0"
             qualified_names = " or ".join(f"'{name}{selector}'" for name in sorted({r.qualified for r in matches}))
             lint_ctx.error(
                 f"Output '{_output_name(node)}' uses unqualified {attribute}='{ref_value}', which discovered "
                 f"elements cannot resolve{when}. Use the qualified name {qualified_names}.",
                 linter=linter_name,
                 node=node,
+            )
+            return
+        if strict and (ambiguity := output_reference_ambiguity(resolved)):
+            lint_ctx.error(
+                f"Output '{_output_name(node)}' {attribute}='{ref_value}' {ambiguity}.", linter=linter_name, node=node
             )
             return
         _warn_unqualified(lint_ctx, linter_name, node, ref_value, attribute, matches, selector, resolved.qualified_key)
