@@ -14,6 +14,7 @@ from galaxy.managers.histories import HistoryManager
 from galaxy.schema.comparisons import (
     OutputRunsQuery,
     StepRunsQuery,
+    ToolRunsQuery,
 )
 from galaxy.schema.fields import Security
 from .base import BaseTestCase
@@ -27,6 +28,7 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
         self.comparisons_manager = ComparisonsManager(self.session, cell_builder)
         Security.security = self.app.security
         self.foreign_users = 0
+        self.tool_id = "cat1"
 
     def test_step_runs_statement_count_independent_of_row_count(self):
         for mapped in (False, True):
@@ -47,6 +49,55 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
         assert len(table.rows) == invocations
         for row in table.rows:
             assert row.cells.pop("input:foreign").model_dump() == {"type": "missing", "reason": "inaccessible"}
+            assert all(cell.type != "missing" for cell in row.cells.values())
+        return statement_count
+
+    def test_tool_runs_statement_count_independent_of_row_count(self):
+        for mapped in (False, True):
+            counts = [self._tool_runs_statement_count(submissions, mapped) for submissions in (1, 5)]
+            assert counts[0] == counts[1], f"mapped={mapped}: statements grow with rows {counts}"
+
+    def test_tool_runs_matches_tool_shed_versions_without_wildcards(self):
+        user = self.trans.user
+        history = model.History(name="shed runs", user=user)
+        self.session.add(history)
+        base = "toolshed.example.org/repos/owner/repo/my_tool"
+        tool_ids = [
+            f"{base}/1.0",
+            f"{base}/2.0",
+            "toolshed.example.org/repos/owner/repo/myXtool/1.0",
+            f"{base}_extra/1.0",
+        ]
+        jobs = {}
+        for tool_id in tool_ids:
+            self.tool_id = tool_id
+            jobs[tool_id] = self._job(history, user)
+            self.session.add(jobs[tool_id])
+        self.session.commit()
+        query = ToolRunsQuery.model_construct(tool_id=f"{base}/3.0", include_workflow_jobs=True)
+        table, total = self.comparisons_manager.tool_runs(_access(user), query)
+        encoded = {self.app.security.encode_id(jobs[tool_id].id) for tool_id in tool_ids[:2]}
+        assert total == 2
+        assert {row.run.id for row in table.rows} == encoded
+
+    def _tool_runs_statement_count(self, submissions: int, mapped: bool) -> int:
+        self.tool_id = f"compared_{submissions}_{mapped}"
+        self._stored_workflow_with_runs(submissions, mapped)
+        access = _access(self.trans.user)
+        self.session.expunge_all()
+        query = ToolRunsQuery.model_construct(
+            tool_id=self.tool_id, metadata_elements=["data_lines"], include_workflow_jobs=True
+        )
+        (table, total), statement_count = self._count_statements(
+            lambda: self.comparisons_manager.tool_runs(access, query)
+        )
+        assert total == len(table.rows) == submissions
+        assert table.tool_versions_available == ["1.0.0"]
+        for row in table.rows:
+            assert row.run.model == ("ImplicitCollectionJobs" if mapped else "Job")
+            assert row.via is not None and row.via.step_label == "target"
+            assert row.cells.pop("input:foreign").model_dump() == {"type": "missing", "reason": "inaccessible"}
+            assert set(row.cells) == {"input:input1", "output:out_file1"}
             assert all(cell.type != "missing" for cell in row.cells.values())
         return statement_count
 
@@ -194,7 +245,9 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
                 job.add_input_dataset("input1", self._hda(history))
                 job.add_input_dataset("foreign", self._private_hda(foreign_history))
                 invocation_step.job = job
-                invocation_step.add_output("out_file1", self._hda(history))
+                output = self._hda(history)
+                job.add_output_dataset("out_file1", output)
+                invocation_step.add_output("out_file1", output)
         self.session.commit()
         return stored_workflow
 
@@ -240,7 +293,7 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
         job = model.Job()
         job.user = user
         job.history = history
-        job.tool_id = "cat1"
+        job.tool_id = self.tool_id
         job.tool_version = "1.0.0"
         job.state = "ok"
         return job
