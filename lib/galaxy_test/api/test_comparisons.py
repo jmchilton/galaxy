@@ -1,10 +1,62 @@
+import json
+from typing import Any
+
+from requests import Response
+
 from galaxy_test.base.populators import (
     DatasetCollectionPopulator,
     DatasetPopulator,
+    RunJobsSummary,
     skip_without_tool,
+    wait_on,
     WorkflowPopulator,
 )
 from ._framework import ApiTestCase
+
+WORKFLOW_TWO_CAT = """
+class: GalaxyWorkflow
+inputs:
+  input1: data
+steps:
+  first_cat:
+    tool_id: cat1
+    in:
+      input1: input1
+  second_cat:
+    tool_id: cat1
+    in:
+      input1: first_cat/out_file1
+test_data:
+  input1: "hello world"
+"""
+
+WORKFLOW_MAPPED_CAT = """
+class: GalaxyWorkflow
+inputs:
+  input_list:
+    type: collection
+    collection_type: list
+steps:
+  mapped_cat:
+    tool_id: cat1
+    in:
+      input1: input_list
+"""
+
+WORKFLOW_PAUSE_THEN_CAT = """
+class: GalaxyWorkflow
+inputs:
+  input1: data
+steps:
+  the_pause:
+    type: pause
+    in:
+      input: input1
+  after_pause:
+    tool_id: cat1
+    in:
+      input1: the_pause
+"""
 
 
 class TestComparisonsApi(ApiTestCase):
@@ -57,6 +109,285 @@ class TestComparisonsApi(ApiTestCase):
                 assert set(job["inputs"]) == {"input1"}
                 assert set(job["outputs"]) == {"out_file1"}
                 assert set(job["output_collections"]) == {"out_file1"}
+
+    @skip_without_tool("cat1")
+    def test_step_runs_across_versions(self):
+        with self.dataset_populator.test_history() as history_id:
+            summary = self._run_two_cat(history_id, invocations=2)
+            self._relabel(summary.workflow_id, "first_cat", "first_cat_v1")
+            rerun_id = self._rerun(summary)
+
+            response = self._step_runs(summary.workflow_id, "second_cat")
+            assert response.headers["total_matches"] == "3"
+            table = response.json()
+            rows = table["rows"]
+            assert [row["version"] for row in rows] == [1, 0, 0]
+            invocation_ids = [row["run"]["id"] for row in rows]
+            assert invocation_ids[:2] == [rerun_id, summary.invocation_id]
+            assert all(row["run"]["model"] == "WorkflowInvocation" for row in rows)
+            assert table["query"]["kind"] == "step_runs"
+            assert table["query"]["workflow_id"] == summary.workflow_id
+            assert table["query"]["step_label"] == "second_cat"
+
+            assert [c["key"] for c in table["columns"]] == ["input:input1", "output:out_file1"]
+            assert [c["role"] for c in table["columns"]] == ["input", "output"]
+            for row in rows:
+                assert row["state"] == "ok"
+                assert row["reused"] == "no"
+                assert row["step_job"]["model"] == "Job"
+                assert row["tool_version"] == "1.0.0"
+                assert row["history"]["id"] == history_id
+                assert row["tool_id"] == "cat1"
+                assert set(row["cells"]) == {"input:input1", "output:out_file1"}
+                for cell in row["cells"].values():
+                    details = self.dataset_populator.get_history_dataset_details(history_id, dataset_id=cell["id"])
+                    assert cell["type"] == "dataset"
+                    assert (cell["hid"], cell["name"]) == (details["hid"], details["name"])
+                    assert cell["extension"] == "txt"
+                    assert cell["state"] == "ok"
+                    assert cell["history_id"] == history_id
+                    assert cell["metadata"] == {}
+            # each run's output is its own dataset
+            assert len({row["cells"]["output:out_file1"]["id"] for row in rows}) == 3
+
+            # paging keeps the total
+            response = self._step_runs(summary.workflow_id, "second_cat", limit=1, offset=1)
+            assert response.headers["total_matches"] == "3"
+            assert [row["run"]["id"] for row in response.json()["rows"]] == invocation_ids[1:2]
+
+            # oldest first
+            ascending = self._step_runs_table(summary.workflow_id, "second_cat", sort_desc=False)
+            assert [row["run"]["id"] for row in ascending["rows"]] == invocation_ids[::-1]
+
+            # states filter on the step's job state
+            assert len(self._step_runs_table(summary.workflow_id, "second_cat", states="ok")["rows"]) == 3
+            response = self._step_runs(summary.workflow_id, "second_cat", states="error")
+            assert response.headers["total_matches"] == "0"
+            assert response.json()["rows"] == []
+
+            # metadata elements
+            table = self._step_runs_table(summary.workflow_id, "second_cat", metadata_elements="data_lines")
+            output_column = next(c for c in table["columns"] if c["key"] == "output:out_file1")
+            assert "data_lines" in output_column["metadata_keys"]
+            assert table["rows"][0]["cells"]["output:out_file1"]["metadata"] == {"data_lines": 1}
+
+            # instance=true takes the invocation's Workflow id
+            invocation = self.workflow_populator.get_invocation(invocation_ids[0])
+            by_instance = self._step_runs_table(invocation["workflow_id"], "second_cat", instance=True)
+            assert by_instance["query"]["workflow_id"] == summary.workflow_id
+            assert [row["run"]["id"] for row in by_instance["rows"]] == invocation_ids
+
+    @skip_without_tool("cat1")
+    def test_step_runs_after_workflow_rename(self):
+        with self.dataset_populator.test_history() as history_id:
+            summary = self._run_two_cat(history_id)
+            self._refactor(summary.workflow_id, {"action_type": "update_name", "name": "renamed workflow"})
+            self._rerun(summary)
+            table = self._step_runs_table(summary.workflow_id, "first_cat")
+            assert len(table["rows"]) == 2
+
+    @skip_without_tool("cat1")
+    def test_step_runs_label_change(self):
+        with self.dataset_populator.test_history() as history_id:
+            summary = self._run_two_cat(history_id)
+            self._relabel(summary.workflow_id, "second_cat", "second_cat_renamed")
+            new_invocation_id = self._rerun(summary)
+
+            old_rows = self._step_runs_table(summary.workflow_id, "second_cat")["rows"]
+            assert [(row["run"]["id"], row["version"]) for row in old_rows] == [(summary.invocation_id, 0)]
+            new_rows = self._step_runs_table(summary.workflow_id, "second_cat_renamed")["rows"]
+            assert [(row["run"]["id"], row["version"]) for row in new_rows] == [(new_invocation_id, 1)]
+
+    @skip_without_tool("cat1")
+    def test_step_runs_errors(self):
+        workflow_id = self.workflow_populator.upload_yaml_workflow(WORKFLOW_TWO_CAT)
+        self._step_runs(workflow_id, "", expected_status=400)
+        self._step_runs(workflow_id, "not_a_label", expected_status=404)
+        self._step_runs(workflow_id, "first_cat", expected_status=400, metadata_elements="bad-name")
+
+    @skip_without_tool("cat1")
+    def test_step_runs_owner_filter(self):
+        with self.dataset_populator.test_history() as history_id:
+            summary = self._run_two_cat(history_id)
+            self.workflow_populator.make_public(summary.workflow_id)
+            with self._different_user():
+                with self.dataset_populator.test_history() as other_history_id:
+                    other_request = {**summary.workflow_request, "history": f"hist_id={other_history_id}"}
+                    other_input = self.dataset_populator.new_dataset(other_history_id, content="other", wait=True)
+                    other_request["inputs"] = json.dumps({"input1": {"src": "hda", "id": other_input["id"]}})
+                    for _ in range(2):
+                        self.workflow_populator.invoke_workflow_and_wait(summary.workflow_id, request=other_request)
+                    response = self._step_runs(summary.workflow_id, "first_cat")
+                    assert response.headers["total_matches"] == "2"
+                    rows = response.json()["rows"]
+                    assert {row["history"]["id"] for row in rows} == {other_history_id}
+
+            response = self._step_runs(summary.workflow_id, "first_cat")
+            assert response.headers["total_matches"] == "1"
+            assert [row["run"]["id"] for row in response.json()["rows"]] == [summary.invocation_id]
+
+            with self._different_user(anon=True):
+                response = self._step_runs(summary.workflow_id, "first_cat")
+                assert response.headers["total_matches"] == "0"
+                assert response.json()["rows"] == []
+
+    @skip_without_tool("cat1")
+    def test_step_runs_deleted_history(self):
+        with self.dataset_populator.test_history() as history_id:
+            summary = self._run_two_cat(history_id)
+        with self.dataset_populator.test_history() as second_history_id:
+            second_request = {**summary.workflow_request, "history": f"hist_id={second_history_id}"}
+            second_input = self.dataset_populator.new_dataset(second_history_id, content="second", wait=True)
+            second_request["inputs"] = json.dumps({"input1": {"src": "hda", "id": second_input["id"]}})
+            self.workflow_populator.invoke_workflow_and_wait(summary.workflow_id, request=second_request)
+            self.dataset_populator.delete_history(history_id)
+            rows = self._step_runs_table(summary.workflow_id, "first_cat")["rows"]
+            assert [(row["history"]["id"], row["history"]["deleted"]) for row in rows] == [
+                (second_history_id, False),
+                (history_id, True),
+            ]
+
+    @skip_without_tool("cat1")
+    def test_step_runs_cached_job(self):
+        with self.dataset_populator.test_history() as history_id:
+            summary = self._run_two_cat(history_id)
+            self._rerun(summary, use_cached_job=True)
+            rows = self._step_runs_table(summary.workflow_id, "first_cat")["rows"]
+            assert [row["reused"] for row in rows] == ["yes", "no"]
+
+    @skip_without_tool("cat1")
+    def test_step_runs_mapped_step(self):
+        with self.dataset_populator.test_history() as history_id:
+            hdas = [self.dataset_populator.new_dataset(history_id, content=f"line {i}\n", wait=True) for i in range(3)]
+            identifiers = [{"name": f"el{i}", "src": "hda", "id": hda["id"]} for i, hda in enumerate(hdas)]
+            two_list = self._list_from(history_id, identifiers[:2])
+            three_list = self._list_from(history_id, identifiers)
+            workflow_id = self.workflow_populator.upload_yaml_workflow(WORKFLOW_MAPPED_CAT)
+            request = {
+                "history": f"hist_id={history_id}",
+                "inputs": json.dumps({"input_list": {"src": "hdca", "id": two_list}}),
+                "inputs_by": "name",
+            }
+            self.workflow_populator.invoke_workflow_and_wait(workflow_id, request=request)
+            superset_request = {
+                **request,
+                "inputs": json.dumps({"input_list": {"src": "hdca", "id": three_list}}),
+                "use_cached_job": True,
+            }
+            self.workflow_populator.invoke_workflow_and_wait(workflow_id, request=superset_request)
+
+            table = self._step_runs_table(workflow_id, "mapped_cat")
+            assert [c["key"] for c in table["columns"]] == ["input:input1", "output:out_file1"]
+            superset_row, first_row = table["rows"]
+            assert first_row["step_job"]["model"] == "ImplicitCollectionJobs"
+            assert first_row["step_job"]["job_count"] == 2
+            assert first_row["step_job"]["states"] == {"ok": 2}
+            assert first_row["state"] == "ok"
+            assert first_row["reused"] == "no"
+            assert first_row["cells"]["input:input1"]["type"] == "collection"
+            assert first_row["cells"]["input:input1"]["id"] == two_list
+            output_cell = first_row["cells"]["output:out_file1"]
+            assert output_cell["type"] == "collection"
+            assert output_cell["collection_type"] == "list"
+            assert output_cell["element_count"] == 2
+            assert superset_row["step_job"]["job_count"] == 3
+            assert superset_row["cells"]["input:input1"]["id"] == three_list
+            assert superset_row["reused"] == "partial"
+
+    @skip_without_tool("cat1")
+    def test_step_runs_not_run_yet(self):
+        with self.dataset_populator.test_history() as history_id:
+            hda = self.dataset_populator.new_dataset(history_id, content="paused\n", wait=True)
+            workflow_id = self.workflow_populator.upload_yaml_workflow(WORKFLOW_PAUSE_THEN_CAT)
+            request = {
+                "history": f"hist_id={history_id}",
+                "inputs": json.dumps({"input1": {"src": "hda", "id": hda["id"]}}),
+                "inputs_by": "name",
+            }
+            resumed_id = self.workflow_populator.invoke_workflow_raw(workflow_id, request, assert_ok=True).json()["id"]
+            pause_step = wait_on(lambda: self._invocation_step(resumed_id, order_index=1), "pause step scheduled")
+            response = self._put(f"invocations/{resumed_id}/steps/{pause_step['id']}", {"action": True}, json=True)
+            self._assert_status_code_is_ok(response)
+            self.workflow_populator.wait_for_invocation_and_jobs(history_id, workflow_id, resumed_id)
+            # the paused run is the only row of its version
+            self._refactor(workflow_id, {"action_type": "update_name", "name": "paused version"})
+            paused_id = self.workflow_populator.invoke_workflow_raw(workflow_id, request, assert_ok=True).json()["id"]
+
+            response = self._step_runs(workflow_id, "after_pause")
+            assert response.headers["total_matches"] == "2"
+            paused_row, resumed_row = response.json()["rows"]
+            assert resumed_row["run"]["id"] == resumed_id
+            assert {cell["type"] for cell in resumed_row["cells"].values()} == {"dataset"}
+            assert paused_row["run"]["id"] == paused_id
+            assert (paused_row["version"], resumed_row["version"]) == (1, 0)
+            assert paused_row["state"] == "new"
+            assert paused_row["step_job"] is None
+            assert paused_row["cells"] == {
+                "input:input1": {"type": "missing", "reason": "not_run_yet"},
+                "output:out_file1": {"type": "missing", "reason": "not_run_yet"},
+            }
+            ok_rows = self._step_runs_table(workflow_id, "after_pause", states="ok")["rows"]
+            assert [row["run"]["id"] for row in ok_rows] == [resumed_id]
+            new_rows = self._step_runs_table(workflow_id, "after_pause", states="new")["rows"]
+            assert [row["run"]["id"] for row in new_rows] == [paused_id]
+
+    @skip_without_tool("cat1")
+    def test_step_runs_mapped_over_empty_list(self):
+        with self.dataset_populator.test_history() as history_id:
+            empty_list = self._list_from(history_id, [])
+            workflow_id = self.workflow_populator.upload_yaml_workflow(WORKFLOW_MAPPED_CAT)
+            request = {
+                "history": f"hist_id={history_id}",
+                "inputs": json.dumps({"input_list": {"src": "hdca", "id": empty_list}}),
+                "inputs_by": "name",
+            }
+            self.workflow_populator.invoke_workflow_and_wait(workflow_id, request=request)
+            (row,) = self._step_runs_table(workflow_id, "mapped_cat")["rows"]
+            step_job = row["step_job"]
+            assert step_job["model"] == "ImplicitCollectionJobs"
+            assert step_job["populated_state"] == "ok"
+            assert step_job["job_count"] == 0
+            assert step_job["states"] == {}
+            assert step_job["representative_job_id"] is None
+            assert row["state"] == "ok"
+            assert row["reused"] is None
+            assert row["cells"]["input:input1"]["id"] == empty_list
+            assert row["cells"]["output:out_file1"]["element_count"] == 0
+
+    def _invocation_step(self, invocation_id: str, order_index: int) -> dict[str, Any] | None:
+        invocation = self.workflow_populator.get_invocation(invocation_id)
+        return next((step for step in invocation["steps"] if step["order_index"] == order_index), None)
+
+    def _list_from(self, history_id: str, element_identifiers: list[dict[str, Any]]) -> str:
+        response = self.dataset_collection_populator.create_list_in_history(
+            history_id, direct_upload=False, element_identifiers=element_identifiers, wait=True
+        )
+        self._assert_status_code_is_ok(response)
+        return response.json()["id"]
+
+    def _step_runs(self, workflow_id: str, step_label: str, expected_status: int = 200, **params) -> Response:
+        response = self._get(f"workflows/{workflow_id}/step_runs", data={"step_label": step_label, **params})
+        self._assert_status_code_is(response, expected_status)
+        return response
+
+    def _step_runs_table(self, workflow_id: str, step_label: str, **params) -> dict[str, Any]:
+        return self._step_runs(workflow_id, step_label, **params).json()
+
+    def _run_two_cat(self, history_id: str, invocations: int = 1) -> RunJobsSummary:
+        return self.workflow_populator.run_workflow(WORKFLOW_TWO_CAT, history_id=history_id, invocations=invocations)
+
+    def _rerun(self, summary: RunJobsSummary, **request: Any) -> str:
+        workflow_request = {**summary.workflow_request, **request}
+        response = self.workflow_populator.invoke_workflow_and_wait(summary.workflow_id, request=workflow_request)
+        return response.json()["id"]
+
+    def _refactor(self, workflow_id: str, *actions: dict[str, Any]) -> None:
+        response = self.workflow_populator.refactor_workflow(workflow_id, list(actions))
+        self._assert_status_code_is_ok(response)
+
+    def _relabel(self, workflow_id: str, old_label: str, new_label: str) -> None:
+        action = {"action_type": "update_step_label", "step": {"label": old_label}, "label": new_label}
+        self._refactor(workflow_id, action)
 
     def _run_and_show(self, tool_id: str, inputs: dict, history_id: str) -> dict:
         response = self.dataset_populator.run_tool(tool_id, inputs, history_id)
