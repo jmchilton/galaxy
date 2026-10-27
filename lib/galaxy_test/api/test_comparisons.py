@@ -426,6 +426,29 @@ class TestComparisonsApi(ApiTestCase):
             assert row["cells"]["input:input1"]["id"] == empty_list
             assert row["cells"]["output:out_file1"]["element_count"] == 0
 
+    @skip_without_tool("cat1")
+    @skip_without_tool("expression_forty_two")
+    def test_step_runs_input_steps(self):
+        with self.dataset_populator.test_history() as history_id:
+            summary = self.workflow_populator.run_workflow(WORKFLOW_LABELLED_IO, history_id=history_id)
+            hda = self.dataset_populator.new_dataset(history_id, content="other\n", wait=True)
+            rerun_id = self._invoke_and_wait(summary.workflow_id, history_id, {"input1": _hda(hda), "min_quality": 9})
+
+            table = self._step_runs_table(summary.workflow_id, "min_quality")
+            assert [(column["key"], column["role"]) for column in table["columns"]] == [
+                ("parameter:min_quality", "parameter")
+            ]
+            assert [row["run"]["id"] for row in table["rows"]] == [rerun_id, summary.invocation_id]
+            assert [row["cells"]["parameter:min_quality"]["value"] for row in table["rows"]] == [9, 7]
+
+            # a data input step shows its dataset once, as an input
+            data_table = self._step_runs_table(summary.workflow_id, "input1")
+            assert [(column["key"], column["role"]) for column in data_table["columns"]] == [("input:input1", "input")]
+            assert [row["cells"]["input:input1"]["id"] for row in data_table["rows"]] == [
+                hda["id"],
+                summary.inputs["input1"]["id"],
+            ]
+
     @skip_without_tool("fail_identifier")
     def test_runs_state_filter_matches_any_mapped_member(self):
         with self.dataset_populator.test_history() as history_id:
