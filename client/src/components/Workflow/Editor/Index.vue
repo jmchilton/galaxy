@@ -1587,6 +1587,8 @@ initializeWorkflowEditor();
                         v-if="activeStep"
                         :step="activeStep"
                         :datatypes="datatypes"
+                        :stored-workflow-id="isNewTempWorkflow ? undefined : id"
+                        :has-changes="hasChanges"
                         @postJobActionsChanged="onChangePostJobActions"
                         @annotationChanged="onAnnotation"
                         @labelChanged="onLabel"
