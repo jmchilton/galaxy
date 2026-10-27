@@ -387,9 +387,11 @@ class TestComparisonsApi(ApiTestCase):
             wait_on(lambda: self._invocation_step(paused_id, order_index=1), "pause step reached")
             pause_rows = {row["run"]["id"]: row for row in self._step_runs_table(workflow_id, "the_pause")["rows"]}
             pause_fields = ("state", "step_job", "step_type", "step_action")
-            assert {run_id: tuple(row[f] for f in pause_fields) for run_id, row in pause_rows.items()} == {
-                resumed_id: ("scheduled", None, "pause", True),
-                paused_id: ("scheduled", None, "pause", None),
+            assert {
+                run_id: (row["run"]["state"], *(row[f] for f in pause_fields)) for run_id, row in pause_rows.items()
+            } == {
+                resumed_id: ("completed", "scheduled", None, "pause", True),
+                paused_id: ("ready", "scheduled", None, "pause", None),
             }
             assert (paused_row["step_type"], paused_row["step_action"]) == ("tool", None)
 
