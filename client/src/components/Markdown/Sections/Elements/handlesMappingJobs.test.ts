@@ -17,14 +17,19 @@ const BATCH_JOBS = [
 const OTHER_BATCH_JOBS = [{ id: "k", create_time: "2024-03-06T12:00:00", update_time: "2024-03-06T12:00:00" }];
 
 let requests: URLSearchParams[];
+let fail: boolean;
 let scope: EffectScope | undefined;
 
 beforeEach(() => {
     requests = [];
+    fail = false;
     server.use(
         http.untyped.get("/api/jobs", ({ request }) => {
             const query = new URL(request.url).searchParams;
             requests.push(query);
+            if (fail) {
+                return HttpResponse.json({ err_msg: "nope", err_code: 500 }, { status: 500 });
+            }
             const jobs = query.get("implicit_collection_jobs_id") === "icj1" ? BATCH_JOBS : OTHER_BATCH_JOBS;
             // newest first by the requested time, as the index sorts
             const orderBy = (query.get("order_by") ?? "update_time") as "create_time" | "update_time";
@@ -82,5 +87,14 @@ describe("useMappingJobs", () => {
         expect(targetJobId.value).toBe("j1");
         expect(selectJobOptions.value).toEqual([]);
         expect(requests).toHaveLength(0);
+    });
+
+    it("offers no jobs when the batch fails to load", async () => {
+        fail = true;
+        const { selectJobOptions, targetJobId } = useJobs(undefined, "icj1");
+        await flushPromises();
+        expect(requests).toHaveLength(1);
+        expect(selectJobOptions.value).toEqual([]);
+        expect(targetJobId.value).toBeUndefined();
     });
 });
