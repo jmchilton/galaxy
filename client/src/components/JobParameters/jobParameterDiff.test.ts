@@ -38,7 +38,7 @@ describe("diffJobParameters", () => {
         ]);
     });
 
-    it("lists parameters only one job has after the shared ones, as differing", () => {
+    it("lists parameters only one job has as differing, the second job's after the first's", () => {
         const diff = diffJobParameters([p("Old", 1)], [p("New", 2)]);
         expect(diff.map((entry) => [entry.path, entry.a, entry.b, entry.differs])).toEqual([
             ["Old", "1", undefined, true],
