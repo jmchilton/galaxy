@@ -23,6 +23,7 @@ from galaxy.schema.comparisons import (
     ComparisonTable,
     OutputRunsQuery,
     StepRunsQuery,
+    ToolRunsQuery,
 )
 from galaxy.schema.fields import DecodedDatabaseIdField
 from galaxy.webapps.galaxy.api import (
@@ -63,6 +64,28 @@ OutputLabelsQueryParam = Annotated[
 ]
 
 LIST_DESCRIPTION_SUFFIX = " A comma-separated list or repeated parameter."
+
+ToolIdQueryParam = Annotated[
+    str,
+    Query(min_length=1, title="Tool ID", description="Tool id; a Tool Shed version suffix is ignored."),
+]
+
+ToolVersionsQueryParam = Query(
+    default=None,
+    alias="tool_versions",
+    title="Tool versions",
+    description="Only include runs of these tool versions." + LIST_DESCRIPTION_SUFFIX,
+)
+
+ToolRunsHistoryIdQueryParam = Annotated[
+    DecodedDatabaseIdField | None,
+    Query(title="History ID", description="Only include runs in this history."),
+]
+
+IncludeWorkflowJobsQueryParam = Annotated[
+    bool,
+    Query(title="Include workflow jobs", description="Include jobs run as part of a workflow invocation."),
+]
 
 StatesQueryParam = Query(
     default=None,
@@ -149,5 +172,30 @@ class FastAPIComparisons:
             **comparison_params.model_dump(), workflow_id=workflow_id, output_labels=output_labels
         )
         table, total_matches = self.service.output_runs(trans, query, instance)
+        response.headers["total_matches"] = str(total_matches)
+        return table
+
+    @router.get(
+        "/api/tool_runs",
+        summary="Compare runs of a tool across its versions.",
+    )
+    def tool_runs(
+        self,
+        response: Response,
+        tool_id: ToolIdQueryParam,
+        tool_versions: list[str] | None = Depends(query_parameter_as_list(ToolVersionsQueryParam)),
+        history_id: ToolRunsHistoryIdQueryParam = None,
+        include_workflow_jobs: IncludeWorkflowJobsQueryParam = True,
+        comparison_params: ComparisonQueryBase = Depends(comparison_query_params),
+        trans: ProvidesUserContext = DependsOnTrans,
+    ) -> ComparisonTable:
+        query = ToolRunsQuery.model_construct(
+            **comparison_params.model_dump(),
+            tool_id=tool_id,
+            tool_versions=tool_versions,
+            history_id=history_id,
+            include_workflow_jobs=include_workflow_jobs,
+        )
+        table, total_matches = self.service.tool_runs(trans, query)
         response.headers["total_matches"] = str(total_matches)
         return table
