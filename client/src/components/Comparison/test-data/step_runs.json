@@ -1,0 +1,355 @@
+{
+  "query": {
+    "limit": 25,
+    "offset": 0,
+    "sort_by": "create_time",
+    "sort_desc": true,
+    "states": null,
+    "metadata_elements": [
+      "data_lines"
+    ],
+    "inline_expression_values": true,
+    "kind": "step_runs",
+    "workflow_id": "adb5f5c93f827949",
+    "step_label": "second_cat"
+  },
+  "columns": [
+    {
+      "key": "input:input1",
+      "label": "input1",
+      "role": "input",
+      "present_in_versions": null,
+      "duplicate": false,
+      "metadata_keys": [
+        "data_lines",
+        "dbkey"
+      ]
+    },
+    {
+      "key": "output:out_file1",
+      "label": "out_file1",
+      "role": "output",
+      "present_in_versions": null,
+      "duplicate": false,
+      "metadata_keys": [
+        "data_lines",
+        "dbkey"
+      ]
+    }
+  ],
+  "rows": [
+    {
+      "run": {
+        "model": "WorkflowInvocation",
+        "id": "2234cb1fd1df4331",
+        "state": "new"
+      },
+      "step_job": null,
+      "subworkflow_invocation_id": null,
+      "via": null,
+      "create_time": "2026-10-27T06:58:45.668808",
+      "update_time": "2026-10-27T06:58:45.668811",
+      "state": "new",
+      "version": 1,
+      "tool_id": null,
+      "tool_version": null,
+      "reused": null,
+      "history": {
+        "id": "529fd61ab1c6cc36",
+        "name": "test_history",
+        "deleted": false,
+        "purged": false
+      },
+      "cells": {
+        "input:input1": {
+          "type": "missing",
+          "reason": "not_run_yet"
+        },
+        "output:out_file1": {
+          "type": "missing",
+          "reason": "not_run_yet"
+        }
+      }
+    },
+    {
+      "run": {
+        "model": "WorkflowInvocation",
+        "id": "d9abeb98649a6a7e",
+        "state": "completed"
+      },
+      "step_job": {
+        "model": "Job",
+        "id": "cb6e11b662890a90",
+        "state": "ok"
+      },
+      "subworkflow_invocation_id": null,
+      "via": null,
+      "create_time": "2026-10-27T06:58:38.276428",
+      "update_time": "2026-10-27T06:58:41.305903",
+      "state": "ok",
+      "version": 1,
+      "tool_id": "cat1",
+      "tool_version": "1.0.0",
+      "reused": "no",
+      "history": {
+        "id": "adb5f5c93f827949",
+        "name": "test_history",
+        "deleted": false,
+        "purged": false
+      },
+      "cells": {
+        "input:input1": {
+          "type": "dataset",
+          "id": "cb227cec8ca83994",
+          "hid": 6,
+          "name": "Concatenate multiple datasets or collections on dataset 1",
+          "extension": "txt",
+          "state": "ok",
+          "deleted": false,
+          "purged": false,
+          "history_id": "adb5f5c93f827949",
+          "metadata": {
+            "data_lines": 1
+          }
+        },
+        "output:out_file1": {
+          "type": "dataset",
+          "id": "cb6e11b662890a90",
+          "hid": 7,
+          "name": "Concatenate multiple datasets or collections on dataset 6",
+          "extension": "txt",
+          "state": "ok",
+          "deleted": false,
+          "purged": false,
+          "history_id": "adb5f5c93f827949",
+          "metadata": {
+            "data_lines": 1
+          }
+        }
+      }
+    },
+    {
+      "run": {
+        "model": "WorkflowInvocation",
+        "id": "529fd61ab1c6cc36",
+        "state": "completed"
+      },
+      "step_job": {
+        "model": "Job",
+        "id": "2234cb1fd1df4331",
+        "state": "ok"
+      },
+      "subworkflow_invocation_id": null,
+      "via": null,
+      "create_time": "2026-10-27T06:58:34.970241",
+      "update_time": "2026-10-27T06:58:38.013741",
+      "state": "ok",
+      "version": 0,
+      "tool_id": "cat1",
+      "tool_version": "1.0.0",
+      "reused": "no",
+      "history": {
+        "id": "adb5f5c93f827949",
+        "name": "test_history",
+        "deleted": false,
+        "purged": false
+      },
+      "cells": {
+        "input:input1": {
+          "type": "dataset",
+          "id": "f3f73e481f432006",
+          "hid": 4,
+          "name": "Concatenate multiple datasets or collections on dataset 1",
+          "extension": "txt",
+          "state": "ok",
+          "deleted": false,
+          "purged": false,
+          "history_id": "adb5f5c93f827949",
+          "metadata": {
+            "data_lines": 1
+          }
+        },
+        "output:out_file1": {
+          "type": "dataset",
+          "id": "2234cb1fd1df4331",
+          "hid": 5,
+          "name": "Concatenate multiple datasets or collections on dataset 4",
+          "extension": "txt",
+          "state": "ok",
+          "deleted": false,
+          "purged": false,
+          "history_id": "adb5f5c93f827949",
+          "metadata": {
+            "data_lines": 1
+          }
+        }
+      }
+    },
+    {
+      "run": {
+        "model": "WorkflowInvocation",
+        "id": "adb5f5c93f827949",
+        "state": "completed"
+      },
+      "step_job": {
+        "model": "Job",
+        "id": "d9abeb98649a6a7e",
+        "state": "ok"
+      },
+      "subworkflow_invocation_id": null,
+      "via": null,
+      "create_time": "2026-10-27T06:58:32.461073",
+      "update_time": "2026-10-27T06:58:34.827445",
+      "state": "ok",
+      "version": 0,
+      "tool_id": "cat1",
+      "tool_version": "1.0.0",
+      "reused": "no",
+      "history": {
+        "id": "adb5f5c93f827949",
+        "name": "test_history",
+        "deleted": false,
+        "purged": false
+      },
+      "cells": {
+        "input:input1": {
+          "type": "dataset",
+          "id": "529fd61ab1c6cc36",
+          "hid": 2,
+          "name": "Concatenate multiple datasets or collections on dataset 1",
+          "extension": "txt",
+          "state": "ok",
+          "deleted": false,
+          "purged": false,
+          "history_id": "adb5f5c93f827949",
+          "metadata": {
+            "data_lines": 1
+          }
+        },
+        "output:out_file1": {
+          "type": "dataset",
+          "id": "d9abeb98649a6a7e",
+          "hid": 3,
+          "name": "Concatenate multiple datasets or collections on dataset 2",
+          "extension": "txt",
+          "state": "ok",
+          "deleted": false,
+          "purged": false,
+          "history_id": "adb5f5c93f827949",
+          "metadata": {
+            "data_lines": 1
+          }
+        }
+      }
+    },
+    {
+      "run": {
+        "model": "WorkflowInvocation",
+        "id": "f2db41e1fa331b3e",
+        "state": "scheduled"
+      },
+      "step_job": {
+        "id": "529fd61ab1c6cc36",
+        "populated_state": "ok",
+        "states": {
+          "ok": 3
+        },
+        "model": "ImplicitCollectionJobs",
+        "representative_job_id": "cb227cec8ca83994",
+        "job_count": 3
+      },
+      "subworkflow_invocation_id": null,
+      "via": null,
+      "create_time": "2026-10-27T07:01:53.239050",
+      "update_time": "2026-10-27T07:01:53.485912",
+      "state": "ok",
+      "version": 0,
+      "tool_id": "cat1",
+      "tool_version": "1.0.0",
+      "reused": "partial",
+      "history": {
+        "id": "adb5f5c93f827949",
+        "name": "test_history",
+        "deleted": false,
+        "purged": false
+      },
+      "cells": {
+        "input:input1": {
+          "type": "collection",
+          "id": "529fd61ab1c6cc36",
+          "hid": 5,
+          "name": "Test Dataset Collection",
+          "collection_type": "list",
+          "element_count": 3,
+          "populated_state": "ok",
+          "deleted": false,
+          "history_id": "adb5f5c93f827949"
+        },
+        "output:out_file1": {
+          "type": "collection",
+          "id": "f3f73e481f432006",
+          "hid": 9,
+          "name": "Concatenate multiple datasets or collections on collection 5",
+          "collection_type": "list",
+          "element_count": 3,
+          "populated_state": "ok",
+          "deleted": false,
+          "history_id": "adb5f5c93f827949"
+        }
+      }
+    },
+    {
+      "run": {
+        "model": "WorkflowInvocation",
+        "id": "cb6e11b662890a90",
+        "state": "completed"
+      },
+      "step_job": {
+        "model": "Job",
+        "id": "5a77dbba84d2acbb",
+        "state": "ok"
+      },
+      "subworkflow_invocation_id": null,
+      "via": null,
+      "create_time": "2026-10-27T06:58:50.712131",
+      "update_time": "2026-10-27T06:58:52.981159",
+      "state": "ok",
+      "version": 0,
+      "tool_id": "cat1",
+      "tool_version": "1.0.0",
+      "reused": "no",
+      "history": {
+        "id": "2234cb1fd1df4331",
+        "name": "test_history",
+        "deleted": true,
+        "purged": false
+      },
+      "cells": {
+        "input:input1": {
+          "type": "dataset",
+          "id": "5a77dbba84d2acbb",
+          "hid": 1,
+          "name": "Test_Dataset",
+          "extension": "txt",
+          "state": "ok",
+          "deleted": false,
+          "purged": false,
+          "history_id": "2234cb1fd1df4331",
+          "metadata": {}
+        },
+        "output:out_file1": {
+          "type": "dataset",
+          "id": "2c41b8145f7ed85e",
+          "hid": 2,
+          "name": "Concatenate multiple datasets or collections on dataset 1",
+          "extension": "txt",
+          "state": "ok",
+          "deleted": false,
+          "purged": false,
+          "history_id": "2234cb1fd1df4331",
+          "metadata": {}
+        }
+      }
+    }
+  ]
+}
