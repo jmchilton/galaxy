@@ -1793,6 +1793,7 @@ class Job(Base, JobLike, UsesCreateAndUpdateTime, Dictifiable, Serializable):
         "tool_id",
         "tool_version",
         "history_id",
+        "copied_from_job_id",
     ]
     dict_element_visible_keys = [
         "id",
