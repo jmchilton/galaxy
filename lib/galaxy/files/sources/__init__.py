@@ -556,6 +556,15 @@ class BaseFilesSource(FilesSource, Generic[TTemplateConfig, TResolvedConfig]):
     ) -> tuple[builtins.list[AnyRemoteEntry], int]:
         raise NotImplementedError()
 
+    def _apply_pagination(
+        self, entries_list: builtins.list[AnyRemoteEntry], limit: int | None, offset: int | None
+    ) -> builtins.list[AnyRemoteEntry]:
+        """Page an in-memory listing; ``offset`` and ``limit`` may each arrive without the other."""
+        start = offset or 0
+        if limit is not None:
+            return entries_list[start : start + limit]
+        return entries_list[start:]
+
     def create_entry(
         self,
         entry_data: EntryData,

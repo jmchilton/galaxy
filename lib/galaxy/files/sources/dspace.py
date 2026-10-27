@@ -247,8 +247,7 @@ class DSpaceFilesSource(BaseFilesSource[DSpaceFileSourceTemplateConfiguration, D
     ) -> tuple[list[AnyRemoteEntry], int]:
         if query:
             entries = [entry for entry in entries if query.lower() in entry.name.lower()]
-        start = offset or 0
-        return entries[start : start + limit if limit is not None else None], len(entries)
+        return self._apply_pagination(entries, limit, offset), len(entries)
 
     def _get_json(self, config: DSpaceFileSourceConfiguration, url: str, params: dict[str, str]) -> dict[str, Any]:
         with self._open_url(config, url, params, accept="application/json") as response:

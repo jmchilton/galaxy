@@ -340,21 +340,6 @@ class FsspecFilesSource(BaseFilesSource[FsspecTemplateConfigType, FsspecResolved
         page of entries only, keeping the cost proportional to the page size.
         """
 
-    def _apply_pagination(
-        self, entries_list: list[AnyRemoteEntry], limit: int | None, offset: int | None
-    ) -> list[AnyRemoteEntry]:
-        """Apply pagination to the entries list.
-
-        ``limit`` and ``offset`` are independent query parameters, so an offset arrives without a
-        limit whenever a caller asks for everything from a position. Returning the list untouched
-        in that case dropped the offset and served the first page for every request, while the
-        total reported alongside it said otherwise.
-        """
-        start = offset or 0
-        if limit is not None:
-            return entries_list[start : start + limit]
-        return entries_list[start:]
-
     def _get_cache_options(self, config: FsspecResolvedConfigurationType) -> dict[str, Any]:
         return config.model_dump(
             include=set(FsspecCommonCacheOptions.model_fields.keys()),
