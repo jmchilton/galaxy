@@ -5,15 +5,7 @@ import { computed, ref, watch } from "vue";
 
 import type { ComparisonColumn, ComparisonRow, ComparisonTable } from "@/api/comparisons";
 
-import {
-    type CellDisplay,
-    displayFor,
-    fieldKeys,
-    META_FIELDS,
-    META_LABELS,
-    type MetaField,
-    transpose as transposeTable,
-} from "./comparisonUtils";
+import { type CellDisplay, displayFor, fieldKeys, META_FIELDS, META_LABELS, type MetaField } from "./comparisonUtils";
 
 import ComparisonCell from "./cells/ComparisonCell.vue";
 import ComparisonColumnHeader from "./ComparisonColumnHeader.vue";
@@ -111,7 +103,6 @@ const runItems = computed<RunItem[]>(() =>
 );
 
 // Runs as columns.
-const transposed = computed(() => transposeTable(props.table));
 const lineFields = computed(() => [
     { key: "_line", label: "" },
     ...props.table.rows.map((row, index) => ({
@@ -260,7 +251,7 @@ function toggleRow(item: RunItem, toggleDetails: () => void) {
                     v-slot:[`cell(r${index})`]="{ item }">
                     <ComparisonCell
                         v-if="item.column"
-                        :cell="transposed.cells[item.column.key]?.[index]"
+                        :cell="row.cells[item.column.key]"
                         :row="row"
                         :display="display(item.column)"
                         :requested-metadata="requestedMetadata" />

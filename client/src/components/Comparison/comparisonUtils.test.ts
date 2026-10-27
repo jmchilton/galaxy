@@ -11,8 +11,6 @@ import {
     requestedMetadata,
     rowJob,
     runLink,
-    transpose,
-    untranspose,
     versionLabel,
 } from "./comparisonUtils";
 import STEP_RUNS from "./test-data/step_runs.json";
@@ -26,22 +24,6 @@ function column(overrides: Partial<ComparisonColumn>): ComparisonColumn {
 function row(overrides: Partial<ComparisonRow>): ComparisonRow {
     return { ...TABLE.rows[1]!, ...overrides };
 }
-
-describe("transpose", () => {
-    it("round trips the fixture", () => {
-        expect(untranspose(transpose(TABLE))).toEqual({ columns: TABLE.columns, rows: TABLE.rows });
-    });
-
-    it("keeps the grid uniform: every column has a cell for every run", () => {
-        const transposed = transpose(TABLE);
-        TABLE.columns.forEach((c) => {
-            const cells = transposed.cells[c.key]!;
-            expect(cells).toHaveLength(TABLE.rows.length);
-            cells.forEach((cell, index) => expect(cell).toBe(TABLE.rows[index]!.cells[c.key]));
-            expect(cells.every(Boolean)).toBe(true);
-        });
-    });
-});
 
 describe("display", () => {
     it("defaults datasets and collections to links", () => {

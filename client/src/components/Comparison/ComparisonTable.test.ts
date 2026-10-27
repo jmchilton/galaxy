@@ -2,7 +2,7 @@ import { getLocalVue } from "@tests/vitest/helpers";
 import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 
-import type { ComparisonTable as Table } from "@/api/comparisons";
+import type { ComparisonTable as Table, DatasetCell } from "@/api/comparisons";
 
 import STEP_RUNS from "./test-data/step_runs.json";
 
@@ -116,9 +116,13 @@ describe("ComparisonTable", () => {
         expect(wrapper.findAll("thead th")).toHaveLength(1 + TABLE.rows.length);
         const lines = wrapper.findAll("tbody tr");
         expect(lines.map((tr) => tr.attributes("data-pk"))).toEqual(ALL_COLUMNS);
+        lines.forEach((line) => expect(line.findAll("td")).toHaveLength(1 + TABLE.rows.length));
+        expect(wrapper.find("[title='No cell for this run']").exists()).toBe(false);
         const outputLine = lines[5]!;
-        expect(outputLine.findAll("td")).toHaveLength(1 + TABLE.rows.length);
         expect(outputLine.findAll("td")[1]!.text()).toContain("not run yet");
+        expect(outputLine.findAll("td")[2]!.text()).toContain(
+            (TABLE.rows[1]!.cells["output:out_file1"] as DatasetCell).name,
+        );
         expect(wrapper.findAll(".comparison-expand")).toHaveLength(0);
     });
 

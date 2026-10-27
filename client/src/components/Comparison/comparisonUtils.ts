@@ -4,7 +4,6 @@ import type {
     ComparisonKind,
     ComparisonQuery,
     ComparisonRow,
-    ComparisonTable,
     MissingCell,
 } from "@/api/comparisons";
 
@@ -44,36 +43,6 @@ export function versionLabel(version: number | null | undefined): string {
 /** GTable slot names are `cell(${key})`, so map arbitrary column keys to safe field keys. */
 export function fieldKeys(columns: ComparisonColumn[]): Record<string, string> {
     return Object.fromEntries(columns.map((column, index) => [column.key, `c${index}`]));
-}
-
-export interface TransposedTable {
-    runs: ComparisonRow[];
-    columns: ComparisonColumn[];
-    /** Cells per column key, aligned with `runs`. */
-    cells: Record<string, (ComparisonCell | undefined)[]>;
-}
-
-/** One line per column, runs across. */
-export function transpose(table: Pick<ComparisonTable, "columns" | "rows">): TransposedTable {
-    const cells = Object.fromEntries(
-        table.columns.map((column) => [column.key, table.rows.map((row) => row.cells[column.key])]),
-    );
-    return { runs: table.rows, columns: table.columns, cells };
-}
-
-/** Rebuild rows from a transposed table. */
-export function untranspose(transposed: TransposedTable): Pick<ComparisonTable, "columns" | "rows"> {
-    const rows = transposed.runs.map((run, index) => {
-        const cells: ComparisonRow["cells"] = {};
-        transposed.columns.forEach((column) => {
-            const cell = transposed.cells[column.key]?.[index];
-            if (cell) {
-                cells[column.key] = cell;
-            }
-        });
-        return { ...run, cells };
-    });
-    return { columns: transposed.columns, rows };
 }
 
 function columnCells(column: ComparisonColumn, rows: ComparisonRow[]): ComparisonCell[] {
