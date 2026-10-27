@@ -5,11 +5,16 @@ import { GalaxyApi } from "@/api";
 /** Where a list of jobs comes from: one tool execution (tool request), or one mapped-over batch. */
 export type ExecutionJobsSource =
     | { toolRequestId: string }
-    /** `jobCount`, when known, fetches the whole batch rather than the index's default page. */
-    | { implicitCollectionJobsId: string; jobCount?: number };
+    /**
+     * `jobCount`, when known, fetches the whole batch rather than the index's default page.
+     * `recentlyUpdatedFirst` lists the batch most recently updated first instead of in creation order.
+     */
+    | { implicitCollectionJobsId: string; jobCount?: number; recentlyUpdatedFirst?: boolean };
 
-interface ExecutionJob {
+export interface ExecutionJob {
     id: string;
+    /** Set for a batch's jobs. */
+    create_time?: string;
 }
 
 const MESSAGES = {
@@ -28,13 +33,17 @@ async function fetchJobs(source: ExecutionJobsSource): Promise<ExecutionJob[] | 
         return error ? undefined : data.jobs;
     }
     const limit = source.jobCount ? { limit: source.jobCount } : {};
+    const orderBy = source.recentlyUpdatedFirst ? "update_time" : "create_time";
     const { data, error } = await GalaxyApi().GET("/api/jobs", {
         params: {
-            query: { implicit_collection_jobs_id: source.implicitCollectionJobsId, order_by: "create_time", ...limit },
+            query: { implicit_collection_jobs_id: source.implicitCollectionJobsId, order_by: orderBy, ...limit },
         },
     });
-    // The index lists newest first; a batch reads in the order it was created.
-    return error ? undefined : [...data].reverse();
+    if (error) {
+        return undefined;
+    }
+    // The index lists newest first; otherwise a batch reads in the order it was created.
+    return source.recentlyUpdatedFirst ? data : [...data].reverse();
 }
 
 /** Loads the jobs of a tool execution or a mapped-over batch; refetches when the source changes. */
