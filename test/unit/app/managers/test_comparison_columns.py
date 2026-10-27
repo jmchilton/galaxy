@@ -4,7 +4,7 @@ from galaxy.managers.comparison_columns import (
     align_columns,
     ColumnSpec,
     missing_reason,
-    multiple_input_aliases,
+    multiple_input_members,
     normalize_io_name,
     reused_state,
     summary_state,
@@ -26,15 +26,21 @@ def test_normalize_io_name(raw, expected):
     assert normalize_io_name(raw) == expected
 
 
-def test_multiple_input_aliases_from_multi_data_param():
+def test_multiple_input_members_from_multi_data_param():
     # names and identities as recorded for multi_data_param with f1=[a, b], f2=a
     ids = {"f1": 1, "f11": 1, "f12": 2, "f2": 1, "f21": 1}
-    assert multiple_input_aliases(ids) == {"f11", "f12", "f21"}
+    assert multiple_input_members(ids) == {"f1": ["f11", "f12"], "f2": ["f21"]}
 
 
-def test_multiple_input_aliases_keeps_distinct_numbered_inputs():
-    assert multiple_input_aliases({"input": 1, "input1": 2}) == set()
-    assert multiple_input_aliases({"input1": 1, "queries_0|input2": 2}) == set()
+def test_multiple_input_members_in_dataset_order():
+    names = [f"f1{index}" for index in range(1, 12)]
+    ids = {"f1": 1, **{name: index for index, name in enumerate(names, start=1)}}
+    assert multiple_input_members(dict(reversed(ids.items()))) == {"f1": names}
+
+
+def test_multiple_input_members_keeps_distinct_numbered_inputs():
+    assert multiple_input_members({"input": 1, "input1": 2}) == {}
+    assert multiple_input_members({"input1": 1, "queries_0|input2": 2}) == {}
 
 
 def _spec(name, role="output"):

@@ -18,7 +18,7 @@ from sqlalchemy.orm import (
     undefer,
 )
 
-from galaxy.managers.comparison_columns import multiple_input_aliases
+from galaxy.managers.comparison_columns import multiple_input_members
 from galaxy.managers.hdas import HDASerializer
 from galaxy.managers.histories import HistoryManager
 from galaxy.model import (
@@ -60,6 +60,12 @@ JOB_RECORD_COLUMNS = (Job.id, Job.state, Job.tool_id, Job.tool_version, Job.copi
 class ItemRef(NamedTuple):
     src: Literal["hda", "hdca"]
     id: int
+
+
+class ItemRefs(NamedTuple):
+    """The datasets of a multiple data input, in order."""
+
+    refs: tuple[ItemRef, ...]
 
 
 class ComparisonAccess(NamedTuple):
@@ -188,9 +194,9 @@ class ComparisonCellBuilder:
             )
         return records
 
-    def job_inputs(self, job_ids: Collection[int]) -> dict[int, dict[str, ItemRef]]:
+    def job_inputs(self, job_ids: Collection[int]) -> dict[int, dict[str, ItemRef | ItemRefs]]:
         """Input datasets and collections of each job, keyed by association name."""
-        inputs: dict[int, dict[str, ItemRef]] = defaultdict(dict)
+        inputs: dict[int, dict[str, ItemRef | ItemRefs]] = defaultdict(dict)
         if not job_ids:
             return inputs
         jtida = JobToInputDatasetAssociation
@@ -203,9 +209,15 @@ class ComparisonCellBuilder:
         for job_id, name, dataset_id in self.sa_session.execute(stmt):
             dataset_ids[job_id][name] = dataset_id
         for job_id, by_name in dataset_ids.items():
-            aliases = multiple_input_aliases(by_name)
+            members = multiple_input_members(by_name)
+            folded = {name for names in members.values() for name in names}
             for name, dataset_id in by_name.items():
-                if name not in aliases:
+                if name in folded:
+                    continue
+                names = members.get(name, ())
+                if len(names) > 1:
+                    inputs[job_id][name] = ItemRefs(tuple(ItemRef("hda", by_name[member]) for member in names))
+                else:
                     inputs[job_id][name] = ItemRef("hda", dataset_id)
 
         jtidca = JobToInputDatasetCollectionAssociation

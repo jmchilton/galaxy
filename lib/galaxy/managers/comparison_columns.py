@@ -1,6 +1,7 @@
 """Pure helpers for building comparison table columns; no database access."""
 
 import re
+from collections import defaultdict
 from collections.abc import Mapping
 from typing import (
     Any,
@@ -39,21 +40,27 @@ def normalize_io_name(name: str) -> str:
     return name
 
 
-def multiple_input_aliases(ids_by_name: Mapping[str, Any]) -> set[str]:
-    """Names a multiple data param records per dataset (``name1``, ``name2``...) next to ``name``."""
-    aliases = set()
+def multiple_input_members(ids_by_name: Mapping[str, Any]) -> dict[str, list[str]]:
+    """Names a multiple data param records per dataset (``name1``, ``name2``...), by ``name``, in dataset order."""
+    members: dict[str, list[tuple[int, str]]] = defaultdict(list)
     for name in ids_by_name:
         match = TRAILING_DIGITS.search(name)
         if not match:
             continue
         # a name like f11 may be f1 + 1 or f + 11; try every split
         for split in range(match.start(), len(name)):
-            base = name[:split]
+            base, index = name[:split], name[split:]
             first = f"{base}1"
-            if base and base in ids_by_name and first in ids_by_name and ids_by_name[base] == ids_by_name[first]:
-                aliases.add(name)
+            if (
+                base
+                and not index.startswith("0")
+                and base in ids_by_name
+                and first in ids_by_name
+                and ids_by_name[base] == ids_by_name[first]
+            ):
+                members[base].append((int(index), name))
                 break
-    return aliases
+    return {base: [name for _, name in sorted(indexed)] for base, indexed in members.items()}
 
 
 def align_columns(declared: Mapping[int, list[ColumnSpec]], newest_version: int) -> list[ComparisonColumn]:
