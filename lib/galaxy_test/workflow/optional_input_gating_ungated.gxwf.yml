@@ -1,0 +1,17 @@
+class: GalaxyWorkflow
+doc: |
+  Negative baseline: an optional workflow input wired into a required tool data
+  parameter with no `when`. Omitting the input does not skip the step.
+inputs:
+  maybe:
+    type: data
+    optional: true
+outputs:
+  out:
+    outputSource: ungated/out_file1
+steps:
+  ungated:
+    tool_id: cat
+    in:
+      input1:
+        source: maybe

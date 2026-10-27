@@ -1,0 +1,74 @@
+class: GalaxyWorkflow
+doc: |
+  Gate steps on the presence of an optional workflow input wired into a required tool
+  data parameter, then merge each gated output with a fallback. The gated parameter sits
+  at the top level, inside a tool conditional (connection `cond|input1`, expression
+  `inputs.cond.input1`), and inside the first repeat instance (connection
+  `queries_0|input2`, expression `inputs.queries[0].input2`).
+inputs:
+  fallback:
+    type: data
+  maybe:
+    type: data
+    optional: true
+outputs:
+  out_toplevel:
+    outputSource: pick_toplevel/output
+  out_nested:
+    outputSource: pick_nested/output
+  out_repeat:
+    outputSource: pick_repeat/output
+steps:
+  gated_toplevel:
+    tool_id: cat
+    in:
+      input1:
+        source: maybe
+    when: $(inputs.input1 !== null)
+  gated_nested:
+    tool_id: format_source_in_conditional
+    tool_state:
+      cond:
+        select: no_extra_nesting
+    in:
+      cond|input1:
+        source: maybe
+    when: $(inputs.cond.input1 !== null)
+  gated_repeat:
+    tool_id: cat1
+    tool_state:
+      queries:
+        - input2: null
+    in:
+      input1:
+        source: fallback
+      queries_0|input2:
+        source: maybe
+    when: $(inputs.queries[0].input2 !== null)
+  pick_toplevel:
+    type: pick_value
+    in:
+      input_0:
+        source: gated_toplevel/out_file1
+      input_1:
+        source: fallback
+    state:
+      mode: first_non_null
+  pick_nested:
+    type: pick_value
+    in:
+      input_0:
+        source: gated_nested/output1
+      input_1:
+        source: fallback
+    state:
+      mode: first_non_null
+  pick_repeat:
+    type: pick_value
+    in:
+      input_0:
+        source: gated_repeat/out_file1
+      input_1:
+        source: fallback
+    state:
+      mode: first_non_null

@@ -1,0 +1,24 @@
+- doc: |
+    Optional input supplied - the ungated step runs normally.
+  job:
+    maybe:
+      class: File
+      contents: "PROVIDED"
+      filetype: txt
+  outputs:
+    out:
+      class: File
+      asserts:
+        - that: has_text
+          text: "PROVIDED"
+- doc: |
+    Optional input omitted - nothing skips the step, so the null reaches the required
+    parameter and the workflow fails.
+  expect_failure: true
+  job: {}
+  outputs:
+    out:
+      class: File
+      asserts:
+        - that: has_text
+          text: "PROVIDED"
