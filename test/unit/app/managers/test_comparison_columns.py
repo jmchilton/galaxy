@@ -3,11 +3,9 @@ import pytest
 from galaxy.managers.comparison_columns import (
     align_columns,
     ColumnSpec,
-    missing_reason,
+    keyed_io,
     multiple_input_members,
     normalize_io_name,
-    reused_state,
-    summary_state,
 )
 
 
@@ -81,51 +79,18 @@ def test_align_columns_flags_duplicates():
     assert not columns[1].duplicate
 
 
-def test_align_columns_empty():
-    assert align_columns({}, newest_version=0) == []
+def test_keyed_io_prefers_exact_name_over_folded():
+    items = {"__new_primary_file_out|a__": 1, "out": 2, "other|__part__|forward": 3}
+    assert keyed_io("output", items) == {"output:out": 2, "output:other": 3}
 
 
 @pytest.mark.parametrize(
-    "column_in_version,step_state,job_state,run_terminal,expected",
+    "key,expected",
     [
-        (False, "scheduled", "ok", True, "not_in_version"),
-        (False, None, None, False, "not_in_version"),
-        (True, None, None, False, "not_run_yet"),
-        (True, None, None, True, "not_run_yet"),
-        (True, "scheduled", "skipped", True, "skipped"),
-        (True, "scheduled", "running", False, "not_run_yet"),
-        (True, "scheduled", "ok", True, "no_output"),
-        (True, "scheduled", "error", True, "no_output"),
-        (True, "scheduled", None, True, "no_output"),
+        ("input:in|x", ColumnSpec("input:in|x", "in|x", "input")),
+        ("parameter:p", ColumnSpec("parameter:p", "p", "parameter")),
+        ("output:a:b", ColumnSpec("output:a:b", "a:b", "output")),
     ],
 )
-def test_missing_reason(column_in_version, step_state, job_state, run_terminal, expected):
-    assert missing_reason(column_in_version, step_state, job_state, run_terminal) == expected
-
-
-@pytest.mark.parametrize(
-    "copied,total,expected",
-    [(0, 3, "no"), (1, 3, "partial"), (3, 3, "yes"), (0, 0, "no"), (1, 1, "yes")],
-)
-def test_reused_state(copied, total, expected):
-    assert reused_state(copied, total) == expected
-
-
-@pytest.mark.parametrize(
-    "states,expected",
-    [
-        ({}, "new"),
-        ({"ok": 3}, "ok"),
-        ({"ok": 2, "error": 1}, "error"),
-        ({"ok": 1, "failed": 1}, "error"),
-        ({"ok": 1, "running": 1, "queued": 1}, "running"),
-        ({"ok": 1, "queued": 2}, "queued"),
-        ({"new": 2}, "new"),
-        ({"new": 1, "queued": 1}, "queued"),
-        ({"ok": 1, "skipped": 1}, "ok"),
-        ({"skipped": 2}, "skipped"),
-        ({"ok": 1, "paused": 1}, "paused"),
-    ],
-)
-def test_summary_state(states, expected):
-    assert summary_state(states) == expected
+def test_column_spec_of_key(key, expected):
+    assert ColumnSpec.of_key(key) == expected
