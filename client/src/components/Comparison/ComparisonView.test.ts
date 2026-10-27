@@ -21,6 +21,8 @@ vi.unmock("@/composables/userLocalStorage");
 
 let requests: { path: string; query: URLSearchParams }[];
 let fail: boolean;
+// While set, tool_runs responses wait for it.
+let toolRunsGate: Promise<void> | undefined;
 let wrapper: VueWrapper | undefined;
 
 function tableFor(query: Record<string, unknown>): Table {
@@ -31,6 +33,7 @@ beforeEach(() => {
     localStorage.clear();
     requests = [];
     fail = false;
+    toolRunsGate = undefined;
     const record = (request: Request) => {
         const url = new URL(request.url);
         requests.push({ path: url.pathname, query: url.searchParams });
@@ -43,16 +46,20 @@ beforeEach(() => {
         }),
         http.get("/api/workflows/{workflow_id}/output_runs", ({ request, response }) => {
             const query = record(request);
-            const table = tableFor({ kind: "output_runs", output_labels: query.getAll("output_labels") });
+            const table = {
+                ...tableFor({ kind: "output_runs", output_labels: query.getAll("output_labels") }),
+                output_labels_available: ["a", "b"],
+            };
             return response(200).json(table, { headers: { total_matches: "6" } });
         }),
-        http.get("/api/tool_runs", ({ request, response }) => {
-            record(request);
+        http.get("/api/tool_runs", async ({ request, response }) => {
+            const query = record(request);
+            await toolRunsGate;
             if (fail) {
                 return response("5XX").json({ err_msg: "Server down", err_code: 500 }, { status: 500 });
             }
             const table = {
-                ...tableFor({ kind: "tool_runs", tool_id: "cat1" }),
+                ...tableFor({ kind: "tool_runs", tool_id: query.get("tool_id") }),
                 tool_versions_available: ["1.0", "2.0"],
             };
             return response(200).json(table, { headers: { total_matches: "6" } });
@@ -153,6 +160,56 @@ describe("ComparisonView", () => {
         expect(only!.query.getAll("metadata_elements")).toEqual(["data_lines"]);
     });
 
+    it("keys stored display preferences by the versionless Tool Shed id", async () => {
+        await mountView(
+            { kind: "tool_runs", tool_id: "toolshed.g2.bx.psu.edu/repos/devteam/cat/cat1/2.0" },
+            {
+                "tool_runs:toolshed.g2.bx.psu.edu/repos/devteam/cat/cat1": {
+                    columnDisplay: { "output:out_file1": "meta:data_lines" },
+                },
+            },
+        );
+        const [only, ...rest] = comparisonRequests();
+        expect(rest).toHaveLength(0);
+        expect(only!.query.getAll("metadata_elements")).toEqual(["data_lines"]);
+    });
+
+    it("offers every output label the server reports, not only the selected ones", async () => {
+        const { view } = await mountView({ kind: "output_runs", workflow_id: "wf1", output_labels: "a" });
+        const outputs = view.find(".comparison-filter-outputs");
+        expect(outputs.findAll("input").map((input) => input.attributes("value"))).toEqual(["a", "b"]);
+    });
+
+    it("drops the old table when the URL names another comparison", async () => {
+        const { view } = await mountView({ kind: "tool_runs", tool_id: "cat1" });
+        expect(view.findComponent(ComparisonTable).exists()).toBe(true);
+        let release: () => void = () => {};
+        toolRunsGate = new Promise((resolve) => (release = resolve));
+        await view.setProps({ query: { kind: "tool_runs", tool_id: "cat2" } });
+        await flushPromises();
+        expect(view.findComponent(ComparisonTable).exists()).toBe(false);
+        expect(view.text()).toContain("Loading runs");
+        release();
+        await flushPromises();
+        expect(view.findComponent(ComparisonTable).props("table").query).toMatchObject({ tool_id: "cat2" });
+    });
+
+    it("keeps the table while only filters change", async () => {
+        const { view } = await mountView({ kind: "tool_runs", tool_id: "cat1" });
+        let release: () => void = () => {};
+        toolRunsGate = new Promise((resolve) => (release = resolve));
+        await view.setProps({ query: { kind: "tool_runs", tool_id: "cat1", states: "ok" } });
+        await flushPromises();
+        expect(view.findComponent(ComparisonTable).exists()).toBe(true);
+        release();
+        await flushPromises();
+    });
+
+    it("describes the loaded sort order", async () => {
+        const { view } = await mountView({ kind: "tool_runs", tool_id: "cat1" });
+        expect(view.findComponent(ComparisonPager).props()).toMatchObject({ sortBy: "create_time", sortDesc: true });
+    });
+
     it("retries a failed fetch", async () => {
         fail = true;
         const { view } = await mountView({ kind: "tool_runs", tool_id: "cat1" });
@@ -167,8 +224,15 @@ describe("ComparisonView", () => {
 
     it.each([
         [{ kind: "nope" }, 'Unknown comparison kind "nope".'],
+        [{ kind: "toString" }, 'Unknown comparison kind "toString".'],
+        [{ kind: "__proto__" }, 'Unknown comparison kind "__proto__".'],
         [{}, "No comparison kind given."],
         [{ kind: "step_runs", workflow_id: "wf1" }, "A step_runs comparison needs step_label."],
+        [{ kind: "tool_runs", tool_id: "cat1", state: "ok" }, "A tool_runs comparison does not take state."],
+        [
+            { kind: "tool_runs", tool_id: "cat1", output_labels: "a", constructor: "x" },
+            "A tool_runs comparison does not take output_labels, constructor.",
+        ],
     ])("shows an error and fetches nothing for %j", async (query, message) => {
         const { view } = await mountView(query);
         expect(comparisonRequests()).toHaveLength(0);

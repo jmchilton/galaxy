@@ -119,6 +119,8 @@ const pageLink = computed(() => {
                     :total="total"
                     :limit="DEFAULT_LIMIT"
                     :loaded-offset="table.query.offset"
+                    :sort-by="table.query.sort_by"
+                    :sort-desc="table.query.sort_desc"
                     :row-count="table.rows.length" />
             </template>
         </template>

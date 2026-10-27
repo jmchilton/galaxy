@@ -2,17 +2,30 @@
 import { BPagination } from "bootstrap-vue";
 import { computed } from "vue";
 
-const props = defineProps<{
-    /** Runs matching the query, from `total_matches`. */
-    total: number;
-    limit: number;
-    /** The page asked for. */
-    offset: number;
-    /** Offset of the loaded rows, which the summary describes while the next page loads. */
-    loadedOffset: number;
-    /** Runs on the loaded page. */
-    rowCount: number;
-}>();
+import type { ComparisonSortBy } from "@/api/comparisons";
+
+const SORT_ORDER: Record<ComparisonSortBy, [descending: string, ascending: string]> = {
+    create_time: ["newest first", "oldest first"],
+    update_time: ["recently updated first", "least recently updated first"],
+};
+
+const props = withDefaults(
+    defineProps<{
+        /** Runs matching the query, from `total_matches`. */
+        total: number;
+        limit: number;
+        /** The page asked for. */
+        offset: number;
+        /** Offset of the loaded rows, which the summary describes while the next page loads. */
+        loadedOffset: number;
+        /** Runs on the loaded page. */
+        rowCount: number;
+        /** Sort of the loaded rows. */
+        sortBy?: ComparisonSortBy;
+        sortDesc?: boolean;
+    }>(),
+    { sortBy: "create_time", sortDesc: true },
+);
 
 const emit = defineEmits<{
     (e: "update:offset", value: number): void;
@@ -28,7 +41,8 @@ const summary = computed(() => {
         return "";
     }
     const firstRow = props.loadedOffset + 1;
-    return `Showing ${firstRow}–${firstRow + props.rowCount - 1} of ${props.total} · newest first · your runs only`;
+    const order = SORT_ORDER[props.sortBy][props.sortDesc ? 0 : 1];
+    return `Showing ${firstRow}–${firstRow + props.rowCount - 1} of ${props.total} · ${order} · your runs only`;
 });
 </script>
 

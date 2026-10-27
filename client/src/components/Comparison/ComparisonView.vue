@@ -76,7 +76,12 @@ const fetchRequest = computed<ComparisonRequest | undefined>(() => {
 });
 const { total, loading, error, reload } = useComparisonFetch(fetchRequest, fetchComparison, table);
 
-watch(kind, () => {
+// The page stays mounted across URL changes; drop the old table once the URL names another comparison.
+const identity = computed(() => {
+    const params = urlParams.value;
+    return JSON.stringify([kind.value, params.workflow_id, params.instance, params.step_label, params.tool_id]);
+});
+watch(identity, () => {
     table.value = undefined;
 });
 
@@ -127,20 +132,15 @@ const historyFilterName = computed(() => {
     return table.value?.rows.find((row) => row.history.id === historyId)?.history.name || historyId;
 });
 
-// Output labels seen while unfiltered; the server leaves unselected ones out of a filtered table.
-const seenOutputLabels = ref<string[]>([]);
-watch(table, (value) => {
-    if (value?.query.kind === "output_runs" && !value.query.output_labels?.length) {
-        const labels = value.columns.filter((column) => column.role === "output").map((column) => column.label);
-        seenOutputLabels.value = [...new Set([...seenOutputLabels.value, ...labels])];
-    }
-});
 const outputLabels = computed({
     get: () => listParam("output_labels"),
     set: (value: string[]) => updateUrl({ output_labels: value }),
 });
 const outputLabelOptions = computed(() =>
-    [...new Set([...seenOutputLabels.value, ...outputLabels.value])].map((label) => ({ text: label, value: label })),
+    [...new Set([...(table.value?.output_labels_available ?? []), ...outputLabels.value])].map((label) => ({
+        text: label,
+        value: label,
+    })),
 );
 
 const pageSize = computed({
@@ -279,6 +279,8 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => {
                     :limit="limit"
                     :offset="offset"
                     :loaded-offset="table.query.offset"
+                    :sort-by="table.query.sort_by"
+                    :sort-desc="table.query.sort_desc"
                     :row-count="table.rows.length"
                     @update:offset="updateUrl({ offset: $event })">
                     <label class="mb-0 mr-1 text-nowrap" for="comparison-page-size"><small>Per page</small></label>

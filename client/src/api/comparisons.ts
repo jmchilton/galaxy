@@ -12,6 +12,7 @@ export type MissingCell = components["schemas"]["MissingCell"];
 export type MissingReason = MissingCell["reason"];
 export type ComparisonQuery = ComparisonTable["query"];
 export type ComparisonKind = ComparisonQuery["kind"];
+export type ComparisonSortBy = NonNullable<ComparisonQuery["sort_by"]>;
 
 export type StepRunsParams = NonNullable<
     GalaxyApiPaths["/api/workflows/{workflow_id}/step_runs"]["get"]["parameters"]["query"]
@@ -71,7 +72,12 @@ export function fetchComparison(request: ComparisonRequest, signal?: AbortSignal
             return fetchStepRuns(request.params, signal);
         case "output_runs":
             return fetchOutputRuns(request.params, signal);
-        default:
+        case "tool_runs":
             return fetchToolRuns(request.params, signal);
+        default: {
+            // A new kind fails type-check here.
+            const unknownKind: never = request;
+            throw new Error(`Unknown comparison kind ${JSON.stringify(unknownKind)}`);
+        }
     }
 }
