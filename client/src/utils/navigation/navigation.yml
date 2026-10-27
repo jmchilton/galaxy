@@ -1258,10 +1258,7 @@ workflow_editor:
       selector: 'collection type help'
     collection_type_help_modal: '.form-collection-type dialog[open]'
     collection_type_card: '.form-collection-type dialog[open] .collection-type-card[data-collection-type="${collection_type}"]'
-    step_when:
-      type: xpath
-      selector: >
-       //div[@id='form-element-__conditional']//input
+    step_when: 'div.ui-form-element[id="form-element-__conditional"] .multiselect'
     param_type_form: '#parameter_definition\|parameter_type'
     configure_output:
       type: xpath

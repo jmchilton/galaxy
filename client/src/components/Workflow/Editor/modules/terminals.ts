@@ -26,6 +26,7 @@ import {
     NULL_COLLECTION_TYPE_DESCRIPTION,
 } from "./collectionTypeDescription";
 import { applyCompaction, computePickValueCompaction, reverseCompaction } from "./pickValueCompact";
+import { presenceGateForStepInput, stepGatesInputPresence } from "./presenceGate";
 
 export const NO_COLLECTION_TYPE_INFORMATION_MESSAGE =
     "No collection type or collection type source defined - this is fine but may lead to less intuitive connection logic.";
@@ -55,6 +56,11 @@ interface InputTerminalInputs {
 interface InputTerminalArgs extends BaseTerminalArgs {
     input: InputTerminalInputs;
     input_type: "dataset" | "dataset_collection" | "parameter";
+}
+
+export interface DropAssessment {
+    acceptance: ConnectionAcceptable;
+    requiresPresenceGate: boolean;
 }
 
 class Terminal extends EventEmitter {
@@ -225,6 +231,7 @@ class BaseInputTerminal extends Terminal {
     datatypes: InputTerminalInputs["datatypes"];
     optional: InputTerminalInputs["optional"];
     localMapOver: CollectionTypeDescriptor;
+    private presenceGateAssumed = false;
 
     constructor(attr: InputTerminalArgs) {
         super(attr);
@@ -239,6 +246,79 @@ class BaseInputTerminal extends Terminal {
         } else {
             this.localMapOver = NULL_COLLECTION_TYPE_DESCRIPTION;
         }
+    }
+    /** Whether a drop is accepted directly, or only by also gating the step on this input. */
+    assessDrop(other: BaseOutputTerminal): DropAssessment {
+        const direct = this.canAccept(other);
+        if (direct.canAccept) {
+            return { acceptance: direct, requiresPresenceGate: false };
+        }
+        const gated = this.acceptanceAssumingPresenceGate(other);
+        if (!gated.canAccept) {
+            return { acceptance: direct, requiresPresenceGate: false };
+        }
+        // Only optionality blocked the drop, so also say why no gate can be offered.
+        const blocker = this.presenceGateBlocker();
+        return blocker
+            ? {
+                  acceptance: new ConnectionAcceptable(false, `${direct.reason} ${blocker.reason}`),
+                  requiresPresenceGate: false,
+              }
+            : { acceptance: gated, requiresPresenceGate: true };
+    }
+    /** Acceptance as though the step were already gated on this input; a drop has no `when` to read yet. */
+    canAcceptWithPresenceGate(other: BaseOutputTerminal): ConnectionAcceptable {
+        return this.presenceGateBlocker() ?? this.acceptanceAssumingPresenceGate(other);
+    }
+    /** Why a presence gate cannot be written for this input, or null when it can. */
+    private presenceGateBlocker(): ConnectionAcceptable | null {
+        const step = this.stores.stepStore.getStep(this.stepId);
+        if (!step || (step.type !== "tool" && step.type !== "subworkflow")) {
+            return new ConnectionAcceptable(false, "This step type cannot run conditionally.");
+        }
+        if (!presenceGateForStepInput(step, this.name)) {
+            return new ConnectionAcceptable(false, "Galaxy can't write a condition for this input.");
+        }
+        if (step.when) {
+            return new ConnectionAcceptable(false, "This step already has a condition.");
+        }
+        return null;
+    }
+    private acceptanceAssumingPresenceGate(other: BaseOutputTerminal): ConnectionAcceptable {
+        this.presenceGateAssumed = true;
+        try {
+            return this.canAccept(other);
+        } finally {
+            this.presenceGateAssumed = false;
+        }
+    }
+    /** Connect and gate the step on this input as one undoable action. */
+    connectWithPresenceGate(other: BaseOutputTerminal): void {
+        const step = this.stores.stepStore.getStep(this.stepId);
+        const when = step && presenceGateForStepInput(step, this.name);
+        if (!when) {
+            return;
+        }
+        this.stores.undoRedoStore
+            .action()
+            .onRun(() => {
+                this.makeConnection(other);
+                this.setDefaultMapOver(other);
+                this.stores.stepStore.updateStepValue(this.stepId, "when", when);
+            })
+            .onUndo(() => {
+                this.stores.stepStore.updateStepValue(this.stepId, "when", undefined);
+                this.dropConnection(other);
+            })
+            .setName("gate step on input")
+            .apply();
+    }
+    isPresenceGated(other?: BaseOutputTerminal): boolean {
+        if (this.presenceGateAssumed) {
+            return true;
+        }
+        const step = this.stores.stepStore.getStep(this.stepId);
+        return step ? stepGatesInputPresence(step, this.name, other) : false;
     }
     connect(other: BaseOutputTerminal): void {
         super.connect(other);
@@ -378,7 +458,7 @@ class BaseInputTerminal extends Terminal {
         return producesAcceptableDatatype(this.datatypesMapper, this.datatypes, other.datatypes);
     }
     _producesAcceptableDatatypeAndOptionalness(other: BaseOutputTerminal) {
-        if (!this.optional && !this.multiple && other.optional) {
+        if (!this.optional && !this.multiple && other.optional && !this.isPresenceGated(other)) {
             return new ConnectionAcceptable(false, "Cannot connect an optional output to a non-optional input");
         }
         return this._producesAcceptableDatatype(other);
@@ -583,7 +663,7 @@ export class InputParameterTerminal extends BaseInputTerminal {
         const effectiveThisType = this.effectiveType(this.type);
         const otherType = ("type" in other && other.type) || "data";
         const effectiveOtherType = this.effectiveType(otherType);
-        if (!this.optional && other.optional) {
+        if (!this.optional && other.optional && !this.isPresenceGated(other)) {
             return new ConnectionAcceptable(false, `Cannot attach an optional output to a required parameter`);
         }
         const canAccept = effectiveThisType === effectiveOtherType;

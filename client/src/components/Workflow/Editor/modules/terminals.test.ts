@@ -560,6 +560,21 @@ describe("canAccept", () => {
             "Cannot connect an optional output to a non-optional input",
         );
     });
+    it("accepts optional data -> required data only when the gate guards that input", () => {
+        const optionalDataOut = terminals["optional data input"]!["output"] as OutputTerminal;
+        const dataIn = terminals["simple data"]!["input"] as InputTerminal;
+        stepStore.updateStepValue(dataIn.stepId, "when", "$(inputs.input !== null)");
+        expect(dataIn.canAccept(optionalDataOut).canAccept).toBe(true);
+        expect(dataIn.canAccept(optionalDataOut).reason).toBe(null);
+
+        for (const unguarded of ["$(inputs.unrelated !== null)", "$(inputs.input === null)"]) {
+            stepStore.updateStepValue(dataIn.stepId, "when", unguarded);
+            expect(dataIn.canAccept(optionalDataOut).canAccept).toBe(false);
+            expect(dataIn.canAccept(optionalDataOut).reason).toBe(
+                "Cannot connect an optional output to a non-optional input",
+            );
+        }
+    });
     it("rejects parameter to data connection", () => {
         const dataIn = terminals["simple data"]!["input"] as InputTerminal;
         // # type system would reject this, but test runtime too
@@ -653,6 +668,26 @@ describe("canAccept", () => {
         const collectionOut = terminals["list input"]!["output"] as OutputCollectionTerminal;
         selectInputParam.connect(collectionOut);
         expect(selectInputParam.mapOver).toEqual({ collectionType: "list", isCollection: true, rank: 1 });
+    });
+    it("accepts optional parameter -> required parameter only when the gate guards that input", () => {
+        const integerInputParam = terminals["multi data"]!["advanced|advanced_threshold"] as InputParameterTerminal;
+        const optionalIntegerOutputParam = terminals["optional integer parameter input"]![
+            "output"
+        ] as OutputParameterTerminal;
+        stepStore.updateStepValue(integerInputParam.stepId, "when", "$(inputs.advanced.advanced_threshold !== null)");
+        expect(integerInputParam.canAccept(optionalIntegerOutputParam).canAccept).toBe(true);
+        expect(integerInputParam.canAccept(optionalIntegerOutputParam).reason).toBe(null);
+
+        for (const unguarded of [
+            "$(inputs.advanced.other !== null)",
+            "$(inputs.advanced.advanced_threshold === null)",
+        ]) {
+            stepStore.updateStepValue(integerInputParam.stepId, "when", unguarded);
+            expect(integerInputParam.canAccept(optionalIntegerOutputParam).canAccept).toBe(false);
+            expect(integerInputParam.canAccept(optionalIntegerOutputParam).reason).toBe(
+                "Cannot attach an optional output to a required parameter",
+            );
+        }
     });
     it("rejects data to parameter connection", () => {
         const dataOut = terminals["data input"]!["output"] as OutputTerminal;
@@ -1109,5 +1144,154 @@ describe("producesAcceptableDatatype", () => {
         expect(producesAcceptableDatatype(testDatatypesMapper, ["txt"], ["ab1"]).reason).toBe(
             "Effective output data type(s) [ab1] do not appear to match input type(s) [txt].",
         );
+    });
+});
+
+describe("presence gating", () => {
+    let terminals: { [index: string]: { [index: string]: ReturnType<typeof terminalFactory> } } = {};
+    let stepStore: ReturnType<typeof useWorkflowStepStore>;
+    beforeEach(() => {
+        setActivePinia(createPinia());
+        terminals = setupAdvanced();
+        stepStore = useWorkflowStepStore("mock-workflow");
+        Object.values(JSON.parse(JSON.stringify(advancedSteps)) as Steps).map((step) => {
+            stepStore.addStep(step);
+        });
+    });
+
+    describe("canAcceptWithPresenceGate", () => {
+        it("offers a gate only for a connection a gate would rescue", () => {
+            const optionalDataOut = terminals["optional data input"]!["output"] as OutputTerminal;
+            const dataIn = terminals["simple data"]!["input"] as InputTerminal;
+            expect(dataIn.canAccept(optionalDataOut).canAccept).toBe(false);
+            expect(dataIn.canAcceptWithPresenceGate(optionalDataOut).canAccept).toBe(true);
+
+            const dataOut = terminals["data input"]!["output"] as OutputTerminal;
+            const collectionInput = terminals["any collection"]!["input"] as InputCollectionTerminal;
+            expect(collectionInput.canAcceptWithPresenceGate(dataOut).canAccept).toBe(false);
+            expect(collectionInput.canAcceptWithPresenceGate(dataOut).reason).toBe(
+                "Cannot attach a data output to a collection input.",
+            );
+        });
+
+        it("leaves the terminal ungated afterwards", () => {
+            const optionalDataOut = terminals["optional data input"]!["output"] as OutputTerminal;
+            const dataIn = terminals["simple data"]!["input"] as InputTerminal;
+            dataIn.canAcceptWithPresenceGate(optionalDataOut);
+            expect(dataIn.isPresenceGated()).toBe(false);
+            expect(dataIn.canAccept(optionalDataOut).canAccept).toBe(false);
+        });
+
+        it("stops offering a gate once the input is filled", () => {
+            const optionalDataOut = terminals["optional data input"]!["output"] as OutputTerminal;
+            const dataIn = terminals["simple data"]!["input"] as InputTerminal;
+            expect(dataIn.canAcceptWithPresenceGate(optionalDataOut).canAccept).toBe(true);
+            dataIn.connect(terminals["data input"]!["output"] as OutputTerminal);
+            expect(dataIn.canAcceptWithPresenceGate(optionalDataOut).canAccept).toBe(false);
+        });
+
+        it("stops offering a gate once the step has another condition", () => {
+            const optionalDataOut = terminals["optional data input"]!["output"] as OutputTerminal;
+            const dataIn = terminals["simple data"]!["input"] as InputTerminal;
+            expect(dataIn.canAcceptWithPresenceGate(optionalDataOut).canAccept).toBe(true);
+            stepStore.updateStepValue(dataIn.stepId, "when", "$(inputs.unrelated)");
+            expect(dataIn.canAccept(optionalDataOut).canAccept).toBe(false);
+            expect(dataIn.canAcceptWithPresenceGate(optionalDataOut).canAccept).toBe(false);
+        });
+
+        it("offers a gate for a parameter nested in a conditional", () => {
+            const integerInputParam = terminals["multi data"]!["advanced|advanced_threshold"] as InputParameterTerminal;
+            const optionalIntegerOutputParam = terminals["optional integer parameter input"]![
+                "output"
+            ] as OutputParameterTerminal;
+            expect(integerInputParam.canAccept(optionalIntegerOutputParam).canAccept).toBe(false);
+            expect(integerInputParam.canAcceptWithPresenceGate(optionalIntegerOutputParam).canAccept).toBe(true);
+        });
+
+        it("offers a gate for an input nested in a repeat", () => {
+            const optionalDataOut = terminals["optional data input"]!["output"] as OutputTerminal;
+            const repeatIn = terminals["multiple simple data"]!["queries_0|input2"] as InputTerminal;
+            expect(repeatIn.canAccept(optionalDataOut).canAccept).toBe(false);
+            expect(repeatIn.canAcceptWithPresenceGate(optionalDataOut).canAccept).toBe(true);
+        });
+    });
+
+    describe("collection inputs", () => {
+        function optionalListOut() {
+            const listStep = stepStore.getStep(2)!;
+            const output = { ...listStep.outputs[0]!, optional: true };
+            return terminalFactory(listStep.id, output, testDatatypesMapper, useStores()) as OutputCollectionTerminal;
+        }
+
+        it("accepts an optional collection on a required collection input only when gated on it", () => {
+            const listIn = terminals["list collection input"]!["input1"] as InputCollectionTerminal;
+            const listOut = optionalListOut();
+            expect(listOut.optional).toBe(true);
+
+            const ungated = listIn.canAccept(listOut);
+            expect(ungated.canAccept).toBe(false);
+            expect(ungated.reason).toBe("Cannot connect an optional output to a non-optional input");
+            expect(listIn.assessDrop(listOut).requiresPresenceGate).toBe(true);
+
+            stepStore.updateStepValue(listIn.stepId, "when", "$(inputs.input1 !== null)");
+            expect(listIn.canAccept(listOut).canAccept).toBe(true);
+        });
+    });
+
+    describe("twin dispatch acceptance", () => {
+        // Gates the step on `input1`; `queries_0|input2` is the twin consuming the same source.
+        function gatedTwin(gatedSource: OutputTerminal) {
+            const gatedIn = terminals["multiple simple data"]!["input1"] as InputTerminal;
+            const consumingIn = terminals["multiple simple data"]!["queries_0|input2"] as InputTerminal;
+            gatedIn.connect(gatedSource);
+            stepStore.updateStepValue(gatedIn.stepId, "when", "$(inputs.input1 !== null)");
+            return { gatedIn, consumingIn };
+        }
+
+        function optionalDataOut() {
+            return terminals["optional data input"]!["output"] as OutputTerminal;
+        }
+
+        it("accepts an output the step already gates on through another input", () => {
+            const { consumingIn } = gatedTwin(optionalDataOut());
+            expect(consumingIn.attachable(optionalDataOut()).canAccept).toBe(true);
+        });
+
+        it("refuses once the gate runs the step while the shared source is absent", () => {
+            const { gatedIn, consumingIn } = gatedTwin(optionalDataOut());
+            expect(consumingIn.attachable(optionalDataOut()).canAccept).toBe(true);
+            stepStore.updateStepValue(gatedIn.stepId, "when", "$(inputs.input1 === null)");
+            expect(consumingIn.attachable(optionalDataOut()).canAccept).toBe(false);
+        });
+
+        it("refuses once the gated input is fed by a different source", () => {
+            const { gatedIn, consumingIn } = gatedTwin(optionalDataOut());
+            expect(consumingIn.attachable(optionalDataOut()).canAccept).toBe(true);
+            gatedIn.disconnect(optionalDataOut());
+            gatedIn.connect(terminals["data input"]!["output"] as OutputTerminal);
+            expect(consumingIn.attachable(optionalDataOut()).canAccept).toBe(false);
+        });
+
+        it("refuses once the gate probe gains a second source", () => {
+            const requiredDataOut = terminals["data input"]!["output"] as OutputTerminal;
+            const consumingIn = terminals["multiple simple data"]!["queries_0|input2"] as InputTerminal;
+            const step = stepStore.getStep(consumingIn.stepId)!;
+            const optionalSource = { id: optionalDataOut().stepId, output_name: optionalDataOut().name };
+            stepStore.updateStep({
+                ...step,
+                when: "$(inputs.probe !== null)",
+                input_connections: { ...step.input_connections, probe: [optionalSource] },
+            });
+            expect(consumingIn.attachable(optionalDataOut()).canAccept).toBe(true);
+
+            stepStore.updateStep({
+                ...stepStore.getStep(consumingIn.stepId)!,
+                input_connections: {
+                    ...step.input_connections,
+                    probe: [optionalSource, { id: requiredDataOut.stepId, output_name: requiredDataOut.name }],
+                },
+            });
+            expect(consumingIn.attachable(optionalDataOut()).canAccept).toBe(false);
+        });
     });
 });

@@ -20,9 +20,10 @@ import { DatatypesMapperModel } from "@/components/Datatypes/model";
 import {
     ConnectionAcceptable,
     type InputTerminals,
-    type OutputCollectionTerminal,
+    type OutputTerminals,
     terminalFactory,
 } from "@/components/Workflow/Editor/modules/terminals";
+import { useConfirmDialog } from "@/composables/confirmDialog";
 import { useWorkflowStores } from "@/composables/workflowStores";
 import { getConnectionId } from "@/stores/workflowConnectionStore";
 import type { InputTerminalSource } from "@/stores/workflowStepStore";
@@ -93,6 +94,7 @@ const position = useRelativePosition(
 
 const stores = useWorkflowStores();
 const { connectionStore, stateStore } = stores;
+const { confirm } = useConfirmDialog();
 const hasTerminals = ref(false);
 watchEffect(() => {
     hasTerminals.value = connectionStore.getOutputTerminalsForInputTerminal(id.value).length > 0;
@@ -110,9 +112,13 @@ const invalidConnectionReasons = computed(() =>
 
 const { draggingTerminal } = storeToRefs(stateStore);
 
+const dragAssessment = computed(() =>
+    draggingTerminal.value ? terminal.value.assessDrop(draggingTerminal.value) : null,
+);
+
 const canAccept = computed(() => {
-    if (draggingTerminal.value) {
-        return terminal.value.canAccept(draggingTerminal.value);
+    if (dragAssessment.value) {
+        return dragAssessment.value.acceptance;
     } else {
         const firstReason = invalidConnectionReasons.value[0];
         if (firstReason) {
@@ -141,8 +147,13 @@ watch([endX, endY], ([x, y]) => {
 });
 
 const isDragging = inject("isDragging");
-const reason = computed(() => canAccept.value?.reason ?? undefined);
 const label = computed(() => props.input.label || props.input.name);
+const reason = computed(() => {
+    if (dragAssessment.value?.requiresPresenceGate) {
+        return `Drop to connect and run this step only when ${label.value} is provided.`;
+    }
+    return canAccept.value?.reason ?? undefined;
+});
 const hasConnections = computed(() => connections.value.length > 0);
 const rowClass = computed(() => {
     const classes = ["form-row", "dataRow", "input-data-row"];
@@ -170,7 +181,7 @@ function onRemove() {
     connections.forEach((connection) => terminal.value.disconnect(connection));
 }
 
-function onDrop(event: DragEvent) {
+async function onDrop(event: DragEvent) {
     if (!event.dataTransfer) {
         return;
     }
@@ -181,12 +192,24 @@ function onDrop(event: DragEvent) {
         stepOut.output,
         props.datatypesMapper,
         stores,
-    ) as OutputCollectionTerminal;
+    ) as OutputTerminals;
 
     showTooltip.value = false;
 
-    if (terminal.value.canAccept(droppedTerminal).canAccept) {
+    const assessment = terminal.value.assessDrop(droppedTerminal);
+    if (!assessment.acceptance.canAccept) {
+        return;
+    }
+    if (!assessment.requiresPresenceGate) {
         terminal.value.connect(droppedTerminal);
+        return;
+    }
+    const confirmed = await confirm(
+        `${label.value} may arrive empty, and this step requires it. Run this step only when ${label.value} is provided?`,
+        { title: "Run this step conditionally?", okText: "Run only when provided" },
+    );
+    if (confirmed) {
+        terminal.value.connectWithPresenceGate(droppedTerminal);
     }
 }
 

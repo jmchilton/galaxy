@@ -38,6 +38,11 @@ from .framework import (
     UsesWorkflowAssertions,
 )
 
+# Gate modes offered by FormConditional.vue.
+GATE_MODE_NONE = "Always run this step"
+GATE_MODE_BOOLEAN = "Run when a boolean parameter is true"
+GATE_MODE_INPUT_PROVIDED = "Run when an input is provided"
+
 CHIPSEQ_COLUMNS = [
     ColumnDefinition(
         "Condition",
@@ -1358,6 +1363,10 @@ steps:
         workflow = self.workflow_populator.download_workflow(workflow_id)
         return workflow
 
+    def _set_step_gate_mode(self, mode):
+        self.select_set_value(self.components.workflow_editor.step_when, mode)
+        self.components.tool_form.parameter_data_select_dropdown(parameter="__conditional").wait_for_absent_or_hidden()
+
     @selenium_test
     def test_pick_value_add_from_palette(self):
         self.workflow_create_new(annotation="pick value test")
@@ -1719,14 +1728,13 @@ steps:
         conditional_node.input_terminal(name="input").wait_for_present()
         # Assert no when input before making step conditional
         conditional_node.input_terminal(name="when").wait_for_absent()
-        conditional_toggle = editor.step_when.wait_for_present()
-        self.move_to_and_click(conditional_toggle)
-        # Toggling conditional should cause when input to appear
+        self._set_step_gate_mode(GATE_MODE_BOOLEAN)
+        # Choosing the boolean gate should cause the when input to appear
         conditional_node.input_terminal(name="when").wait_for_present()
-        self.move_to_and_click(conditional_toggle)
-        # Toggling conditional should cause when input to disappear
+        self._set_step_gate_mode(GATE_MODE_NONE)
+        # Clearing the gate should cause the when input to disappear
         conditional_node.input_terminal(name="when").wait_for_absent()
-        self.move_to_and_click(conditional_toggle)
+        self._set_step_gate_mode(GATE_MODE_BOOLEAN)
         conditional_node.input_terminal(name="when").wait_for_present()
         # Output connection should be invalid, as output from conditional step is potentially null
         self.assert_connection_invalid("conditional_step#out_file1", "downstream_step#input1")
@@ -1751,6 +1759,146 @@ steps:
         assert section_element.get_attribute("data-lint-status") == "warning"
 
     @selenium_test
+    def test_editor_gate_step_on_optional_input(self):
+        self.open_in_workflow_editor("""
+class: GalaxyWorkflow
+inputs:
+  fallback: data
+  maybe:
+    type: data
+    optional: true
+steps:
+  gated:
+    tool_id: cat
+    in:
+      input1: maybe
+""")
+        editor = self.components.workflow_editor
+        # Without a gate, an optional input feeding a required input is a real problem.
+        self.assert_connection_invalid("maybe#output", "gated#input1")
+        editor.node._(label="gated").wait_for_and_click()
+        mode_select = editor.step_when.wait_for_visible()
+        mode_select.find_element(By.CSS_SELECTOR, ".multiselect__select").click()
+        mode_dropdown = self.components.tool_form.parameter_data_select_dropdown(parameter="__conditional")
+        assert GATE_MODE_INPUT_PROVIDED in mode_dropdown.wait_for_visible().text
+        # Let the dropdown's fade-in finish so the screenshot shows the options.
+        self.sleep_for(self.wait_types.UX_TRANSITION)
+        self.screenshot("workflow_editor_step_gate_mode_options")
+        self.send_escape(mode_select.find_element(By.CSS_SELECTOR, "input.multiselect__input"))
+        mode_dropdown.wait_for_absent_or_hidden()
+        self._set_step_gate_mode(GATE_MODE_INPUT_PROVIDED)
+        gated_input_select = self.components.tool_form.parameter_select(parameter="__when_input")
+
+        @retry_assertion_during_transitions
+        def assert_gated_input_shown():
+            assert "Concatenate Dataset" in gated_input_select.wait_for_visible().text
+
+        assert_gated_input_shown()
+        self.screenshot("workflow_editor_step_gated_on_optional_input")
+        self.assert_connection_valid("maybe#output", "gated#input1")
+        self.assert_workflow_has_changes_and_save()
+        self._assert_downloaded_step_when("gated", "$(inputs.input1 !== null)")
+
+    @selenium_test
+    def test_editor_drop_optional_output_gates_step(self):
+        self.open_in_workflow_editor(
+            """
+class: GalaxyWorkflow
+inputs:
+  maybe:
+    type: data
+    optional: true
+    position: {left: 0, top: 0}
+steps:
+  gated:
+    tool_id: cat
+    position: {left: 300, top: 0}
+""",
+            auto_layout=False,
+        )
+        if self.backend_type == "playwright":
+            # The mid-drag preview is only verified on Playwright.
+            self._assert_drop_preview_offers_gate("maybe#output", "gated#input1")
+        else:
+            self.workflow_editor_connect("maybe#output", "gated#input1")
+        self.components.confirm_dialog.ok_button.wait_for_visible()
+        self.screenshot("workflow_editor_drop_optional_output_confirm")
+        self.components.confirm_dialog.ok_button.wait_for_and_click()
+        self.components.confirm_dialog.ok_button.wait_for_absent_or_hidden()
+        self.assert_connection_valid("maybe#output", "gated#input1")
+        self.screenshot("workflow_editor_drop_optional_output_gated")
+        self.assert_workflow_has_changes_and_save()
+        self._assert_downloaded_step_when("gated", "$(inputs.input1 !== null)")
+
+    def _assert_drop_preview_offers_gate(self, source, sink):
+        """Hold a drag over ``sink``, check it previews as accepted with the gate offer, then drop."""
+        source_id, sink_id = self.workflow_editor_source_sink_terminal_ids(source, sink)
+        sink_element = self.find_element_by_selector(f"#{sink_id}")
+        with self.drag_over(self.find_element_by_selector(f"#{source_id}"), sink_element):
+            sink_classes = sink_element.get_attribute("class")
+            assert "can-accept" in sink_classes and "can-not-accept" not in sink_classes
+            # A scripted drag enters before the editor registers it; re-enter so the tooltip reads the reason.
+            self.execute_script(
+                "arguments[0].dispatchEvent(new DragEvent('dragenter', {bubbles: true, cancelable: true}));",
+                sink_element,
+            )
+            tooltip = self.wait_for_selector_visible(".g-tooltip-d")
+            assert "run this step only when" in tooltip.text
+            self.screenshot("workflow_editor_drop_optional_output_preview")
+
+    def _assert_downloaded_step_when(self, label, expected_when):
+        workflow = self._download_current_workflow()
+        step = [s for s in workflow["steps"].values() if s.get("label") == label][0]
+        assert step["when"] == expected_when
+
+    @selenium_test
+    def test_editor_twin_dispatch_connections_valid(self):
+        self.open_in_workflow_editor(
+            """
+class: GalaxyWorkflow
+inputs:
+  maybe:
+    type: data
+    optional: true
+    position: {left: 0, top: 0}
+  base:
+    type: data
+    position: {left: 0, top: 200}
+steps:
+  when_present:
+    tool_id: cat
+    position: {left: 300, top: 0}
+    in:
+      input1: maybe
+      probe: maybe
+    when: $(inputs.probe !== null)
+  when_absent:
+    tool_id: cat
+    position: {left: 300, top: 200}
+    in:
+      input1: base
+      probe: maybe
+    when: $(inputs.probe === null)
+""",
+            auto_layout=False,
+        )
+        # The gate names `probe`, but `input1` is fed by the same optional input and is
+        # equally unreachable while it is absent. Neither connection is broken.
+        self.assert_connection_valid("maybe#output", "when_present#probe")
+        self.assert_connection_valid("maybe#output", "when_present#input1")
+        self.assert_connection_valid("maybe#output", "when_absent#probe")
+        self.assert_connection_valid("base#output", "when_absent#input1")
+        self.screenshot("workflow_editor_twin_dispatch_connections_valid")
+        # `=== null` is not a form-written gate, so the form shows it read-only.
+        self.components.workflow_editor.node._(label="when_absent").wait_for_and_click()
+        condition = self.components.tool_form.parameter_div(parameter="__when").wait_for_visible()
+        assert condition.find_element(By.CSS_SELECTOR, ".ui-form-preview").text == "$(inputs.probe === null)"
+        assert not condition.find_elements(By.CSS_SELECTOR, "input")
+        # Clear the node hover so its input's remove button is not drawn.
+        self.hover_over(self.components.workflow_editor.canvas_body.wait_for_visible())
+        self.screenshot("workflow_editor_step_custom_condition_readonly")
+
+    @selenium_test
     def test_conditional_subworkflow_step(self):
         child_workflow_name = self.setup_subworkflow()
         editor = self.components.workflow_editor
@@ -1763,8 +1911,7 @@ steps:
         self.sleep_for(self.wait_types.UX_RENDER)
         conditional_node = editor.node._(label=child_workflow_name)
         conditional_node.wait_for_and_click()
-        conditional_toggle = editor.step_when.wait_for_present()
-        self.move_to_and_click(conditional_toggle)
+        self._set_step_gate_mode(GATE_MODE_BOOLEAN)
         conditional_node.input_terminal(name="when").wait_for_present()
         self.workflow_editor_connect("param_input#output", f"{child_workflow_name}#when")
         self.assert_connected("param_input#output", f"{child_workflow_name}#when")
@@ -2304,6 +2451,11 @@ steps:
     def assert_connection_invalid(self, source, sink):
         source_id, sink_id = self.workflow_editor_source_sink_terminal_ids(source, sink)
         self.components.workflow_editor.connector_invalid_for(source_id=source_id, sink_id=sink_id).wait_for_present()
+
+    def assert_connection_valid(self, source, sink):
+        self.assert_connected(source, sink)
+        source_id, sink_id = self.workflow_editor_source_sink_terminal_ids(source, sink)
+        self.components.workflow_editor.connector_invalid_for(source_id=source_id, sink_id=sink_id).wait_for_absent()
 
     def assert_not_connected(self, source, sink):
         source_id, sink_id = self.workflow_editor_source_sink_terminal_ids(source, sink)

@@ -3,7 +3,11 @@ import { computed, ref } from "vue";
 import type { FieldDict, SampleSheetColumnDefinitions } from "@/api";
 import { isWorkflowInput } from "@/components/Workflow/constants";
 import type { CollectionTypeDescriptor } from "@/components/Workflow/Editor/modules/collectionTypeDescription";
-import { analyzeInputReferences, expressionReferencesInput } from "@/components/Workflow/Editor/modules/whenExpression";
+import {
+    analyzeInputReferences,
+    BOOLEAN_GATE_INPUT_NAME,
+    expressionReferencesInput,
+} from "@/components/Workflow/Editor/modules/whenExpression";
 import { resolveConnectionNameToInputPath } from "@/components/Workflow/Editor/modules/workflowInputPath";
 import { getConnectionId, useConnectionStore } from "@/stores/workflowConnectionStore";
 import { assertDefined } from "@/utils/assertions";
@@ -278,7 +282,8 @@ export const useWorkflowStepStore = defineScopedStore("workflowStepStore", (work
             stepToConnections(step).forEach((connection) => connectionStore.addConnection(connection));
         }
 
-        stepExtraInputs.value[step.id] = findStepExtraInputs(step);
+        refreshStepExtraInputs(step);
+        refreshGatePortsReadingSource(step.id);
 
         if (select) {
             stateStore.setStepMultiSelected(step.id, true);
@@ -309,19 +314,38 @@ export const useWorkflowStepStore = defineScopedStore("workflowStepStore", (work
     }
 
     function updateStep(step: Step) {
+        const previousStep = steps.value[step.id.toString()];
         const workflow_outputs = step.workflow_outputs?.filter((workflowOutput) =>
             step.outputs.find((output) => workflowOutput.output_name == output.name),
         );
 
-        steps.value[step.id.toString()] = Object.freeze({ ...step, workflow_outputs });
-        stepExtraInputs.value[step.id] = findStepExtraInputs(step);
+        const updatedStep = Object.freeze({ ...step, workflow_outputs });
+        steps.value[step.id.toString()] = updatedStep;
+        refreshStepExtraInputs(updatedStep);
+
+        // Gate ports mirror their source's outputs; skip the workflow scan for unrelated updates like position.
+        if (!previousStep || gatePortSourceShapeChanged(previousStep, updatedStep)) {
+            refreshGatePortsReadingSource(updatedStep.id);
+        }
+    }
+
+    function refreshStepExtraInputs(step: Step) {
+        stepExtraInputs.value[step.id] = findStepExtraInputs(step, steps.value);
+    }
+
+    function refreshGatePortsReadingSource(sourceStepId: number) {
+        Object.values(steps.value).forEach((candidate) => {
+            if (candidate.id !== sourceStepId && stepReadsSource(candidate, sourceStepId)) {
+                refreshStepExtraInputs(candidate);
+            }
+        });
     }
 
     /** Names of the step's extra input ports that applying `update` would remove. */
     function extraInputsRemovedBy(stepId: number, update: Partial<Step>): string[] {
         const step = getStep.value(stepId);
         assertDefined(step);
-        const remaining = findStepExtraInputs({ ...step, ...update }).map((input) => input.name);
+        const remaining = findStepExtraInputs({ ...step, ...update }, steps.value).map((input) => input.name);
         return getStepExtraInputs
             .value(stepId)
             .map((input) => input.name)
@@ -495,6 +519,22 @@ function makeConnection(inputId: number, inputName: string, outputId: number, ou
     };
 }
 
+/** Fields on a source step that determine the shape of a synthesized gate port. */
+function gatePortSourceShapeChanged(previousStep: Step, updatedStep: Step): boolean {
+    return (
+        previousStep.outputs !== updatedStep.outputs ||
+        previousStep.when !== updatedStep.when ||
+        previousStep.post_job_actions !== updatedStep.post_job_actions
+    );
+}
+
+/** True when any input connection on `step` comes from the named source step. */
+function stepReadsSource(step: Step, sourceStepId: number): boolean {
+    return Object.values(step.input_connections ?? {}).some((links) => {
+        return normalizeConnectionOutputLinks(links).some((link) => link.id === sourceStepId);
+    });
+}
+
 function stepToConnections(step: Step): Connection[] {
     const connections: Connection[] = [];
 
@@ -517,12 +557,12 @@ function stepToConnections(step: Step): Connection[] {
     return connections;
 }
 
-function findStepExtraInputs(step: Step) {
+function findStepExtraInputs(step: Step, steps: Steps): InputTerminalSource[] {
     const extraInputs: InputTerminalSource[] = [];
     if (step.when === undefined) {
         return extraInputs;
     }
-    const connectionNames = Object.keys(step.input_connections);
+    const connectionNames = Object.keys(step.input_connections ?? {});
     connectionNames.forEach((inputName) => {
         if (step.inputs.find((input) => input.name === inputName)) {
             return;
@@ -531,7 +571,7 @@ function findStepExtraInputs(step: Step) {
         if (!inputPath || !expressionReferencesInput(step.when, inputPath)) {
             return;
         }
-        extraInputs.push(gatePort(inputName));
+        extraInputs.push(gatePortTerminalSource(step, inputName, steps));
     });
     // A gate input nothing is connected to still needs a port to connect it to.
     unconnectedGateNames(step, connectionNames).forEach((name) => extraInputs.push(gatePort(name)));
@@ -567,5 +607,45 @@ function gatePort(name: string): InputTerminalSource {
         multiple: false,
         label: name,
         extensions: [],
+    };
+}
+
+/** Shape a synthesized gate port after its source, including optionality, so the probe's own connection stays valid. */
+function gatePortTerminalSource(step: Step, inputName: string, steps: Steps): InputTerminalSource {
+    const link = normalizeConnectionOutputLinks(step.input_connections[inputName])[0];
+    const sourceStep = link ? steps[link.id.toString()] : undefined;
+    // `when` is always the gate's own boolean; an unresolved source falls back to the same shape.
+    if (inputName === BOOLEAN_GATE_INPUT_NAME || !link || !sourceStep) {
+        return gatePort(inputName);
+    }
+    const output = sourceStep.outputs.find((candidate) => candidate.name === link.output_name);
+    const base = {
+        name: inputName,
+        label: inputName,
+        multiple: Boolean(output && isParameterOutput(output) && output.multiple),
+        optional: stepOutputCanBeAbsent(sourceStep, link.output_name),
+    };
+    if (!output || isParameterOutput(output)) {
+        return {
+            ...base,
+            input_type: "parameter",
+            type: output?.type ?? "boolean",
+            extensions: [],
+        };
+    }
+    if (isCollectionOutput(output)) {
+        return {
+            ...base,
+            input_type: "dataset_collection",
+            collection_types: output.collection_type ? [output.collection_type] : [],
+            fields: [],
+            column_definitions: null,
+            extensions: effectiveOutputExtensions(sourceStep, output),
+        };
+    }
+    return {
+        ...base,
+        input_type: "dataset",
+        extensions: effectiveOutputExtensions(sourceStep, output),
     };
 }

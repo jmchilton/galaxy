@@ -3,8 +3,8 @@
  *
  * Persisted connections use legacy pipe-delimited names (`cond|input1`), while
  * tool state and expressions use nested paths (`inputs.cond.input1`). These helpers
- * bridge those representations so the editor can reason about which inputs an
- * expression reads.
+ * bridge those representations so the editor can reason about which inputs a gate
+ * reads and how the gate behaves when one of them is absent.
  *
  * Nothing here executes user JavaScript. Expressions that are not structurally
  * recognized are reported as unknown, and callers are expected to resolve unknown
@@ -32,7 +32,24 @@ export interface ReferenceAnalysis {
     hasDynamicInputsAccess: boolean;
 }
 
+export type NullBehavior = "false-when-null" | "true-when-null" | "unknown";
+
 const PUNCTUATORS = ["===", "!==", "==", "!=", "&&", "||", "!", "(", ")", "[", "]", ".", ",", "?", ":"];
+
+// Unknown value; the truthy/falsy variants know only their truthiness, so equality stays indeterminate.
+const UNKNOWN = Symbol("unknown");
+const TRUTHY_UNKNOWN = Symbol("truthy-unknown");
+const FALSY_UNKNOWN = Symbol("falsy-unknown");
+
+type EvaluatedValue =
+    | typeof UNKNOWN
+    | typeof TRUTHY_UNKNOWN
+    | typeof FALSY_UNKNOWN
+    | string
+    | number
+    | boolean
+    | null
+    | undefined;
 
 /** Tokenize a JavaScript-ish expression, or return null when it cannot be scanned. */
 function tokenize(expression: string): Token[] | null {
@@ -252,6 +269,10 @@ function readAccessPath(tokens: Token[], start: number): AccessPath {
     }
 }
 
+function isSamePath(targetPath: InputPath, referencedPath: InputPath): boolean {
+    return targetPath.length === referencedPath.length && inputPathIsPrefix(targetPath, referencedPath);
+}
+
 /**
  * True when the expression could read the named connection.
  *
@@ -277,6 +298,289 @@ export function expressionReferencesInput(
     return references.staticPaths.some((referencedPath) => inputPathIsPrefix(targetPath, referencedPath));
 }
 
+/**
+ * Decide how the expression behaves when the named connection carries no value.
+ * Evaluates literals, `inputs` accesses, `!`, equality and `&&`/`||`; anything else is `"unknown"`.
+ */
+export function classifyWhenInputIsNull(
+    expression: string | null | undefined,
+    input: string | readonly InputPathSegment[],
+): NullBehavior {
+    if (!expression) {
+        return "unknown";
+    }
+
+    const trimmed = expression.trim();
+    if (isTemplateLiteral(trimmed)) {
+        return "unknown";
+    }
+
+    const tokens = tokenize(trimmed);
+    // Galaxy `when` expressions are a `$(...)` body.
+    if (!tokens || tokens[0]?.value !== "$" || tokens[1]?.value !== "(") {
+        return "unknown";
+    }
+
+    const parser = new PresenceEvaluator(tokens, normalizeInputPath(input));
+    const value = parser.evaluate();
+    if (value === UNKNOWN) {
+        return "unknown";
+    }
+
+    return isTruthy(value) ? "true-when-null" : "false-when-null";
+}
+
+/**
+ * True when the expression references the input and is not known to run while it is absent.
+ * Deliberately permissive for `unknown`; the runtime stays authoritative.
+ */
+export function expressionGuardsInputPresence(
+    expression: string | null | undefined,
+    input: string | readonly InputPathSegment[],
+): boolean {
+    if (!expressionReferencesInput(expression, input)) {
+        return false;
+    }
+
+    return classifyWhenInputIsNull(expression, input) !== "true-when-null";
+}
+
+function isTruthy(value: Exclude<EvaluatedValue, typeof UNKNOWN>): boolean {
+    if (value === TRUTHY_UNKNOWN) {
+        return true;
+    }
+    if (value === FALSY_UNKNOWN) {
+        return false;
+    }
+    return Boolean(value);
+}
+
+/** Raised on anything the evaluator does not model; mapped to "unknown", never to a verdict. */
+class ParseFailure extends Error {}
+
+/** Recursive-descent evaluator over the recognized expression subset. */
+class PresenceEvaluator {
+    private tokens: Token[];
+    private targetPath: InputPath;
+    private position: number;
+
+    constructor(tokens: Token[], targetPath: InputPath) {
+        this.tokens = tokens;
+        this.targetPath = targetPath;
+        this.position = 2;
+    }
+
+    evaluate(): EvaluatedValue {
+        try {
+            const value = this.parseOr();
+            if (!this.consume(")") || !this.atEnd()) {
+                return UNKNOWN;
+            }
+            return value;
+        } catch {
+            // Includes RangeError on deeply nested expressions.
+            return UNKNOWN;
+        }
+    }
+
+    /** Only statement punctuation may follow the expression body. */
+    private atEnd(): boolean {
+        return this.tokens.slice(this.position).every((token) => token.value === ";");
+    }
+
+    private peek(): Token | undefined {
+        return this.tokens[this.position];
+    }
+
+    private consume(value: string): boolean {
+        if (this.peek()?.value === value) {
+            this.position++;
+            return true;
+        }
+        return false;
+    }
+
+    private parseOr(): EvaluatedValue {
+        let left = this.parseAnd();
+        while (this.consume("||")) {
+            const right = this.parseAnd();
+            left = combineOr(left, right);
+        }
+        return left;
+    }
+
+    private parseAnd(): EvaluatedValue {
+        let left = this.parseEquality();
+        while (this.consume("&&")) {
+            const right = this.parseEquality();
+            left = combineAnd(left, right);
+        }
+        return left;
+    }
+
+    private parseEquality(): EvaluatedValue {
+        let left = this.parseUnary();
+        for (;;) {
+            const operator = this.peek()?.value;
+            if (operator !== "===" && operator !== "!==" && operator !== "==" && operator !== "!=") {
+                return left;
+            }
+            this.position++;
+            const right = this.parseUnary();
+            left = compare(operator, left, right);
+        }
+    }
+
+    private parseUnary(): EvaluatedValue {
+        if (this.consume("!")) {
+            const value = this.parseUnary();
+            return value === UNKNOWN ? UNKNOWN : !isTruthy(value);
+        }
+        return this.parsePrimary();
+    }
+
+    private parsePrimary(): EvaluatedValue {
+        const token = this.peek();
+        if (!token) {
+            throw new ParseFailure("unexpected end of expression");
+        }
+
+        if (this.consume("(")) {
+            const value = this.parseOr();
+            if (!this.consume(")")) {
+                throw new ParseFailure("unbalanced parentheses");
+            }
+            return value;
+        }
+
+        if (token.type === "string") {
+            this.position++;
+            return token.value;
+        }
+
+        if (token.type === "number") {
+            this.position++;
+            return Number(token.value);
+        }
+
+        if (token.type === "identifier") {
+            return this.parseIdentifier(token);
+        }
+
+        throw new ParseFailure(`unrecognized token ${token.value}`);
+    }
+
+    private parseIdentifier(token: Token): EvaluatedValue {
+        this.position++;
+
+        switch (token.value) {
+            case "null":
+                return null;
+            case "undefined":
+                return undefined;
+            case "true":
+                return true;
+            case "false":
+                return false;
+        }
+
+        if (token.value !== "inputs") {
+            throw new ParseFailure(`unrecognized identifier ${token.value}`);
+        }
+
+        const path = readAccessPath(this.tokens, this.position);
+        this.position = path.next;
+        if (path.dynamic) {
+            throw new ParseFailure("dynamic inputs access");
+        }
+        // Only the target itself is null; a non-optional property read of it would throw.
+        if (isSamePath(this.targetPath, path.segments)) {
+            return null;
+        }
+        if (
+            inputPathIsPrefix(this.targetPath, path.segments) &&
+            path.optionalAfterSegments.includes(this.targetPath.length)
+        ) {
+            // `target?.property` short-circuits to undefined.
+            return undefined;
+        }
+        return UNKNOWN;
+    }
+}
+
+function combineAnd(left: EvaluatedValue, right: EvaluatedValue): EvaluatedValue {
+    if (left === UNKNOWN) {
+        // A falsy right makes the result falsy whatever the left is.
+        return right !== UNKNOWN && !isTruthy(right) ? FALSY_UNKNOWN : UNKNOWN;
+    }
+    return isTruthy(left) ? right : left;
+}
+
+function combineOr(left: EvaluatedValue, right: EvaluatedValue): EvaluatedValue {
+    if (left === UNKNOWN) {
+        // A truthy right makes the result truthy whatever the left is.
+        return right !== UNKNOWN && isTruthy(right) ? TRUTHY_UNKNOWN : UNKNOWN;
+    }
+    return isTruthy(left) ? left : right;
+}
+
+function compare(operator: string, left: EvaluatedValue, right: EvaluatedValue): EvaluatedValue {
+    if (isIndeterminate(left) || isIndeterminate(right)) {
+        return UNKNOWN;
+    }
+
+    const strict = left === right;
+    if (operator === "===") {
+        return strict;
+    }
+    if (operator === "!==") {
+        return !strict;
+    }
+
+    // Decide loose equality only where type coercion cannot apply.
+    let loose: boolean;
+    if (isNullish(left) || isNullish(right)) {
+        loose = isNullish(left) && isNullish(right);
+    } else if (typeof left === typeof right) {
+        loose = strict;
+    } else {
+        return UNKNOWN;
+    }
+
+    return operator === "==" ? loose : !loose;
+}
+
+function isNullish(value: Exclude<EvaluatedValue, typeof UNKNOWN>): boolean {
+    return value === null || value === undefined;
+}
+
+function isIndeterminate(
+    value: EvaluatedValue,
+): value is typeof UNKNOWN | typeof TRUTHY_UNKNOWN | typeof FALSY_UNKNOWN {
+    return value === UNKNOWN || value === TRUTHY_UNKNOWN || value === FALSY_UNKNOWN;
+}
+
+const JAVASCRIPT_IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+
 function normalizeInputPath(input: string | readonly InputPathSegment[]): InputPath {
     return typeof input === "string" ? connectionNameToInputPath(input) : [...input];
 }
+
+/** Spell an input path as a JavaScript access path into `inputs`. */
+export function inputsAccessPath(input: string | readonly InputPathSegment[]): string {
+    return normalizeInputPath(input).reduce<string>((path, segment) => {
+        if (typeof segment === "number") {
+            return `${path}[${segment}]`;
+        }
+        return JAVASCRIPT_IDENTIFIER.test(segment) ? `${path}.${segment}` : `${path}[${JSON.stringify(segment)}]`;
+    }, "inputs");
+}
+
+/** The `when` expression that runs a step only while the addressed input carries a value. */
+export function presenceGateExpression(input: string | readonly InputPathSegment[]): string {
+    return `$(${inputsAccessPath(input)} !== null)`;
+}
+
+/** The established workflow-editor convention for a direct boolean gate. */
+export const BOOLEAN_GATE_INPUT_NAME = "when";
+export const BOOLEAN_GATE_EXPRESSION = `$(inputs.${BOOLEAN_GATE_INPUT_NAME})`;

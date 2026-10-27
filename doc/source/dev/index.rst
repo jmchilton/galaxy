@@ -19,6 +19,7 @@ A multi-hour long video playlist covering these slides can be found at
   oidc
   build_a_job_runner
   collection_semantics
+  workflow_conditional_steps
   finding_and_improving_slow_code
   data_managers
   data_source
