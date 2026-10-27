@@ -1,3 +1,4 @@
+from itertools import product
 from unittest import mock
 
 from sqlalchemy import event
@@ -31,16 +32,16 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
         self.tool_id = "cat1"
 
     def test_step_runs_statement_count_independent_of_row_count(self):
-        for mapped in (False, True):
-            counts = [self._step_runs_statement_count(invocations, mapped) for invocations in (1, 5)]
-            assert counts[0] == counts[1], f"mapped={mapped}: statements grow with rows {counts}"
+        for mapped, metadata in product((False, True), (False, True)):
+            counts = [self._step_runs_statement_count(invocations, mapped, metadata) for invocations in (1, 5)]
+            assert counts[0] == counts[1], f"mapped={mapped}, metadata={metadata}: statements grow with rows {counts}"
 
-    def _step_runs_statement_count(self, invocations: int, mapped: bool) -> int:
+    def _step_runs_statement_count(self, invocations: int, mapped: bool, metadata: bool) -> int:
         stored_workflow_id = self._stored_workflow_with_runs(invocations, mapped).id
         access = _access(self.trans.user)
         self.session.expunge_all()
         query = StepRunsQuery.model_construct(
-            workflow_id=stored_workflow_id, step_label="target", metadata_elements=["data_lines"]
+            workflow_id=stored_workflow_id, step_label="target", metadata_elements=_metadata_elements(metadata)
         )
         (table, total), statement_count = self._count_statements(
             lambda: self.comparisons_manager.step_runs(access, stored_workflow_id, query)
@@ -53,9 +54,9 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
         return statement_count
 
     def test_tool_runs_statement_count_independent_of_row_count(self):
-        for mapped in (False, True):
-            counts = [self._tool_runs_statement_count(submissions, mapped) for submissions in (1, 5)]
-            assert counts[0] == counts[1], f"mapped={mapped}: statements grow with rows {counts}"
+        for mapped, metadata in product((False, True), (False, True)):
+            counts = [self._tool_runs_statement_count(submissions, mapped, metadata) for submissions in (1, 5)]
+            assert counts[0] == counts[1], f"mapped={mapped}, metadata={metadata}: statements grow with rows {counts}"
 
     def test_tool_runs_matches_tool_shed_versions_without_wildcards(self):
         user = self.trans.user
@@ -80,13 +81,13 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
         assert total == 2
         assert {row.run.id for row in table.rows} == encoded
 
-    def _tool_runs_statement_count(self, submissions: int, mapped: bool) -> int:
-        self.tool_id = f"compared_{submissions}_{mapped}"
+    def _tool_runs_statement_count(self, submissions: int, mapped: bool, metadata: bool) -> int:
+        self.tool_id = f"compared_{submissions}_{mapped}_{metadata}"
         self._stored_workflow_with_runs(submissions, mapped)
         access = _access(self.trans.user)
         self.session.expunge_all()
         query = ToolRunsQuery.model_construct(
-            tool_id=self.tool_id, metadata_elements=["data_lines"], include_workflow_jobs=True
+            tool_id=self.tool_id, metadata_elements=_metadata_elements(metadata), include_workflow_jobs=True
         )
         (table, total), statement_count = self._count_statements(
             lambda: self.comparisons_manager.tool_runs(access, query)
@@ -102,8 +103,9 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
         return statement_count
 
     def test_output_runs_statement_count_independent_of_row_count(self):
-        counts = [self._output_runs_statement_count(invocations) for invocations in (1, 5)]
-        assert counts[0] == counts[1], f"statements grow with rows {counts}"
+        for metadata in (False, True):
+            counts = [self._output_runs_statement_count(invocations, metadata) for invocations in (1, 5)]
+            assert counts[0] == counts[1], f"metadata={metadata}: statements grow with rows {counts}"
 
     def test_output_runs_flags_duplicate_output_labels(self):
         stored_workflow, first_outputs = self._stored_workflow_with_output_runs(2)
@@ -118,12 +120,14 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
             assert cell.type == "dataset"
             assert cell.id == self.app.security.encode_id(first_outputs[row.run.id])
 
-    def _output_runs_statement_count(self, invocations: int) -> int:
+    def _output_runs_statement_count(self, invocations: int, metadata: bool) -> int:
         stored_workflow, _ = self._stored_workflow_with_output_runs(invocations)
         stored_workflow_id = stored_workflow.id
         access = _access(self.trans.user)
         self.session.expunge_all()
-        query = OutputRunsQuery.model_construct(workflow_id=stored_workflow_id, metadata_elements=["data_lines"])
+        query = OutputRunsQuery.model_construct(
+            workflow_id=stored_workflow_id, metadata_elements=_metadata_elements(metadata)
+        )
         (table, total), statement_count = self._count_statements(
             lambda: self.comparisons_manager.output_runs(access, stored_workflow_id, query)
         )
@@ -381,6 +385,10 @@ class TestComparisonCellBuilder(BaseTestCase):
 
 def _cell_builder(app) -> ComparisonCellBuilder:
     return ComparisonCellBuilder(app.model.session, HDASerializer(app), app.security_agent, app[HistoryManager])
+
+
+def _metadata_elements(metadata: bool) -> list[str]:
+    return ["data_lines"] if metadata else []
 
 
 def _access(user: model.User) -> ComparisonAccess:

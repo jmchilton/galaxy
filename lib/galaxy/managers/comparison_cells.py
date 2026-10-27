@@ -312,9 +312,9 @@ class ComparisonCellBuilder:
 
     def metadata_keys(self, hda: HistoryDatasetAssociation) -> list[str]:
         """Metadata element names a dataset's datatype declares, without file or object values."""
-        return [
-            name for name, spec in hda.metadata.spec.items() if not isinstance(spec.param, NON_SCALAR_METADATA_PARAMS)
-        ]
+        # the datatype's spec, not hda.metadata, which loads the deferred metadata column
+        spec = hda.datatype.metadata_spec
+        return [name for name, element in spec.items() if not isinstance(element.param, NON_SCALAR_METADATA_PARAMS)]
 
     def dataset_cell(
         self, hda: HistoryDatasetAssociation, metadata_elements: list[str], inline_expression_values: bool
