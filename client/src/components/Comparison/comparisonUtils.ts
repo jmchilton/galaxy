@@ -125,8 +125,13 @@ export function missingText(cell: MissingCell, row: Pick<ComparisonRow, "version
             return "skipped";
         case "inaccessible":
             return "no access";
-        default:
+        case "no_output":
             return "no output";
+        default: {
+            // New reasons fail type-check here; at runtime show the raw reason.
+            const unknown: never = cell.reason;
+            return String(unknown);
+        }
     }
 }
 
