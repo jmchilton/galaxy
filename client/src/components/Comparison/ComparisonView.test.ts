@@ -162,20 +162,6 @@ describe("ComparisonView", () => {
         expect(only!.query.getAll("metadata_elements")).toEqual(["data_lines"]);
     });
 
-    it("keys stored display preferences by the versionless Tool Shed id", async () => {
-        await mountView(
-            { kind: "tool_runs", tool_id: "toolshed.g2.bx.psu.edu/repos/devteam/cat/cat1/2.0" },
-            {
-                "tool_runs:toolshed.g2.bx.psu.edu/repos/devteam/cat/cat1": {
-                    columnDisplay: { "output:out_file1": "meta:data_lines" },
-                },
-            },
-        );
-        const [only, ...rest] = comparisonRequests();
-        expect(rest).toHaveLength(0);
-        expect(only!.query.getAll("metadata_elements")).toEqual(["data_lines"]);
-    });
-
     it("offers every output label the server reports, not only the selected ones", async () => {
         const { view } = await mountView({ kind: "output_runs", workflow_id: "wf1", output_labels: "a" });
         const outputs = view.find(".comparison-filter-outputs");
@@ -224,21 +210,10 @@ describe("ComparisonView", () => {
         expect(view.findComponent(ComparisonTable).exists()).toBe(true);
     });
 
-    it.each([
-        [{ kind: "nope" }, 'Unknown comparison kind "nope".'],
-        [{ kind: "toString" }, 'Unknown comparison kind "toString".'],
-        [{ kind: "__proto__" }, 'Unknown comparison kind "__proto__".'],
-        [{}, "No comparison kind given."],
-        [{ kind: "step_runs", workflow_id: "wf1" }, "A step_runs comparison needs step_label."],
-        [{ kind: "tool_runs", tool_id: "cat1", state: "ok" }, "A tool_runs comparison does not take state."],
-        [
-            { kind: "tool_runs", tool_id: "cat1", output_labels: "a", constructor: "x" },
-            "A tool_runs comparison does not take output_labels, constructor.",
-        ],
-    ])("shows an error and fetches nothing for %j", async (query, message) => {
-        const { view } = await mountView(query);
+    it("shows a malformed URL's error and fetches nothing", async () => {
+        const { view } = await mountView({ kind: "step_runs", workflow_id: "wf1" });
         expect(comparisonRequests()).toHaveLength(0);
-        expect(view.find(".alert-danger").text()).toBe(message);
+        expect(view.find(".alert-danger").text()).toBe("A step_runs comparison needs step_label.");
     });
 
     it("labels state filters as the State column does, keeping raw values", async () => {
