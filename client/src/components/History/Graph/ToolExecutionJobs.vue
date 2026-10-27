@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { BPagination } from "bootstrap-vue";
-import { computed, ref, toRef } from "vue";
+import { computed, ref, watch } from "vue";
 
-import { useToolExecutionJobs } from "./useToolExecutionJobs";
+import { type ExecutionJobsSource, useExecutionJobs } from "./useToolExecutionJobs";
 
 import JobDetailsTabs from "./JobDetailsTabs.vue";
 import GAlert from "@/components/BaseComponents/GAlert.vue";
@@ -13,7 +13,11 @@ import LoadingSpan from "@/components/LoadingSpan.vue";
 
 interface Props {
     /** Encoded tool-execution (tool_request) id whose jobs should be listed. */
-    toolExecutionId: string;
+    toolExecutionId?: string;
+    /** Encoded id of a mapped-over batch (ImplicitCollectionJobs) whose jobs should be listed instead. */
+    implicitCollectionJobsId?: string;
+    /** The job to open on, e.g. the one a summary already showed; the first otherwise. */
+    initialJobId?: string;
     /** Custom text for the Information tab title (forwarded to JobDetailsTabs). */
     infoTitle?: string;
     /** Custom icon for the Information tab title (forwarded to JobDetailsTabs). */
@@ -22,9 +26,21 @@ interface Props {
 
 const props = defineProps<Props>();
 
-const { jobs, loading, error } = useToolExecutionJobs(toRef(props, "toolExecutionId"));
+const source = computed<ExecutionJobsSource | undefined>(() => {
+    if (props.toolExecutionId) {
+        return { toolRequestId: props.toolExecutionId };
+    }
+    return props.implicitCollectionJobsId ? { implicitCollectionJobsId: props.implicitCollectionJobsId } : undefined;
+});
+const { jobs, loading, error } = useExecutionJobs(source);
 
 const currentIndex = ref(0);
+watch(jobs, (loaded) => {
+    currentIndex.value = Math.max(
+        loaded.findIndex((job) => job.id === props.initialJobId),
+        0,
+    );
+});
 const currentJob = computed(() => jobs.value[currentIndex.value] ?? null);
 
 const hasMany = computed(() => jobs.value.length > 1);

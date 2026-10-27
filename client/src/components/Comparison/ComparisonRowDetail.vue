@@ -12,6 +12,7 @@ import GTabs from "@/components/BaseComponents/GTabs.vue";
 import Heading from "@/components/Common/Heading.vue";
 import GenericHistoryItem from "@/components/History/Content/GenericItem.vue";
 import JobDetailsTabs from "@/components/History/Graph/JobDetailsTabs.vue";
+import ToolExecutionJobs from "@/components/History/Graph/ToolExecutionJobs.vue";
 
 const props = defineProps<{
     row: ComparisonRow;
@@ -49,7 +50,7 @@ const noJobMessage = computed(() => noJobReason(props.row));
         </div>
         <div class="comparison-row-detail-job">
             <Heading size="sm" separator>
-                {{ job?.jobCount ? `Job 1 of ${job.jobCount}` : "Job" }}
+                {{ job?.jobCount ? `Batch of ${job.jobCount} jobs` : "Job" }}
             </Heading>
             <GAlert v-if="isInvocationRow" variant="info" show class="mb-0">
                 A workflow run has no single job. Its inputs and parameters are columns of the table.
@@ -57,6 +58,10 @@ const noJobMessage = computed(() => noJobReason(props.row));
             <GAlert v-else-if="noJobMessage" class="comparison-row-detail-message mb-0" variant="info" show>
                 {{ noJobMessage }}
             </GAlert>
+            <ToolExecutionJobs
+                v-else-if="job?.jobCount && job.implicitCollectionJobsId"
+                :implicit-collection-jobs-id="job.implicitCollectionJobsId"
+                :initial-job-id="job.jobId" />
             <GTabs v-else-if="job?.jobId">
                 <JobDetailsTabs :job-id="job.jobId" />
             </GTabs>

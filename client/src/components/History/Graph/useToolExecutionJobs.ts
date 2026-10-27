@@ -1,48 +1,88 @@
-import { type Ref, ref, watch } from "vue";
+import { computed, type Ref, ref, watch } from "vue";
 
 import { GalaxyApi } from "@/api";
-import type { components } from "@/api/schema";
 
-type ExecutionJob = components["schemas"]["ToolRequestJobReference"];
+/** Where a list of jobs comes from: one tool execution (tool request), or one mapped-over batch. */
+export type ExecutionJobsSource = { toolRequestId: string } | { implicitCollectionJobsId: string };
 
-/**
- * Loads the jobs produced by a single tool execution (tool_request).
- * Refetches when the input id changes. Race-safe via the watcher's
- * cancel-on-rerun semantics.
- */
-export function useToolExecutionJobs(toolExecutionId: Ref<string>) {
+interface ExecutionJob {
+    id: string;
+}
+
+const MESSAGES = {
+    toolRequest: {
+        failed: "Failed to load tool execution details.",
+        empty: "No job associated with this tool execution.",
+    },
+    batch: { failed: "Failed to load the batch's jobs.", empty: "This batch has no jobs." },
+};
+
+async function fetchJobs(source: ExecutionJobsSource): Promise<ExecutionJob[] | undefined> {
+    if ("toolRequestId" in source) {
+        const { data, error } = await GalaxyApi().GET("/api/tool_requests/{id}", {
+            params: { path: { id: source.toolRequestId } },
+        });
+        return error ? undefined : data.jobs;
+    }
+    const { data, error } = await GalaxyApi().GET("/api/jobs", {
+        params: { query: { implicit_collection_jobs_id: source.implicitCollectionJobsId, order_by: "create_time" } },
+    });
+    // The index lists newest first; a batch reads in the order it was created.
+    return error ? undefined : [...data].reverse();
+}
+
+/** Loads the jobs of a tool execution or a mapped-over batch; refetches when the source changes. */
+export function useExecutionJobs(source: Ref<ExecutionJobsSource | undefined>) {
     const jobs = ref<ExecutionJob[]>([]);
     const loading = ref(false);
     const error = ref<string | null>(null);
 
     watch(
-        toolExecutionId,
-        async (id) => {
+        source,
+        async (current, _previous, onCleanup) => {
+            let stale = false;
+            onCleanup(() => {
+                stale = true;
+            });
             jobs.value = [];
             error.value = null;
-            if (!id) {
+            loading.value = false;
+            if (!current) {
                 return;
             }
+            const messages = "toolRequestId" in current ? MESSAGES.toolRequest : MESSAGES.batch;
             loading.value = true;
             try {
-                const { data, error: apiError } = await GalaxyApi().GET("/api/tool_requests/{id}", {
-                    params: { path: { id } },
-                });
-                if (apiError) {
-                    error.value = "Failed to load tool execution details.";
-                } else if (data.jobs && data.jobs.length > 0) {
-                    jobs.value = data.jobs;
+                const loaded = await fetchJobs(current);
+                if (stale) {
+                    return;
+                }
+                if (!loaded) {
+                    error.value = messages.failed;
+                } else if (loaded.length) {
+                    jobs.value = loaded;
                 } else {
-                    error.value = "No job associated with this tool execution.";
+                    error.value = messages.empty;
                 }
             } catch {
-                error.value = "Failed to load tool execution details.";
+                if (!stale) {
+                    error.value = messages.failed;
+                }
             } finally {
-                loading.value = false;
+                if (!stale) {
+                    loading.value = false;
+                }
             }
         },
         { immediate: true },
     );
 
     return { jobs, loading, error };
+}
+
+/** Loads the jobs produced by a single tool execution (tool_request). */
+export function useToolExecutionJobs(toolExecutionId: Ref<string>) {
+    return useExecutionJobs(
+        computed(() => (toolExecutionId.value ? { toolRequestId: toolExecutionId.value } : undefined)),
+    );
 }

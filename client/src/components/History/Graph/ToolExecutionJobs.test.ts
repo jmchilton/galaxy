@@ -24,11 +24,22 @@ function toolRequest(jobIds: string[]) {
 
 let failRequest: boolean;
 let jobIds: string[];
+let batchRequests: URLSearchParams[];
 
 beforeEach(() => {
     failRequest = false;
     jobIds = ["j1", "j2", "j3"];
+    batchRequests = [];
     server.use(
+        http.untyped.get("/api/jobs", ({ request }) => {
+            const query = new URL(request.url).searchParams;
+            batchRequests.push(query);
+            if (failRequest) {
+                return HttpResponse.json({ err_msg: "nope", err_code: 500 }, { status: 500 });
+            }
+            // newest first, as the index sorts
+            return HttpResponse.json([...jobIds].reverse().map((id) => ({ id, model_class: "Job", state: "ok" })));
+        }),
         http.untyped.get("/api/tool_requests/:id", () =>
             failRequest
                 ? HttpResponse.json({ err_msg: "nope", err_code: 500 }, { status: 500 })
@@ -76,5 +87,33 @@ describe("ToolExecutionJobs", () => {
         failRequest = true;
         const wrapper = await mountJobs();
         expect(wrapper.text()).toContain("Failed to load tool execution details.");
+    });
+
+    it("pages through a mapped batch's jobs, oldest first", async () => {
+        const wrapper = await mountJobs({ toolExecutionId: undefined, implicitCollectionJobsId: "icj1" });
+        expect(batchRequests).toHaveLength(1);
+        expect(batchRequests[0]!.get("implicit_collection_jobs_id")).toBe("icj1");
+        expect(batchRequests[0]!.get("order_by")).toBe("create_time");
+        expect(wrapper.findComponent(TABS_STUB).props("jobId")).toBe("j1");
+        await wrapper.find("button[aria-label='Go to page 2']").trigger("click");
+        expect(wrapper.findComponent(TABS_STUB).props("jobId")).toBe("j2");
+    });
+
+    it("opens a batch on the given job", async () => {
+        const wrapper = await mountJobs({
+            toolExecutionId: undefined,
+            implicitCollectionJobsId: "icj1",
+            initialJobId: "j2",
+        });
+        expect(wrapper.findComponent(TABS_STUB).props("jobId")).toBe("j2");
+    });
+
+    it("explains an empty batch and a failed batch load", async () => {
+        jobIds = [];
+        const empty = await mountJobs({ toolExecutionId: undefined, implicitCollectionJobsId: "icj1" });
+        expect(empty.text()).toContain("This batch has no jobs.");
+        failRequest = true;
+        const failed = await mountJobs({ toolExecutionId: undefined, implicitCollectionJobsId: "icj2" });
+        expect(failed.text()).toContain("Failed to load the batch's jobs.");
     });
 });
