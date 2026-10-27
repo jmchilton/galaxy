@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { faArrowRight, faInfoCircle, faRedo } from "@fortawesome/free-solid-svg-icons";
+import { faArrowRight, faColumns, faInfoCircle, faRedo } from "@fortawesome/free-solid-svg-icons";
 import { BSkeleton } from "bootstrap-vue";
 import { computed, ref, toRef, watch } from "vue";
 import { useRoute } from "vue-router";
 
 import { fetchInvocationForJob } from "@/api/invocations";
 import type { CardAction } from "@/components/Common/GCard.types";
+import { comparisonPath } from "@/components/Comparison/comparisonQuery";
 import { useJobConsoleOutput, useJobDetails } from "@/composables/jobDetails";
 import { useRerunnableTool } from "@/composables/rerunnableTool";
 import { errorMessageAsString } from "@/utils/simple-error";
@@ -32,6 +33,8 @@ const props = withDefaults(
         includeRerunIndicator?: boolean;
         /** If `true`, we render a "View full details" button */
         includeViewFullDetailsButton?: boolean;
+        /** If `true`, link to the user's other runs of this job's tool. */
+        includeOtherRunsLink?: boolean;
         /** If provided, this component will skip fetching the invocation ID for the job. */
         invocationId?: string;
         /** If `true`, the section is collapsible */
@@ -104,6 +107,18 @@ const primaryActions = computed<CardAction[]>(() => {
             icon: faArrowRight,
             title: "View full job details",
             to: `/jobs/${props.jobId}/view`,
+            size: "md",
+            variant: "link",
+        });
+    }
+    if (props.includeOtherRunsLink && job.value?.tool_id) {
+        actions.push({
+            id: "job-other-runs",
+            class: "text-decoration-none",
+            label: "Other runs of this tool",
+            icon: faColumns,
+            title: "Compare your runs of this tool across versions",
+            to: comparisonPath("tool_runs", { tool_id: job.value.tool_id }),
             size: "md",
             variant: "link",
         });

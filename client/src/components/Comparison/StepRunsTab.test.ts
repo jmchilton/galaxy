@@ -81,12 +81,19 @@ describe("StepRunsTab", () => {
     it("reads total_matches and pages with it", async () => {
         total = "60";
         const tab = await mountTab();
-        expect(tab.find(".step-runs-summary").text()).toBe("Showing 1–6 of 60 · newest first · your runs only");
+        expect(tab.find(".comparison-summary").text()).toBe("Showing 1–6 of 60 · newest first · your runs only");
         const pagination = tab.find("[aria-label='Pages of runs']");
         expect(pagination.exists()).toBe(true);
         await pagination.find("[aria-posinset='3'], button[aria-label='Go to page 3']").trigger("click");
         await flushPromises();
         expect(requests.map((r) => r.query.get("offset"))).toEqual(["0", "50"]);
+    });
+
+    it("links to the full page by the stored workflow id the server echoed", async () => {
+        const tab = await mountTab();
+        expect(tab.find("a.comparison-view-all").attributes("href")).toBe(
+            "/comparisons?kind=step_runs&workflow_id=adb5f5c93f827949&step_label=second_cat",
+        );
     });
 
     it("hides pagination when one page holds every run", async () => {

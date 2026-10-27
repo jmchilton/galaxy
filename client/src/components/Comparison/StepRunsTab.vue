@@ -1,17 +1,19 @@
 <script setup lang="ts">
-import { BPagination } from "bootstrap-vue";
+import { faExternalLinkAlt } from "@fortawesome/free-solid-svg-icons";
+import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { computed, ref, watch } from "vue";
 
 import { type ComparisonTable as ComparisonTableModel, fetchStepRuns, type StepRunsParams } from "@/api/comparisons";
 
+import { comparisonPath, DEFAULT_LIMIT, displayStorageKey } from "./comparisonQuery";
 import { requestedMetadata } from "./comparisonUtils";
 import { useComparisonDisplay, useComparisonFetch } from "./useComparison";
 
+import ComparisonPager from "./ComparisonPager.vue";
 import ComparisonTable from "./ComparisonTable.vue";
 import GAlert from "@/components/BaseComponents/GAlert.vue";
+import GButton from "@/components/BaseComponents/GButton.vue";
 import LoadingSpan from "@/components/LoadingSpan.vue";
-
-const PER_PAGE = 25;
 
 const props = withDefaults(
     defineProps<{
@@ -25,13 +27,10 @@ const props = withDefaults(
     { instance: false, stepLabel: undefined, currentInvocationId: undefined },
 );
 
-const page = ref(1);
+const offset = ref(0);
 const table = ref<ComparisonTableModel>();
 // Keyed by the stored workflow the server resolved, so every version shares one setting.
-const storageKey = computed(() => {
-    const query = table.value?.query;
-    return query?.kind === "step_runs" ? `step_runs:${query.workflow_id}:${query.step_label}` : undefined;
-});
+const storageKey = computed(() => (table.value ? displayStorageKey(table.value.query) : undefined));
 const { transpose, columnDisplay, visibleColumns, toggleColumn, resetColumns } = useComparisonDisplay(
     storageKey,
     table,
@@ -46,8 +45,8 @@ const params = computed<StepRunsParams | undefined>(() => {
         workflow_id: props.workflowId,
         instance: props.instance || undefined,
         step_label: props.stepLabel,
-        limit: PER_PAGE,
-        offset: (page.value - 1) * PER_PAGE,
+        limit: DEFAULT_LIMIT,
+        offset: offset.value,
         metadata_elements: metadata.length ? metadata : undefined,
     };
 });
@@ -56,17 +55,16 @@ const { total, loading, error } = useComparisonFetch(params, fetchStepRuns, tabl
 watch(
     () => [props.workflowId, props.stepLabel],
     () => {
-        page.value = 1;
+        offset.value = 0;
     },
 );
 
-const summary = computed(() => {
-    const rows = table.value?.rows.length ?? 0;
-    if (!rows) {
-        return "";
-    }
-    const first = (page.value - 1) * PER_PAGE + 1;
-    return `Showing ${first}–${first + rows - 1} of ${total.value} · newest first · your runs only`;
+// The echoed stored workflow id, so the page needs no `instance`.
+const pageLink = computed(() => {
+    const query = table.value?.query;
+    return query?.kind === "step_runs"
+        ? comparisonPath("step_runs", { workflow_id: query.workflow_id, step_label: query.step_label })
+        : undefined;
 });
 </script>
 
@@ -90,18 +88,26 @@ const summary = computed(() => {
                     :loading="loading"
                     empty-message="This step has no runs yet."
                     @toggle-column="toggleColumn"
-                    @reset-columns="resetColumns" />
-                <div class="d-flex flex-wrap justify-content-between align-items-center mt-2">
-                    <small class="step-runs-summary text-muted">{{ summary }}</small>
-                    <BPagination
-                        v-if="total > PER_PAGE"
-                        v-model="page"
-                        :total-rows="total"
-                        :per-page="PER_PAGE"
-                        size="sm"
-                        class="mb-0"
-                        aria-label="Pages of runs" />
-                </div>
+                    @reset-columns="resetColumns">
+                    <template v-slot:toolbar>
+                        <GButton
+                            v-if="pageLink"
+                            class="comparison-view-all"
+                            size="small"
+                            color="blue"
+                            outline
+                            :to="pageLink"
+                            title="Open these runs as a full page, with filters and a shareable link">
+                            <FontAwesomeIcon :icon="faExternalLinkAlt" />
+                            View all in a page
+                        </GButton>
+                    </template>
+                </ComparisonTable>
+                <ComparisonPager
+                    v-model:offset="offset"
+                    :total="total"
+                    :limit="DEFAULT_LIMIT"
+                    :row-count="table.rows.length" />
             </template>
         </template>
     </div>

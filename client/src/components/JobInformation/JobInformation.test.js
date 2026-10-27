@@ -288,3 +288,45 @@ describe("JobInformation/JobInformation.vue rerun indicator", () => {
         expect(wrapper.find("[title='Rerun this job']").exists()).toBe(true);
     });
 });
+
+describe("JobInformation/JobInformation.vue other runs link", () => {
+    beforeEach(() => {
+        server.use(
+            http.get("/api/configuration/decode/{encoded_id}", ({ response }) => {
+                return response(200).json({ decoded_id: 123 });
+            }),
+            http.get("/api/jobs/{job_id}", ({ response }) => {
+                return response(200).json({ ...jobResponse, tool_id: "toolshed.example.org/repos/u/r/cat/1.0" });
+            }),
+            http.get("/api/invocations", ({ response }) => {
+                return response(200).json([]);
+            }),
+            http.get("/api/jobs/{job_id}/console_output", ({ response }) => {
+                return response(200).json({ stdout: "stdout", stderr: "stderr" });
+            }),
+        );
+    });
+
+    async function mountWith(props) {
+        const wrapper = mount(JobInformation, {
+            props: { jobId: JOB_ID, ...props },
+            global: {
+                ...localVue,
+                plugins: [...(localVue.plugins ?? []), createTestingPinia({ createSpy: vi.fn, stubActions: false })],
+            },
+        });
+        await flushPromises();
+        return wrapper;
+    }
+
+    it("links to the tool's runs only when asked to", async () => {
+        const without = await mountWith({});
+        expect(without.find("[id^='g-card-action-job-other-runs']").exists()).toBe(false);
+        const withLink = await mountWith({ includeOtherRunsLink: true });
+        const link = withLink.find("a[id^='g-card-action-job-other-runs']");
+        expect(link.text()).toContain("Other runs of this tool");
+        expect(link.attributes("href")).toBe(
+            "/comparisons?kind=tool_runs&tool_id=toolshed.example.org%2Frepos%2Fu%2Fr%2Fcat%2F1.0",
+        );
+    });
+});
