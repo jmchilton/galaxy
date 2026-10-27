@@ -80,6 +80,53 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
         encoded = {self.app.security.encode_id(jobs[tool_id].id) for tool_id in tool_ids[:2]}
         assert total == 2
         assert {row.run.id for row in table.rows} == encoded
+        percent_query = ToolRunsQuery.model_construct(
+            tool_id="toolshed.example.org/repos/owner/repo/my%tool/1.0", include_workflow_jobs=True
+        )
+        assert self.comparisons_manager.tool_runs(_access(user), percent_query)[1] == 0
+
+    def test_tool_runs_state_filter_matches_any_mapped_member(self):
+        self.tool_id = "mapped_states"
+        self._stored_workflow_with_runs(1, mapped=True, member_states=("ok", "error"))
+        query = ToolRunsQuery.model_construct(tool_id=self.tool_id, states=["error"], include_workflow_jobs=True)
+        table, total = self.comparisons_manager.tool_runs(_access(self.trans.user), query)
+        assert total == 1
+        (row,) = table.rows
+        assert row.run.model == "ImplicitCollectionJobs"
+        assert row.run.states == {"ok": 1, "error": 1}
+        assert row.state == "error"
+
+    def test_step_runs_state_filter_matches_any_mapped_member(self):
+        stored_workflow_id = self._stored_workflow_with_runs(1, mapped=True, member_states=("ok", "error")).id
+        query = StepRunsQuery.model_construct(workflow_id=stored_workflow_id, step_label="target", states=["error"])
+        table, total = self.comparisons_manager.step_runs(_access(self.trans.user), stored_workflow_id, query)
+        assert total == 1
+        (row,) = table.rows
+        assert row.step_job.model == "ImplicitCollectionJobs"
+        assert row.state == "error"
+
+    def test_tool_runs_excludes_mapped_workflow_jobs(self):
+        self.tool_id = "mapped_in_workflow"
+        user = self.trans.user
+        self._stored_workflow_with_runs(1, mapped=True)
+        query = ToolRunsQuery.model_construct(tool_id=self.tool_id, include_workflow_jobs=False)
+        assert self.comparisons_manager.tool_runs(_access(user), query)[1] == 0
+        history = model.History(name="outside workflows", user=user)
+        plain = self._job(history, user)
+        self.session.add_all([history, plain])
+        self.session.commit()
+        table, total = self.comparisons_manager.tool_runs(_access(user), query)
+        assert total == 1
+        assert [row.run.id for row in table.rows] == [self.app.security.encode_id(plain.id)]
+
+    def test_admin_sees_inaccessible_items(self):
+        stored_workflow_id = self._stored_workflow_with_runs(1, mapped=False).id
+        query = StepRunsQuery.model_construct(workflow_id=stored_workflow_id, step_label="target")
+        table, _ = self.comparisons_manager.step_runs(
+            _access(self.trans.user, is_admin=True), stored_workflow_id, query
+        )
+        (row,) = table.rows
+        assert row.cells["input:foreign"].type == "dataset"
 
     def _tool_runs_statement_count(self, submissions: int, mapped: bool, metadata: bool) -> int:
         self.tool_id = f"compared_{submissions}_{mapped}_{metadata}"
@@ -210,7 +257,9 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
             event.remove(engine, "before_cursor_execute", count)
         return result, len(statements)
 
-    def _stored_workflow_with_runs(self, invocations: int, mapped: bool) -> model.StoredWorkflow:
+    def _stored_workflow_with_runs(
+        self, invocations: int, mapped: bool, member_states: tuple[str, ...] = ("ok", "ok")
+    ) -> model.StoredWorkflow:
         user = self.trans.user
         stored_workflow = model.StoredWorkflow()
         stored_workflow.user = user
@@ -243,7 +292,7 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
             invocation_step.state = "scheduled"
             self.session.add_all([history, invocation, invocation_step])
             if mapped:
-                self._mapped_step(invocation_step, history, user, foreign_history)
+                self._mapped_step(invocation_step, history, user, foreign_history, member_states)
             else:
                 job = self._job(history, user)
                 job.add_input_dataset("input1", self._hda(history))
@@ -270,10 +319,11 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
         security_agent.set_dataset_permission(hda.dataset, {security_agent.permitted_actions.DATASET_ACCESS: [role]})
         return hda
 
-    def _mapped_step(self, invocation_step, history, user, foreign_history) -> None:
+    def _mapped_step(self, invocation_step, history, user, foreign_history, member_states) -> None:
         icj = model.ImplicitCollectionJobs(populated_state="ok")
-        for order_index in range(2):
+        for order_index, state in enumerate(member_states):
             job = self._job(history, user)
+            job.state = state
             job.add_input_dataset("input1", self._hda(history))
             association = model.ImplicitCollectionJobsJobAssociation()
             association.order_index = order_index
@@ -391,5 +441,7 @@ def _metadata_elements(metadata: bool) -> list[str]:
     return ["data_lines"] if metadata else []
 
 
-def _access(user: model.User) -> ComparisonAccess:
-    return ComparisonAccess(user_id=user.id, role_ids=frozenset(role.id for role in user.all_roles()), is_admin=False)
+def _access(user: model.User, is_admin: bool = False) -> ComparisonAccess:
+    return ComparisonAccess(
+        user_id=user.id, role_ids=frozenset(role.id for role in user.all_roles()), is_admin=is_admin
+    )

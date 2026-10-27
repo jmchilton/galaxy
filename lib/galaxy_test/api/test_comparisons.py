@@ -600,6 +600,11 @@ class TestComparisonsApi(ApiTestCase):
             self.dataset_populator.run_tool(
                 "cat1", {"input1": {"batch": True, "values": [{"src": "hdca", "id": list_id}]}}, owner_history_id
             )
+            assert self._tool_runs("cat1", history_id=owner_history_id).headers["total_matches"] == "1"
+            # admins only get their own jobs too
+            response = self._get("tool_runs", data={"tool_id": "cat1", "history_id": owner_history_id}, admin=True)
+            self._assert_status_code_is_ok(response)
+            assert response.headers["total_matches"] == "0"
             other_email = f"{uuid4()}@example.org"
             with self._different_user(other_email):
                 # another user's public history shows none of their jobs

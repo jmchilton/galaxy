@@ -2,6 +2,7 @@ import os
 import random
 import uuid
 from tempfile import NamedTemporaryFile
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import (
@@ -638,6 +639,21 @@ class TestMappings(BaseModelTestCase):
         assert accessible(u_to) == {public.dataset.id, shared.dataset.id}
         assert accessible(u_from) == {public.dataset.id, private.dataset.id}
         assert security_agent.accessible_dataset_ids([], []) == set()
+
+        # parity with the per-item and released batch rules
+        datasets = [hda.dataset for hda in (public, shared, private, both)]
+        trans = SimpleNamespace(sa_session=self.model.session)
+        public_map = security_agent.datasets_are_public(trans, datasets)
+        assert {d.id for d in datasets if public_map[d.id]} == security_agent.accessible_dataset_ids([], dataset_ids)
+        for user in (u_from, u_to, u_other):
+            roles = user.all_roles()
+            ids = accessible(user)
+            access_map = security_agent.dataset_access_mapping(trans, roles, datasets)
+            for dataset in datasets:
+                action_tuples = [(action.action, action.role_id) for action in dataset.actions]
+                assert security_agent.can_access_dataset(roles, dataset) == (dataset.id in ids)
+                assert security_agent.can_access_datasets(roles, action_tuples) == (dataset.id in ids)
+                assert access_map[dataset.id] == (dataset.id in ids)
 
     def test_set_all_dataset_permissions(self):
         security_agent = GalaxyRBACAgent(self.model.session)
