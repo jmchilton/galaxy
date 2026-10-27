@@ -13,6 +13,12 @@ const TABLE = STEP_RUNS as unknown as Table;
 const ALL_COLUMNS = ["version", "state", "reused", "history", ...TABLE.columns.map((c) => c.key)];
 const DETAIL_STUB = { name: "ComparisonRowDetail", props: ["row", "columns", "query"], template: "<div />" };
 const LINK_STUB = { name: "ItemPopoverLink", props: ["itemId", "itemSrc", "to"], template: "<a><slot /></a>" };
+const DIFF_STUB = {
+    name: "ComparisonDiff",
+    props: ["rows", "columns", "query", "displays", "currentRunId", "requestedMetadata", "loading"],
+    emits: ["close"],
+    template: "<div />",
+};
 
 function mountTable(props: Record<string, unknown> = {}) {
     const localVue = getLocalVue();
@@ -20,13 +26,26 @@ function mountTable(props: Record<string, unknown> = {}) {
         props: { table: TABLE, visibleColumns: ALL_COLUMNS, ...props },
         global: {
             ...localVue,
-            stubs: { ...localVue.stubs, ComparisonRowDetail: DETAIL_STUB, ItemPopoverLink: LINK_STUB },
+            stubs: {
+                ...localVue.stubs,
+                ComparisonRowDetail: DETAIL_STUB,
+                ItemPopoverLink: LINK_STUB,
+                ComparisonDiff: DIFF_STUB,
+            },
         },
     });
 }
 
 function headerTexts(wrapper: ReturnType<typeof mountTable>) {
     return wrapper.findAll("thead th").map((th) => th.text().replace(/\s+/g, " ").trim());
+}
+
+async function selectRow(wrapper: ReturnType<typeof mountTable>, index: number) {
+    await wrapper.findAll("tbody tr")[index]!.find(".g-table-select-column input").setValue(true);
+}
+
+function selectedRows(wrapper: ReturnType<typeof mountTable>) {
+    return wrapper.findAll("tbody tr").map((tr) => tr.classes().includes("g-table-row-selected"));
 }
 
 function columnHeader(wrapper: ReturnType<typeof mountTable>, index: number) {
@@ -38,9 +57,9 @@ describe("ComparisonTable", () => {
     it("renders run fields, then role-badged columns, one row per run", () => {
         const wrapper = mountTable();
         const headers = headerTexts(wrapper);
-        expect(headers.slice(1, 6)).toEqual(["Invoked", "Version", "State", "Reused", "History"]);
-        expect(columnHeader(wrapper, 6)).toEqual(["in", "input1"]);
-        expect(columnHeader(wrapper, 7)).toEqual(["out", "out_file1"]);
+        expect(headers.slice(2, 7)).toEqual(["Invoked", "Version", "State", "Reused", "History"]);
+        expect(columnHeader(wrapper, 7)).toEqual(["in", "input1"]);
+        expect(columnHeader(wrapper, 8)).toEqual(["out", "out_file1"]);
         const rows = wrapper.findAll("tbody tr");
         expect(rows.map((tr) => tr.attributes("data-pk"))).toEqual(TABLE.rows.map((r) => r.run.id));
     });
@@ -65,7 +84,7 @@ describe("ComparisonTable", () => {
     it("names run states as the invocation view does", () => {
         const states = mountTable()
             .findAll("tbody tr")
-            .map((tr) => tr.findAll("td")[3]!.text());
+            .map((tr) => tr.findAll("td")[4]!.text());
         expect(states).toEqual(["new", "successful", "successful", "successful", "successful", "successful"]);
     });
 
@@ -203,9 +222,9 @@ describe("ComparisonTable", () => {
     it("hides columns that are not visible and forwards the chooser's events", async () => {
         const wrapper = mountTable({ visibleColumns: ["state", "output:out_file1"] });
         const headers = headerTexts(wrapper);
-        expect(headers.slice(1, 3)).toEqual(["Invoked", "State"]);
-        expect(columnHeader(wrapper, 3)).toEqual(["out", "out_file1"]);
-        expect(headers).toHaveLength(4);
+        expect(headers.slice(2, 4)).toEqual(["Invoked", "State"]);
+        expect(columnHeader(wrapper, 4)).toEqual(["out", "out_file1"]);
+        expect(headers).toHaveLength(5);
         const header = wrapper.findComponent(ListHeader);
         expect((header.props("columnOptions") as { key: string }[]).map((o: { key: string }) => o.key)).toEqual(
             ALL_COLUMNS,
@@ -218,7 +237,7 @@ describe("ComparisonTable", () => {
 
     it("switches a column to a metadata element", async () => {
         const wrapper = mountTable();
-        const output = wrapper.findAll("thead th")[7]!;
+        const output = wrapper.findAll("thead th")[8]!;
         expect(output.find(".comparison-showing").text()).toBe("name");
         const items = output.findAll("[role='menuitemradio']");
         expect(items.map((i) => i.text())).toEqual(["Name with popover", "Value", "data_lines", "dbkey"]);
@@ -229,7 +248,71 @@ describe("ComparisonTable", () => {
 
     it("shows the requested metadata element in cells", () => {
         const rows = mountTable({ columnDisplay: { "output:out_file1": "meta:data_lines" } }).findAll("tbody tr");
-        expect(rows[1]!.findAll("td")[7]!.text()).toBe("1");
+        expect(rows[1]!.findAll("td")[8]!.text()).toBe("1");
+    });
+
+    it("selects two runs and compares them side by side", async () => {
+        const wrapper = mountTable({ currentRunId: TABLE.rows[1]!.run.id });
+        const compare = () => wrapper.find(".comparison-compare-selected");
+        expect(compare().attributes("aria-disabled")).toBeDefined();
+        expect(compare().text()).toContain("0/2");
+        await selectRow(wrapper, 3);
+        await selectRow(wrapper, 1);
+        expect(compare().attributes("aria-disabled")).toBeUndefined();
+        expect(compare().text()).toContain("2/2");
+        expect(wrapper.findComponent(DIFF_STUB).exists()).toBe(false);
+        await compare().trigger("click");
+        const diff = wrapper.findComponent(DIFF_STUB);
+        // in table order, whatever order they were picked in
+        expect(diff.props("rows")).toEqual([TABLE.rows[1], TABLE.rows[3]]);
+        expect(diff.props("displays")).toEqual({ "input:input1": "link", "output:out_file1": "link" });
+        expect(diff.props("currentRunId")).toBe(TABLE.rows[1]!.run.id);
+        expect(compare().attributes("aria-expanded")).toBe("true");
+        expect(compare().attributes("aria-disabled")).toBeUndefined();
+        expect(compare().text()).toBe("Hide comparison");
+        diff.vm.$emit("close");
+        await wrapper.vm.$nextTick();
+        expect(wrapper.findComponent(DIFF_STUB).exists()).toBe(false);
+        expect(compare().attributes("aria-expanded")).toBe("false");
+        expect(compare().text()).toContain("Compare selected (2/2)");
+    });
+
+    it("keeps the two runs selected last", async () => {
+        const wrapper = mountTable();
+        for (const index of [0, 1, 2]) {
+            await selectRow(wrapper, index);
+        }
+        expect(selectedRows(wrapper)).toEqual([false, true, true, false, false, false]);
+    });
+
+    it("keeps the selection when transposed, with a checkbox per run", async () => {
+        const wrapper = mountTable();
+        await selectRow(wrapper, 0);
+        await selectRow(wrapper, 2);
+        await wrapper.setProps({ transpose: true } as object);
+        const boxes = wrapper.findAll("thead .comparison-select-run input");
+        expect(boxes.map((box) => (box.element as HTMLInputElement).checked)).toEqual([
+            true,
+            false,
+            true,
+            false,
+            false,
+            false,
+        ]);
+        await boxes[0]!.setValue(false);
+        expect(wrapper.find(".comparison-compare-selected").attributes("aria-disabled")).toBeDefined();
+        await wrapper.setProps({ transpose: false } as object);
+        expect(selectedRows(wrapper)).toEqual([false, false, true, false, false, false]);
+    });
+
+    it("drops selected runs that leave the page", async () => {
+        const wrapper = mountTable();
+        await selectRow(wrapper, 0);
+        await selectRow(wrapper, 4);
+        await wrapper.find(".comparison-compare-selected").trigger("click");
+        await wrapper.setProps({ table: { ...TABLE, rows: TABLE.rows.slice(1) } } as object);
+        expect(selectedRows(wrapper)).toEqual([false, false, false, true, false]);
+        expect(wrapper.findComponent(DIFF_STUB).exists()).toBe(false);
     });
 
     it("explains an empty page", () => {
