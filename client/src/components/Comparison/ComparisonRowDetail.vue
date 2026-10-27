@@ -3,7 +3,7 @@ import { computed } from "vue";
 
 import type { ComparisonColumn, ComparisonQuery, ComparisonRow } from "@/api/comparisons";
 
-import { rowJob, runLink } from "./comparisonUtils";
+import { noJobReason, rowJob, runLink } from "./comparisonUtils";
 
 import ValueCell from "./cells/ValueCell.vue";
 import GAlert from "@/components/BaseComponents/GAlert.vue";
@@ -30,41 +30,7 @@ const job = computed(() => rowJob(props.row));
 const isInvocationRow = computed(() => props.query.kind === "output_runs");
 const link = computed(() => runLink(props.row, props.query));
 const openLabel = computed(() => (props.row.run.model === "WorkflowInvocation" ? "Open invocation" : "Open job"));
-
-// As the invocation view counts scheduling done.
-const SCHEDULING_ENDED = ["scheduled", "cancelled", "failed", "completed"];
-const INPUT_STEP_TYPES = ["data_input", "data_collection_input", "parameter_input"];
-
-/** Why a row of a step or tool run shows no job tabs; undefined when it has a job. */
-const noJobMessage = computed(() => {
-    const row = props.row;
-    const runEnded = row.run.model === "WorkflowInvocation" && SCHEDULING_ENDED.includes(row.run.state);
-    if (job.value?.jobCount === 0) {
-        return "Mapped over an empty collection: no jobs ran.";
-    }
-    if (job.value?.jobId || row.subworkflow_invocation_id) {
-        return undefined;
-    }
-    // Steps are "new" or "ready" until scheduled.
-    if (["new", "ready"].includes(row.state)) {
-        return runEnded ? "This run ended before reaching this step." : "This run has no job for this step yet.";
-    }
-    if (row.step_type === "pause") {
-        if (row.step_action === true) {
-            return "Reviewed: the run continued past this pause.";
-        }
-        if (row.step_action === false) {
-            return "Review rejected: the run was cancelled at this pause.";
-        }
-        return runEnded
-            ? "This pause step was not reviewed before the run ended."
-            : "Waiting for review: the run is paused at this step.";
-    }
-    if (row.step_type && INPUT_STEP_TYPES.includes(row.step_type)) {
-        return "Input steps run without a job.";
-    }
-    return "This step ran without a job.";
-});
+const noJobMessage = computed(() => noJobReason(props.row));
 </script>
 
 <template>
