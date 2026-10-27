@@ -189,6 +189,16 @@ class TestComparisonsApi(ApiTestCase):
             assert response.headers["total_matches"] == "0"
             assert response.json()["rows"] == []
 
+            # versions filter, 0-based, repeated for several
+            assert table["versions_available"] == [0, 1]
+            response = self._step_runs(summary.workflow_id, "second_cat", versions=1)
+            assert response.headers["total_matches"] == "1"
+            assert [row["run"]["id"] for row in response.json()["rows"]] == [rerun_id]
+            assert response.json()["query"]["versions"] == [1]
+            both = self._step_runs(summary.workflow_id, "second_cat", versions=[0, 1])
+            assert both.headers["total_matches"] == "3"
+            self._step_runs(summary.workflow_id, "second_cat", expected_status=400, versions="v1")
+
             # metadata elements
             table = self._step_runs_table(summary.workflow_id, "second_cat", metadata_elements="data_lines")
             output_column = next(c for c in table["columns"] if c["key"] == "output:out_file1")
@@ -217,10 +227,12 @@ class TestComparisonsApi(ApiTestCase):
             self._relabel(summary.workflow_id, "second_cat", "second_cat_renamed")
             new_invocation_id = self._rerun(summary)
 
-            old_rows = self._step_runs_table(summary.workflow_id, "second_cat")["rows"]
-            assert [(row["run"]["id"], row["version"]) for row in old_rows] == [(summary.invocation_id, 0)]
-            new_rows = self._step_runs_table(summary.workflow_id, "second_cat_renamed")["rows"]
-            assert [(row["run"]["id"], row["version"]) for row in new_rows] == [(new_invocation_id, 1)]
+            old_table = self._step_runs_table(summary.workflow_id, "second_cat")
+            assert [(row["run"]["id"], row["version"]) for row in old_table["rows"]] == [(summary.invocation_id, 0)]
+            assert old_table["versions_available"] == [0]
+            new_table = self._step_runs_table(summary.workflow_id, "second_cat_renamed")
+            assert [(row["run"]["id"], row["version"]) for row in new_table["rows"]] == [(new_invocation_id, 1)]
+            assert new_table["versions_available"] == [1]
 
     @skip_without_tool("cat1")
     def test_step_runs_errors(self):

@@ -9714,6 +9714,11 @@ export interface components {
             rows: components["schemas"]["ComparisonRow"][];
             /** Tool Versions Available */
             tool_versions_available?: string[] | null;
+            /**
+             * Versions Available
+             * @description 0-based workflow versions with the compared step, whatever `versions` selects.
+             */
+            versions_available?: number[] | null;
         };
         /** CompositeDataElement */
         CompositeDataElement: {
@@ -24856,6 +24861,11 @@ export interface components {
              * @description Label of the step to compare across invocations.
              */
             step_label: string;
+            /**
+             * Versions
+             * @description Only include runs of these 0-based workflow versions.
+             */
+            versions?: number[] | null;
             /**
              * Workflow Id
              * @description The StoredWorkflow id.
@@ -57315,6 +57325,8 @@ export interface operations {
             query: {
                 /** @description Label of the step to compare across invocations. */
                 step_label: string;
+                /** @description Only include runs of these 0-based workflow versions. Repeat the parameter for several. */
+                versions?: number[] | null;
                 instance?: boolean;
                 /** @description Maximum number of rows to return. */
                 limit?: number;
