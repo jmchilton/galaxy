@@ -107,6 +107,11 @@ describe("ToolExecutionJobs", () => {
         expect(wrapper.findComponent(TABS_STUB).props("jobId")).toBe("j2");
     });
 
+    it("asks for every job of a batch whose size is known", async () => {
+        await mountJobs({ toolExecutionId: undefined, implicitCollectionJobsId: "icj1", jobCount: 3 });
+        expect(batchRequests[0]!.get("limit")).toBe("3");
+    });
+
     it("opens a batch on the given job", async () => {
         const wrapper = await mountJobs({
             toolExecutionId: undefined,

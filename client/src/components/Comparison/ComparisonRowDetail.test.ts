@@ -12,7 +12,7 @@ const TABLE = STEP_RUNS as unknown as ComparisonTable;
 const JOB_TABS_STUB = { name: "JobDetailsTabs", props: ["jobId"], template: "<div />" };
 const BATCH_STUB = {
     name: "ToolExecutionJobs",
-    props: ["implicitCollectionJobsId", "initialJobId"],
+    props: ["implicitCollectionJobsId", "jobCount", "initialJobId"],
     template: "<div />",
 };
 const ITEM_STUB = { name: "GenericHistoryItem", props: ["itemId", "itemSrc"], template: "<div />" };
@@ -55,6 +55,7 @@ describe("ComparisonRowDetail", () => {
         const batch = wrapper.findComponent(BATCH_STUB);
         expect(batch.props("implicitCollectionJobsId")).toBe(row.step_job!.id);
         expect(batch.props("initialJobId")).toBe("cb227cec8ca83994");
+        expect(batch.props("jobCount")).toBe(3);
         expect(wrapper.text()).toContain("3 jobs");
         expect(wrapper.findComponent(ITEM_STUB).props("itemSrc")).toBe("hdca");
     });

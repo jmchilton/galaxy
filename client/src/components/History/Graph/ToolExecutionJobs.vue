@@ -16,6 +16,8 @@ interface Props {
     toolExecutionId?: string;
     /** Encoded id of a mapped-over batch (ImplicitCollectionJobs) whose jobs should be listed instead. */
     implicitCollectionJobsId?: string;
+    /** The batch's size, when known, so every job is listed. */
+    jobCount?: number;
     /** The job to open on, e.g. the one a summary already showed; the first otherwise. */
     initialJobId?: string;
     /** Custom text for the Information tab title (forwarded to JobDetailsTabs). */
@@ -30,7 +32,9 @@ const source = computed<ExecutionJobsSource | undefined>(() => {
     if (props.toolExecutionId) {
         return { toolRequestId: props.toolExecutionId };
     }
-    return props.implicitCollectionJobsId ? { implicitCollectionJobsId: props.implicitCollectionJobsId } : undefined;
+    return props.implicitCollectionJobsId
+        ? { implicitCollectionJobsId: props.implicitCollectionJobsId, jobCount: props.jobCount }
+        : undefined;
 });
 const { jobs, loading, error } = useExecutionJobs(source);
 

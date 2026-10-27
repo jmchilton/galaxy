@@ -3,7 +3,10 @@ import { type Ref, ref, watch } from "vue";
 import { GalaxyApi } from "@/api";
 
 /** Where a list of jobs comes from: one tool execution (tool request), or one mapped-over batch. */
-export type ExecutionJobsSource = { toolRequestId: string } | { implicitCollectionJobsId: string };
+export type ExecutionJobsSource =
+    | { toolRequestId: string }
+    /** `jobCount`, when known, fetches the whole batch rather than the index's default page. */
+    | { implicitCollectionJobsId: string; jobCount?: number };
 
 interface ExecutionJob {
     id: string;
@@ -24,8 +27,11 @@ async function fetchJobs(source: ExecutionJobsSource): Promise<ExecutionJob[] | 
         });
         return error ? undefined : data.jobs;
     }
+    const limit = source.jobCount ? { limit: source.jobCount } : {};
     const { data, error } = await GalaxyApi().GET("/api/jobs", {
-        params: { query: { implicit_collection_jobs_id: source.implicitCollectionJobsId, order_by: "create_time" } },
+        params: {
+            query: { implicit_collection_jobs_id: source.implicitCollectionJobsId, order_by: "create_time", ...limit },
+        },
     });
     // The index lists newest first; a batch reads in the order it was created.
     return error ? undefined : [...data].reverse();

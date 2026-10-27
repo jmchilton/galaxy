@@ -61,6 +61,7 @@ const noJobMessage = computed(() => noJobReason(props.row));
             <ToolExecutionJobs
                 v-else-if="job?.jobCount && job.implicitCollectionJobsId"
                 :implicit-collection-jobs-id="job.implicitCollectionJobsId"
+                :job-count="job.jobCount"
                 :initial-job-id="job.jobId" />
             <GTabs v-else-if="job?.jobId">
                 <JobDetailsTabs :job-id="job.jobId" />
