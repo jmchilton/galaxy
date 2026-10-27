@@ -1,6 +1,7 @@
 import logging
 import socket
 import sqlite3
+from collections.abc import Iterable
 from datetime import timedelta
 from typing import (
     Literal,
@@ -1187,6 +1188,21 @@ WHERE history.user_id != :user_id and history_dataset_association.dataset_id = :
         else:
             access_role = access_roles[0]
             return access_role.type == Role.types.PRIVATE
+
+    def accessible_dataset_ids(self, role_ids: Iterable[int], dataset_ids: Iterable[int]) -> set[int]:
+        """Ids of the Datasets whose access roles all belong to ``role_ids``, in one query; public ones included."""
+        dataset_ids = set(dataset_ids)
+        if not dataset_ids:
+            return set()
+        user_role_ids = set(role_ids)
+        stmt = select(DatasetPermissions.dataset_id, DatasetPermissions.role_id).where(
+            DatasetPermissions.dataset_id.in_(dataset_ids),
+            DatasetPermissions.action == self.permitted_actions.DATASET_ACCESS.action,
+        )
+        inaccessible = {
+            dataset_id for dataset_id, role_id in self.sa_session.execute(stmt) if role_id not in user_role_ids
+        }
+        return dataset_ids - inaccessible
 
     def datasets_are_public(self, trans: "ProvidesAppContext", datasets):
         """

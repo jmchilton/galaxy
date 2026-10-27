@@ -1,3 +1,4 @@
+from galaxy.managers.comparison_cells import ComparisonAccess
 from galaxy.managers.comparisons import ComparisonsManager
 from galaxy.managers.context import ProvidesUserContext
 from galaxy.managers.workflows import WorkflowsManager
@@ -29,6 +30,15 @@ class ComparisonsService(ServiceBase):
             trans, query.workflow_id, by_stored_id=not instance
         )
         query = query.model_copy(update={"workflow_id": stored_workflow.id})
-        if trans.user is None:
+        access = _access(trans)
+        if access is None:
             return ComparisonTable(query=query, columns=[], rows=[]), 0
-        return self._comparisons_manager.step_runs(trans.user.id, stored_workflow.id, query)
+        return self._comparisons_manager.step_runs(access, stored_workflow.id, query)
+
+
+def _access(trans: ProvidesUserContext) -> ComparisonAccess | None:
+    """The caller's access context; None for anonymous callers, who have no runs."""
+    if trans.user is None:
+        return None
+    role_ids = frozenset(role.id for role in trans.get_current_user_roles())
+    return ComparisonAccess(user_id=trans.user.id, role_ids=role_ids, is_admin=trans.user_is_admin)

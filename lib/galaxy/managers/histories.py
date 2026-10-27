@@ -7,6 +7,7 @@ created (or copied) by users over the course of an analysis.
 
 import json
 import logging
+from collections.abc import Iterable
 from typing import (
     Any,
     cast,
@@ -532,6 +533,22 @@ class HistoryManager(sharable.SharableModelManager[model.History], deletable.Pur
             .where(HistoryUserShareAssociation.history_id == history.id)
         )
         return bool(self.session().scalar(stmt))
+
+    def accessible_history_ids(self, user_id: int, history_ids: Iterable[int]) -> set[int]:
+        """Ids of the histories the user owns, can import or has been shared, in one query; ignores admin status."""
+        history_ids = set(history_ids)
+        if not history_ids:
+            return set()
+        shared = (
+            exists()
+            .where(HistoryUserShareAssociation.history_id == model.History.id)
+            .where(HistoryUserShareAssociation.user_id == user_id)
+        )
+        stmt = select(model.History.id).where(
+            model.History.id.in_(history_ids),
+            or_(model.History.user_id == user_id, model.History.importable == true(), shared),
+        )
+        return set(self.session().scalars(stmt))
 
     def make_members_public(self, trans: ProvidesUserContext, item):
         """Make the non-purged datasets in history public.

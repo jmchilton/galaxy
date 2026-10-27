@@ -182,6 +182,18 @@ class TestHistoryManager(BaseTestCase):
         assert self.history_manager.error_unless_accessible(item1, self.admin_user) == item1
         assert self.history_manager.get_accessible(item1.id, self.admin_user) == item1
 
+    def test_accessible_history_ids(self):
+        owner = self.user_manager.create(**user2_data)
+        non_owner = self.user_manager.create(**user3_data)
+        private, importable, shared = (self.history_manager.create(user=owner) for _ in range(3))
+        self.history_manager.make_importable(importable)
+        self.history_manager.share_with(shared, non_owner)
+        ids = [private.id, importable.id, shared.id]
+
+        assert self.history_manager.accessible_history_ids(owner.id, ids) == set(ids)
+        assert self.history_manager.accessible_history_ids(non_owner.id, ids) == {importable.id, shared.id}
+        assert self.history_manager.accessible_history_ids(non_owner.id, []) == set()
+
     def test_importable(self):
         owner = self.user_manager.create(**user2_data)
         self.trans.set_user(owner)

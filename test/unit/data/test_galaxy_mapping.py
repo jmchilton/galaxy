@@ -610,6 +610,35 @@ class TestMappings(BaseModelTestCase):
         assert security_agent.can_access_dataset(u_to.all_roles(), d1.dataset)
         assert security_agent.can_access_dataset(u_other.all_roles(), d1.dataset)
 
+    def test_accessible_dataset_ids(self):
+        security_agent = GalaxyRBACAgent(self.model.session)
+        u_from, u_to, u_other = self._three_users("accessible_dataset_ids")
+
+        h = model.History(name="History for accessible ids", user=u_from)
+        public, shared, private, both = (
+            model.HistoryDatasetAssociation(
+                extension="txt", history=h, create_dataset=True, sa_session=self.model.session
+            )
+            for _ in range(4)
+        )
+        self.persist(h, public, shared, private, both)
+        access = security_agent.permitted_actions.DATASET_ACCESS
+        from_role = security_agent.get_private_user_role(u_from, auto_create=True)
+        to_role = security_agent.get_private_user_role(u_to, auto_create=True)
+        security_agent.privately_share_dataset(shared.dataset, [u_to])
+        security_agent.set_dataset_permission(private.dataset, {access: [from_role]})
+        # every access role is required
+        security_agent.set_dataset_permission(both.dataset, {access: [from_role, to_role]})
+        dataset_ids = [public.dataset.id, shared.dataset.id, private.dataset.id, both.dataset.id]
+
+        def accessible(user):
+            return security_agent.accessible_dataset_ids([role.id for role in user.all_roles()], dataset_ids)
+
+        assert accessible(u_other) == {public.dataset.id}
+        assert accessible(u_to) == {public.dataset.id, shared.dataset.id}
+        assert accessible(u_from) == {public.dataset.id, private.dataset.id}
+        assert security_agent.accessible_dataset_ids([], []) == set()
+
     def test_set_all_dataset_permissions(self):
         security_agent = GalaxyRBACAgent(self.model.session)
         u_from, _, u_other = self._three_users("set_all_perms")
