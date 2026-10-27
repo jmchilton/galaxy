@@ -88,4 +88,31 @@ describe("CitationsList", () => {
         expect(vi.mocked(sanitizeHtml).mock.calls.map(([html]) => html)).not.toContain(message);
         expect(wrapper.find(".infomessage div").element.innerHTML).toBe(message);
     });
+
+    it("downloads the BibTeX references as citations.bib", async () => {
+        const { createObjectURL, revokeObjectURL } = URL;
+        const blobs: Blob[] = [];
+        URL.createObjectURL = vi.fn((blob: Blob) => {
+            blobs.push(blob);
+            return "blob:citations";
+        });
+        URL.revokeObjectURL = vi.fn();
+        const downloads: string[] = [];
+        const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+            this: HTMLAnchorElement,
+        ) {
+            downloads.push(this.download);
+        });
+        try {
+            const bibtexTab = wrapper.findAll(".nav-link").find((link) => link.text() === "BibTeX");
+            await bibtexTab!.trigger("click");
+            await wrapper.find(".download-bibtex-btn").trigger("click");
+            expect(downloads).toEqual(["citations.bib"]);
+            expect(blobs).toHaveLength(1);
+            expect(await blobs[0]!.text()).toContain("Hourahine");
+        } finally {
+            click.mockRestore();
+            Object.assign(URL, { createObjectURL, revokeObjectURL });
+        }
+    });
 });
