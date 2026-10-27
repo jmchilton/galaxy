@@ -21,6 +21,7 @@ from galaxy.schema.comparisons import (
     ComparisonQueryBase,
     ComparisonSortBy,
     ComparisonTable,
+    OutputRunsQuery,
     StepRunsQuery,
 )
 from galaxy.schema.fields import DecodedDatabaseIdField
@@ -51,6 +52,14 @@ InstanceQueryParam = Annotated[
 StepLabelQueryParam = Annotated[
     str,
     Query(min_length=1, title="Step label", description="Label of the step to compare across invocations."),
+]
+
+OutputLabelsQueryParam = Annotated[
+    list[str] | None,
+    Query(
+        title="Output labels",
+        description="Only include these labelled workflow inputs and outputs; repeat the parameter for several.",
+    ),
 ]
 
 LIST_DESCRIPTION_SUFFIX = " A comma-separated list or repeated parameter."
@@ -120,5 +129,25 @@ class FastAPIComparisons:
             **comparison_params.model_dump(), workflow_id=workflow_id, step_label=step_label
         )
         table, total_matches = self.service.step_runs(trans, query, instance)
+        response.headers["total_matches"] = str(total_matches)
+        return table
+
+    @router.get(
+        "/api/workflows/{workflow_id}/output_runs",
+        summary="Compare a workflow's labelled inputs and outputs across its invocations.",
+    )
+    def output_runs(
+        self,
+        response: Response,
+        workflow_id: StoredWorkflowIDPathParam,
+        output_labels: OutputLabelsQueryParam = None,
+        instance: InstanceQueryParam = False,
+        comparison_params: ComparisonQueryBase = Depends(comparison_query_params),
+        trans: ProvidesUserContext = DependsOnTrans,
+    ) -> ComparisonTable:
+        query = OutputRunsQuery.model_construct(
+            **comparison_params.model_dump(), workflow_id=workflow_id, output_labels=output_labels
+        )
+        table, total_matches = self.service.output_runs(trans, query, instance)
         response.headers["total_matches"] = str(total_matches)
         return table
