@@ -203,6 +203,8 @@ class TestComparisonsApi(ApiTestCase):
             assert [row["version"] for row in rows] == [1, 0, 0]
             invocation_ids = [row["run"]["id"] for row in rows]
             assert invocation_ids[:2] == [rerun_id, summary.invocation_id]
+            all_invocations = self.workflow_populator.workflow_invocations(summary.workflow_id)
+            assert sorted(invocation_ids) == sorted(invocation["id"] for invocation in all_invocations)
             assert all(row["run"]["model"] == "WorkflowInvocation" for row in rows)
             assert table["query"]["kind"] == "step_runs"
             assert table["query"]["workflow_id"] == summary.workflow_id
@@ -261,7 +263,7 @@ class TestComparisonsApi(ApiTestCase):
             # metadata elements
             table = self._step_runs_table(summary.workflow_id, "second_cat", metadata_elements="data_lines")
             output_column = next(c for c in table["columns"] if c["key"] == "output:out_file1")
-            assert "data_lines" in output_column["metadata_keys"]
+            assert output_column["metadata_keys"] == ["data_lines", "dbkey"]
             assert table["rows"][0]["cells"]["output:out_file1"]["metadata"] == {"data_lines": 1}
 
             # instance=true takes the invocation's Workflow id
@@ -271,19 +273,10 @@ class TestComparisonsApi(ApiTestCase):
             assert [row["run"]["id"] for row in by_instance["rows"]] == invocation_ids
 
     @skip_without_tool("cat1")
-    def test_step_runs_after_workflow_rename(self):
-        with self.dataset_populator.test_history() as history_id:
-            summary = self._run_two_cat(history_id)
-            self._refactor(summary.workflow_id, {"action_type": "update_name", "name": "renamed workflow"})
-            self._rerun(summary)
-            table = self._step_runs_table(summary.workflow_id, "first_cat")
-            assert len(table["rows"]) == 2
-
-    @skip_without_tool("cat1")
     def test_versions_available_lists_invoked_versions(self):
         with self.dataset_populator.test_history() as history_id:
             summary = self._run_two_cat(history_id)
-            self._refactor(summary.workflow_id, {"action_type": "update_name", "name": "renamed workflow"})
+            self.workflow_populator.rename_workflow(summary.workflow_id, "renamed workflow")
             assert self._step_runs_table(summary.workflow_id, "second_cat")["versions_available"] == [0]
             assert self._output_runs_table(summary.workflow_id)["versions_available"] == [0]
             self._rerun(summary)
@@ -320,7 +313,11 @@ class TestComparisonsApi(ApiTestCase):
                 with self.dataset_populator.test_history() as other_history_id:
                     other_input = self.dataset_populator.new_dataset(other_history_id, content="other", wait=True)
                     for _ in range(2):
-                        self._invoke_and_wait(summary.workflow_id, other_history_id, {"input1": _hda(other_input)})
+                        self._invoke_and_wait(
+                            summary.workflow_id,
+                            other_history_id,
+                            {"input1": self.dataset_populator.ds_entry(other_input)},
+                        )
                     response = self._step_runs(summary.workflow_id, "first_cat")
                     assert response.headers["total_matches"] == "2"
                     rows = response.json()["rows"]
@@ -344,7 +341,9 @@ class TestComparisonsApi(ApiTestCase):
             with self._different_user(other_email):
                 with self.dataset_populator.test_history() as history_id:
                     workflow_id = self.workflow_populator.upload_yaml_workflow(WORKFLOW_TWO_CAT)
-                    self._invoke_and_wait(workflow_id, history_id, {"input1": _hda(owner_dataset)})
+                    self._invoke_and_wait(
+                        workflow_id, history_id, {"input1": self.dataset_populator.ds_entry(owner_dataset)}
+                    )
                     (row,) = self._step_runs_table(workflow_id, "first_cat")["rows"]
                     # the invocation copies the input into this history; permissions stay on the shared dataset
                     input_cell = row["cells"]["input:input1"]
@@ -364,7 +363,9 @@ class TestComparisonsApi(ApiTestCase):
             summary = self._run_two_cat(history_id)
         with self.dataset_populator.test_history() as second_history_id:
             second_input = self.dataset_populator.new_dataset(second_history_id, content="second", wait=True)
-            self._invoke_and_wait(summary.workflow_id, second_history_id, {"input1": _hda(second_input)})
+            self._invoke_and_wait(
+                summary.workflow_id, second_history_id, {"input1": self.dataset_populator.ds_entry(second_input)}
+            )
             self.dataset_populator.delete_history(history_id)
             rows = self._step_runs_table(summary.workflow_id, "first_cat")["rows"]
             assert [(row["history"]["id"], row["history"]["deleted"]) for row in rows] == [
@@ -416,16 +417,16 @@ class TestComparisonsApi(ApiTestCase):
         with self.dataset_populator.test_history() as history_id:
             hda = self.dataset_populator.new_dataset(history_id, content="paused\n", wait=True)
             workflow_id = self.workflow_populator.upload_yaml_workflow(WORKFLOW_PAUSE_THEN_CAT)
-            inputs = {"input1": _hda(hda)}
+            inputs = {"input1": self.dataset_populator.ds_entry(hda)}
             resumed_id = self.workflow_populator.invoke_workflow_and_assert_ok(
                 workflow_id, history_id, inputs, inputs_by="name"
             )
-            pause_step = wait_on(lambda: self._invocation_step(resumed_id, order_index=1), "pause step scheduled")
+            pause_step = self._wait_for_invocation_step(resumed_id, order_index=1)
             response = self._put(f"invocations/{resumed_id}/steps/{pause_step['id']}", {"action": True}, json=True)
             self._assert_status_code_is_ok(response)
             self.workflow_populator.wait_for_invocation_and_jobs(history_id, workflow_id, resumed_id)
             # the paused run is the only row of its version
-            self._refactor(workflow_id, {"action_type": "update_name", "name": "paused version"})
+            self.workflow_populator.rename_workflow(workflow_id, "paused version")
             paused_id = self.workflow_populator.invoke_workflow_and_assert_ok(
                 workflow_id, history_id, inputs, inputs_by="name"
             )
@@ -449,7 +450,7 @@ class TestComparisonsApi(ApiTestCase):
             assert [row["run"]["id"] for row in new_rows] == [paused_id]
 
             # a pause step has no job and is "scheduled" both while paused and once resumed; its action differs
-            wait_on(lambda: self._invocation_step(paused_id, order_index=1), "pause step reached")
+            self._wait_for_invocation_step(paused_id, order_index=1)
             pause_rows = {row["run"]["id"]: row for row in self._step_runs_table(workflow_id, "the_pause")["rows"]}
             pause_fields = ("state", "step_job", "step_type", "step_action")
             assert {
@@ -465,11 +466,11 @@ class TestComparisonsApi(ApiTestCase):
         with self.dataset_populator.test_history() as history_id:
             hda = self.dataset_populator.new_dataset(history_id, content="paused\n", wait=True)
             workflow_id = self.workflow_populator.upload_yaml_workflow(WORKFLOW_PAUSE_THEN_CAT)
-            inputs = {"input1": _hda(hda)}
+            inputs = {"input1": self.dataset_populator.ds_entry(hda)}
             paused_id = self.workflow_populator.invoke_workflow_and_assert_ok(
                 workflow_id, history_id, inputs, inputs_by="name"
             )
-            wait_on(lambda: self._invocation_step(paused_id, order_index=1), "pause step reached")
+            self._wait_for_invocation_step(paused_id, order_index=1)
             second_version_id = self.workflow_populator.upload_yaml_workflow(WORKFLOW_AFTER_PAUSE_TWO_INPUTS)
             second_version = self.workflow_populator.download_workflow(second_version_id)
             self._assert_status_code_is_ok(self.workflow_populator.update_workflow(workflow_id, second_version))
@@ -521,7 +522,9 @@ class TestComparisonsApi(ApiTestCase):
         with self.dataset_populator.test_history() as history_id:
             summary = self.workflow_populator.run_workflow(WORKFLOW_LABELLED_IO, history_id=history_id)
             hda = self.dataset_populator.new_dataset(history_id, content="other\n", wait=True)
-            rerun_id = self._invoke_and_wait(summary.workflow_id, history_id, {"input1": _hda(hda), "min_quality": 9})
+            rerun_id = self._invoke_and_wait(
+                summary.workflow_id, history_id, {"input1": self.dataset_populator.ds_entry(hda), "min_quality": 9}
+            )
 
             table = self._step_runs_table(summary.workflow_id, "min_quality")
             assert [(column["key"], column["role"]) for column in table["columns"]] == [
@@ -561,9 +564,13 @@ class TestComparisonsApi(ApiTestCase):
         with self.dataset_populator.test_history() as history_id:
             hda = self.dataset_populator.new_dataset(history_id, content="maybe\n", wait=True)
             workflow_id = self.workflow_populator.upload_yaml_workflow(WORKFLOW_MAYBE_CAT)
-            skipped_id = self._invoke_and_wait(workflow_id, history_id, {"input1": _hda(hda), "run_cat": False})
-            self._refactor(workflow_id, {"action_type": "update_name", "name": "second version"})
-            ran_id = self._invoke_and_wait(workflow_id, history_id, {"input1": _hda(hda), "run_cat": True})
+            skipped_id = self._invoke_and_wait(
+                workflow_id, history_id, {"input1": self.dataset_populator.ds_entry(hda), "run_cat": False}
+            )
+            self.workflow_populator.rename_workflow(workflow_id, "second version")
+            ran_id = self._invoke_and_wait(
+                workflow_id, history_id, {"input1": self.dataset_populator.ds_entry(hda), "run_cat": True}
+            )
 
             ran_row, skipped_row = self._step_runs_table(workflow_id, "maybe_cat")["rows"]
             assert (ran_row["run"]["id"], ran_row["version"]) == (ran_id, 1)
@@ -596,8 +603,8 @@ class TestComparisonsApi(ApiTestCase):
             )
             workflow_id = self.workflow_populator.upload_yaml_workflow(WORKFLOW_OPTIONAL_INPUT)
             without_id = self._invoke_and_wait(workflow_id, history_id, {})
-            self._refactor(workflow_id, {"action_type": "update_name", "name": "second version"})
-            with_id = self._invoke_and_wait(workflow_id, history_id, {"names": _hda(names)})
+            self.workflow_populator.rename_workflow(workflow_id, "second version")
+            with_id = self._invoke_and_wait(workflow_id, history_id, {"names": self.dataset_populator.ds_entry(names)})
 
             with_row, without_row = self._step_runs_table(workflow_id, "pick")["rows"]
             assert [(row["run"]["id"], row["version"]) for row in (with_row, without_row)] == [
@@ -613,9 +620,9 @@ class TestComparisonsApi(ApiTestCase):
         with self.dataset_populator.test_history() as history_id:
             hda = self.dataset_populator.new_dataset(history_id, content="inner\n", wait=True)
             workflow_id = self.workflow_populator.upload_yaml_workflow(WORKFLOW_MAYBE_SUBWORKFLOW)
-            inputs = {"input1": _hda(hda)}
+            inputs = {"input1": self.dataset_populator.ds_entry(hda)}
             skipped_id = self._invoke_and_wait(workflow_id, history_id, {**inputs, "run_inner": False})
-            self._refactor(workflow_id, {"action_type": "update_name", "name": "second version"})
+            self.workflow_populator.rename_workflow(workflow_id, "second version")
             ran_id = self._invoke_and_wait(workflow_id, history_id, {**inputs, "run_inner": True})
 
             table = self._step_runs_table(workflow_id, "maybe_inner")
@@ -636,14 +643,19 @@ class TestComparisonsApi(ApiTestCase):
     def test_tool_runs_multiple_data_input(self):
         with self.dataset_populator.test_history() as history_id:
             hdas = [self.dataset_populator.new_dataset(history_id, content=f"{i}\n", wait=True) for i in range(3)]
-            inputs = {"f1": {"batch": False, "values": [_hda(hda) for hda in hdas]}, "f2": _hda(hdas[0])}
+            inputs = {
+                "f1": {"batch": False, "values": [self.dataset_populator.ds_entry(hda) for hda in hdas]},
+                "f2": self.dataset_populator.ds_entry(hdas[0]),
+            }
             self.dataset_populator.run_tool_and_show_job("multi_data_param", inputs, history_id)
             list_id = self._list_from(
                 history_id, [{"name": f"el{i}", "src": "hda", "id": hda["id"]} for i, hda in enumerate(hdas[:2])]
             )
             # a reduced collection records its elements as f11, f12... too
             self.dataset_populator.run_tool_and_show_job(
-                "multi_data_param", {"f1": {"src": "hdca", "id": list_id}, "f2": _hda(hdas[0])}, history_id
+                "multi_data_param",
+                {"f1": {"src": "hdca", "id": list_id}, "f2": self.dataset_populator.ds_entry(hdas[0])},
+                history_id,
             )
 
             table = self._tool_runs_table("multi_data_param", history_id=history_id)
@@ -864,8 +876,7 @@ class TestComparisonsApi(ApiTestCase):
                 mapped = self.dataset_populator.run_tool(
                     "cat1", {"input1": {"batch": True, "values": [{"src": "hdca", "id": list_id}]}}, history_id
                 )
-                for job in mapped["jobs"]:
-                    self.dataset_populator.wait_for_job(job["id"], assert_ok=True)
+                self.dataset_populator.wait_for_jobs(mapped["jobs"], assert_ok=True)
                 plain = self.dataset_populator.run_tool(
                     "cat1", {"input1": {"src": "hda", "id": hdas[0]["id"]}}, history_id
                 )
@@ -890,7 +901,7 @@ class TestComparisonsApi(ApiTestCase):
                 assert output_cell["id"] == mapped["implicit_collections"][0]["id"]
                 assert (output_cell["type"], output_cell["element_count"]) == ("collection", 3)
 
-                # a batch matches a state filter when any member job does
+                # a batch matches the state filter by the state its row shows
                 assert self._tool_runs("cat1", history_id=history_id, states="ok").headers["total_matches"] == "2"
                 assert self._tool_runs("cat1", history_id=history_id, states="error").headers["total_matches"] == "0"
 
@@ -905,6 +916,7 @@ class TestComparisonsApi(ApiTestCase):
 
                 rows = self._tool_runs_table("cat1", history_id=history_id)["rows"]
                 assert len(rows) == 3
+                assert rows[0]["run"]["id"] == plain["jobs"][0]["id"]
                 assert rows[0]["via"] is None
                 vias = [row["via"] for row in rows[1:]]
                 assert {via["invocation_id"] for via in vias} == {summary.invocation_id}
@@ -937,8 +949,7 @@ class TestComparisonsApi(ApiTestCase):
                     mapped = self.dataset_populator.run_tool(
                         "cat1", {"input1": {"batch": True, "values": [{"src": "hdca", "id": list_id}]}}, history_id
                     )
-                    for job in mapped["jobs"]:
-                        self.dataset_populator.wait_for_job(job["id"], assert_ok=True)
+                    self.dataset_populator.wait_for_jobs(mapped["jobs"], assert_ok=True)
                     (row,) = self._tool_runs_table("cat1", history_id=history_id)["rows"]
                     assert row["cells"]["input:input1"]["id"] == list_id
             for action in ("unpublish", "disable_link_access"):
@@ -971,9 +982,12 @@ class TestComparisonsApi(ApiTestCase):
     def _output_runs_table(self, workflow_id: str, **params) -> dict[str, Any]:
         return self._output_runs(workflow_id, **params).json()
 
-    def _invocation_step(self, invocation_id: str, order_index: int) -> dict[str, Any] | None:
-        invocation = self.workflow_populator.get_invocation(invocation_id)
-        return next((step for step in invocation["steps"] if step["order_index"] == order_index), None)
+    def _wait_for_invocation_step(self, invocation_id: str, order_index: int) -> dict[str, Any]:
+        def step() -> dict[str, Any] | None:
+            invocation = self.workflow_populator.get_invocation(invocation_id)
+            return next((step for step in invocation["steps"] if step["order_index"] == order_index), None)
+
+        return wait_on(step, f"invocation step {order_index} scheduled")
 
     def _list_from(self, history_id: str, element_identifiers: list[dict[str, Any]]) -> str:
         response = self.dataset_collection_populator.create_list_in_history(
@@ -1013,7 +1027,3 @@ class TestComparisonsApi(ApiTestCase):
     def _relabel(self, workflow_id: str, old_label: str, new_label: str) -> None:
         action = {"action_type": "update_step_label", "step": {"label": old_label}, "label": new_label}
         self._refactor(workflow_id, action)
-
-
-def _hda(dataset: dict[str, Any]) -> dict[str, str]:
-    return {"src": "hda", "id": dataset["id"]}
