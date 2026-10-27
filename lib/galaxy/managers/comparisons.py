@@ -270,26 +270,9 @@ class ComparisonsManager:
 
     def _invocation_io(self, invocation_ids: list[int]) -> dict[int, dict[str, ItemRef | AnyComparisonCell]]:
         """Labelled inputs, parameters and outputs of each invocation; the first output by id wins a label."""
-        io: dict[int, dict[str, ItemRef | AnyComparisonCell]] = defaultdict(dict)
+        io = self._request_inputs(invocation_ids)
         if not invocation_ids:
             return io
-        input_sources: list[tuple[Any, str, Callable[[Any], ItemRef | AnyComparisonCell]]] = [
-            (WorkflowRequestToInputDatasetAssociation.dataset_id, "input", lambda v: ItemRef("hda", v)),
-            (WorkflowRequestToInputDatasetCollectionAssociation.dataset_collection_id, "input", _hdca_ref),
-            (WorkflowRequestInputStepParameter.parameter_value, "parameter", _parameter_cell),
-        ]
-        for value_column, role, to_value in input_sources:
-            assoc = value_column.class_
-            stmt = (
-                select(assoc.workflow_invocation_id, WorkflowStep.label, value_column)
-                .join(WorkflowStep, WorkflowStep.id == assoc.workflow_step_id)
-                .where(assoc.workflow_invocation_id.in_(invocation_ids), WorkflowStep.label.is_not(None))
-                .order_by(assoc.id)
-            )
-            for invocation_id, label, value in self.sa_session.execute(stmt):
-                if role == "input" and value is None:
-                    continue
-                io[invocation_id].setdefault(f"{role}:{label}", to_value(value))
         output_sources: list[tuple[Any, Callable[[Any], ItemRef | AnyComparisonCell]]] = [
             (WorkflowInvocationOutputDatasetAssociation.dataset_id, lambda v: ItemRef("hda", v)),
             (WorkflowInvocationOutputDatasetCollectionAssociation.dataset_collection_id, _hdca_ref),
@@ -312,6 +295,34 @@ class ComparisonsManager:
         for (invocation_id, column_key), (_, output_value) in outputs.items():
             io[invocation_id][column_key] = output_value
         return io
+
+    def _request_inputs(
+        self, invocation_ids: list[int], step_ids: Collection[int] | None = None
+    ) -> dict[int, dict[str, ItemRef | AnyComparisonCell]]:
+        """Labelled input steps' datasets, collections and values each invocation was requested with."""
+        inputs: dict[int, dict[str, ItemRef | AnyComparisonCell]] = defaultdict(dict)
+        if not invocation_ids:
+            return inputs
+        sources: list[tuple[Any, str, Callable[[Any], ItemRef | AnyComparisonCell]]] = [
+            (WorkflowRequestToInputDatasetAssociation.dataset_id, "input", lambda v: ItemRef("hda", v)),
+            (WorkflowRequestToInputDatasetCollectionAssociation.dataset_collection_id, "input", _hdca_ref),
+            (WorkflowRequestInputStepParameter.parameter_value, "parameter", _parameter_cell),
+        ]
+        for value_column, role, to_value in sources:
+            assoc = value_column.class_
+            stmt = (
+                select(assoc.workflow_invocation_id, WorkflowStep.label, value_column)
+                .join(WorkflowStep, WorkflowStep.id == assoc.workflow_step_id)
+                .where(assoc.workflow_invocation_id.in_(invocation_ids), WorkflowStep.label.is_not(None))
+                .order_by(assoc.id)
+            )
+            if step_ids is not None:
+                stmt = stmt.where(assoc.workflow_step_id.in_(step_ids))
+            for invocation_id, label, value in self.sa_session.execute(stmt):
+                if role == "input" and value is None:
+                    continue
+                inputs[invocation_id].setdefault(f"{role}:{label}", to_value(value))
+        return inputs
 
     def tool_runs(self, access: ComparisonAccess, query: ToolRunsQuery) -> tuple[ComparisonTable, int]:
         """One row per submission of a tool: a plain job, or a mapped batch shown by its first job."""
@@ -527,14 +538,16 @@ class ComparisonsManager:
         )
         job_inputs, icj_inputs = self._submission_inputs(jobs, icjs)
         subworkflow_invocations = self._subworkflow_invocations(invocation_ids, step_ids)
+        request_inputs = self._request_inputs(invocation_ids, step_ids)
 
-        io_by_invocation: dict[int, dict[str, ItemRef]] = {}
+        io_by_invocation: dict[int, dict[str, ItemRef | AnyComparisonCell]] = {}
         declared: dict[int, dict[str, ColumnSpec]] = defaultdict(dict)
         for invocation in page:
             version = version_map[invocation.workflow_id]
             step = steps.get(invocation.id)
-            io: dict[str, ItemRef] = {}
-            if step:
+            # an input step's own input; its step output is the same item
+            io = dict(request_inputs.get(invocation.id, {}))
+            if step and step_types[invocation.workflow_id] not in INPUT_STEP_TYPES:
                 job = jobs.get(step.job_id) if step.job_id else None
                 icj = icjs.get(step.implicit_collection_jobs_id) if step.implicit_collection_jobs_id else None
                 inputs = job_inputs.get(job.id, {}) if job else icj_inputs.get(icj.id, {}) if icj else {}
@@ -547,7 +560,7 @@ class ComparisonsManager:
         newest_version = max(declared) if declared else 0
         columns = align_columns({v: list(specs.values()) for v, specs in declared.items()}, newest_version)
         item_cells = self.cell_builder.item_cells(
-            (ref for io in io_by_invocation.values() for ref in io.values()),
+            (ref for io in io_by_invocation.values() for ref in io.values() if isinstance(ref, ItemRef)),
             access,
             query.metadata_elements,
             query.inline_expression_values,
@@ -795,9 +808,10 @@ def _keyed(role: str, items: dict[str, ItemRef]) -> dict[str, ItemRef]:
 
 
 def _column_spec(key: str) -> ColumnSpec:
-    """Column of a role-prefixed key from ``_keyed``."""
+    """Column of a role-prefixed key from ``_keyed`` or ``_request_inputs``."""
     role, name = key.split(":", 1)
-    return ColumnSpec(key=key, label=name, role="input" if role == "input" else "output")
+    column_role: ComparisonColumnRole = "parameter" if role == "parameter" else "input" if role == "input" else "output"
+    return ColumnSpec(key=key, label=name, role=column_role)
 
 
 def _step_state(
