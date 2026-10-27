@@ -500,6 +500,19 @@ class TestHDASerializer(HDATestCase):
         get_file_name.assert_called_once()
         assert result["bam_index"] == "/objects/bam_index.dat"
 
+    def test_serialize_metadata_tabular_keys(self):
+        hda = self._create_vanilla_hda(extension="tabular")
+        result = self.hda_serializer.serialize_metadata(hda, "metadata")
+        assert result == {
+            "dbkey": "?",
+            "data_lines": 0,
+            "comment_lines": 0,
+            "columns": 0,
+            "column_types": [],
+            "column_names": [],
+            "delimiter": "\t",
+        }
+
     def test_serializing_inaccessible(self):
         owner = self.user_manager.create(**user2_data)
         non_owner = self.user_manager.create(**user3_data)
