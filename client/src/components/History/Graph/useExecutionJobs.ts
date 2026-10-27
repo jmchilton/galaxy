@@ -1,4 +1,4 @@
-import { computed, type Ref, ref, watch } from "vue";
+import { type Ref, ref, watch } from "vue";
 
 import { GalaxyApi } from "@/api";
 
@@ -78,11 +78,4 @@ export function useExecutionJobs(source: Ref<ExecutionJobsSource | undefined>) {
     );
 
     return { jobs, loading, error };
-}
-
-/** Loads the jobs produced by a single tool execution (tool_request). */
-export function useToolExecutionJobs(toolExecutionId: Ref<string>) {
-    return useExecutionJobs(
-        computed(() => (toolExecutionId.value ? { toolRequestId: toolExecutionId.value } : undefined)),
-    );
 }
