@@ -37,6 +37,10 @@ ComparisonSortBy = Literal["create_time", "update_time"]
 MissingReason = Literal["not_in_version", "skipped", "not_run_yet", "no_output", "inaccessible"]
 ComparisonColumnRole = Literal["input", "output", "parameter"]
 ReusedState = Literal["no", "partial", "yes"]
+# keys of galaxy.workflow.modules.module_types
+WorkflowStepModuleType = Literal[
+    "data_input", "data_collection_input", "parameter_input", "pause", "pick_value", "tool", "subworkflow"
+]
 
 METADATA_ELEMENT_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -88,7 +92,9 @@ class StepRunsQuery(ComparisonQueryBase):
 class OutputRunsQuery(ComparisonQueryBase):
     kind: Literal["output_runs"] = "output_runs"
     workflow_id: DecodedDatabaseIdField = Field(..., description="The StoredWorkflow id.")
-    output_labels: list[str] | None = Field(None, description="Only include these labelled outputs and inputs.")
+    output_labels: list[str] | None = Field(
+        None, description="Only include these labelled outputs; labelled inputs and parameters are always included."
+    )
 
 
 class ToolRunsQuery(ComparisonQueryBase):
@@ -186,13 +192,17 @@ class ComparisonColumn(Model):
         None, description="Versions on the page that have this column; null when every version has it."
     )
     duplicate: bool = Field(False, description="Some version declares more than one item with this label.")
-    metadata_keys: list[str] = Field([], description="Scalar metadata element names seen in this column's datasets.")
+    metadata_keys: list[str] = Field(
+        [], description="Scalar metadata element names declared by the datatypes of this column's datasets, set or not."
+    )
 
 
 class ComparisonRow(Model):
     run: AnyRunRef
     step_job: AnyStepJobRef | None = Field(None, description="The job or mapped batch that ran the compared step.")
     subworkflow_invocation_id: EncodedDatabaseIdField | None = None
+    step_type: WorkflowStepModuleType | None = Field(None, description="Module type of the compared step in this run.")
+    step_action: bool | None = Field(None, description="A pause step's review decision; null until reviewed.")
     via: WorkflowRunVia | None = Field(None, description="The invocation a tool run belongs to.")
     create_time: datetime
     update_time: datetime
@@ -210,3 +220,6 @@ class ComparisonTable(Model):
     columns: list[ComparisonColumn]
     rows: list[ComparisonRow]
     tool_versions_available: list[str] | None = None
+    output_labels_available: list[str] | None = Field(
+        None, description="Output labels of the page's workflow versions, whatever `output_labels` selects."
+    )
