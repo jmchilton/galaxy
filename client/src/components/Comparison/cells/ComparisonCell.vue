@@ -5,6 +5,7 @@ import type { ComparisonCell, ComparisonRow } from "@/api/comparisons";
 
 import { type CellDisplay, metadataKeyOf } from "../comparisonUtils";
 
+import DatasetListCell from "./DatasetListCell.vue";
 import ItemCell from "./ItemCell.vue";
 import MetadataCell from "./MetadataCell.vue";
 import MissingCell from "./MissingCell.vue";
@@ -33,6 +34,13 @@ const metadataElement = computed(() => metadataKeyOf(props.display));
         </ItemPopoverLink>
         <ValueCell v-else :value="cell.value" />
     </template>
+    <DatasetListCell
+        v-else-if="cell.type === 'dataset_list'"
+        :cell="cell"
+        :row="row"
+        :display="display"
+        :requested-metadata="requestedMetadata"
+        :loading="loading" />
     <MetadataCell
         v-else-if="metadataElement"
         :cell="cell"

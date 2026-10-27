@@ -31,6 +31,10 @@ function cellIdentity(
     if (cell.type === "value") {
         return `value:${stableStringify(cell.value)}`;
     }
+    if (cell.type === "dataset_list") {
+        const items = cell.items.map((item) => cellIdentity(item, column, display));
+        return items.includes(UNCOMPARED) ? UNCOMPARED : `list:${JSON.stringify(items)}`;
+    }
     const element = metadataKeyOf(display);
     if (element) {
         return cell.type === "dataset"

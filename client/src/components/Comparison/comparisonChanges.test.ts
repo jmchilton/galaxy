@@ -54,6 +54,19 @@ describe("compareCells", () => {
         expect(compareCells(notRun, notRun, OUTPUT, "link")).toBe("same");
         expect(compareCells(undefined, dataset(), INPUT, "link")).toBe("differs");
     });
+
+    it("compares a multiple input's datasets in order", () => {
+        const list = (...items: DatasetCell[]): ComparisonCell => ({ type: "dataset_list", items });
+        const [a, b] = [dataset({ id: "a" }), dataset({ id: "b" })];
+        expect(compareCells(list(a, b), list(a, b), INPUT, "link")).toBe("same");
+        expect(compareCells(list(a, b), list(b, a), INPUT, "link")).toBe("differs");
+        expect(compareCells(list(a, b), list(a, b, b), INPUT, "link")).toBe("differs");
+        const lines = (n: number) => dataset({ metadata: { data_lines: n } });
+        expect(compareCells(list(lines(1), lines(2)), list(lines(1), lines(2)), INPUT, "meta:data_lines")).toBe("same");
+        expect(compareCells(list(lines(1), lines(2)), list(lines(1), lines(3)), INPUT, "meta:data_lines")).toBe(
+            "differs",
+        );
+    });
 });
 
 describe("compareMeta", () => {
