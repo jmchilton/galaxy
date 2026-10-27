@@ -2,24 +2,23 @@ import { getLocalVue } from "@tests/vitest/helpers";
 import { mount } from "@vue/test-utils";
 import { describe, expect, it, vi } from "vitest";
 
-import type { ComparisonTable as Table, DatasetCell } from "@/api/comparisons";
+import type { DatasetCell } from "@/api/comparisons";
 import { downloadBlob } from "@/utils/download";
 
-import STEP_RUNS from "./test-data/step_runs.json";
+import { ITEM_LINK_STUB, STEP_RUNS_TABLE } from "./test-utils";
 
 import ComparisonTable from "./ComparisonTable.vue";
 import ListHeader from "@/components/Common/ListHeader.vue";
 
 vi.mock("@/utils/download", () => ({ downloadBlob: vi.fn() }));
 
-const TABLE = STEP_RUNS as unknown as Table;
+const TABLE = STEP_RUNS_TABLE;
 const ALL_COLUMNS = ["version", "state", "reused", "history", ...TABLE.columns.map((c) => c.key)];
 const DETAIL_STUB = {
     name: "ComparisonRowDetail",
     props: ["row", "columns", "query", "currentJobId"],
     template: "<div />",
 };
-const LINK_STUB = { name: "ItemPopoverLink", props: ["itemId", "itemSrc", "to"], template: "<a><slot /></a>" };
 const DIFF_STUB = {
     name: "ComparisonDiff",
     props: ["rows", "columns", "query", "displays", "visibleColumns", "currentRunId", "requestedMetadata", "loading"],
@@ -36,7 +35,7 @@ function mountTable(props: Record<string, unknown> = {}) {
             stubs: {
                 ...localVue.stubs,
                 ComparisonRowDetail: DETAIL_STUB,
-                ItemPopoverLink: LINK_STUB,
+                ItemPopoverLink: ITEM_LINK_STUB,
                 ComparisonDiff: DIFF_STUB,
             },
         },
@@ -77,11 +76,15 @@ describe("ComparisonTable", () => {
         expect(rows[0]!.text()).toContain("not run yet");
         expect(rows[0]!.text()).toContain("v2");
         expect(
-            rows[1]!.findAllComponents(LINK_STUB).map((l: { props: (key: string) => unknown }) => l.props("itemSrc")),
+            rows[1]!
+                .findAllComponents(ITEM_LINK_STUB)
+                .map((l: { props: (key: string) => unknown }) => l.props("itemSrc")),
         ).toEqual(["hda", "hda"]);
         // mapped step: collections and the batch note
         expect(
-            rows[4]!.findAllComponents(LINK_STUB).map((l: { props: (key: string) => unknown }) => l.props("itemSrc")),
+            rows[4]!
+                .findAllComponents(ITEM_LINK_STUB)
+                .map((l: { props: (key: string) => unknown }) => l.props("itemSrc")),
         ).toEqual(["hdca", "hdca"]);
         expect(rows[4]!.text()).toContain("mapped over 3 jobs");
         expect(rows[4]!.text()).toContain("partly reused");
