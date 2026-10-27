@@ -211,6 +211,20 @@ class TestComparisonsManager(BaseTestCase):
             assert cell.type == "dataset"
             assert cell.id == self.app.security.encode_id(first_outputs[row.run.id])
 
+    def test_output_runs_new_filter_matches_unset_state(self):
+        stored_workflow, first_outputs = self._stored_workflow_with_output_runs(2)
+        unset_id, scheduled_id = first_outputs
+        invocation = self.session.get(model.WorkflowInvocation, self.app.security.decode_id(unset_id))
+        assert invocation
+        invocation.state = None
+        self.session.commit()
+        access = _access(self.trans.user)
+        for state, expected in (("new", unset_id), ("scheduled", scheduled_id)):
+            query = OutputRunsQuery.model_construct(workflow_id=stored_workflow.id, states=[state])
+            table, total = self.comparisons_manager.output_runs(access, stored_workflow.id, query)
+            assert [(row.run.id, row.state) for row in table.rows] == [(expected, state)]
+            assert total == 1
+
     def _output_runs_statement_count(self, invocations: int, metadata: bool) -> int:
         stored_workflow, _ = self._stored_workflow_with_output_runs(invocations)
         stored_workflow_id = stored_workflow.id

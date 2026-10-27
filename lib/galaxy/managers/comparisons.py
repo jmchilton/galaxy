@@ -33,6 +33,7 @@ from galaxy.managers.comparison_columns import (
     keyed_io,
 )
 from galaxy.managers.comparison_queries import (
+    invocation_state_predicate,
     invoked_workflows_stmt,
     output_labels_stmt,
     selected_versions,
@@ -152,7 +153,7 @@ class ComparisonsManager:
     ) -> tuple[ComparisonTable, int]:
         """One row per invocation of any version, with labelled workflow inputs and outputs as columns."""
         version_map = self.records.version_map(stored_workflow_id)
-        state_predicate = WorkflowInvocation.state.in_(query.states) if query.states else None
+        state_predicate = invocation_state_predicate(query.states) if query.states else None
         workflow_ids = selected_versions(version_map, query.versions)
         page, total = self._page_invocations(access.user_id, workflow_ids, query, state_predicate)
         columns, rows = self._output_rows(access, page, query, version_map)

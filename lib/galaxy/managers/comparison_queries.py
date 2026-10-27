@@ -37,7 +37,10 @@ from galaxy.model import (
     WorkflowOutput,
     WorkflowStep,
 )
-from galaxy.schema.states import JobState
+from galaxy.schema.states import (
+    InvocationState,
+    JobState,
+)
 from galaxy.util.tool_version import versionless_tool_id
 
 
@@ -70,6 +73,14 @@ def step_state_predicate(step_ids: list[int], states: list[str]) -> ColumnElemen
     if JobState.NEW in states:
         clauses.append(~select(wis.id).where(step_of_invocation).exists())
     return or_(*clauses)
+
+
+def invocation_state_predicate(states: list[str]) -> ColumnElement[bool]:
+    """Invocations in one of ``states``; an unset state shows as ``new``."""
+    predicate: ColumnElement[bool] = WorkflowInvocation.state.in_(states)
+    if InvocationState.NEW in states:
+        predicate = or_(predicate, WorkflowInvocation.state.is_(None))
+    return predicate
 
 
 def submission_state_predicate(states: list[str]) -> ColumnElement[bool]:
