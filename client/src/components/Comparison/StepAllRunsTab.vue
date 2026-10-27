@@ -36,7 +36,9 @@ const title = computed(() => {
 
 <template>
     <!-- Lazy, so step cards don't fetch runs until the tab is opened. -->
+    <!-- The title prop is the tab's tooltip; the label stays short so a disabled tab doesn't wrap. -->
     <GTab lazy title-item-class="invocation-step-all-runs-tab" :disabled="inSubworkflow || !stepLabel" :title="title">
+        <template v-slot:title>All runs</template>
         <StepRunsTab
             :workflow-id="invocation.workflow_id"
             instance

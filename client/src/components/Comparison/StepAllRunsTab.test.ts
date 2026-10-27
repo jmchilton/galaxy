@@ -52,7 +52,10 @@ describe("StepAllRunsTab", () => {
         const wrapper = mountInTabs({ graphLabel: null, invocationLabel: null });
         await wrapper.vm.$nextTick();
         const link = wrapper.find(".invocation-step-all-runs-tab .nav-link");
-        expect(link.text()).toBe("Label this step to compare its runs");
+        expect(link.text()).toBe("All runs");
+        expect(wrapper.find(".invocation-step-all-runs-tab").attributes("title")).toBe(
+            "Label this step to compare its runs",
+        );
         expect(link.attributes("aria-disabled")).toBe("true");
         await link.trigger("click");
         expect(wrapper.findComponent(RUNS_STUB).exists()).toBe(false);
@@ -62,7 +65,10 @@ describe("StepAllRunsTab", () => {
         const wrapper = mountInTabs({ graphLabel: "count_reads", hidden: true });
         await wrapper.vm.$nextTick();
         const link = wrapper.find(".invocation-step-all-runs-tab .nav-link");
-        expect(link.text()).toBe("Steps inside a subworkflow can't be compared across runs yet");
+        expect(link.text()).toBe("All runs");
+        expect(wrapper.find(".invocation-step-all-runs-tab").attributes("title")).toBe(
+            "Steps inside a subworkflow can't be compared across runs yet",
+        );
         expect(link.attributes("aria-disabled")).toBe("true");
         await link.trigger("click");
         expect(wrapper.findComponent(RUNS_STUB).exists()).toBe(false);
