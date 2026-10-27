@@ -151,3 +151,25 @@ describe("GTable sorting", () => {
         expect(wrapper.emitted("sort-changed")).toBeUndefined();
     });
 });
+
+describe("GTable row details", () => {
+    it("tells cell slots whether their row's details are showing", async () => {
+        const wrapper = mount(GTable as object, {
+            props: { items, fields: [{ key: "name" }] },
+            slots: {
+                "cell(name)": `<template #cell(name)="{ item, detailsShowing, toggleDetails }">
+                    <button :aria-expanded="String(detailsShowing)" @click="toggleDetails">{{ item.name }}</button>
+                </template>`,
+                "row-details": `<template #row-details="{ item }"><span class="details">{{ item.name }}</span></template>`,
+            },
+        });
+        const expanded = () => wrapper.findAll("tbody button").map((b) => b.attributes("aria-expanded"));
+
+        expect(expanded()).toEqual(["false", "false"]);
+        await wrapper.findAll("tbody button")[1]!.trigger("click");
+        expect(expanded()).toEqual(["false", "true"]);
+        expect(wrapper.get(".details").text()).toBe("second");
+        await wrapper.findAll("tbody button")[1]!.trigger("click");
+        expect(expanded()).toEqual(["false", "false"]);
+    });
+});
