@@ -153,10 +153,13 @@ class ComparisonsManager:
         step_ids = [step_id for step_id, _ in steps_by_workflow.values()]
         step_types = {workflow_id: step_type for workflow_id, (_, step_type) in steps_by_workflow.items()}
         state_predicate = _step_state_predicate(step_ids, query.states) if query.states else None
-        page, total = self._page_invocations(access.user_id, list(steps_by_workflow), query, state_predicate)
         version_map = self._version_map(stored_workflow_id)
+        workflow_ids = _selected_versions({wid: version_map[wid] for wid in steps_by_workflow}, query.versions)
+        page, total = self._page_invocations(access.user_id, workflow_ids, query, state_predicate)
         columns, rows = self._step_rows(access, page, step_ids, step_types, query, version_map)
-        return ComparisonTable(query=query, columns=columns, rows=rows), total
+        versions_available = sorted(version_map[workflow_id] for workflow_id in steps_by_workflow)
+        table = ComparisonTable(query=query, columns=columns, rows=rows, versions_available=versions_available)
+        return table, total
 
     def output_runs(
         self, access: ComparisonAccess, stored_workflow_id: int, query: OutputRunsQuery
@@ -164,10 +167,17 @@ class ComparisonsManager:
         """One row per invocation of any version, with labelled workflow inputs and outputs as columns."""
         version_map = self._version_map(stored_workflow_id)
         state_predicate = WorkflowInvocation.state.in_(query.states) if query.states else None
-        page, total = self._page_invocations(access.user_id, list(version_map), query, state_predicate)
+        workflow_ids = _selected_versions(version_map, query.versions)
+        page, total = self._page_invocations(access.user_id, workflow_ids, query, state_predicate)
         columns, rows = self._output_rows(access, page, query, version_map)
         output_labels = self._invoked_output_labels(access.user_id, version_map)
-        table = ComparisonTable(query=query, columns=columns, rows=rows, output_labels_available=output_labels)
+        table = ComparisonTable(
+            query=query,
+            columns=columns,
+            rows=rows,
+            output_labels_available=output_labels,
+            versions_available=sorted(version_map.values()),
+        )
         return table, total
 
     def _invoked_output_labels(self, user_id: int, version_map: dict[int, int]) -> list[str]:
@@ -655,6 +665,11 @@ class ComparisonsManager:
         for invocation_id, subworkflow_invocation_id in self.sa_session.execute(stmt):
             subworkflow_invocations[invocation_id] = subworkflow_invocation_id
         return subworkflow_invocations
+
+
+def _selected_versions(version_map: Mapping[int, int], versions: list[int] | None) -> list[int]:
+    """Workflow ids of ``version_map`` whose 0-based version is in ``versions``; all of them for None."""
+    return [workflow_id for workflow_id, version in version_map.items() if versions is None or version in versions]
 
 
 def _step_state_predicate(step_ids: list[int], states: list[str]) -> ColumnElement[bool]:
