@@ -16,11 +16,16 @@ const BATCH_STUB = {
     template: "<div />",
 };
 const ITEM_STUB = { name: "GenericHistoryItem", props: ["itemId", "itemSrc"], template: "<div />" };
+const PARAMS_STUB = {
+    name: "JobParametersDiff",
+    props: ["jobIdA", "jobIdB", "labelA", "labelB", "onlyDifferences"],
+    template: "<div />",
+};
 
-function mountDetail(row: ComparisonRow, query: ComparisonQuery = TABLE.query) {
+function mountDetail(row: ComparisonRow, query: ComparisonQuery = TABLE.query, props: Record<string, unknown> = {}) {
     const localVue = getLocalVue();
     return mount(ComparisonRowDetail as object, {
-        props: { row, columns: TABLE.columns, query },
+        props: { row, columns: TABLE.columns, query, ...props },
         global: {
             ...localVue,
             stubs: {
@@ -28,6 +33,7 @@ function mountDetail(row: ComparisonRow, query: ComparisonQuery = TABLE.query) {
                 JobDetailsTabs: JOB_TABS_STUB,
                 ToolExecutionJobs: BATCH_STUB,
                 GenericHistoryItem: ITEM_STUB,
+                JobParametersDiff: PARAMS_STUB,
             },
         },
     });
@@ -127,5 +133,35 @@ describe("ComparisonRowDetail", () => {
         const wrapper = mountDetail(row, query);
         expect(wrapper.findComponent(JOB_TABS_STUB).exists()).toBe(false);
         expect(wrapper.text()).toContain("no single job");
+    });
+});
+
+describe("ComparisonRowDetail parameters against the run being viewed", () => {
+    const CURRENT_JOB = TABLE.rows[1]!.step_job!.id;
+
+    it("diffs this run's job against the viewed run's, every parameter shown", () => {
+        const row = TABLE.rows[3]!;
+        const params = mountDetail(row, TABLE.query, { currentJobId: CURRENT_JOB }).findComponent(PARAMS_STUB);
+        expect(params.props("jobIdA")).toBe(row.step_job!.id);
+        expect(params.props("jobIdB")).toBe(CURRENT_JOB);
+        expect(params.props("onlyDifferences")).toBe(false);
+    });
+
+    it("diffs a batch by its first job, and says so", () => {
+        const wrapper = mountDetail(TABLE.rows[4]!, TABLE.query, { currentJobId: CURRENT_JOB });
+        expect(wrapper.findComponent(PARAMS_STUB).props("jobIdA")).toBe("cb227cec8ca83994");
+        expect(wrapper.find(".comparison-row-detail-parameters").text()).toContain("job 1 of the batch");
+    });
+
+    it("has nothing to diff for the viewed run, without a viewed run, or for a run without a job", () => {
+        expect(
+            mountDetail(TABLE.rows[1]!, TABLE.query, { currentJobId: CURRENT_JOB })
+                .find(".comparison-row-detail-parameters")
+                .exists(),
+        ).toBe(false);
+        expect(mountDetail(TABLE.rows[3]!).findComponent(PARAMS_STUB).exists()).toBe(false);
+        expect(
+            mountDetail(TABLE.rows[0]!, TABLE.query, { currentJobId: CURRENT_JOB }).findComponent(PARAMS_STUB).exists(),
+        ).toBe(false);
     });
 });
