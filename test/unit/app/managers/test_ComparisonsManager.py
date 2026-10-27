@@ -102,6 +102,26 @@ class TestComparisonsManagerStatementCount(BaseTestCase):
         (row,) = table.rows
         assert row.cells["input:foreign"].type == "dataset"
 
+    def test_multiple_input_members_checked_for_access(self):
+        user = self.trans.user
+        history = model.History(name="multiple input", user=user)
+        self.session.add(history)
+        self.tool_id = "multiple_input_tool"
+        job = self._job(history, user)
+        own, foreign = self._hda(history), self._private_hda(self._foreign_private_history())
+        for name, hda in (("f1", own), ("f11", own), ("f12", foreign)):
+            job.add_input_dataset(name, hda)
+        self.session.add(job)
+        self.session.commit()
+        query = ToolRunsQuery.model_construct(tool_id=self.tool_id, include_workflow_jobs=True)
+        table, _ = self.comparisons_manager.tool_runs(_access(user), query)
+        (row,) = table.rows
+        cell = row.cells["input:f1"]
+        assert cell.type == "dataset_list"
+        assert [item.type for item in cell.items] == ["dataset", "missing"]
+        assert cell.items[0].id == self.app.security.encode_id(own.id)
+        assert cell.items[1].model_dump() == {"type": "missing", "reason": "inaccessible"}
+
     def _tool_runs_statement_count(self, submissions: int, mapped: bool, metadata: bool) -> int:
         self.tool_id = f"compared_{submissions}_{mapped}_{metadata}"
         self._stored_workflow_with_runs(submissions, mapped)

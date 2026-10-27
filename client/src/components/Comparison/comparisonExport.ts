@@ -40,6 +40,9 @@ export function cellText(
     if (cell.type === "value") {
         return valueText(cell.value);
     }
+    if (cell.type === "dataset_list") {
+        return cell.items.map((item) => cellText(item, row, display)).join("; ");
+    }
     const element = metadataKeyOf(display);
     if (element) {
         if (cell.type === "collection") {

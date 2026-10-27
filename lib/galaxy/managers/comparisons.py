@@ -5,12 +5,16 @@ from collections.abc import (
     Callable,
     Collection,
     Container,
+    Iterable,
+    Iterator,
     Mapping,
 )
 from datetime import datetime
 from typing import (
     Any,
     NamedTuple,
+    TypeAlias,
+    TypeVar,
 )
 
 from sqlalchemy import (
@@ -33,6 +37,7 @@ from galaxy.managers.comparison_cells import (
     ImplicitCollectionJobsRecord,
     ItemCell,
     ItemRef,
+    ItemRefs,
     JobRecord,
 )
 from galaxy.managers.comparison_columns import (
@@ -71,6 +76,7 @@ from galaxy.schema.comparisons import (
     ComparisonQueryBase,
     ComparisonRow,
     ComparisonTable,
+    DatasetListCell,
     HistoryRef,
     ImplicitCollectionJobsRunRef,
     InvocationRunRef,
@@ -92,6 +98,8 @@ from galaxy.tool_util.version import parse_tool_version
 from galaxy.util.tool_version import versionless_tool_id
 
 INPUT_STEP_TYPES = ("data_input", "data_collection_input", "parameter_input")
+IoValue: TypeAlias = ItemRef | ItemRefs | AnyComparisonCell
+IoValueT = TypeVar("IoValueT")
 NOT_SCHEDULED_INVOCATION_STATES = (
     InvocationState.NEW,
     InvocationState.READY,
@@ -215,7 +223,7 @@ class ComparisonsManager:
             for invocation_id, io in self._invocation_io([invocation.id for invocation in page]).items()
         }
         item_cells = self.cell_builder.item_cells(
-            (value for io in io_by_invocation.values() for value in io.values() if isinstance(value, ItemRef)),
+            _item_refs(io_by_invocation.values()),
             access,
             query.metadata_elements,
             query.inline_expression_values,
@@ -386,7 +394,7 @@ class ComparisonsManager:
         icj_outputs = self.cell_builder.implicit_collection_outputs(list(icjs))
         via = self._workflow_runs_via(list(jobs), list(icjs))
 
-        io_by_row: list[dict[str, ItemRef]] = []
+        io_by_row: list[dict[str, ItemRef | ItemRefs]] = []
         specs: dict[str, ColumnSpec] = {}
         declared: dict[str | None, set[str]] = defaultdict(set)
         for row in page:
@@ -405,7 +413,7 @@ class ComparisonsManager:
                 specs.setdefault(key, _column_spec(key))
         columns = align_columns({0: list(specs.values())}, 0)
         item_cells = self.cell_builder.item_cells(
-            (ref for io in io_by_row for ref in io.values()),
+            _item_refs(io_by_row),
             access,
             query.metadata_elements,
             query.inline_expression_values,
@@ -537,13 +545,13 @@ class ComparisonsManager:
         subworkflow_invocations = self._subworkflow_invocations(invocation_ids, step_ids)
         request_inputs = self._request_inputs(invocation_ids, step_ids)
 
-        io_by_invocation: dict[int, dict[str, ItemRef | AnyComparisonCell]] = {}
+        io_by_invocation: dict[int, dict[str, IoValue]] = {}
         declared: dict[int, dict[str, ColumnSpec]] = defaultdict(dict)
         for invocation in page:
             version = version_map[invocation.workflow_id]
             step = steps.get(invocation.id)
             # an input step's own input; its step output is the same item
-            io = dict(request_inputs.get(invocation.id, {}))
+            io: dict[str, IoValue] = dict(request_inputs.get(invocation.id, {}))
             if step and step_types[invocation.workflow_id] not in INPUT_STEP_TYPES:
                 job = jobs.get(step.job_id) if step.job_id else None
                 icj = icjs.get(step.implicit_collection_jobs_id) if step.implicit_collection_jobs_id else None
@@ -557,7 +565,7 @@ class ComparisonsManager:
         newest_version = max(declared) if declared else 0
         columns = align_columns({v: list(specs.values()) for v, specs in declared.items()}, newest_version)
         item_cells = self.cell_builder.item_cells(
-            (ref for io in io_by_invocation.values() for ref in io.values() if isinstance(ref, ItemRef)),
+            _item_refs(io_by_invocation.values()),
             access,
             query.metadata_elements,
             query.inline_expression_values,
@@ -599,12 +607,12 @@ class ComparisonsManager:
 
     def _submission_inputs(
         self, jobs: dict[int, JobRecord], icjs: dict[int, ImplicitCollectionJobsRecord]
-    ) -> tuple[dict[int, dict[str, ItemRef]], dict[int, dict[str, ItemRef]]]:
+    ) -> tuple[dict[int, dict[str, ItemRef | ItemRefs]], dict[int, dict[str, ItemRef | ItemRefs]]]:
         """Inputs by job id and by mapped batch id; a batch has its first job's inputs plus the mapped-over ones."""
         representatives = {icj.id: icj.representative.id for icj in icjs.values() if icj.representative}
         job_inputs = self.cell_builder.job_inputs([*jobs, *representatives.values()])
         mapped_inputs = self.cell_builder.implicit_collection_inputs(list(icjs))
-        icj_inputs = {
+        icj_inputs: dict[int, dict[str, ItemRef | ItemRefs]] = {
             icj_id: {
                 **(job_inputs.get(representatives[icj_id], {}) if icj_id in representatives else {}),
                 **mapped_inputs.get(icj_id, {}),
@@ -750,7 +758,7 @@ def _output_value_cell(value: Any) -> ValueCell | MissingCell:
 
 def _cells(
     columns: list[ComparisonColumn],
-    io: Mapping[str, ItemRef | AnyComparisonCell],
+    io: Mapping[str, IoValue],
     item_cells: Mapping[ItemRef, ItemCell],
     metadata_keys: dict[str, set[str]],
     in_version: Container[str] | None,
@@ -769,6 +777,13 @@ def _cells(
                 cells[column.key] = item_cell.cell
                 metadata_keys[column.key].update(item_cell.metadata_keys)
                 continue
+        elif isinstance(value, ItemRefs):
+            members = [item_cells[ref] for ref in value.refs if ref in item_cells]
+            if members:
+                cells[column.key] = DatasetListCell(items=[member.cell for member in members])
+                for member in members:
+                    metadata_keys[column.key].update(member.metadata_keys)
+                continue
         elif value is not None:
             cells[column.key] = value
             continue
@@ -786,9 +801,19 @@ def _history_ref(row: InvocationPageRow | ToolRunPageRow) -> HistoryRef:
     return HistoryRef(id=row.history_id, name=row.history_name, deleted=row.history_deleted, purged=row.history_purged)
 
 
-def _keyed(role: str, items: dict[str, ItemRef]) -> dict[str, ItemRef]:
+def _item_refs(ios: Iterable[Mapping[str, IoValue]]) -> Iterator[ItemRef]:
+    """Every dataset and collection the rows' io refers to, multiple input members included."""
+    for io in ios:
+        for value in io.values():
+            if isinstance(value, ItemRef):
+                yield value
+            elif isinstance(value, ItemRefs):
+                yield from value.refs
+
+
+def _keyed(role: str, items: Mapping[str, IoValueT]) -> dict[str, IoValueT]:
     """Role-prefix normalized io names; an exact name wins over names folded into it."""
-    keyed: dict[str, ItemRef] = {}
+    keyed: dict[str, IoValueT] = {}
     for name, ref in items.items():
         normalized = normalize_io_name(name)
         key = f"{role}:{normalized}"

@@ -182,7 +182,16 @@ class MissingCell(Model):
     reason: MissingReason
 
 
-AnyComparisonCell = Annotated[DatasetCell | CollectionCell | ValueCell | MissingCell, Field(discriminator="type")]
+class DatasetListCell(Model):
+    type: Literal["dataset_list"] = "dataset_list"
+    items: list[Annotated[DatasetCell | ValueCell | MissingCell, Field(discriminator="type")]] = Field(
+        ..., description="Every dataset of a multiple data input, in order."
+    )
+
+
+AnyComparisonCell = Annotated[
+    DatasetCell | CollectionCell | ValueCell | MissingCell | DatasetListCell, Field(discriminator="type")
+]
 
 
 class ComparisonColumn(Model):

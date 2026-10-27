@@ -9630,7 +9630,8 @@ export interface components {
                     | components["schemas"]["DatasetCell"]
                     | components["schemas"]["CollectionCell"]
                     | components["schemas"]["ValueCell"]
-                    | components["schemas"]["MissingCell"];
+                    | components["schemas"]["MissingCell"]
+                    | components["schemas"]["DatasetListCell"];
             };
             /**
              * Create Time
@@ -12247,6 +12248,23 @@ export interface components {
              * @description ID of the user who owns the referenced dataset.
              */
             user_id: string | null;
+        };
+        /** DatasetListCell */
+        DatasetListCell: {
+            /**
+             * Items
+             * @description Every dataset of a multiple data input, in order.
+             */
+            items: (
+                | components["schemas"]["DatasetCell"]
+                | components["schemas"]["ValueCell"]
+                | components["schemas"]["MissingCell"]
+            )[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "dataset_list";
         };
         /**
          * DatasetPermissionAction
