@@ -153,10 +153,17 @@ class ComparisonsManager:
         step_ids = [step_id for step_id, _ in steps_by_workflow.values()]
         step_types = {workflow_id: step_type for workflow_id, (_, step_type) in steps_by_workflow.items()}
         state_predicate = _step_state_predicate(step_ids, query.states) if query.states else None
-        page, total = self._page_invocations(access.user_id, list(steps_by_workflow), query, state_predicate)
         version_map = self._version_map(stored_workflow_id)
+        workflow_ids = [
+            workflow_id
+            for workflow_id in steps_by_workflow
+            if query.versions is None or version_map[workflow_id] in query.versions
+        ]
+        page, total = self._page_invocations(access.user_id, workflow_ids, query, state_predicate)
         columns, rows = self._step_rows(access, page, step_ids, step_types, query, version_map)
-        return ComparisonTable(query=query, columns=columns, rows=rows), total
+        versions_available = sorted(version_map[workflow_id] for workflow_id in steps_by_workflow)
+        table = ComparisonTable(query=query, columns=columns, rows=rows, versions_available=versions_available)
+        return table, total
 
     def output_runs(
         self, access: ComparisonAccess, stored_workflow_id: int, query: OutputRunsQuery

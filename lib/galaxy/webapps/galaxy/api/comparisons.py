@@ -55,6 +55,14 @@ StepLabelQueryParam = Annotated[
     Query(min_length=1, title="Step label", description="Label of the step to compare across invocations."),
 ]
 
+VersionsQueryParam = Annotated[
+    list[int] | None,
+    Query(
+        title="Versions",
+        description="Only include runs of these 0-based workflow versions. Repeat the parameter for several.",
+    ),
+]
+
 OutputLabelsQueryParam = Annotated[
     list[str] | None,
     Query(
@@ -147,12 +155,13 @@ class FastAPIComparisons:
         response: Response,
         workflow_id: StoredWorkflowIDPathParam,
         step_label: StepLabelQueryParam,
+        versions: VersionsQueryParam = None,
         instance: InstanceQueryParam = False,
         comparison_params: ComparisonQueryBase = Depends(comparison_query_params),
         trans: ProvidesUserContext = DependsOnTrans,
     ) -> ComparisonTable:
         query = StepRunsQuery.model_construct(
-            **comparison_params.model_dump(), workflow_id=workflow_id, step_label=step_label
+            **comparison_params.model_dump(), workflow_id=workflow_id, step_label=step_label, versions=versions
         )
         table, total_matches = self.service.step_runs(trans, query, instance)
         response.headers["total_matches"] = str(total_matches)

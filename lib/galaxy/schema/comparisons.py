@@ -87,6 +87,7 @@ class StepRunsQuery(ComparisonQueryBase):
     kind: Literal["step_runs"] = "step_runs"
     workflow_id: DecodedDatabaseIdField = Field(..., description="The StoredWorkflow id.")
     step_label: str = Field(..., min_length=1, description="Label of the step to compare across invocations.")
+    versions: list[int] | None = Field(None, description="Only include runs of these 0-based workflow versions.")
 
 
 class OutputRunsQuery(ComparisonQueryBase):
@@ -220,6 +221,9 @@ class ComparisonTable(Model):
     columns: list[ComparisonColumn]
     rows: list[ComparisonRow]
     tool_versions_available: list[str] | None = None
+    versions_available: list[int] | None = Field(
+        None, description="0-based workflow versions with the compared step, whatever `versions` selects."
+    )
     output_labels_available: list[str] | None = Field(
         None, description="Output labels of the page's workflow versions, whatever `output_labels` selects."
     )
