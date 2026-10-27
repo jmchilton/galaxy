@@ -8,7 +8,15 @@ import { downloadBlob } from "@/utils/download";
 
 import { changedCells } from "./comparisonChanges";
 import { exportBlob, exportFilename, type ExportFormat, exportLines } from "./comparisonExport";
-import { type CellDisplay, displayFor, fieldKeys, META_FIELDS, META_LABELS, type MetaField } from "./comparisonUtils";
+import {
+    type CellDisplay,
+    displayFor,
+    fieldKeys,
+    META_FIELDS,
+    META_LABELS,
+    type MetaField,
+    visibleFields,
+} from "./comparisonUtils";
 
 import ComparisonCell from "./cells/ComparisonCell.vue";
 import ComparisonColumnHeader from "./ComparisonColumnHeader.vue";
@@ -71,12 +79,12 @@ interface LineItem {
 const CHANGED_CLASS = "comparison-cell-changed";
 const CHANGED_TITLE = "Differs from the run you are viewing";
 
-const metaFields = computed(() => META_FIELDS[props.table.query.kind]);
+const visible = computed(() => visibleFields(props.table.query.kind, props.table.columns, props.visibleColumns));
 /** The field that anchors each run: it links to the run and is never hidden. */
-const anchorField = computed(() => metaFields.value[0]!);
-const optionalMetaFields = computed(() => metaFields.value.slice(1));
-const visibleMetaFields = computed(() => optionalMetaFields.value.filter((f) => props.visibleColumns.includes(f)));
-const visibleDataColumns = computed(() => props.table.columns.filter((c) => props.visibleColumns.includes(c.key)));
+const anchorField = computed(() => visible.value.anchor);
+const optionalMetaFields = computed(() => META_FIELDS[props.table.query.kind].slice(1));
+const visibleMetaFields = computed(() => visible.value.metaFields);
+const visibleDataColumns = computed(() => visible.value.columns);
 const keys = computed(() => fieldKeys(props.table.columns));
 
 const columnOptions = computed(() => [
@@ -254,6 +262,7 @@ const tableKey = computed(() => `${props.transpose}:${props.table.rows.map((row)
             :columns="table.columns"
             :query="table.query"
             :displays="displays"
+            :visible-columns="visibleColumns"
             :current-run-id="currentRunId"
             :requested-metadata="requestedMetadata"
             :loading="loading"
