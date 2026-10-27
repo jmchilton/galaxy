@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { faAngleDown, faAngleRight, faColumns, faExchangeAlt } from "@fortawesome/free-solid-svg-icons";
+import { faAngleDown, faAngleRight, faColumns, faDownload, faExchangeAlt } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { computed, ref, watch } from "vue";
 
 import type { ComparisonColumn, ComparisonRow, ComparisonTable } from "@/api/comparisons";
+import { downloadBlob } from "@/utils/download";
 
 import { changedCells } from "./comparisonChanges";
+import { exportBlob, exportFilename, type ExportFormat, exportLines } from "./comparisonExport";
 import { type CellDisplay, displayFor, fieldKeys, META_FIELDS, META_LABELS, type MetaField } from "./comparisonUtils";
 
 import ComparisonCell from "./cells/ComparisonCell.vue";
@@ -16,6 +18,8 @@ import ComparisonRowDetail from "./ComparisonRowDetail.vue";
 import GAlert from "@/components/BaseComponents/GAlert.vue";
 import GButton from "@/components/BaseComponents/GButton.vue";
 import GCheckbox from "@/components/BaseComponents/GCheckbox.vue";
+import GDropdown from "@/components/BaseComponents/GDropdown.vue";
+import GDropdownItem from "@/components/BaseComponents/GDropdownItem.vue";
 import GTable from "@/components/Common/GTable.vue";
 import ListHeader from "@/components/Common/ListHeader.vue";
 
@@ -138,6 +142,16 @@ const diffRows = computed(() => {
 });
 const displays = computed(() => Object.fromEntries(props.table.columns.map((column) => [column.key, display(column)])));
 
+/** Saves the page as shown: visible columns, each in its display, transposed or not. */
+function exportPage(format: ExportFormat) {
+    const lines = exportLines(props.table, {
+        visibleColumns: props.visibleColumns,
+        transpose: props.transpose,
+        displayOf: display,
+    });
+    downloadBlob(exportBlob(lines, format), exportFilename(props.table.query, props.table.rows.length, format));
+}
+
 // Runs as rows.
 const runFields = computed(() => [
     { key: "_expand", label: "" },
@@ -218,6 +232,19 @@ const tableKey = computed(() => `${props.transpose}:${props.table.rows.map((row)
                     <FontAwesomeIcon :icon="faExchangeAlt" />
                     Transpose
                 </GButton>
+                <GDropdown
+                    size="sm"
+                    variant="outline-primary"
+                    toggle-class="comparison-export"
+                    :disabled="!table.rows.length"
+                    title="Download this page as shown">
+                    <template v-slot:button-content>
+                        <FontAwesomeIcon :icon="faDownload" />
+                        Export
+                    </template>
+                    <GDropdownItem class="comparison-export-csv" @click="exportPage('csv')">CSV</GDropdownItem>
+                    <GDropdownItem class="comparison-export-tsv" @click="exportPage('tsv')">TSV</GDropdownItem>
+                </GDropdown>
             </template>
         </ListHeader>
 
