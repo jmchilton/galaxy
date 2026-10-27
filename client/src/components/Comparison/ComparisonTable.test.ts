@@ -14,7 +14,11 @@ vi.mock("@/utils/download", () => ({ downloadBlob: vi.fn() }));
 
 const TABLE = STEP_RUNS as unknown as Table;
 const ALL_COLUMNS = ["version", "state", "reused", "history", ...TABLE.columns.map((c) => c.key)];
-const DETAIL_STUB = { name: "ComparisonRowDetail", props: ["row", "columns", "query"], template: "<div />" };
+const DETAIL_STUB = {
+    name: "ComparisonRowDetail",
+    props: ["row", "columns", "query", "currentJobId"],
+    template: "<div />",
+};
 const LINK_STUB = { name: "ItemPopoverLink", props: ["itemId", "itemSrc", "to"], template: "<a><slot /></a>" };
 const DIFF_STUB = {
     name: "ComparisonDiff",
@@ -184,6 +188,16 @@ describe("ComparisonTable", () => {
         expect(wrapper.findAll(".comparison-expand")[1]!.attributes("aria-label")).toBe("Hide run details");
         await wrapper.findAll(".comparison-expand")[1]!.trigger("click");
         expect(wrapper.findAllComponents(DETAIL_STUB)).toHaveLength(0);
+    });
+
+    it("gives an expanded row the job of the run being viewed, when it is on the page", async () => {
+        const current = TABLE.rows[1]!;
+        const wrapper = mountTable({ currentRunId: current.run.id });
+        await wrapper.findAll(".comparison-expand")[3]!.trigger("click");
+        expect(wrapper.findComponent(DETAIL_STUB).props("currentJobId")).toBe(current.step_job!.id);
+        await wrapper.setProps({ table: { ...TABLE, rows: TABLE.rows.slice(2) } } as object);
+        await wrapper.findAll(".comparison-expand")[1]!.trigger("click");
+        expect(wrapper.findComponent(DETAIL_STUB).props("currentJobId")).toBeUndefined();
     });
 
     it("collapses expanded rows when the page changes", async () => {

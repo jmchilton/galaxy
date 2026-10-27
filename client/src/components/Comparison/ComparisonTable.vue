@@ -15,6 +15,7 @@ import {
     META_FIELDS,
     META_LABELS,
     type MetaField,
+    rowJob,
     visibleFields,
 } from "./comparisonUtils";
 
@@ -95,6 +96,12 @@ const columnOptions = computed(() => [
 function isCurrent(row: ComparisonRow) {
     return Boolean(props.currentRunId) && row.run.id === props.currentRunId;
 }
+
+/** The viewed run's job, which expanded rows diff their parameters against; only when it is on the page. */
+const currentJobId = computed(() => {
+    const current = props.table.rows.find(isCurrent);
+    return current ? rowJob(current)?.jobId : undefined;
+});
 
 function display(column: ComparisonColumn): CellDisplay {
     return displayFor(column, props.table.rows, props.columnDisplay);
@@ -332,7 +339,11 @@ const tableKey = computed(() => `${props.transpose}:${props.table.rows.map((row)
                     </span>
                 </template>
                 <template v-slot:row-details="{ item }">
-                    <ComparisonRowDetail :row="item.row" :columns="table.columns" :query="table.query" />
+                    <ComparisonRowDetail
+                        :row="item.row"
+                        :columns="table.columns"
+                        :query="table.query"
+                        :current-job-id="currentJobId" />
                 </template>
             </GTable>
 
