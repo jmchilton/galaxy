@@ -168,6 +168,41 @@ export function rowJob(row: ComparisonRow): { jobId?: string; jobCount?: number 
     return { jobId: ref.representative_job_id ?? undefined, jobCount: ref.job_count };
 }
 
+// As the invocation view counts scheduling done.
+const SCHEDULING_ENDED = ["scheduled", "cancelled", "failed", "completed"];
+const INPUT_STEP_TYPES = ["data_input", "data_collection_input", "parameter_input"];
+
+/** Why a step or tool run row has no job to show; undefined when it has one. */
+export function noJobReason(row: ComparisonRow): string | undefined {
+    const job = rowJob(row);
+    const runEnded = row.run.model === "WorkflowInvocation" && SCHEDULING_ENDED.includes(row.run.state);
+    if (job?.jobCount === 0) {
+        return "Mapped over an empty collection: no jobs ran.";
+    }
+    if (job?.jobId || row.subworkflow_invocation_id) {
+        return undefined;
+    }
+    // Steps are "new" or "ready" until scheduled.
+    if (["new", "ready"].includes(row.state)) {
+        return runEnded ? "This run ended before reaching this step." : "This run has no job for this step yet.";
+    }
+    if (row.step_type === "pause") {
+        if (row.step_action === true) {
+            return "Reviewed: the run continued past this pause.";
+        }
+        if (row.step_action === false) {
+            return "Review rejected: the run was cancelled at this pause.";
+        }
+        return runEnded
+            ? "This pause step was not reviewed before the run ended."
+            : "Waiting for review: the run is paused at this step.";
+    }
+    if (row.step_type && INPUT_STEP_TYPES.includes(row.step_type)) {
+        return "Input steps run without a job.";
+    }
+    return "This step ran without a job.";
+}
+
 /** Where a row's run lives; mode 1 asks the invocation view to select the step (#24173). */
 export function runLink(row: ComparisonRow, query: ComparisonQuery): string {
     const run = row.run;
