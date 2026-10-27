@@ -93,6 +93,19 @@ steps:
       input1: the_pause
 """
 
+# after_pause connects a second input, without a pause
+WORKFLOW_AFTER_PAUSE_TWO_INPUTS = """
+class: GalaxyWorkflow
+inputs:
+  input1: data
+steps:
+  after_pause:
+    tool_id: cat1
+    in:
+      input1: input1
+      queries_0|input2: input1
+"""
+
 WORKFLOW_MAPPED_FAIL = """
 class: GalaxyWorkflow
 inputs:
@@ -443,6 +456,39 @@ class TestComparisonsApi(ApiTestCase):
                 paused_id: ("ready", "scheduled", None, "pause", None),
             }
             assert (paused_row["step_type"], paused_row["step_action"]) == ("tool", None)
+
+    @skip_without_tool("cat1")
+    def test_step_runs_not_run_yet_reads_its_version_inputs(self):
+        with self.dataset_populator.test_history() as history_id:
+            hda = self.dataset_populator.new_dataset(history_id, content="paused\n", wait=True)
+            workflow_id = self.workflow_populator.upload_yaml_workflow(WORKFLOW_PAUSE_THEN_CAT)
+            inputs = {"input1": _hda(hda)}
+            paused_id = self.workflow_populator.invoke_workflow_and_assert_ok(
+                workflow_id, history_id, inputs, inputs_by="name"
+            )
+            wait_on(lambda: self._invocation_step(paused_id, order_index=1), "pause step reached")
+            second_version_id = self.workflow_populator.upload_yaml_workflow(WORKFLOW_AFTER_PAUSE_TWO_INPUTS)
+            second_version = self.workflow_populator.download_workflow(second_version_id)
+            self._assert_status_code_is_ok(self.workflow_populator.update_workflow(workflow_id, second_version))
+            ran_id = self._invoke_and_wait(workflow_id, history_id, inputs)
+
+            table = self._step_runs_table(workflow_id, "after_pause")
+            assert [column["key"] for column in table["columns"]] == [
+                "input:input1",
+                "input:queries_0|input2",
+                "output:out_file1",
+            ]
+            assert [column["present_in_versions"] for column in table["columns"]] == [None, [1], None]
+            ran_row, paused_row = table["rows"]
+            assert (paused_row["state"], paused_row["step_job"]) == ("new", None)
+            assert [row["run"]["id"] for row in (ran_row, paused_row)] == [ran_id, paused_id]
+            assert ran_row["cells"]["input:queries_0|input2"]["id"] == hda["id"]
+            # version 0's step doesn't connect queries_0|input2
+            assert paused_row["cells"] == {
+                "input:input1": {"type": "missing", "reason": "not_run_yet"},
+                "input:queries_0|input2": {"type": "missing", "reason": "not_in_version"},
+                "output:out_file1": {"type": "missing", "reason": "not_run_yet"},
+            }
 
     @skip_without_tool("cat1")
     def test_step_runs_mapped_over_empty_list(self):
