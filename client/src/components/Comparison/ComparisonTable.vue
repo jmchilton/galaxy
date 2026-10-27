@@ -20,7 +20,7 @@ import {
 } from "./comparisonUtils";
 import { MAX_SELECTED, useRunSelection } from "./useRunSelection";
 
-import ComparisonCell from "./cells/ComparisonCell.vue";
+import ComparisonColumnCell from "./ComparisonColumnCell.vue";
 import ComparisonColumnHeader from "./ComparisonColumnHeader.vue";
 import ComparisonDiff from "./ComparisonDiff.vue";
 import ComparisonMetaCell from "./ComparisonMetaCell.vue";
@@ -79,7 +79,6 @@ interface LineItem {
 }
 
 const CHANGED_CLASS = "comparison-cell-changed";
-const CHANGED_TITLE = "Differs from the run you are viewing";
 
 const visible = computed(() => visibleFields(props.table.query.kind, props.table.columns, props.visibleColumns));
 /** The field that anchors each run: it links to the run and is never hidden. */
@@ -104,8 +103,14 @@ const currentJobId = computed(() => {
     return current ? rowJob(current)?.jobId : undefined;
 });
 
+const displays = computed(() =>
+    Object.fromEntries(
+        props.table.columns.map((column) => [column.key, displayFor(column, props.table.rows, props.columnDisplay)]),
+    ),
+);
+
 function display(column: ComparisonColumn): CellDisplay {
-    return displayFor(column, props.table.rows, props.columnDisplay);
+    return displays.value[column.key]!;
 }
 
 function setDisplay(column: ComparisonColumn, value: CellDisplay) {
@@ -124,7 +129,6 @@ function isChanged(row: ComparisonRow, column: ComparisonColumn) {
 const { selectedRunIds, selectedSet, selectedIndices, diffOpen, diffRows, setSelected } = useRunSelection(
     toRef(() => props.table.rows),
 );
-const displays = computed(() => Object.fromEntries(props.table.columns.map((column) => [column.key, display(column)])));
 
 /** Saves the page as shown: visible columns, each in its display, transposed or not. */
 function exportPage(format: ExportFormat) {
@@ -298,15 +302,13 @@ const tableKey = computed(() => `${props.transpose}:${props.table.rows.map((row)
                     v-for="column in visibleDataColumns"
                     :key="`c-${column.key}`"
                     v-slot:[`cell(${keys[column.key]})`]="{ item }">
-                    <span :title="isChanged(item.row, column) ? CHANGED_TITLE : undefined">
-                        <ComparisonCell
-                            :cell="item.row.cells[column.key]"
-                            :row="item.row"
-                            :display="display(column)"
-                            :role="column.role"
-                            :requested-metadata="requestedMetadata"
-                            :loading="loading" />
-                    </span>
+                    <ComparisonColumnCell
+                        :row="item.row"
+                        :column="column"
+                        :display="display(column)"
+                        :changed="isChanged(item.row, column)"
+                        :requested-metadata="requestedMetadata"
+                        :loading="loading" />
                 </template>
                 <template v-slot:row-details="{ item }">
                     <div class="comparison-row-detail-pin">
@@ -356,15 +358,14 @@ const tableKey = computed(() => `${props.transpose}:${props.table.rows.map((row)
                     v-for="(row, index) in table.rows"
                     :key="`c-${row.run.id}`"
                     v-slot:[`cell(r${index})`]="{ item }">
-                    <span v-if="item.column" :title="isChanged(row, item.column) ? CHANGED_TITLE : undefined">
-                        <ComparisonCell
-                            :cell="row.cells[item.column.key]"
-                            :row="row"
-                            :display="display(item.column)"
-                            :role="item.column.role"
-                            :requested-metadata="requestedMetadata"
-                            :loading="loading" />
-                    </span>
+                    <ComparisonColumnCell
+                        v-if="item.column"
+                        :row="row"
+                        :column="item.column"
+                        :display="display(item.column)"
+                        :changed="isChanged(row, item.column)"
+                        :requested-metadata="requestedMetadata"
+                        :loading="loading" />
                     <ComparisonMetaCell
                         v-else
                         :field="item.meta!"
