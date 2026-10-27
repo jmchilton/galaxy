@@ -83,16 +83,18 @@ class ComparisonQueryBase(Model):
         return value
 
 
-class StepRunsQuery(ComparisonQueryBase):
-    kind: Literal["step_runs"] = "step_runs"
+class WorkflowComparisonQueryBase(ComparisonQueryBase):
     workflow_id: DecodedDatabaseIdField = Field(..., description="The StoredWorkflow id.")
-    step_label: str = Field(..., min_length=1, description="Label of the step to compare across invocations.")
     versions: list[int] | None = Field(None, description="Only include runs of these 0-based workflow versions.")
 
 
-class OutputRunsQuery(ComparisonQueryBase):
+class StepRunsQuery(WorkflowComparisonQueryBase):
+    kind: Literal["step_runs"] = "step_runs"
+    step_label: str = Field(..., min_length=1, description="Label of the step to compare across invocations.")
+
+
+class OutputRunsQuery(WorkflowComparisonQueryBase):
     kind: Literal["output_runs"] = "output_runs"
-    workflow_id: DecodedDatabaseIdField = Field(..., description="The StoredWorkflow id.")
     output_labels: list[str] | None = Field(
         None, description="Only include these labelled outputs; labelled inputs and parameters are always included."
     )
@@ -231,7 +233,11 @@ class ComparisonTable(Model):
     rows: list[ComparisonRow]
     tool_versions_available: list[str] | None = None
     versions_available: list[int] | None = Field(
-        None, description="0-based workflow versions with the compared step, whatever `versions` selects."
+        None,
+        description=(
+            "0-based workflow versions to filter by, whatever `versions` selects: those with the compared step"
+            " for step runs, every version for output runs."
+        ),
     )
     output_labels_available: list[str] | None = Field(
         None, description="Output labels of the workflow versions the caller has run, whatever `output_labels` selects."

@@ -619,6 +619,20 @@ class TestComparisonsApi(ApiTestCase):
             response = self._output_runs(summary.workflow_id, states="failed")
             assert response.headers["total_matches"] == "0"
 
+            # versions filter, 0-based, repeated for several
+            assert table["versions_available"] == [0, 1]
+            response = self._output_runs(summary.workflow_id, versions=0)
+            assert response.headers["total_matches"] == "1"
+            old_only = response.json()
+            assert [row["run"]["id"] for row in old_only["rows"]] == [summary.invocation_id]
+            assert old_only["query"]["versions"] == [0]
+            assert old_only["versions_available"] == [0, 1]
+            assert self._output_runs(summary.workflow_id, versions=[0, 1]).headers["total_matches"] == "2"
+            absent = self._output_runs(summary.workflow_id, versions=7)
+            assert absent.headers["total_matches"] == "0"
+            assert (absent.json()["rows"], absent.json()["versions_available"]) == ([], [0, 1])
+            self._output_runs(summary.workflow_id, expected_status=400, versions="v1")
+
     @skip_without_tool("cat1")
     @skip_without_tool("expression_forty_two")
     def test_output_runs_owner_filter(self):

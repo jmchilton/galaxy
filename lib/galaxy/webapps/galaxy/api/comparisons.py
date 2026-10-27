@@ -176,12 +176,13 @@ class FastAPIComparisons:
         response: Response,
         workflow_id: StoredWorkflowIDPathParam,
         output_labels: OutputLabelsQueryParam = None,
+        versions: VersionsQueryParam = None,
         instance: InstanceQueryParam = False,
         comparison_params: ComparisonQueryBase = Depends(comparison_query_params),
         trans: ProvidesUserContext = DependsOnTrans,
     ) -> ComparisonTable:
         query = OutputRunsQuery.model_construct(
-            **comparison_params.model_dump(), workflow_id=workflow_id, output_labels=output_labels
+            **comparison_params.model_dump(), workflow_id=workflow_id, output_labels=output_labels, versions=versions
         )
         table, total_matches = self.service.output_runs(trans, query, instance)
         response.headers["total_matches"] = str(total_matches)

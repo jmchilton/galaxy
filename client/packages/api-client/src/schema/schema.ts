@@ -9717,7 +9717,7 @@ export interface components {
             tool_versions_available?: string[] | null;
             /**
              * Versions Available
-             * @description 0-based workflow versions with the compared step, whatever `versions` selects.
+             * @description 0-based workflow versions to filter by, whatever `versions` selects: those with the compared step for step runs, every version for output runs.
              */
             versions_available?: number[] | null;
         };
@@ -21569,6 +21569,11 @@ export interface components {
              * @description Only include runs in one of these states.
              */
             states?: string[] | null;
+            /**
+             * Versions
+             * @description Only include runs of these 0-based workflow versions.
+             */
+            versions?: number[] | null;
             /**
              * Workflow Id
              * @description The StoredWorkflow id.
@@ -57049,6 +57054,8 @@ export interface operations {
             query?: {
                 /** @description Only include these labelled workflow outputs; labelled inputs and parameters are always included. Repeat the parameter for several. */
                 output_labels?: string[] | null;
+                /** @description Only include runs of these 0-based workflow versions. Repeat the parameter for several. */
+                versions?: number[] | null;
                 instance?: boolean;
                 /** @description Maximum number of rows to return. */
                 limit?: number;
