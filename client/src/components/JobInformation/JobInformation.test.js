@@ -324,17 +324,21 @@ describe("JobInformation/JobInformation.vue other runs link", () => {
         return wrapper;
     }
 
+    const hasLink = (wrapper) => wrapper.find("[id^='g-card-action-job-other-runs']").exists();
+
     it("offers the link to registered users who ask for it, and only them", async () => {
-        const hasLink = (wrapper) => wrapper.find("[id^='g-card-action-job-other-runs']").exists();
         expect(hasLink(await mountWith({ includeOtherRunsLink: true }))).toBe(true);
         expect(hasLink(await mountWith({}))).toBe(false);
         const anonymous = { isAnonymous: true, total_disk_usage: 0, nice_total_disk_usage: "0 bytes" };
         expect(hasLink(await mountWith({ includeOtherRunsLink: true }, anonymous))).toBe(false);
     });
 
-    it.each(["__DATA_FETCH__", "upload1", "__SET_METADATA__"])("leaves it off for internal tool %s", async (id) => {
-        toolId = id;
-        const wrapper = await mountWith({ includeOtherRunsLink: true });
-        expect(wrapper.find("[id^='g-card-action-job-other-runs']").exists()).toBe(false);
-    });
+    it.each(["__DATA_FETCH__", "upload1", "__SET_METADATA__"])(
+        "leaves it off for internal tool %s, unlike a Tool Shed tool",
+        async (id) => {
+            expect(hasLink(await mountWith({ includeOtherRunsLink: true }))).toBe(true);
+            toolId = id;
+            expect(hasLink(await mountWith({ includeOtherRunsLink: true }))).toBe(false);
+        },
+    );
 });
