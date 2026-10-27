@@ -43,7 +43,7 @@ export function stateText(state: string): string {
 
 /** Versions are 0-based on the wire and 1-based in the UI. */
 export function versionLabel(version: number | null | undefined): string {
-    return version === null || version === undefined ? "" : `v${version + 1}`;
+    return Number.isFinite(version) ? `v${version! + 1}` : "";
 }
 
 /** GTable slot names are `cell(${key})`, so map arbitrary column keys to safe field keys. */

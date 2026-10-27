@@ -83,6 +83,7 @@ describe("missingText", () => {
     it("renders versions 1-based", () => {
         expect(versionLabel(0)).toBe("v1");
         expect(versionLabel(null)).toBe("");
+        expect(versionLabel(Number("x"))).toBe("");
     });
 });
 
