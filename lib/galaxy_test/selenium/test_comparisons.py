@@ -8,6 +8,11 @@ WORKFLOW_TWO_CAT = """
 class: GalaxyWorkflow
 inputs:
   input1: data
+outputs:
+  first_out:
+    outputSource: first_cat/out_file1
+  second_out:
+    outputSource: second_cat/out_file1
 steps:
   first_cat:
     tool_id: cat1
@@ -19,6 +24,27 @@ steps:
       input1: first_cat/out_file1
 test_data:
   input1: "hello world"
+"""
+
+WORKFLOW_MAPPED_CAT = """
+class: GalaxyWorkflow
+inputs:
+  input_list:
+    type: collection
+    collection_type: list
+steps:
+  mapped_cat:
+    tool_id: cat1
+    in:
+      input1: input_list
+test_data:
+  input_list:
+    collection_type: list
+    elements:
+      - identifier: el0
+        content: "a"
+      - identifier: el1
+        content: "b"
 """
 
 
@@ -89,6 +115,13 @@ class TestComparisons(SeleniumTestCase):
         self.assert_current_url_contains("kind=output_runs")
         self.screenshot("comparisons_compare_outputs_page")
 
+        comparisons.column_header(key="output:first_out").wait_for_visible()
+        comparisons.output_filter(label="second_out").wait_for_and_click()
+        self.assert_current_url_contains("output_labels=second_out")
+        comparisons.column_header(key="output:first_out").wait_for_absent()
+        comparisons.column_header(key="output:second_out").wait_for_visible()
+        comparisons.column_header(key="input:input1").wait_for_visible()
+
         comparisons.state_filter(state="failed").wait_for_and_click()
         self.assert_current_url_contains("states=failed")
         self._assert_empty("No runs match these filters.")
@@ -107,6 +140,37 @@ class TestComparisons(SeleniumTestCase):
         comparisons.other_runs_action.wait_for_and_click()
         self.assert_current_url_contains("kind=tool_runs")
         comparisons.row(run_id=job_id).wait_for_visible()
+
+        self.get(f"workflows/edit?id={workflow_id}")
+        self.workflow_editor_ensure_tool_form_open("second_cat")
+        comparisons.editor_compare_runs_link.wait_for_visible()
+        self.screenshot("comparisons_editor_compare_runs_link")
+        comparisons.editor_compare_runs_link.wait_for_and_click()
+        comparisons._.wait_for_visible()
+        self.assert_current_url_contains("kind=step_runs")
+        self.assert_current_url_contains("step_label=second_cat")
+        self._assert_rows(newest_id, *older_ids)
+
+    @selenium_test
+    def test_mapped_step_reused_job(self):
+        summary = self.workflow_populator.run_workflow(WORKFLOW_MAPPED_CAT, history_id=self.current_history_id())
+        reused_id = self.workflow_populator.invoke_workflow_and_wait(
+            summary.workflow_id, request={**summary.workflow_request, "use_cached_job": True}
+        ).json()["id"]
+        self.get(f"comparisons?kind=step_runs&workflow_id={summary.workflow_id}&step_label=mapped_cat")
+
+        comparisons = self.components.comparisons
+        self._assert_rows(reused_id, summary.invocation_id)
+        comparisons.row_expand(run_id=reused_id).wait_for_and_click()
+        self.scroll_into_view(comparisons.row_detail_reused_badge.wait_for_visible())
+        self.screenshot("comparisons_mapped_step_reused_job")
+        comparisons.row_expand(run_id=reused_id).wait_for_and_click()
+        comparisons.row_detail.wait_for_absent_or_hidden()
+
+        comparisons.row_expand(run_id=summary.invocation_id).wait_for_and_click()
+        comparisons.row_detail.wait_for_visible()
+        comparisons.row_detail_job_pager.wait_for_visible()
+        comparisons.row_detail_reused_badge.assert_absent()
 
     def _runs_across_two_versions(self) -> tuple[str, list[str], str]:
         """Two runs of v1, then a rename makes v2 and it runs once more."""

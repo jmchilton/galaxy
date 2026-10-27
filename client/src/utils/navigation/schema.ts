@@ -797,6 +797,9 @@ interface Rootcomparisons extends Component {
     row_expand: SelectorTemplate;
     row_detail: SelectorTemplate;
     row_detail_changed_parameter: SelectorTemplate;
+    row_detail_job_pager: SelectorTemplate;
+    row_detail_reused_badge: SelectorTemplate;
+    column_header: SelectorTemplate;
     row_select: SelectorTemplate;
     compare_selected: SelectorTemplate;
     diff_panel: SelectorTemplate;
@@ -806,8 +809,10 @@ interface Rootcomparisons extends Component {
     empty_message: SelectorTemplate;
     summary: SelectorTemplate;
     state_filter: SelectorTemplate;
+    output_filter: SelectorTemplate;
     compare_outputs_button: SelectorTemplate;
     other_runs_action: SelectorTemplate;
+    editor_compare_runs_link: SelectorTemplate;
 }
 export interface root_component {
     _: Root_;
