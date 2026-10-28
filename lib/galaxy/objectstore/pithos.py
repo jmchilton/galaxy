@@ -21,6 +21,7 @@ from ._caching_base import CachingConcreteObjectStore
 from .caching import (
     CacheShardManager,
     CacheTarget,
+    enable_cache_monitor,
 )
 
 NO_KAMAKI_ERROR_MESSAGE = (
@@ -93,6 +94,7 @@ class PithosObjectStore(CachingConcreteObjectStore):
     def __init__(self, config, config_dict):
         super().__init__(config, config_dict)
         self._cache_shards = CacheShardManager.from_config(config_dict.get("cache") or {}, config)
+        self.enable_cache_monitor, self.cache_monitor_interval = enable_cache_monitor(config, config_dict)
         log.info("Parse config_xml for pithos object store")
         self.config_dict = config_dict
 
@@ -107,6 +109,11 @@ class PithosObjectStore(CachingConcreteObjectStore):
         self._authenticate()
         log.info("Initialize Pithos+ client")
         self._init_pithos()
+        self._start_cache_monitor_if_needed()
+
+    def shutdown(self) -> None:
+        self._shutdown_cache_monitor()
+        super().shutdown()
 
     @classmethod
     def parse_xml(clazz, config_xml):

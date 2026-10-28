@@ -33,6 +33,7 @@ from ._caching_base import CachingConcreteObjectStore
 from .caching import (
     CacheShardManager,
     CacheTarget,
+    enable_cache_monitor,
     parse_caching_config_dict_from_xml,
 )
 
@@ -264,6 +265,7 @@ class IRODSObjectStore(CachingConcreteObjectStore):
         cache_dict = config_dict.get("cache") or {}
         self.cache_updated_data = cache_dict.get("cache_updated_data", True)
         self._cache_shards = CacheShardManager.from_config(cache_dict, self.config)
+        self.enable_cache_monitor, self.cache_monitor_interval = enable_cache_monitor(config, config_dict)
         extra_dirs = {e["type"]: e["path"] for e in config_dict.get("extra_dirs", [])}
         self.extra_dirs.update(extra_dirs)
 
@@ -303,9 +305,11 @@ class IRODSObjectStore(CachingConcreteObjectStore):
             self.stop_connection_pool_monitor_event = threading.Event()
             self.connection_pool_monitor_thread = None
 
+        self._start_cache_monitor_if_needed()
         log.debug("irods_pt __init__: %s", ipt_timer)
 
     def shutdown(self):
+        self._shutdown_cache_monitor()
         # This call will cleanup all the connections in the connection pool
         # OSError sometimes happens on GitHub Actions, after the test has successfully completed. Ignore it if it happens.
         ipt_timer = ExecutionTimer()
@@ -325,6 +329,7 @@ class IRODSObjectStore(CachingConcreteObjectStore):
     def soft_shutdown(self):
         # session.cleanup() also disconnects connections that are in use, so keep
         # the session open for callers still holding this store.
+        self._shutdown_cache_monitor()
         if self.connection_pool_monitor_interval != -1:
             self.stop_connection_pool_monitor_event.set()
 

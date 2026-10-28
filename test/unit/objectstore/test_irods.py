@@ -5,13 +5,17 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from galaxy.objectstore.caching import InProcessCacheMonitor
 from galaxy.objectstore.irods import (
     _IRODS_RETRY_ATTEMPTS,
     _retry_on_connection_error,
     IRODSObjectStore,
     parse_config_xml,
 )
-from galaxy.objectstore.unittest_utils import Config
+from galaxy.objectstore.unittest_utils import (
+    Config,
+    MockConfig,
+)
 from galaxy.util import parse_xml
 
 
@@ -232,6 +236,32 @@ def test_soft_shutdown_stops_monitor_and_keeps_session_open():
         object_store.connection_pool_monitor_thread.join(5)
         assert not object_store.connection_pool_monitor_thread.is_alive()
         assert not object_store.session.cleaned_up
+
+
+@pytest.fixture
+def sized_cache_store(tmp_path, monkeypatch):
+    # Stand-ins so the store builds without python-irodsclient or a server.
+    monkeypatch.setattr("galaxy.objectstore.irods.irods", object(), raising=False)
+    monkeypatch.setattr("galaxy.objectstore.irods.iRODSSession", lambda **_: FakeSession(), raising=False)
+    config_dict = parse_config_xml(parse_xml(CONFIG_FILE).getroot())
+    config_dict["cache"]["path"] = str(tmp_path)
+    object_store = IRODSObjectStore(MockConfig(str(tmp_path), "unused.xml"), config_dict)
+    yield object_store
+    object_store.shutdown()
+
+
+def test_sized_cache_starts_cache_monitor(sized_cache_store):
+    assert isinstance(sized_cache_store.cache_monitor, InProcessCacheMonitor)
+    assert sized_cache_store.cache_monitor.cache_monitor_thread.is_alive()
+    sized_cache_store.shutdown()
+    assert not sized_cache_store.cache_monitor.cache_monitor_thread.is_alive()
+
+
+def test_soft_shutdown_stops_cache_monitor(sized_cache_store):
+    assert isinstance(sized_cache_store.cache_monitor, InProcessCacheMonitor)
+    sized_cache_store.soft_shutdown()
+    assert not sized_cache_store.cache_monitor.cache_monitor_thread.is_alive()
+    assert not sized_cache_store.session.cleaned_up
 
 
 def test_parse_config_xml_cache_monitor():
