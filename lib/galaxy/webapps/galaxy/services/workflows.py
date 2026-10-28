@@ -61,6 +61,14 @@ def _to_extraction_result(stored_workflow: StoredWorkflow) -> WorkflowExtraction
     return WorkflowExtractionResult.model_validate({"id": stored_workflow.id})
 
 
+def _validate_parallel_names(names: list[str], names_field: str, ids: list[int], ids_field: str) -> None:
+    """Input names, when given, must name each of their parallel ids exactly once."""
+    if names and len(names) != len(ids):
+        raise exceptions.RequestParameterInvalidException(
+            f"{names_field} has {len(names)} entries but {ids_field} has {len(ids)}; they must be parallel"
+        )
+
+
 class WorkflowsService(ServiceBase):
     def __init__(
         self,
@@ -224,6 +232,13 @@ class WorkflowsService(ServiceBase):
     ) -> WorkflowExtractionResult:
         if trans.user is None:
             raise exceptions.AuthenticationRequired("Workflow extraction requires an authenticated user.")
+        _validate_parallel_names(payload.dataset_names, "dataset_names", payload.dataset_hids, "dataset_hids")
+        _validate_parallel_names(
+            payload.dataset_collection_names,
+            "dataset_collection_names",
+            payload.dataset_collection_hids,
+            "dataset_collection_hids",
+        )
         stored_workflow = extract_workflow(
             trans,
             user=trans.user,
@@ -273,6 +288,10 @@ class WorkflowsService(ServiceBase):
             ids = getattr(payload, field)
             if len(set(ids)) != len(ids):
                 raise exceptions.RequestParameterInvalidException(f"{field} contains duplicates")
+        _validate_parallel_names(payload.dataset_names, "dataset_names", payload.hda_ids, "hda_ids")
+        _validate_parallel_names(
+            payload.dataset_collection_names, "dataset_collection_names", payload.hdca_ids, "hdca_ids"
+        )
 
         for job_id in payload.job_ids:
             job = self._job_manager.get_accessible_job(trans, job_id)
