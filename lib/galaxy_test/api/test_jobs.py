@@ -1294,6 +1294,52 @@ steps:
         )
         self._assert_status_code_is(display_parameters_by_dataset_response, 200)
 
+    @pytest.mark.require_new_history
+    def test_parameters_display_hda_input(self, history_id):
+        dataset = self.dataset_populator.new_dataset(history_id, wait=True)
+        job_id, output_id = self._run_for_parameters_display(
+            history_id, "cat1", {"input1": {"src": "hda", "id": dataset["id"]}}
+        )
+        expected = [[{"src": "hda", "id": dataset["id"], "hid": dataset["hid"], "name": dataset["name"]}]]
+        assert self._data_parameter_values(f"/api/jobs/{job_id}/parameters_display") == expected
+        assert self._data_parameter_values(f"/api/datasets/{output_id}/parameters_display") == expected
+
+    @skip_without_tool("collection_paired_test")
+    @pytest.mark.require_new_history
+    def test_parameters_display_hdca_input(self, history_id):
+        pair_id = self.__history_with_ok_collection(collection_type="pair", history_id=history_id)
+        hdca = self.dataset_populator.get_history_collection_details(history_id, content_id=pair_id)
+        job_id, _ = self._run_for_parameters_display(
+            history_id, "collection_paired_test", {"f1": {"src": "hdca", "id": pair_id}}
+        )
+        expected = [[{"src": "hdca", "id": pair_id, "hid": hdca["hid"], "name": hdca["name"]}]]
+        assert self._data_parameter_values(f"/api/jobs/{job_id}/parameters_display") == expected
+
+    @skip_without_tool("collection_paired_test")
+    @pytest.mark.require_new_history
+    def test_parameters_display_dce_input(self, history_id):
+        list_id = self.__history_with_ok_collection(collection_type="list:pair", history_id=history_id)
+        hdca = self.dataset_populator.get_history_collection_details(history_id, content_id=list_id)
+        element = hdca["elements"][0]
+        job_id, _ = self._run_for_parameters_display(
+            history_id,
+            "collection_paired_test",
+            {"f1": {"batch": True, "values": [{"src": "hdca", "id": list_id, "map_over_type": "paired"}]}},
+        )
+        expected = [[{"src": "dce", "id": element["id"], "hid": None, "name": element["element_identifier"]}]]
+        assert self._data_parameter_values(f"/api/jobs/{job_id}/parameters_display") == expected
+
+    def _run_for_parameters_display(self, history_id, tool_id, inputs):
+        run = self.dataset_populator.run_tool(tool_id, inputs, history_id)
+        job_id = run["jobs"][0]["id"]
+        self.dataset_populator.wait_for_job(job_id, assert_ok=True)
+        return job_id, run["outputs"][0]["id"]
+
+    def _data_parameter_values(self, path, **kwds):
+        response = self._get(path, **kwds)
+        self._assert_status_code_is(response, 200)
+        return [p["value"] for p in response.json()["parameters"] if isinstance(p.get("value"), list)]
+
     def _create_and_search_job(self, history_id, inputs, tool_id):
         # create a job
         search_payload = self._search_payload(history_id=history_id, tool_id=tool_id, inputs=inputs)
