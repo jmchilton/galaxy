@@ -2276,7 +2276,7 @@ class EncodedDataItemSourceId(Model):
 
 class EncodedJobParameterHistoryItem(EncodedDataItemSourceId):
     hid: Optional[int] = None
-    name: str
+    name: Optional[str] = Field(default=None, description="Unset if the user can't access this item.")
 
 
 class DatasetJobInfo(DatasetSourceId):

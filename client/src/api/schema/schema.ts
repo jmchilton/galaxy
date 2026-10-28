@@ -11017,8 +11017,11 @@ export interface components {
              * @example 0123456789ABCDEF
              */
             id: string;
-            /** Name */
-            name: string;
+            /**
+             * Name
+             * @description Unset if the user can't access this item.
+             */
+            name?: string | null;
             /**
              * Source
              * @description The source of this dataset, either `hda`, `ldda`, `hdca`, `dce` or `dc` depending of its origin.

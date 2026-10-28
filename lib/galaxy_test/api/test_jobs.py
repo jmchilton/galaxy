@@ -1387,6 +1387,88 @@ steps:
         expected = [[{"src": "dce", "id": element["id"], "hid": None, "name": element["element_identifier"]}]]
         assert self._data_parameter_values(f"/api/jobs/{job_id}/parameters_display") == expected
 
+    @pytest.mark.require_new_history
+    def test_parameters_display_inaccessible_hda_input(self, history_id):
+        dataset = self.dataset_populator.new_dataset(history_id, wait=True)
+        self.dataset_populator.make_private(history_id, dataset["id"])
+        job_id, output_id = self._run_for_parameters_display(
+            history_id, "cat1", {"input1": {"src": "hda", "id": dataset["id"]}}
+        )
+        self._make_dataset_public(history_id, output_id)
+        with self._different_user():
+            expected = [[{"src": "hda", "id": dataset["id"], "hid": None, "name": None}]]
+            assert self._data_parameter_values(f"/api/jobs/{job_id}/parameters_display") == expected
+            assert self._data_parameter_values(f"/api/datasets/{output_id}/parameters_display") == expected
+        full = [[{"src": "hda", "id": dataset["id"], "hid": dataset["hid"], "name": dataset["name"]}]]
+        assert self._data_parameter_values(f"/api/jobs/{job_id}/parameters_display", admin=True) == full
+
+    @pytest.mark.require_new_history
+    def test_parameters_display_input_made_private_by_its_owner(self, history_id):
+        other_email = "parameters_display_input_owner@bx.psu.edu"
+        with self._different_user(other_email):
+            other_history_id = self.dataset_populator.new_history()
+            dataset = self.dataset_populator.new_dataset(other_history_id, wait=True)
+        job_id, _ = self._run_for_parameters_display(
+            history_id, "cat1", {"input1": {"src": "hda", "id": dataset["id"]}}
+        )
+        with self._different_user(other_email):
+            self.dataset_populator.make_private(other_history_id, dataset["id"])
+        expected = [[{"src": "hda", "id": dataset["id"], "hid": None, "name": None}]]
+        assert self._data_parameter_values(f"/api/jobs/{job_id}/parameters_display") == expected
+
+    @skip_without_tool("collection_paired_test")
+    @pytest.mark.require_new_history
+    def test_parameters_display_inaccessible_hdca_input(self, history_id):
+        pair_id = self.__history_with_ok_collection(collection_type="pair", history_id=history_id)
+        hdca = self.dataset_populator.get_history_collection_details(history_id, content_id=pair_id)
+        self.dataset_populator.make_private(history_id, hdca["elements"][0]["object"]["id"])
+        job_id, output_id = self._run_for_parameters_display(
+            history_id, "collection_paired_test", {"f1": {"src": "hdca", "id": pair_id}}
+        )
+        self._make_dataset_public(history_id, output_id)
+        with self._different_user():
+            expected = [[{"src": "hdca", "id": pair_id, "hid": None, "name": None}]]
+            assert self._data_parameter_values(f"/api/jobs/{job_id}/parameters_display") == expected
+        full = [[{"src": "hdca", "id": pair_id, "hid": hdca["hid"], "name": hdca["name"]}]]
+        assert self._data_parameter_values(f"/api/jobs/{job_id}/parameters_display", admin=True) == full
+
+    @skip_without_tool("collection_paired_test")
+    @pytest.mark.require_new_history
+    def test_parameters_display_inaccessible_dce_input(self, history_id):
+        list_id = self.__history_with_ok_collection(collection_type="list:pair", history_id=history_id)
+        hdca = self.dataset_populator.get_history_collection_details(history_id, content_id=list_id)
+        element = hdca["elements"][0]
+        self.dataset_populator.make_private(history_id, element["object"]["elements"][0]["object"]["id"])
+        job_id, output_id = self._run_for_parameters_display(
+            history_id,
+            "collection_paired_test",
+            {"f1": {"batch": True, "values": [{"src": "hdca", "id": list_id, "map_over_type": "paired"}]}},
+        )
+        self._make_dataset_public(history_id, output_id)
+        with self._different_user():
+            expected = [[{"src": "dce", "id": element["id"], "hid": None, "name": None}]]
+            assert self._data_parameter_values(f"/api/jobs/{job_id}/parameters_display") == expected
+        full = [[{"src": "dce", "id": element["id"], "hid": None, "name": element["element_identifier"]}]]
+        assert self._data_parameter_values(f"/api/jobs/{job_id}/parameters_display", admin=True) == full
+
+    @pytest.mark.require_new_history
+    def test_parameters_display_dce_input_in_inaccessible_collection(self, history_id):
+        list_id = self.__history_with_ok_collection(collection_type="list", history_id=history_id)
+        hdca = self.dataset_populator.get_history_collection_details(history_id, content_id=list_id)
+        element, sibling = hdca["elements"][0], hdca["elements"][1]
+        self.dataset_populator.make_private(history_id, sibling["object"]["id"])
+        job_id, output_id = self._run_for_parameters_display(
+            history_id, "cat1", {"input1": {"src": "dce", "id": element["id"]}}
+        )
+        self._make_dataset_public(history_id, output_id)
+        with self._different_user():
+            expected = [[{"src": "dce", "id": element["id"], "hid": None, "name": None}]]
+            assert self._data_parameter_values(f"/api/jobs/{job_id}/parameters_display") == expected
+
+    def _make_dataset_public(self, history_id, dataset_id):
+        response = self.dataset_populator.make_dataset_public_raw(history_id, dataset_id)
+        self._assert_status_code_is(response, 200)
+
     def _run_for_parameters_display(self, history_id, tool_id, inputs):
         run = self.dataset_populator.run_tool(tool_id, inputs, history_id)
         job_id = run["jobs"][0]["id"]

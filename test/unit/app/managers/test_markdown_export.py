@@ -305,6 +305,21 @@ job_parameters(job_id=1)
         assert "| Input Dataset | " in result
         assert "| 5: Cool Data |\n" in result
 
+    def test_job_parameters_data_inputs_without_hid_or_name(self):
+        job = model.Job()
+        job.id = 1
+        example = """# Example
+```galaxy
+job_parameters(job_id=1)
+```
+"""
+        value = [{"src": "dce", "id": 2, "name": "forward"}, {"src": "hda", "id": 3}, None]
+        response = {"parameters": [{"text": "Input Dataset", "value": value, "depth": 1}]}
+        with mock.patch.object(JobManager, "get_accessible_job", return_value=job):
+            with mock.patch("galaxy.managers.markdown_util.summarize_job_parameters", return_value=response):
+                result = self._to_basic(example)
+        assert "| Input Dataset | forward, (not accessible), No input provided |\n" in result
+
     def test_job_metrics(self):
         job = model.Job()
         job.id = 1
