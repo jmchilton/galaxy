@@ -336,6 +336,26 @@ class TestDatasetsApi(ApiTestCase):
             show_response = self._get(f"datasets/{hda['id']}")
             self._assert_status_code_is_ok(show_response)
 
+    @skip_without_tool("implicit_conversion")
+    def test_converted_ext_returns_existing_conversion(self, history_id):
+        hda, converted_id = self._fasta_with_tabular_conversion(history_id)
+        response = self._get(f"datasets/{hda['id']}/converted/tabular")
+        self._assert_status_code_is(response, 200)
+        converted = self._get(f"datasets/{converted_id}").json()
+        assert response.json()["hid"] == converted["hid"]
+        assert response.json()["extension"] == "tabular"
+
+    def _fasta_with_tabular_conversion(self, history_id):
+        """Return a fasta HDA and the id of its implicit tabular conversion."""
+        hda = self.dataset_populator.new_dataset(history_id, content=">chr1\nACGT\n", file_type="fasta", wait=True)
+        run = self.dataset_populator.run_tool(
+            "implicit_conversion", {"input1": {"src": "hda", "id": hda["id"]}}, history_id
+        )
+        job_id = run["jobs"][0]["id"]
+        self.dataset_populator.wait_for_job(job_id, assert_ok=True)
+        job = self.dataset_populator.get_job_details(job_id, full=True).json()
+        return hda, job["inputs"]["input1"]["id"]
+
     def __assert_matches_hda(self, input_hda, query_hda):
         self._assert_has_keys(query_hda, "id", "name")
         assert input_hda["name"] == query_hda["name"]
