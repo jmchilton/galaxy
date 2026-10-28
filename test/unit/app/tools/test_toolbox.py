@@ -17,6 +17,7 @@ import routes
 from galaxy import model
 from galaxy.app import UniverseApplication
 from galaxy.app_unittest_utils.toolbox_support import BaseToolBoxTestCase
+from galaxy.exceptions import ObjectNotFound
 from galaxy.managers.tools import DynamicToolManager
 from galaxy.tool_util.ontologies import ontology_data
 from galaxy.tool_util.unittest_utils import mock_trans
@@ -388,19 +389,34 @@ class TestToolBox(BaseToolBoxTestCase):
         assert test_tool.installed_changeset_revision is None
 
     def test_unload_dynamic_tool_restores_previous_default(self):
-        self._init_tool()
-        self._setup_two_versions_in_config(section=False)
-        self._setup_two_versions()
-        newest = self.toolbox.get_tool("test_tool")
-        assert newest.version == "0.2"
-        tool_uuid = uuid4()
-        self.toolbox._tools_by_uuid[tool_uuid] = newest
+        self._init_tool(version="0.1")
+        self._add_config("""<toolbox><tool file="tool.xml" /></toolbox>""")
+        self.toolbox.app.dynamic_tool_manager = DynamicToolManager(self.app)
+        dynamic_tool = model.DynamicTool(
+            tool_format="GalaxyTool",
+            tool_id="test_tool",
+            tool_version="0.2",
+            uuid=uuid4(),
+            active=True,
+            public=True,
+            value={
+                "class": "GalaxyTool",
+                "id": "test_tool",
+                "name": "test_tool",
+                "version": "0.2",
+                "shell_command": "echo hi",
+                "container": "busybox",
+            },
+        )
+        assert self.toolbox.load_dynamic_tool(dynamic_tool)
+        assert self.toolbox.get_tool("test_tool").version == "0.2"
 
-        self.toolbox.unload_dynamic_tool(tool_uuid)
+        self.toolbox.unload_dynamic_tool(dynamic_tool.uuid)
 
         assert self.toolbox.get_tool("test_tool").version == "0.1"
         assert self.toolbox.get_tool("test_tool", tool_version="0.2").version == "0.1"
-        assert tool_uuid not in self.toolbox._tools_by_uuid
+        with pytest.raises(ObjectNotFound):
+            self.toolbox.get_tool(tool_uuid=dynamic_tool.uuid)
 
     def test_tool_shed_request_version(self):
         self._init_tool()
