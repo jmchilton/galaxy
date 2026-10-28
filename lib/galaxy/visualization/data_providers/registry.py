@@ -111,7 +111,9 @@ class DataProviderRegistry:
                     data_provider = data_provider_class(original_dataset=original_dataset)
                 else:
                     try:
-                        converted_dataset = original_dataset.get_converted_dataset(trans, name)
+                        converted_dataset = trans.app.hda_manager.get_accessible_converted(
+                            trans, original_dataset, name
+                        )
                         deps = original_dataset.get_converted_dataset_deps(trans, name)
                     except NoConverterException:
                         raise RequestParameterInvalidException(

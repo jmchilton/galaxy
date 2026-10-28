@@ -526,6 +526,10 @@ class FastAPIUsers:
                 dataset = self.hda_manager.get_accessible(build_dict["fasta"], trans.user)
                 try:
                     new_len = self.hda_manager.get_accessible_converted(trans, dataset, "len")
+                    if new_len is None:
+                        raise exceptions.RequestParameterInvalidException(
+                            "Cannot create a custom build from this dataset yet: its conversion is still pending"
+                        )
                     new_linecount = self.hda_manager.get_accessible_converted(trans, new_len, "linecount")
                     build_dict["len"] = new_len.id
                     build_dict["linecount"] = new_linecount.id
