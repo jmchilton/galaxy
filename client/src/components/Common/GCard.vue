@@ -859,7 +859,7 @@ function onKeyDown(event: KeyboardEvent) {
                                         <GButton
                                             v-if="sa.visible ?? true"
                                             :id="getActionId(props.id, sa.id)"
-                                            v-g-tooltip.hover
+                                            tooltip
                                             :disabled="sa.disabled"
                                             :title="localize(sa.title)"
                                             v-bind="variantToColor(sa.variant || 'outline-primary')"
@@ -888,7 +888,7 @@ function onKeyDown(event: KeyboardEvent) {
                                             <GButton
                                                 v-if="pa.visible ?? true"
                                                 :id="getActionId(props.id, pa.id)"
-                                                v-g-tooltip.hover
+                                                tooltip
                                                 :disabled="pa.disabled"
                                                 :title="localize(pa.title)"
                                                 v-bind="variantToColor(pa.variant || 'primary')"

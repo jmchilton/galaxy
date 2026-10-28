@@ -559,20 +559,26 @@
                     {{ l("Cancel") }}
                 </GButton>
 
-                <TooltipOnHover class="menu-option" :title="titleReset">
-                    <GButton class="creator-reset-btn rule-btn-reset" @click="resetRulesAndState">
+                <div class="menu-option">
+                    <GButton
+                        class="creator-reset-btn rule-btn-reset"
+                        tooltip
+                        :title="titleReset"
+                        @click="resetRulesAndState">
                         {{ l("Reset") }}
                     </GButton>
-                </TooltipOnHover>
-                <TooltipOnHover class="menu-option" :disabled="!validInput" :title="titleFinish">
+                </div>
+                <div class="menu-option">
                     <GButton
                         class="create-collection rule-btn-okay"
                         color="blue"
+                        tooltip
+                        :title="titleFinish"
                         :disabled="!validInput"
                         @click="createCollection">
                         {{ finishButtonTitle }}
                     </GButton>
-                </TooltipOnHover>
+                </div>
             </BRow>
         </RuleModalFooter>
     </StateDiv>
@@ -642,7 +648,6 @@ import SavedRulesSelector from "@/components/RuleBuilder/SavedRulesSelector.vue"
 import SaveRules from "@/components/RuleBuilder/SaveRules.vue";
 import SelectBasic from "@/components/RuleBuilder/SelectBasic.vue";
 import StateDiv from "@/components/RuleBuilder/StateDiv.vue";
-import TooltipOnHover from "@/components/TooltipOnHover.vue";
 
 const RULES = RuleDefs.RULES;
 const MAPPING_TARGETS = RuleDefs.MAPPING_TARGETS;
@@ -663,7 +668,6 @@ export default {
         BFormInput,
         BRow,
         GAlert,
-        TooltipOnHover,
         HotTable,
         RuleGrid,
         RuleComponent,

@@ -285,6 +285,6 @@ describe("JobInformation/JobInformation.vue rerun indicator", () => {
         await new Promise((resolve) => setTimeout(resolve, 100));
         await flushPromises();
 
-        expect(wrapper.find("[title='Rerun this job']").exists()).toBe(true);
+        expect(wrapper.find("[data-title='Rerun this job']").exists()).toBe(true);
     });
 });
