@@ -24,7 +24,10 @@ import pytest
 from botocore.exceptions import ClientError
 from requests import get
 
-from galaxy.exceptions import ObjectInvalid
+from galaxy.exceptions import (
+    ObjectInvalid,
+    ObjectNotFound,
+)
 from galaxy.objectstore import (
     DeviceSourceMap,
     ObjectStoreAuth,
@@ -1330,12 +1333,18 @@ def test_get_data_head_boto3_reads_nothing_from_an_empty_object():
         assert object_store.get_data_head(MockDataset(1), 10) == b""
 
 
+@pytest.mark.parametrize(
+    "config_str",
+    [DISK_TEST_CONFIG, DISTRIBUTED_TEST_CONFIG, BOTO3_TEE_STREAMING_TEST_CONFIG_YAML],
+    ids=["disk", "distributed", "boto3"],
+)
 @patch_object_stores_to_skip_initialize
-def test_get_data_head_boto3_fails_for_a_missing_object():
-    with TestConfig(BOTO3_TEE_STREAMING_TEST_CONFIG_YAML) as (directory, object_store):
-        object_store._client = MagicMock()
-        object_store._client.get_object.side_effect = ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
-        with pytest.raises(ClientError):
+def test_get_data_head_fails_with_object_not_found_for_a_missing_object(config_str):
+    with TestConfig(config_str) as (directory, object_store):
+        if isinstance(object_store, Boto3ObjectStore):
+            object_store._client = MagicMock()
+            object_store._client.get_object.side_effect = ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+        with pytest.raises(ObjectNotFound):
             object_store.get_data_head(MockDataset(1), 10)
 
 

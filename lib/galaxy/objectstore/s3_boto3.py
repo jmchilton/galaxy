@@ -30,6 +30,7 @@ except ImportError:
     TransferConfig = None  # type: ignore[assignment,unused-ignore,misc]
     Config = None  # type: ignore[assignment,unused-ignore,misc]
 
+from galaxy.exceptions import ObjectNotFound
 from galaxy.util import (
     asbool,
     chunk_iterable,
@@ -358,9 +359,12 @@ class S3ObjectStore(CachingConcreteObjectStore):
         try:
             response = self._client.get_object(Bucket=self.bucket, Key=rel_path, Range=f"bytes=0-{size - 1}")
         except ClientError as e:
+            code = e.response["Error"]["Code"]
             # No byte range can be satisfied in an empty object.
-            if e.response["Error"]["Code"] == "InvalidRange":
+            if code == "InvalidRange":
                 return b""
+            if code in ("NoSuchKey", "404"):
+                raise ObjectNotFound(f"objectstore.get_data_head, object does not exist: {rel_path}")
             raise
         body = response["Body"]
         try:
