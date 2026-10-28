@@ -111,10 +111,12 @@ class DataProviderRegistry:
                     data_provider = data_provider_class(original_dataset=original_dataset)
                 else:
                     try:
-                        converted_dataset = trans.app.hda_manager.get_accessible_converted(
-                            trans, original_dataset, name
-                        )
+                        hda_manager = trans.app.hda_manager
+                        converted_dataset = hda_manager.get_accessible_converted(trans, original_dataset, name)
                         deps = original_dataset.get_converted_dataset_deps(trans, name)
+                        for dep in deps.values():
+                            if dep is not None:
+                                hda_manager.error_unless_accessible(dep, trans.user, trans=trans)
                     except NoConverterException:
                         raise RequestParameterInvalidException(
                             f"Conversion from '{original_dataset.ext}' to '{name}' not possible"
