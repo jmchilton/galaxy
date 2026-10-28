@@ -79,6 +79,7 @@ function userTitle(title: string) {
                     transparent
                     :disabled="isAnonymous || changingCurrentHistory"
                     :title="userTitle('Switch to history')"
+                    :disabled-title="isAnonymous ? userTitle('Switch to history') : localize('Switching history...')"
                     @click="showSwitchModal = !showSwitchModal">
                     <FontAwesomeIcon
                         fixed-width

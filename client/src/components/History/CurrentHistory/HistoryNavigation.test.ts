@@ -1,9 +1,11 @@
 import { getLocalVue } from "@tests/vitest/helpers";
 import { shallowMount } from "@vue/test-utils";
+import flushPromises from "flush-promises";
 import { createPinia } from "pinia";
 import { describe, expect, it } from "vitest";
 
 import type { RegisteredUser } from "@/api";
+import { useHistoryStore } from "@/stores/historyStore";
 import { useUserStore } from "@/stores/userStore";
 
 import HistoryNavigation from "./HistoryNavigation.vue";
@@ -42,6 +44,19 @@ describe("History Navigation", () => {
         expect(createButton.attributes().disabled).toBeFalsy();
         const switchButton = wrapper.find("*[data-description='switch to another history']");
         expect(switchButton.attributes().disabled).toBeFalsy();
+    });
+
+    it("explains the disabled switch button while a history switch is in progress", async () => {
+        const wrapper = await createWrapper(
+            { history: { id: "current_history_id" }, histories: [] },
+            { id: "user.id", email: "user.email" },
+        );
+        useHistoryStore().changingCurrentHistory = true;
+        await flushPromises();
+
+        const switchButton = wrapper.find("*[data-description='switch to another history']");
+        expect(switchButton.attributes().disabled).toBeTruthy();
+        expect(switchButton.attributes("disabledtitle")).toBe("Switching history...");
     });
 
     it("disables options for anonymous users", async () => {
