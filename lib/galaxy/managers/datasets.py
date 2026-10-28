@@ -364,7 +364,7 @@ class DatasetAssociationManager(
 
     def get_accessible_converted(self, trans, item: model.DatasetInstance, target_ext: str):
         """
-        Return ``item`` converted to ``target_ext`` (None while a new conversion starts),
+        Return ``item`` converted to ``target_ext`` (None while dependencies are pending),
         raising if an existing conversion is not accessible to the user.
         """
         converted = item.get_converted_dataset(trans, target_ext)
