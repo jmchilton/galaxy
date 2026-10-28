@@ -1,4 +1,5 @@
 from galaxy.objectstore import concrete_object_store
+from galaxy.objectstore.caching import enable_cache_monitor
 from galaxy.objectstore.templates.models import DiskObjectStoreConfiguration
 from galaxy.objectstore.unittest_utils import app_config
 from .test_objectstore import MockDataset
@@ -30,3 +31,10 @@ def test_disk(tmpdir):
     object_store.create(example_dataset)
     object_store.update_from_file(example_dataset, file_name=str(temp_file))
     assert object_store.size(example_dataset) == 7
+
+
+def test_user_object_store_skips_cache_monitor(tmpdir):
+    configuration = DiskObjectStoreConfiguration(type="disk", files_dir=str(tmpdir))
+    object_store = concrete_object_store(configuration, app_config(tmpdir))
+    config_dict = {"enable_cache_monitor": True, "cache": {"size": 1}}
+    assert enable_cache_monitor(object_store.config, config_dict)[0] is False

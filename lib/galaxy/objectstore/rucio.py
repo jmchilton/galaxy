@@ -88,7 +88,7 @@ def parse_config_xml(config_xml):
         if e_xml:
             oidc_providers = [e.text for e in e_xml]
 
-        enable_cache_mon = string_as_bool(config_xml.findtext("enable_cache_monitor", "False"))
+        enable_cache_mon = string_as_bool(config_xml.findtext("enable_cache_monitor", "True"))
 
         e_xml = config_xml.findall("upload_scheme")
         if e_xml:

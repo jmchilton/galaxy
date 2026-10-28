@@ -14,7 +14,10 @@ from galaxy.objectstore.caching import (
     CacheTarget,
     enable_cache_monitor,
     InProcessCacheMonitor,
+    parse_caching_config_dict_from_xml,
 )
+from galaxy.objectstore.rucio import parse_config_xml as rucio_parse_config_xml
+from galaxy.util import parse_xml_string
 
 
 class FakeConfig:
@@ -385,6 +388,11 @@ class MonitorConfig:
         (MonitorConfig(), {"enable_cache_monitor": True, "cache": {"monitor": "external"}}, False),
         (MonitorConfig(disable_process_management=True), {"enable_cache_monitor": True}, False),
         (MonitorConfig(), {"enable_cache_monitor": False}, False),
+        (MonitorConfig(), {}, True),
+        (MonitorConfig(), {"cache": {"monitor": "inprocess"}}, True),
+        (MonitorConfig(driver="inprocess", celery=True), {}, True),
+        (MonitorConfig(driver="external"), {"cache": {"monitor": "auto"}}, False),
+        (MonitorConfig(driver="inprocess", celery=True), {"cache": {"monitor": "auto"}}, True),
     ],
 )
 def test_enable_cache_monitor_resolution(config, config_dict, expected):
@@ -416,6 +424,12 @@ def test_start_cache_monitor_if_needed_sized(tmp_path):
 def test_start_cache_monitor_if_needed_disabled(tmp_path):
     backend = _monitored_backend(tmp_path, 1)
     backend.enable_cache_monitor = False
+    backend._start_cache_monitor_if_needed()
+    assert backend.cache_monitor is None
+
+
+def test_start_cache_monitor_if_needed_unsized(tmp_path):
+    backend = _monitored_backend(tmp_path, -1)
     backend._start_cache_monitor_if_needed()
     assert backend.cache_monitor is None
 
@@ -455,3 +469,24 @@ def test_cache_monitor_survives_check_error(tmp_path, monkeypatch):
         assert second_call.wait(5)
     finally:
         monitor.shutdown()
+
+
+def test_enable_cache_monitor_warns_celery_driver_without_celery(caplog):
+    assert enable_cache_monitor(MonitorConfig(driver="celery"), {})[0] is False
+    assert "enable_celery_tasks" in caplog.text
+
+
+def test_xml_cache_without_monitor_defers_to_global_driver(caplog):
+    cache_dict = parse_caching_config_dict_from_xml(parse_xml_string('<object_store><cache size="1"/></object_store>'))
+    assert enable_cache_monitor(MonitorConfig(driver="external"), {"cache": cache_dict})[0] is False
+    assert enable_cache_monitor(MonitorConfig(driver="celery"), {"cache": cache_dict})[0] is False
+    assert "enable_celery_tasks" in caplog.text
+
+
+def test_rucio_xml_enable_cache_monitor_default():
+    config_xml = parse_xml_string("""<object_store type="rucio">
+            <extra_dir type="job_work" path="database/job_working_directory_rucio"/>
+            <auth account="a" host="h" username="u" password="p"/>
+            <connection host="h"/>
+        </object_store>""")
+    assert rucio_parse_config_xml(config_xml)["enable_cache_monitor"] is True

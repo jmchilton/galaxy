@@ -563,8 +563,10 @@ class CachingConcreteObjectStore(ConcreteObjectStore):
         self.cache_monitor and self.cache_monitor.shutdown()
 
     def _start_cache_monitor_if_needed(self):
-        if self.enable_cache_monitor:
-            self.cache_monitor = InProcessCacheMonitor(self.cache_targets(), self.cache_monitor_interval)
+        # check_cache skips unsized targets, so a monitor with none sized has nothing to do.
+        cache_targets = self.cache_targets()
+        if self.enable_cache_monitor and any(target.size > 0 for target in cache_targets):
+            self.cache_monitor = InProcessCacheMonitor(cache_targets, self.cache_monitor_interval)
 
     def _get_remote_size(self, rel_path: str) -> int:
         raise NotImplementedError()
