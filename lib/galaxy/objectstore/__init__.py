@@ -834,6 +834,8 @@ class BaseObjectStore(ObjectStore):
         return None
 
     def get_data_head(self, obj, size: int) -> bytes:
+        if size <= 0:
+            return b""
         return self._invoke("get_data_head", obj, size=size)
 
     def get_concrete_store_backends(self) -> list[ConcreteObjectStore]:

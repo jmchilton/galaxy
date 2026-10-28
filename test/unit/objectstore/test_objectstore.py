@@ -1295,6 +1295,15 @@ def test_get_data_head_distributed_store_reads_from_the_backend_holding_the_obje
         assert object_store.get_data_head(dataset, 10) == b"the stored"
 
 
+@patch_object_stores_to_skip_initialize
+def test_get_data_head_reads_nothing_for_a_non_positive_size():
+    with TestConfig(BOTO3_TEE_STREAMING_TEST_CONFIG_YAML) as (directory, object_store):
+        object_store._client = MagicMock()
+        assert object_store.get_data_head(MockDataset(1), 0) == b""
+        assert object_store.get_data_head(MockDataset(1), -1) == b""
+        object_store._client.get_object.assert_not_called()
+
+
 def _write_cached(object_store, dataset, content: bytes):
     cache_path = _cache_path_for(object_store, dataset)
     os.makedirs(os.path.dirname(cache_path), exist_ok=True)
