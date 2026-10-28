@@ -262,15 +262,13 @@ class DynamicToolManager(ModelManager[DynamicTool]):
             yield
         except BaseException:
             session.rollback()
-            for tool_uuid in uuids:
-                self.app.toolbox.unload_dynamic_tool(tool_uuid)
+            discard = True
             raise
-        else:
+        finally:
+            session.info.pop(UNCOMMITTED_TOOLS_KEY, None)
             if discard:
                 for tool_uuid in uuids:
                     self.app.toolbox.unload_dynamic_tool(tool_uuid)
-        finally:
-            session.info.pop(UNCOMMITTED_TOOLS_KEY, None)
 
     def list_tools(self, active=True):
         # This backs the public /api/dynamic_tools index, so private user-defined
