@@ -345,9 +345,22 @@ class TestDatasetsApi(ApiTestCase):
         assert response.json()["hid"] == converted["hid"]
         assert response.json()["extension"] == "tabular"
 
-    def _fasta_with_tabular_conversion(self, history_id):
-        """Return a fasta HDA and the id of its implicit tabular conversion."""
+    @requires_admin
+    @skip_without_tool("implicit_conversion")
+    def test_converted_ext_checks_conversion_access(self, history_id):
         hda = self.dataset_populator.new_dataset(history_id, content=">chr1\nACGT\n", file_type="fasta", wait=True)
+        self.dataset_populator.make_private(history_id, hda["id"])
+        hda, converted_id = self._fasta_with_tabular_conversion(history_id, hda)
+        self._assert_status_code_is_ok(self.dataset_populator.make_dataset_public_raw(history_id, hda["id"]))
+        with self._different_user():
+            self._assert_status_code_is_ok(self._get(f"datasets/{hda['id']}"))
+            self._assert_status_code_is(self._get(f"datasets/{converted_id}"), 403)
+            self._assert_status_code_is(self._get(f"datasets/{hda['id']}/converted/tabular"), 403)
+
+    def _fasta_with_tabular_conversion(self, history_id, hda=None):
+        """Return a fasta HDA and the id of its implicit tabular conversion."""
+        if hda is None:
+            hda = self.dataset_populator.new_dataset(history_id, content=">chr1\nACGT\n", file_type="fasta", wait=True)
         run = self.dataset_populator.run_tool(
             "implicit_conversion", {"input1": {"src": "hda", "id": hda["id"]}}, history_id
         )

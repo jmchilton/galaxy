@@ -362,6 +362,16 @@ class DatasetAssociationManager(
         # defer to the dataset
         return self.dataset_manager.is_accessible(item.dataset, user, **kwargs)
 
+    def get_accessible_converted(self, trans, item: model.DatasetInstance, target_ext: str):
+        """
+        Return ``item`` converted to ``target_ext`` (None while a new conversion starts),
+        raising if an existing conversion is not accessible to the user.
+        """
+        converted = item.get_converted_dataset(trans, target_ext)
+        if converted is not None and not self.dataset_manager.is_accessible(converted.dataset, trans.user, trans=trans):
+            raise exceptions.ItemAccessibilityException("Converted dataset is not accessible by user")
+        return converted
+
     def delete(self, item: U, flush: bool = True, stop_job: bool = False, **kwargs):
         """
         Marks this dataset association as deleted.
