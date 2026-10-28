@@ -10857,10 +10857,10 @@ outer_input:
                 assert action["action_arguments"]["newname"] == "renamed earlier output"
             assert tools[1]["input_connections"]["input"] == {"id": tools[0]["id"], "output_name": first_output}
 
-    @pytest.mark.parametrize("nested", [False, True])
-    def test_failed_import_rolls_back_embedded_user_tools(self, nested):
+    @pytest.mark.parametrize("layout", ["flat", "nested", "first_nested"])
+    def test_failed_import_rolls_back_embedded_user_tools(self, layout):
         workflow = _embedded_tools_workflow(
-            TOOL_WITH_SHELL_COMMAND, dict(TOOL_WITH_SHELL_COMMAND, version="not a version!"), nested
+            TOOL_WITH_SHELL_COMMAND, dict(TOOL_WITH_SHELL_COMMAND, version="not a version!"), layout
         )
         with self.dataset_populator.user_tool_execute_permissions():
             tools_before = self.dataset_populator.get_unprivileged_tools()
@@ -11803,8 +11803,8 @@ steps:
             ), "Job should be cached from first invocation"
 
 
-def _embedded_tools_workflow(first_tool: dict, second_tool: dict, nested: bool = False) -> dict[str, Any]:
-    """Native workflow embedding two tools; ``nested`` wraps them in a subworkflow."""
+def _embedded_tools_workflow(first_tool: dict, second_tool: dict, layout: str = "flat") -> dict[str, Any]:
+    """Native workflow embedding two tools: ``nested`` wraps both in a subworkflow, ``first_nested`` only the first."""
 
     def native(name: str, steps: dict) -> dict[str, Any]:
         return {"a_galaxy_workflow": "true", "name": name, "annotation": "", "format-version": "0.1", "steps": steps}
@@ -11813,8 +11813,11 @@ def _embedded_tools_workflow(first_tool: dict, second_tool: dict, nested: bool =
         str(i): {"id": i, "type": "tool", "tool_representation": tool, "tool_state": "{}"}
         for i, tool in enumerate([first_tool, second_tool])
     }
-    if not nested:
+    if layout == "flat":
         return native("Embedded tools", tool_steps)
+    if layout == "first_nested":
+        tool_steps["0"] = {"id": 0, "type": "subworkflow", "subworkflow": native("Inner", {"0": tool_steps["0"]})}
+        return native("Partly nested embedded tools", tool_steps)
     return native(
         "Nested embedded tools",
         {"0": {"id": 0, "type": "subworkflow", "subworkflow": native("Inner", tool_steps)}},

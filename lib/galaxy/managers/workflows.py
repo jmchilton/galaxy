@@ -813,7 +813,7 @@ class WorkflowContentsManager(UsesAnnotations):
             annotation = sanitize_html(data["annotation"])
             self.add_item_annotation(trans.sa_session, stored.user, stored, annotation)
         workflow_tags = data.get("tags", [])
-        trans.tag_handler.set_tags_from_list(user=trans.user, item=stored, new_tags_list=workflow_tags)
+        trans.tag_handler.set_tags_from_list(user=trans.user, item=stored, new_tags_list=workflow_tags, flush=False)
 
         # Persist
         trans.sa_session.add(stored)
