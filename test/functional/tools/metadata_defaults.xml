@@ -1,8 +1,8 @@
 <tool id="metadata_defaults" name="metadata_defaults" version="0.1.0" profile="23.0">
     <command><![CDATA[
-for i in 1 2 3 4 5 6 7; do echo '# comment'; done > '$summary' &&
+for i in 1 2; do echo '# comment'; done > '$summary' &&
 printf 'run1\t2\t1\t0.9\tfeature1\n' >> '$summary' &&
-for i in 1 2 3; do echo '# comment'; done > '$selection' &&
+for i in 1; do echo '# comment'; done > '$selection' &&
 printf 'feature1\n' >> '$selection'
     ]]></command>
     <inputs />
@@ -25,13 +25,13 @@ printf 'feature1\n' >> '$selection'
     <tests>
         <test>
             <output name="summary" ftype="tabular">
-                <metadata name="comment_lines" value="7" />
+                <metadata name="comment_lines" value="2" />
                 <metadata name="column_names" value="Run ID,Group Size,Retraining,Accuracy,Excluded Feature" />
                 <metadata name="column_types" value="str,int,int,float,str" />
                 <assert_contents><has_text text="run1" /></assert_contents>
             </output>
             <output name="selection" ftype="tabular">
-                <metadata name="comment_lines" value="3" />
+                <metadata name="comment_lines" value="1" />
                 <metadata name="column_names" value="Feature" />
                 <metadata name="column_types" value="str" />
                 <assert_contents><has_text text="feature1" /></assert_contents>
