@@ -7438,6 +7438,16 @@ class CollectionStateSummary(NamedTuple):
     extensions: list[str]
     states: dict[str, int]
     deleted: int
+    purged: int
+
+
+class HDCAStateSummary(NamedTuple):
+    dbkeys: set[str | None]
+    extensions: set[str]
+    states: dict[str, int]
+    deleted: int
+    purged: int
+    store_times_summary: set[tuple[str, datetime]]
 
 
 class DatasetCollection(Base, Dictifiable, UsesAnnotations, Serializable):
@@ -7467,8 +7477,16 @@ class DatasetCollection(Base, Dictifiable, UsesAnnotations, Serializable):
         "elements_datatypes",
         "elements_states",
         "elements_deleted",
+        "elements_purged",
     ]
-    dict_element_visible_keys = ["id", "collection_type", "elements_datatypes", "elements_states", "elements_deleted"]
+    dict_element_visible_keys = [
+        "id",
+        "collection_type",
+        "elements_datatypes",
+        "elements_states",
+        "elements_deleted",
+        "elements_purged",
+    ]
 
     populated_states = DatasetCollectionPopulatedState
 
@@ -7707,6 +7725,15 @@ class DatasetCollection(Base, Dictifiable, UsesAnnotations, Serializable):
         return self._elements_deleted
 
     @property
+    def elements_purged(self):
+        if not hasattr(self, "_elements_purged"):
+            if object_session(self):
+                self._elements_purged = self.dataset_states_and_extensions_summary.purged
+            else:
+                self._elements_purged = sum(1 for dataset_instance in self.dataset_instances if dataset_instance.purged)
+        return self._elements_purged
+
+    @property
     def elements_datatypes(self):
         if not hasattr(self, "_elements_datatypes"):
             if object_session(self):
@@ -7734,11 +7761,11 @@ class DatasetCollection(Base, Dictifiable, UsesAnnotations, Serializable):
     def dataset_states_and_extensions_summary(self):
         """
         Calculate dataset states and extensions for this collection.
-        Returns (dbkeys, extensions, states, deleted) similar to HDCA method.
+        Returns (dbkeys, extensions, states, deleted, purged) similar to HDCA method.
         """
         if not hasattr(self, "_dataset_states_and_extensions_summary"):
             stmt = self._build_nested_collection_attributes_stmt(
-                hda_attributes=("_metadata", "extension", "deleted"), dataset_attributes=("state",)
+                hda_attributes=("_metadata", "extension", "deleted", "purged"), dataset_attributes=("state",)
             )
             tuples = required_object_session(self).execute(stmt)
 
@@ -7746,6 +7773,7 @@ class DatasetCollection(Base, Dictifiable, UsesAnnotations, Serializable):
             dbkeys = set()
             states = defaultdict(int)
             deleted = 0
+            purged = 0
             for row in tuples:
                 if row is not None:
                     dbkey_field = row._metadata.get("dbkey")
@@ -7758,6 +7786,8 @@ class DatasetCollection(Base, Dictifiable, UsesAnnotations, Serializable):
                         extensions.add(row.extension)
                     if row.deleted:
                         deleted += 1
+                    if row.purged:
+                        purged += 1
                     if row.state:
                         states[row.state] += 1
             # Filter out None values before sorting
@@ -7765,7 +7795,7 @@ class DatasetCollection(Base, Dictifiable, UsesAnnotations, Serializable):
             filtered_extensions = (ext for ext in extensions if ext is not None)
 
             self._dataset_states_and_extensions_summary = CollectionStateSummary(
-                sorted(filtered_dbkeys), sorted(filtered_extensions), states, deleted
+                sorted(filtered_dbkeys), sorted(filtered_extensions), states, deleted, purged
             )
         return self._dataset_states_and_extensions_summary
 
@@ -8134,6 +8164,7 @@ class DatasetCollectionInstance(HasName, UsesCreateAndUpdateTime):
             element_count=self.collection.element_count,
             elements_datatypes=list(self.collection.elements_datatypes),
             elements_deleted=self.collection.elements_deleted,
+            elements_purged=self.collection.elements_purged,
             elements_states=self.collection.elements_states,
             type="collection",  # contents type (distinguished from file or folder (in case of library))
         )
@@ -8341,19 +8372,20 @@ class HistoryDatasetCollectionAssociation(
             return self.job_state_summary._asdict()
 
     @property
-    def dataset_dbkeys_and_extensions_summary(self):
+    def dataset_dbkeys_and_extensions_summary(self) -> HDCAStateSummary:
         if not hasattr(self, "_dataset_dbkeys_and_extensions_summary"):
             stmt = self.collection._build_nested_collection_attributes_stmt(
-                hda_attributes=("_metadata", "extension", "deleted"),
+                hda_attributes=("_metadata", "extension", "deleted", "purged"),
                 dataset_attributes=("state", "object_store_id", "create_time"),
             )
             tuples = required_object_session(self).execute(stmt)
 
-            extensions = set()
-            dbkeys = set()
-            states = defaultdict(int)
+            extensions: set[str] = set()
+            dbkeys: set[str | None] = set()
+            states: dict[str, int] = defaultdict(int)
             deleted = 0
-            store_times = {}
+            purged = 0
+            store_times: dict[str, datetime] = {}
             for row in tuples:
                 if row is not None:
                     dbkey_field = row._metadata.get("dbkey")
@@ -8366,6 +8398,8 @@ class HistoryDatasetCollectionAssociation(
                         extensions.add(row.extension)
                     if row.deleted:
                         deleted += 1
+                    if row.purged:
+                        purged += 1
                     if row.state:
                         states[row.state] += 1
                     store_id = row.object_store_id
@@ -8374,7 +8408,9 @@ class HistoryDatasetCollectionAssociation(
                         store_times[store_id] = min(create_time, store_times.get(store_id, create_time))
             # Convert to set of (object_store_id, oldest_create_time) pairs
             store_times_summary = set(store_times.items())
-            self._dataset_dbkeys_and_extensions_summary = (dbkeys, extensions, states, deleted, store_times_summary)
+            self._dataset_dbkeys_and_extensions_summary = HDCAStateSummary(
+                dbkeys, extensions, states, deleted, purged, store_times_summary
+            )
         return self._dataset_dbkeys_and_extensions_summary
 
     @property
