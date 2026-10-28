@@ -846,8 +846,10 @@ class DatasetsService(ServiceBase, UsesVisualizationMixin):
 
     def _get_or_create_converted(self, trans, original: model.DatasetInstance, target_ext: str):
         try:
-            self.hda_manager.get_accessible_converted(trans, original, target_ext)
+            original.get_converted_dataset(trans, target_ext)
             converted = original.get_converted_files_by_type(target_ext)
+            if converted is not None:
+                self.hda_manager.error_unless_accessible(converted, trans.user, trans=trans)
             return converted
 
         except model.NoConverterException:

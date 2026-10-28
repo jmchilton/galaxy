@@ -368,8 +368,8 @@ class DatasetAssociationManager(
         raising if an existing conversion is not accessible to the user.
         """
         converted = item.get_converted_dataset(trans, target_ext)
-        if converted is not None and not self.dataset_manager.is_accessible(converted.dataset, trans.user, trans=trans):
-            raise exceptions.ItemAccessibilityException("Converted dataset is not accessible by user")
+        if converted is not None:
+            self.error_unless_accessible(converted, trans.user, trans=trans)
         return converted
 
     def delete(self, item: U, flush: bool = True, stop_job: bool = False, **kwargs):
