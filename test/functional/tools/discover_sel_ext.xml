@@ -1,0 +1,27 @@
+<tool id="discover_sel_ext" name="discover_sel_ext" version="0.1.0">
+    <command><![CDATA[
+mkdir out &&
+echo 'selection' > out/bayescan.sel &&
+echo 'summary' > '$summary'
+]]></command>
+    <inputs />
+    <outputs>
+        <data name="summary" format="txt">
+            <discover_datasets pattern="__designation_and_ext__" directory="out" visible="true" />
+        </data>
+    </outputs>
+    <tests>
+        <test>
+            <output name="summary">
+                <assert_contents>
+                    <has_text text="summary" />
+                </assert_contents>
+                <discovered_dataset designation="bayescan" ftype="sel">
+                    <assert_contents>
+                        <has_text text="selection" />
+                    </assert_contents>
+                </discovered_dataset>
+            </output>
+        </test>
+    </tests>
+</tool>
