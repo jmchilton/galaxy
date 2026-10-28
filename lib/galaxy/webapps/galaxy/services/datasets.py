@@ -846,6 +846,7 @@ class DatasetsService(ServiceBase, UsesVisualizationMixin):
 
     def _get_or_create_converted(self, trans, original: model.DatasetInstance, target_ext: str):
         try:
+            # Not get_accessible_converted: this returns the pending conversion row too.
             original.get_converted_dataset(trans, target_ext)
             converted = original.get_converted_files_by_type(target_ext)
             if converted is not None:
