@@ -72,9 +72,9 @@ class TestHistoryDatasetState(SeleniumTestCase, UsesHistoryItemAssertions, UsesU
         self.history_panel_click_item_title(hid=FIRST_HID, wait=True)
         self.screenshot("history_panel_dataset_discarded")
         self._assert_title_buttons(FIRST_HID, ["display", "delete"])
-        # vGTooltip skips aria-disabled buttons, so the "not yet editable" title is never shown
         edit_button = self.history_panel_item_component(hid=FIRST_HID).edit_button.wait_for_visible()
         assert edit_button.get_attribute("aria-disabled") == "true"
+        self.assert_tooltip_text(edit_button, "This dataset is not yet editable.")
         self._assert_action_buttons(FIRST_HID, ["info"])
         self._assert_downloadable(FIRST_HID, is_downloadable=False)
 

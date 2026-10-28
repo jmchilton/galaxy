@@ -3151,6 +3151,21 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         if sleep > 0:
             time.sleep(sleep)
 
+        # GTooltip stays mounted and is referenced by aria-describedby; it shows by toggling data-show.
+        describedby = element.get_attribute("aria-describedby")
+        g_tooltips = self.find_elements_by_selector(f"#{describedby}.g-tooltip") if describedby else []
+        if g_tooltips:
+            g_tooltip = g_tooltips[0]
+            self._wait_on(
+                lambda: g_tooltip.get_attribute("data-show") == "true",
+                f"tooltip [{describedby}] to show",
+                wait_type=WAIT_TYPES.UX_RENDER,
+            )
+            text = g_tooltip.text
+            if click_away:
+                self.click_center()
+            return text
+
         tooltip_element = tooltip_balloon.wait_for_visible()
         text = tooltip_element.text
         if click_away:
