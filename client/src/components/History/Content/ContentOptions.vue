@@ -49,7 +49,6 @@ const entryPointStore = useEntryPointStore();
 const errorMessage = ref("");
 const deleteCollectionMenu: Ref<InstanceType<typeof GDropdown> | null> = ref(null);
 
-const editButtonTitle = computed(() => (editDisabled.value ? "This dataset is not yet editable." : "Edit attributes"));
 const editDisabled = computed(() =>
     ["discarded", "new", "upload", "queued", "running", "waiting"].includes(props.state),
 );
@@ -138,9 +137,10 @@ function onDisplay($event: MouseEvent) {
         </GButton>
         <GButton
             v-if="writable && isHistoryItem"
-            v-g-tooltip.hover
+            tooltip
             :disabled="editDisabled"
-            :title="localize(editButtonTitle)"
+            :title="localize('Edit attributes')"
+            :disabled-title="localize('This dataset is not yet editable.')"
             tabindex="0"
             class="edit-btn px-1"
             size="small"
