@@ -232,3 +232,9 @@ def test_soft_shutdown_stops_monitor_and_keeps_session_open():
         object_store.connection_pool_monitor_thread.join(5)
         assert not object_store.connection_pool_monitor_thread.is_alive()
         assert not object_store.session.cleaned_up
+
+
+def test_parse_config_xml_cache_monitor():
+    root = parse_xml(CONFIG_FILE).getroot()
+    root.find("cache").set("monitor", "external")
+    assert parse_config_xml(root)["cache"]["monitor"] == "external"

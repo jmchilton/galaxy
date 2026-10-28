@@ -27,14 +27,13 @@ except ImportError:
 
 from galaxy.util import (
     ExecutionTimer,
-    string_as_bool,
     unlink,
 )
 from ._caching_base import CachingConcreteObjectStore
 from .caching import (
     CacheShardManager,
     CacheTarget,
-    parse_cache_dirs_from_xml,
+    parse_caching_config_dict_from_xml,
 )
 
 IRODS_IMPORT_MESSAGE = "The Python irods package is required to use this feature, please install it"
@@ -141,22 +140,9 @@ def parse_config_xml(config_xml):
         else:
             logical_path = None
 
-        c_xml = config_xml.findall("cache")
-        if not c_xml:
+        if not config_xml.findall("cache"):
             _config_xml_error("cache")
-        cache_size = float(c_xml[0].get("size", -1))
-        staging_path = c_xml[0].get("path", None)
-        cache_updated_data = string_as_bool(c_xml[0].get("cache_updated_data", "True"))
-
-        cache_dict = {
-            "size": cache_size,
-            "path": staging_path,
-            "cache_updated_data": cache_updated_data,
-        }
-
-        dirs = parse_cache_dirs_from_xml(c_xml[0])
-        if dirs:
-            cache_dict["dirs"] = dirs
+        cache_dict = parse_caching_config_dict_from_xml(config_xml)
 
         attrs = ("type", "path")
         e_xml = config_xml.findall("extra_dir")
