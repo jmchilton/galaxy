@@ -7,6 +7,8 @@ from galaxy.objectstore._caching_base import CachingConcreteObjectStore
 from galaxy.objectstore.caching import (
     CacheShard,
     CacheShardManager,
+    enable_cache_monitor,
+    InProcessCacheMonitor,
 )
 
 
@@ -356,3 +358,58 @@ def test_backend_pull_into_cache_writes_to_correct_shard(two_dir_cache):
 
     # Cleanup
     backend._delete(obj)
+
+
+class MonitorConfig:
+    def __init__(self, driver="auto", celery=False, interval=600, disable_process_management=False):
+        self.object_store_cache_monitor_driver = driver
+        self.enable_celery_tasks = celery
+        self.object_store_cache_monitor_interval = interval
+        self.disable_process_management = disable_process_management
+
+
+@pytest.mark.parametrize(
+    "config, config_dict, expected",
+    [
+        (MonitorConfig(), {"enable_cache_monitor": True}, True),
+        (MonitorConfig(), {"enable_cache_monitor": True, "cache": {"monitor": "inprocess"}}, True),
+        (MonitorConfig(driver="inprocess", celery=True), {"enable_cache_monitor": True}, True),
+        (MonitorConfig(celery=True), {"enable_cache_monitor": True}, False),
+        (MonitorConfig(), {"enable_cache_monitor": True, "cache": {"monitor": "celery"}}, False),
+        (MonitorConfig(driver="external"), {"enable_cache_monitor": True}, False),
+        (MonitorConfig(), {"enable_cache_monitor": True, "cache": {"monitor": "external"}}, False),
+        (MonitorConfig(disable_process_management=True), {"enable_cache_monitor": True}, False),
+        (MonitorConfig(), {"enable_cache_monitor": False}, False),
+    ],
+)
+def test_enable_cache_monitor_resolution(config, config_dict, expected):
+    assert enable_cache_monitor(config, config_dict)[0] is expected
+
+
+def test_enable_cache_monitor_interval():
+    assert enable_cache_monitor(MonitorConfig(interval=42), {})[1] == 42
+    assert enable_cache_monitor(MonitorConfig(interval=42), {"cache": {"monitor_interval": 7}})[1] == 7
+
+
+def _monitored_backend(tmp_path, size):
+    config = FakeConfig(cache_path=str(tmp_path), cache_size=size)
+    backend = StubCachingBackend(CacheShardManager.from_config({}, config))
+    backend.enable_cache_monitor = True
+    backend.cache_monitor_interval = 600
+    return backend
+
+
+def test_start_cache_monitor_if_needed_sized(tmp_path):
+    backend = _monitored_backend(tmp_path, 1)
+    backend._start_cache_monitor_if_needed()
+    try:
+        assert isinstance(backend.cache_monitor, InProcessCacheMonitor)
+    finally:
+        backend._shutdown_cache_monitor()
+
+
+def test_start_cache_monitor_if_needed_disabled(tmp_path):
+    backend = _monitored_backend(tmp_path, 1)
+    backend.enable_cache_monitor = False
+    backend._start_cache_monitor_if_needed()
+    assert backend.cache_monitor is None
