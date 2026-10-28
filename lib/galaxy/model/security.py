@@ -7,6 +7,7 @@ from datetime import (
 )
 from typing import (
     Optional,
+    Union,
 )
 
 from sqlalchemy import (
@@ -28,12 +29,15 @@ from galaxy.exceptions import RequestParameterInvalidException
 from galaxy.model import (
     Dataset,
     DatasetCollection,
+    DatasetCollectionElement,
     DatasetPermissions,
     DefaultHistoryPermissions,
     DefaultUserPermissions,
     Group,
     GroupRoleAssociation,
+    HistoryDatasetAssociation,
     HistoryDatasetAssociationDisplayAtAuthorization,
+    HistoryDatasetCollectionAssociation,
     Library,
     LibraryDataset,
     LibraryDatasetCollectionAssociation,
@@ -513,6 +517,18 @@ class GalaxyRBACAgent(RBACAgent):
         if not self.can_access_datasets(user_roles, action_tuples):
             return False
         return True
+
+    def can_access_data_input(
+        self,
+        user_roles: list[Role],
+        item: Union[HistoryDatasetAssociation, HistoryDatasetCollectionAssociation, DatasetCollectionElement],
+    ) -> bool:
+        """Whether a tool data input is accessible; a collection element is accessible with its collection."""
+        if isinstance(item, DatasetCollectionElement):
+            return self.can_access_collection(user_roles, item.child_collection or item.collection)
+        if isinstance(item, HistoryDatasetCollectionAssociation):
+            return self.can_access_collection(user_roles, item.collection)
+        return self.can_access_dataset(user_roles, item.dataset)
 
     def can_manage_dataset(self, roles, dataset):
         return self.allow_action(roles, self.permitted_actions.DATASET_MANAGE_PERMISSIONS, dataset)

@@ -1741,22 +1741,10 @@ def summarize_job_parameters(trans: ProvidesUserContext, job: Job) -> dict[str, 
         model.HistoryDatasetAssociation, model.DatasetCollectionElement, model.HistoryDatasetCollectionAssociation
     ]
 
-    def can_access_data_input(item: DataInput) -> bool:
-        if is_admin:
-            return True
-        if isinstance(item, model.HistoryDatasetAssociation):
-            return security_agent.can_access_dataset(user_roles, item.dataset)
-        if isinstance(item, model.DatasetCollectionElement):
-            # Same rule as the DCE show endpoint: a leaf element is accessible with its collection.
-            collection = item.child_collection or item.collection
-        else:
-            collection = item.collection
-        return security_agent.can_access_collection(user_roles, collection)
-
     def data_input_value(src: str, item: DataInput, **details) -> dict[str, Any]:
         """Describe a data input, by ``src`` and ``id`` only if the user can't access it."""
         value = {"src": src, "id": item.id}
-        if can_access_data_input(item):
+        if is_admin or security_agent.can_access_data_input(user_roles, item):
             value.update(details)
         return value
 
