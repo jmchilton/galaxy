@@ -178,7 +178,7 @@ class UsesApiTestCaseMixin:
     def _browser_session(self, email: str, password: str = "testpass"):
         """Yield a ``requests.Session`` logged in as ``email`` via the web login form.
 
-        For legacy controller routes outside /api that reject API keys.
+        For legacy controller routes that reject API keys and API routes that need a current history.
         """
         self._setup_user(email, password)
         with requests.Session() as session:

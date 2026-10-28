@@ -2396,7 +2396,7 @@ class DataToolParameter(BaseDataToolParameter):
             d["options"]["dce"].append(
                 {
                     "id": trans.security.encode_id(dce.id),
-                    "name": dce.element_identifier,
+                    "name": data_input_option_name(trans, dce, dce.element_identifier),
                     "is_dataset": dce.hda is not None,
                     "src": "dce",
                     "tags": [],
@@ -2441,6 +2441,18 @@ class DataToolParameter(BaseDataToolParameter):
 
         for hda in hda_list:
             if hasattr(hda, "hid"):
+                if not user_can_access_data_input(trans, hda):
+                    d["options"]["hda"].append(
+                        {
+                            "id": trans.security.encode_id(hda.id),
+                            "hid": -1,
+                            "name": INACCESSIBLE_DATA_INPUT_NAME,
+                            "tags": [],
+                            "src": "hda",
+                            "keep": True,
+                        }
+                    )
+                    continue
                 if hda.deleted:
                     hda_state = "deleted"
                 elif not hda.visible:
@@ -2646,7 +2658,7 @@ class DataCollectionToolParameter(BaseDataToolParameter):
                 {
                     "id": trans.security.encode_id(dce.id),
                     "hid": -1,
-                    "name": dce.element_identifier,
+                    "name": data_input_option_name(trans, dce, dce.element_identifier),
                     "src": "dce",
                     "tags": [],
                 }
@@ -2913,6 +2925,19 @@ parameter_types: dict[str, type[ToolParameter]] = dict(
     directory_uri=DirectoryUriToolParameter,
     drill_down=DrillDownSelectToolParameter,
 )
+
+
+INACCESSIBLE_DATA_INPUT_NAME = "(not accessible)"
+PreviousDataInput = Union[HistoryDatasetAssociation, DatasetCollectionElement]
+
+
+def user_can_access_data_input(trans, item: PreviousDataInput) -> bool:
+    return trans.user_is_admin or trans.app.security_agent.can_access_data_input(trans.get_current_user_roles(), item)
+
+
+def data_input_option_name(trans, item: PreviousDataInput, name: str) -> str:
+    """Option label for a previously selected data input, a placeholder if the user can't access it."""
+    return name if user_can_access_data_input(trans, item) else INACCESSIBLE_DATA_INPUT_NAME
 
 
 def history_item_dict_to_python(value, app, name):

@@ -1345,8 +1345,13 @@ steps:
             "tags": [],
         }
 
-    def _rerun_option(self, job_id, input_name, src, item_id):
-        response = self._get(f"jobs/{job_id}/build_for_rerun")
+    def _rerun_option(self, job_id, input_name, src, item_id, session=None):
+        if session is None:
+            response = self._get(f"jobs/{job_id}/build_for_rerun")
+        else:
+            # A browser session has a current history, so the form isn't limited to the job owner.
+            session.get(urllib.parse.urljoin(self.url, "history/current_history_json"))
+            response = session.get(urllib.parse.urljoin(self.url, f"api/jobs/{job_id}/build_for_rerun"))
         self._assert_status_code_is(response, 200)
         (data_input,) = (i for i in response.json()["inputs"] if i["name"] == input_name)
         (option,) = (o for o in data_input["options"][src] if o["id"] == item_id)
@@ -1464,6 +1469,65 @@ steps:
         with self._different_user():
             expected = [[{"src": "dce", "id": element["id"], "hid": None, "name": None}]]
             assert self._data_parameter_values(f"/api/jobs/{job_id}/parameters_display") == expected
+
+    @pytest.mark.require_new_history
+    def test_rerun_form_inaccessible_hda_option(self, history_id):
+        dataset = self.dataset_populator.new_dataset(history_id, wait=True)
+        self.dataset_populator.make_private(history_id, dataset["id"])
+        job_id, output_id = self._run_for_parameters_display(
+            history_id, "cat1", {"input1": {"src": "hda", "id": dataset["id"]}}
+        )
+        self._make_dataset_public(history_id, output_id)
+        with self._browser_session("rerun_form_viewer@bx.psu.edu") as session:
+            assert self._rerun_option(job_id, "input1", "hda", dataset["id"], session) == {
+                "id": dataset["id"],
+                "hid": -1,
+                "name": "(not accessible)",
+                "tags": [],
+                "src": "hda",
+                "keep": True,
+            }
+
+    @pytest.mark.require_new_history
+    def test_rerun_form_inaccessible_leaf_dce_option(self, history_id):
+        list_id = self.__history_with_ok_collection(collection_type="list", history_id=history_id)
+        hdca = self.dataset_populator.get_history_collection_details(history_id, content_id=list_id)
+        element, sibling = hdca["elements"][0], hdca["elements"][1]
+        self.dataset_populator.make_private(history_id, sibling["object"]["id"])
+        job_id, output_id = self._run_for_parameters_display(
+            history_id, "cat1", {"input1": {"src": "dce", "id": element["id"]}}
+        )
+        self._make_dataset_public(history_id, output_id)
+        with self._browser_session("rerun_form_viewer@bx.psu.edu") as session:
+            assert self._rerun_option(job_id, "input1", "dce", element["id"], session) == {
+                "id": element["id"],
+                "name": "(not accessible)",
+                "is_dataset": True,
+                "src": "dce",
+                "tags": [],
+                "keep": True,
+            }
+
+    @skip_without_tool("collection_paired_test")
+    @pytest.mark.require_new_history
+    def test_rerun_form_inaccessible_collection_dce_option(self, history_id):
+        list_id = self.__history_with_ok_collection(collection_type="list:pair", history_id=history_id)
+        element = self.dataset_populator.get_history_collection_details(history_id, content_id=list_id)["elements"][0]
+        self.dataset_populator.make_private(history_id, element["object"]["elements"][0]["object"]["id"])
+        job_id, output_id = self._run_for_parameters_display(
+            history_id,
+            "collection_paired_test",
+            {"f1": {"batch": True, "values": [{"src": "hdca", "id": list_id, "map_over_type": "paired"}]}},
+        )
+        self._make_dataset_public(history_id, output_id)
+        with self._browser_session("rerun_form_viewer@bx.psu.edu") as session:
+            assert self._rerun_option(job_id, "f1", "dce", element["id"], session) == {
+                "id": element["id"],
+                "hid": -1,
+                "name": "(not accessible)",
+                "src": "dce",
+                "tags": [],
+            }
 
     def _make_dataset_public(self, history_id, dataset_id):
         response = self.dataset_populator.make_dataset_public_raw(history_id, dataset_id)
