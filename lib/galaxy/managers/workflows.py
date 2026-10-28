@@ -183,21 +183,25 @@ class WorkflowsManager(sharable.SharableModelManager[model.StoredWorkflow], dele
         self.dynamic_tool_manager = dynamic_tool_manager
 
     def copy_workflow_for_user(self, user: model.User, workflow: model.Workflow) -> model.Workflow:
-        """Copy ``workflow`` for ``user``, with private copies of the user-defined tools they don't own."""
+        """Copy ``workflow`` for ``user``, with private copies of the user-defined tools they don't own.
+
+        Tool copies are only flushed; the caller commits them with the copied workflow.
+        """
         # Created before copying, so a user who may not create user-defined tools
         # gets an error instead of a workflow they cannot run.
         tool_copies: dict[int, model.DynamicTool] = {}
-        for step in _tool_steps(workflow):
-            dynamic_tool = step.dynamic_tool
-            if dynamic_tool is None or dynamic_tool.public or dynamic_tool.id in tool_copies:
-                continue
-            if dynamic_tool.uuid is None or self.dynamic_tool_manager.get_unprivileged_tool_by_uuid(
-                user, dynamic_tool.uuid
-            ):
-                continue
-            tool_copies[dynamic_tool.id] = self.dynamic_tool_manager.create_unprivileged_tool(
-                user, DynamicUnprivilegedToolCreatePayload(representation=dynamic_tool.value)
-            )
+        with self.dynamic_tool_manager.rollback_tools_on_error():
+            for step in _tool_steps(workflow):
+                dynamic_tool = step.dynamic_tool
+                if dynamic_tool is None or dynamic_tool.public or dynamic_tool.id in tool_copies:
+                    continue
+                if dynamic_tool.uuid is None or self.dynamic_tool_manager.get_unprivileged_tool_by_uuid(
+                    user, dynamic_tool.uuid
+                ):
+                    continue
+                tool_copies[dynamic_tool.id] = self.dynamic_tool_manager.create_unprivileged_tool(
+                    user, DynamicUnprivilegedToolCreatePayload(representation=dynamic_tool.value)
+                )
         copied_workflow = workflow.copy(user=user)
         for step in _tool_steps(copied_workflow):
             if step.dynamic_tool is not None and step.dynamic_tool.id in tool_copies:
