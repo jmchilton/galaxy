@@ -10869,6 +10869,16 @@ outer_input:
             assert "failed lint checks" in response.json()["err_msg"]
             assert self.dataset_populator.get_unprivileged_tools() == tools_before
 
+    def test_failed_update_rolls_back_embedded_user_tools(self):
+        workflow_id = self.workflow_populator.simple_workflow("update target")
+        workflow = _embedded_tools_workflow(TOOL_WITH_SHELL_COMMAND, dict(TOOL_WITH_SHELL_COMMAND, version="bad!"))
+        with self.dataset_populator.user_tool_execute_permissions():
+            tools_before = self.dataset_populator.get_unprivileged_tools()
+            response = self.workflow_populator.update_workflow(workflow_id, workflow)
+            self._assert_status_code_is(response, 400)
+            assert "failed lint checks" in response.json()["err_msg"]
+            assert self.dataset_populator.get_unprivileged_tools() == tools_before
+
     def _build_user_defined_tool_run_workflow_dict(
         self,
         content_id: Optional[str],
