@@ -1,6 +1,7 @@
 import { createTestingPinia } from "@pinia/testing";
 import { getLocalVue } from "@tests/vitest/helpers";
 import { mount } from "@vue/test-utils";
+import flushPromises from "flush-promises";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { sanitizeHtml } from "@/directives/sanitizeHtml";
@@ -65,6 +66,17 @@ describe("GCard", () => {
         expect(handler).not.toHaveBeenCalled();
         await wrapper.find("#g-card-action-copy-card").trigger("click");
         expect(handler).toHaveBeenCalledOnce();
+    });
+
+    it.each(["primaryActions", "secondaryActions"])("describes a disabled %s button with its title", async (prop) => {
+        const title = "Log in to run workflow";
+        const wrapper = mountCard({ [prop]: [{ id: "run", label: "Run", title, disabled: true }] });
+        await flushPromises();
+        const button = wrapper.find("#g-card-action-run-card");
+        expect(button.attributes("aria-disabled")).toBe("true");
+        const tooltipId = button.attributes("aria-describedby");
+        expect(tooltipId).toBeDefined();
+        expect(wrapper.find(`#${tooltipId}[role="tooltip"]`).text()).toBe(title);
     });
 
     describe("header", () => {

@@ -973,7 +973,7 @@ workflows:
     curated_advanced_search_name_input: '#curated-workflows-advanced-filter-name'
     curated_advanced_search_collection_input: '#curated-workflows-advanced-filter-collection'
     workflow_card_title: '[id^="g-card-title-"] a'
-    workflow_card_button: '[id^="g-card-action-"] button[title="${title}"]'
+    workflow_card_button: 'button[id^="g-card-action-"][data-title="${title}"]'
     workflow_copy_steps: '[id^="g-card-action-workflow-copy-steps-"]'
     workflow_insert_sub_workflow: '[id^="g-card-action-workflow-insert-sub-workflow-"]'
     workflow_trs_import: '.workflow-import-trs'
