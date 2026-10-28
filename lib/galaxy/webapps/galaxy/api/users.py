@@ -21,6 +21,7 @@ from fastapi import (
     status,
 )
 from markupsafe import escape
+from sqlalchemy import false
 
 from galaxy import (
     exceptions,
@@ -33,10 +34,12 @@ from galaxy.managers.context import (
     ProvidesUserContext,
 )
 from galaxy.managers.hdas import HDAManager
+from galaxy.managers.histories import HistoryManager
 from galaxy.model import (
     Dataset,
     FormDefinition,
     FormValues,
+    History,
     HistoryDatasetAssociation,
     NoConverterException,
     Role,
@@ -157,6 +160,7 @@ class FastAPIUsers:
     service: UsersService = depends(UsersService)
     user_serializer: users.UserSerializer = depends(users.UserSerializer)
     hda_manager: HDAManager = depends(HDAManager)
+    history_manager: HistoryManager = depends(HistoryManager)
 
     @router.put(
         "/api/users/current/recalculate_disk_usage",
@@ -463,7 +467,7 @@ class FastAPIUsers:
         self,
         user_id: UserIdPathParam,
         key: str = CustomBuildKeyPathParam,
-        trans: ProvidesUserContext = DependsOnTrans,
+        trans: ProvidesHistoryContext = DependsOnTrans,
         payload: CustomBuildCreationPayload = CustomBuildCreationBody,
     ) -> Any:
         user = self.service.get_user(trans, user_id)
@@ -524,9 +528,19 @@ class FastAPIUsers:
             else:
                 build_dict["fasta"] = trans.security.decode_id(len_value)
                 dataset = self.hda_manager.get_accessible(build_dict["fasta"], trans.user)
+                # API-key requests have no current history; never write jobs into another user's history.
+                history = dataset.history
+                if history is None or history.user != trans.user or history.deleted or history.archived:
+                    history = trans.history or self.history_manager.most_recent(
+                        trans.user, filters=[History.deleted == false(), History.archived == false()]
+                    )
+                if history is None:
+                    raise exceptions.RequestParameterInvalidException(
+                        "A history is required to convert the dataset for a custom build."
+                    )
                 try:
-                    new_len = dataset.get_converted_dataset(trans, "len")
-                    new_linecount = new_len.get_converted_dataset(trans, "linecount")
+                    new_len = dataset.get_converted_dataset(trans, "len", history=history)
+                    new_linecount = new_len.get_converted_dataset(trans, "linecount", history=history)
                     build_dict["len"] = new_len.id
                     build_dict["linecount"] = new_linecount.id
                 except NoConverterException as e:

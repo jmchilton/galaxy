@@ -345,6 +345,28 @@ class TestUsersApi(ApiTestCase):
         current_user = self._get(url).json()
         assert specified_user == current_user
 
+    def test_custom_build_from_fasta(self):
+        dataset_populator = DatasetPopulator(self.galaxy_interactor)
+        user_id = dataset_populator.user_id()
+        with dataset_populator.test_history() as history_id:
+            hda = dataset_populator.new_dataset(
+                history_id, content=">chr1\nACGT\n>chr2\nAC\n", file_type="fasta", wait=True
+            )
+            newer_history_id = dataset_populator.new_history()
+            response = self._put(
+                f"users/{user_id}/custom_builds/fasta_build",
+                data={"name": "FASTA build", "len|type": "fasta", "len|value": hda["id"]},
+                json=True,
+            )
+            self._assert_status_code_is(response, 204)
+            dataset_populator.wait_for_history(history_id)
+            extensions = {c["extension"] for c in dataset_populator.get_history_contents(history_id)}
+            assert {"len", "linecount"} <= extensions
+            assert dataset_populator.get_history_contents(newer_history_id) == []
+            builds = self._get(f"users/{user_id}/custom_builds").json()
+            build = next(build for build in builds if build["id"] == "fasta_build")
+            assert build["count"] == 2
+
     def __url(self, action, user):
         return self._api_url(f"users/{user['id']}/{action}", params=dict(key=self.master_api_key))
 
