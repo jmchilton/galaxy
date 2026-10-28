@@ -339,7 +339,7 @@ class TestDatasetsApi(ApiTestCase):
     @skip_without_tool("implicit_conversion")
     def test_converted_ext_returns_existing_conversion(self, history_id):
         hda, converted_id = self._fasta_with_tabular_conversion(history_id)
-        response = self._get(f"datasets/{hda['id']}/converted/tabular")
+        response = self._get_converted(hda["id"], "tabular")
         self._assert_status_code_is(response, 200)
         converted = self._get(f"datasets/{converted_id}").json()
         assert response.json()["hid"] == converted["hid"]
@@ -355,7 +355,10 @@ class TestDatasetsApi(ApiTestCase):
         with self._different_user():
             self._assert_status_code_is_ok(self._get(f"datasets/{hda['id']}"))
             self._assert_status_code_is(self._get(f"datasets/{converted_id}"), 403)
-            self._assert_status_code_is(self._get(f"datasets/{hda['id']}/converted/tabular"), 403)
+            self._assert_status_code_is(self._get_converted(hda["id"], "tabular"), 403)
+
+    def _get_converted(self, dataset_id, ext):
+        return self._get(f"datasets/{dataset_id}/converted/{ext}")
 
     def _fasta_with_tabular_conversion(self, history_id, hda=None):
         """Return a fasta HDA and the id of its implicit tabular conversion."""
