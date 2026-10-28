@@ -10857,6 +10857,18 @@ outer_input:
                 assert action["action_arguments"]["newname"] == "renamed earlier output"
             assert tools[1]["input_connections"]["input"] == {"id": tools[0]["id"], "output_name": first_output}
 
+    @pytest.mark.parametrize("nested", [False, True])
+    def test_failed_import_rolls_back_embedded_user_tools(self, nested):
+        workflow = _embedded_tools_workflow(
+            TOOL_WITH_SHELL_COMMAND, dict(TOOL_WITH_SHELL_COMMAND, version="not a version!"), nested
+        )
+        with self.dataset_populator.user_tool_execute_permissions():
+            tools_before = self.dataset_populator.get_unprivileged_tools()
+            response = self.workflow_populator.create_workflow_response(workflow)
+            self._assert_status_code_is(response, 400)
+            assert "failed lint checks" in response.json()["err_msg"]
+            assert self.dataset_populator.get_unprivileged_tools() == tools_before
+
     def _build_user_defined_tool_run_workflow_dict(
         self,
         content_id: Optional[str],
@@ -11462,6 +11474,17 @@ class TestAdminWorkflowsApi(BaseWorkflowsApiTestCase):
             action = first_step["post_job_actions"]["RenameDatasetActionout_file1"]
             assert action["action_arguments"]["newname"] == "renamed earlier output"
 
+    def test_failed_import_rolls_back_embedded_admin_tools(self):
+        tool_id = f"embedded_admin_{uuid4().hex[:8]}"
+        admin_tool = dict(TOOL_WITH_SHELL_COMMAND, **{"class": "GalaxyTool", "id": tool_id})
+        # The admin lacks USER_TOOL_EXECUTE, so the embedded user tool fails after the admin tool is created.
+        workflow = _embedded_tools_workflow(admin_tool, TOOL_WITH_SHELL_COMMAND)
+        tools_before = self.dataset_populator.list_dynamic_tools()
+        response = self.workflow_populator.create_workflow_response(workflow)
+        self._assert_status_code_is(response, 403)
+        assert self.dataset_populator.list_dynamic_tools() == tools_before
+        self._assert_status_code_is(self._get(f"tools/{tool_id}"), 404)
+
 
 class TestCachedWorkflowsApi(BaseWorkflowsApiTestCase, ChangeDatatypeTests):
     dataset_populator: DatasetPopulator
@@ -11768,3 +11791,21 @@ steps:
             assert (
                 second_job_details["copied_from_job_id"] == first_job_id
             ), "Job should be cached from first invocation"
+
+
+def _embedded_tools_workflow(first_tool: dict, second_tool: dict, nested: bool = False) -> dict[str, Any]:
+    """Native workflow embedding two tools; ``nested`` wraps them in a subworkflow."""
+
+    def native(name: str, steps: dict) -> dict[str, Any]:
+        return {"a_galaxy_workflow": "true", "name": name, "annotation": "", "format-version": "0.1", "steps": steps}
+
+    tool_steps = {
+        str(i): {"id": i, "type": "tool", "tool_representation": tool, "tool_state": "{}"}
+        for i, tool in enumerate([first_tool, second_tool])
+    }
+    if not nested:
+        return native("Embedded tools", tool_steps)
+    return native(
+        "Nested embedded tools",
+        {"0": {"id": 0, "type": "subworkflow", "subworkflow": native("Inner", tool_steps)}},
+    )

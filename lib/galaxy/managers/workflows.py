@@ -746,6 +746,29 @@ class WorkflowContentsManager(UsesAnnotations):
         is_subworkflow=False,
         resolving_urls: frozenset[str] = frozenset(),
     ) -> CreatedWorkflow:
+        with trans.app.dynamic_tool_manager.rollback_tools_on_error():
+            return self._build_workflow_from_raw_description(
+                trans,
+                raw_workflow_description,
+                workflow_create_options,
+                source=source,
+                add_to_menu=add_to_menu,
+                hidden=hidden,
+                is_subworkflow=is_subworkflow,
+                resolving_urls=resolving_urls,
+            )
+
+    def _build_workflow_from_raw_description(
+        self,
+        trans,
+        raw_workflow_description,
+        workflow_create_options,
+        source,
+        add_to_menu,
+        hidden,
+        is_subworkflow,
+        resolving_urls: frozenset[str],
+    ) -> CreatedWorkflow:
         data = raw_workflow_description.as_dict
         # Put parameters in workflow mode
         trans.workflow_building_mode = workflow_building_modes.ENABLED
@@ -798,11 +821,27 @@ class WorkflowContentsManager(UsesAnnotations):
             menuEntry.stored_workflow = stored
             trans.user.stored_workflow_menu_entries.append(menuEntry)
 
-        trans.sa_session.commit()
+        # The outermost import commits subworkflows and embedded tools with the parent.
+        if is_subworkflow:
+            trans.sa_session.flush()
+        else:
+            trans.sa_session.commit()
 
         return CreatedWorkflow(stored_workflow=stored, workflow=workflow, missing_tools=missing_tool_tups)
 
     def update_workflow_from_raw_description(
+        self,
+        trans,
+        stored_workflow: StoredWorkflow,
+        raw_workflow_description: RawWorkflowDescription,
+        workflow_update_options: WorkflowUpdateOptions,
+    ) -> tuple[Workflow, list[str]]:
+        with trans.app.dynamic_tool_manager.rollback_tools_on_error():
+            return self._update_workflow_from_raw_description(
+                trans, stored_workflow, raw_workflow_description, workflow_update_options
+            )
+
+    def _update_workflow_from_raw_description(
         self,
         trans,
         stored_workflow: StoredWorkflow,
@@ -963,8 +1002,8 @@ class WorkflowContentsManager(UsesAnnotations):
                     resolving_urls=resolving_urls,
                 )
             if step_dict.get("type") == "tool" and step_dict.get("tool_representation"):
-                # Creating embedded tools commits the session. Resolve them before
-                # outputs or post-job actions add partially built steps to it.
+                # Resolve embedded tools before outputs or post-job actions add
+                # partially built steps to the session.
                 step_dict["tool_uuid"] = ToolModule.resolve_tool_uuid(trans, step_dict)
 
         module_kwds = workflow_state_resolution_options.model_dump()

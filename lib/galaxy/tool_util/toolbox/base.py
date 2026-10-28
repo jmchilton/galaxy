@@ -438,6 +438,25 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
         self._tools_by_uuid[dynamic_tool.uuid] = tool
         return tool
 
+    def unload_dynamic_tool(self, tool_uuid: UUID) -> None:
+        """Drop a tool registered by ``load_dynamic_tool``, e.g. after its row was rolled back."""
+        tool = self._tools_by_uuid.pop(tool_uuid, None)
+        if tool is None:
+            return
+        tool_id = tool.id
+        assert tool_id
+        version = tool.version or None
+        versions = self._tool_versions_by_id.get(tool_id, {})
+        if versions.get(version) is tool:
+            del versions[version]
+        if self._tools_by_id.get(tool_id) is tool:
+            self.remove_tool_by_id(tool_id, remove_from_panel=False)
+            if versions:
+                # Restore the newest remaining version as the default.
+                self._tools_by_id[tool_id] = max(versions.values(), key=lambda t: t.version_object)
+        if not versions:
+            self._tool_versions_by_id.pop(tool_id, None)
+
     def load_item(
         self,
         item,

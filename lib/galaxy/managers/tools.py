@@ -1,4 +1,6 @@
 import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import (
     Any,
     NamedTuple,
@@ -91,6 +93,9 @@ def get_tool_from_toolbox(toolbox: AbstractToolBox, tool_ref: ToolRunReference, 
     return tool
 
 
+UNCOMMITTED_TOOLS_KEY = "uncommitted_dynamic_tool_uuids"
+
+
 class DynamicToolManager(ModelManager[DynamicTool]):
     """Manages dynamic tools stored in Galaxy's database."""
 
@@ -142,7 +147,8 @@ class DynamicToolManager(ModelManager[DynamicTool]):
         stmt = select(DynamicTool).where(DynamicTool.id == object_id, DynamicTool.public == true())
         return self.session().scalars(stmt).one_or_none()
 
-    def create_tool(self, tool_payload: DynamicToolPayload):
+    def create_tool(self, tool_payload: DynamicToolPayload, commit: bool = True):
+        """Create and load a dynamic tool; ``commit=False`` only flushes, see ``rollback_tools_on_error``."""
         self.ensure_beta_tool_formats_enabled()
 
         uuid = model.get_uuid()
@@ -197,13 +203,20 @@ class DynamicToolManager(ModelManager[DynamicTool]):
             hidden=tool_payload.hidden,
             value=representation,
             public=True,
+            flush=commit,
         )
+        if not commit:
+            self.session().flush()
+            pending = self.session().info.get(UNCOMMITTED_TOOLS_KEY)
+            if pending is not None:
+                pending.append(dynamic_tool.uuid)
         self.app.toolbox.load_dynamic_tool(dynamic_tool)
         return dynamic_tool
 
     def create_unprivileged_tool(
-        self, user: model.User, tool_payload: DynamicUnprivilegedToolCreatePayload
+        self, user: model.User, tool_payload: DynamicUnprivilegedToolCreatePayload, commit: bool = True
     ) -> DynamicTool:
+        """Create a user's private tool; ``commit=False`` only flushes."""
         self.ensure_beta_tool_formats_enabled()
         self.ensure_can_use_unprivileged_tool(user)
         lint_errors = lint_user_tool_source(tool_payload.representation)
@@ -218,12 +231,36 @@ class DynamicToolManager(ModelManager[DynamicTool]):
             hidden=tool_payload.hidden,
             value=tool_payload.representation.model_dump(by_alias=True),
             public=False,
-            flush=True,
+            flush=False,
         )
         session = self.session()
+        session.flush()
         session.add(UserDynamicToolAssociation(user_id=user.id, dynamic_tool_id=dynamic_tool.id))
-        session.commit()
+        if commit:
+            session.commit()
+        else:
+            session.flush()
         return dynamic_tool
+
+    @contextmanager
+    def rollback_tools_on_error(self) -> Iterator[None]:
+        """Roll back the session on error and unload tools loaded by ``create_tool(commit=False)``."""
+        session = self.session()
+        if UNCOMMITTED_TOOLS_KEY in session.info:
+            # Nested; the outermost scope rolls back.
+            yield
+            return
+        uuids: list[UUID] = []
+        session.info[UNCOMMITTED_TOOLS_KEY] = uuids
+        try:
+            yield
+        except BaseException:
+            session.rollback()
+            for tool_uuid in uuids:
+                self.app.toolbox.unload_dynamic_tool(tool_uuid)
+            raise
+        finally:
+            session.info.pop(UNCOMMITTED_TOOLS_KEY, None)
 
     def list_tools(self, active=True):
         # This backs the public /api/dynamic_tools index, so private user-defined
