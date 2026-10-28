@@ -202,7 +202,7 @@ class DefaultToolAction(ToolAction):
                         current_user_roles, data.dataset
                     ):
                         raise ItemAccessibilityException(
-                            f"User does not have permission to use dataset ({data.name}) provided for input."
+                            "User does not have permission to use a dataset provided for input."
                         )
                     permissions = trans.app.security_agent.get_permissions(data.dataset)
                     for action, roles in permissions.items():

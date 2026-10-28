@@ -1529,6 +1529,18 @@ steps:
                 "tags": [],
             }
 
+    @pytest.mark.require_new_history
+    def test_tool_run_inaccessible_hda_input_error(self, history_id):
+        dataset = self.dataset_populator.new_dataset(history_id, wait=True)
+        self.dataset_populator.make_private(history_id, dataset["id"])
+        with self._different_user():
+            other_history_id = self.dataset_populator.new_history()
+            response = self.dataset_populator.run_tool_raw(
+                "cat1", {"input1": {"src": "hda", "id": dataset["id"]}}, other_history_id
+            )
+        self._assert_status_code_is(response, 403)
+        assert response.json()["err_msg"] == "User does not have permission to use a dataset provided for input."
+
     def _make_dataset_public(self, history_id, dataset_id):
         response = self.dataset_populator.make_dataset_public_raw(history_id, dataset_id)
         self._assert_status_code_is(response, 200)
