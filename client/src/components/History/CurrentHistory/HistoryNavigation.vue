@@ -58,7 +58,8 @@ function userTitle(title: string) {
             <GButtonGroup>
                 <GButton
                     v-if="!props.minimal"
-                    v-g-tooltip.top.hover
+                    tooltip
+                    tooltip-placement="top"
                     class="create-hist-btn"
                     data-description="create new history"
                     size="small"
@@ -71,7 +72,8 @@ function userTitle(title: string) {
 
                 <GButton
                     v-if="!props.minimal"
-                    v-g-tooltip.top.hover
+                    tooltip
+                    tooltip-placement="top"
                     data-description="switch to another history"
                     size="small"
                     transparent

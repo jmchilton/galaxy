@@ -84,7 +84,7 @@ function logInTitle(title: string) {
 
         <GButton
             v-else-if="!props.embed && !sharedWorkflow"
-            v-g-tooltip.hover
+            tooltip
             :disabled="workflowInfo.deleted"
             class="workflow-edit-button"
             :title="editButtonTitle"

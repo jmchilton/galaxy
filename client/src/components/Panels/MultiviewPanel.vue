@@ -101,7 +101,8 @@ function userTitle(title: string) {
         <template v-slot:header-buttons>
             <GButtonGroup>
                 <GButton
-                    v-g-tooltip.bottom.hover
+                    tooltip
+                    tooltip-placement="bottom"
                     data-description="create new history for multiview"
                     size="small"
                     transparent
