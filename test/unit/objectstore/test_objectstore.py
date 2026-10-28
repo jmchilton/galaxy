@@ -21,6 +21,7 @@ from unittest.mock import (
 from uuid import uuid4
 
 import pytest
+from botocore.exceptions import ClientError
 from requests import get
 
 from galaxy.exceptions import ObjectInvalid
@@ -1323,8 +1324,6 @@ def test_get_data_head_boto3_reads_a_byte_range_instead_of_a_stale_cached_copy()
 
 @patch_object_stores_to_skip_initialize
 def test_get_data_head_boto3_reads_nothing_from_an_empty_object():
-    from botocore.exceptions import ClientError
-
     with TestConfig(BOTO3_TEE_STREAMING_TEST_CONFIG_YAML) as (directory, object_store):
         object_store._client = MagicMock()
         object_store._client.get_object.side_effect = ClientError({"Error": {"Code": "InvalidRange"}}, "GetObject")
@@ -1333,8 +1332,6 @@ def test_get_data_head_boto3_reads_nothing_from_an_empty_object():
 
 @patch_object_stores_to_skip_initialize
 def test_get_data_head_boto3_fails_for_a_missing_object():
-    from botocore.exceptions import ClientError
-
     with TestConfig(BOTO3_TEE_STREAMING_TEST_CONFIG_YAML) as (directory, object_store):
         object_store._client = MagicMock()
         object_store._client.get_object.side_effect = ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
