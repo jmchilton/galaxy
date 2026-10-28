@@ -898,7 +898,8 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
                 custom_tools_inaccessible = False
                 try:
                     tool = trans.app.toolbox.tool_for_job(job, user=trans.user)
-                except glx_exceptions.InsufficientPermissionsException:
+                except (glx_exceptions.InsufficientPermissionsException, glx_exceptions.ItemAccessibilityException):
+                    # No execute role, or a user tool the viewer doesn't own / that was deactivated.
                     tool = None
                     custom_tools_inaccessible = True
                 if tool is None:
