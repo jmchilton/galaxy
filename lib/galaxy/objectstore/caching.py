@@ -272,13 +272,20 @@ def enable_cache_monitor(config, config_dict) -> tuple[bool, int]:
     if disable_process_management is True:
         return False, interval
 
-    if config_dict.get("enable_cache_monitor", False) is False:
+    if config_dict.get("enable_cache_monitor", True) is False:
         return False, interval
 
-    default_cache_driver = getattr(config, "object_store_cache_monitor_driver", "auto")
-    monitor = cache_config_dict.get("monitor", default_cache_driver)
+    enable_celery_tasks = getattr(config, "enable_celery_tasks", False)
+    # A per-store 'auto' (the XML <cache> default) defers to the global driver.
+    monitor = cache_config_dict.get("monitor", "auto")
     if monitor == "auto":
-        monitor = "celery" if getattr(config, "enable_celery_tasks", False) else "inprocess"
+        monitor = getattr(config, "object_store_cache_monitor_driver", "auto")
+    if monitor == "auto":
+        monitor = "celery" if enable_celery_tasks else "inprocess"
+    if monitor == "celery" and not enable_celery_tasks:
+        log.warning(
+            "Object store cache monitor driver is 'celery' but enable_celery_tasks is false - caches will not be cleaned by Galaxy."
+        )
 
     return monitor == "inprocess", interval
 

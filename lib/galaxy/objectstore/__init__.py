@@ -2167,6 +2167,9 @@ def concrete_object_store(
         # Set this to false for now... not sure but we may want to revisit this
         enable_quotas = False
 
+        # User stores are built per configuration and replaced on change - don't spawn a monitor thread for each.
+        object_store_cache_monitor_driver = "external"
+
         # These need to come in from Galaxy's config
         jobs_directory = app_config.jobs_directory
         new_file_path = app_config.new_file_path
