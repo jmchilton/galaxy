@@ -2450,7 +2450,7 @@ class ToolModule(WorkflowModule):
 
     @classmethod
     def resolve_tool_uuid(Class, trans: "ProvidesUserContext", d):
-        """Resolve embedded tools with the user's permissions, creating them uncommitted if needed."""
+        """Resolve embedded tools with the user's permissions, creating them if needed."""
         tool_id = d.get("content_id") or d.get("tool_id")
         tool_uuid = d.get("tool_uuid")
         tool_representation = d.get("tool_representation")
@@ -2461,15 +2461,13 @@ class ToolModule(WorkflowModule):
                 raise exceptions.InsufficientPermissionsException("User is not allowed to run unprivileged tools")
             if not (tool_uuid and trans.app.toolbox.get_unprivileged_tool_or_none(trans.user, tool_uuid=tool_uuid)):
                 unprivileged_request = DynamicUnprivilegedToolCreatePayload(representation=tool_representation)
-                dynamic_tool = trans.app.dynamic_tool_manager.create_unprivileged_tool(
-                    trans.user, unprivileged_request, commit=False
-                )
+                dynamic_tool = trans.app.dynamic_tool_manager.create_unprivileged_tool(trans.user, unprivileged_request)
                 tool_uuid = dynamic_tool.uuid
         elif tool_representation and tool_id is None and tool_uuid is None:
             if not trans.user_is_admin:
                 raise exceptions.AdminRequiredException("Only admin users can create tools dynamically.")
             create_request = DynamicToolCreatePayload(src="representation", representation=tool_representation)
-            dynamic_tool = trans.app.dynamic_tool_manager.create_tool(create_request, commit=False)
+            dynamic_tool = trans.app.dynamic_tool_manager.create_tool(create_request)
             tool_uuid = dynamic_tool.uuid
         return tool_uuid
 

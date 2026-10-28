@@ -147,8 +147,8 @@ class DynamicToolManager(ModelManager[DynamicTool]):
         stmt = select(DynamicTool).where(DynamicTool.id == object_id, DynamicTool.public == true())
         return self.session().scalars(stmt).one_or_none()
 
-    def create_tool(self, tool_payload: DynamicToolPayload, commit: bool = True):
-        """Create and load a dynamic tool; ``commit=False`` only flushes, see ``rollback_tools_on_error``."""
+    def create_tool(self, tool_payload: DynamicToolPayload):
+        """Create and load a dynamic tool; inside ``rollback_tools_on_error`` it is only flushed."""
         self.ensure_beta_tool_formats_enabled()
 
         uuid = model.get_uuid()
@@ -203,20 +203,16 @@ class DynamicToolManager(ModelManager[DynamicTool]):
             hidden=tool_payload.hidden,
             value=representation,
             public=True,
-            flush=commit,
+            flush=False,
         )
-        if not commit:
-            self.session().flush()
-            pending = self.session().info.get(UNCOMMITTED_TOOLS_KEY)
-            if pending is not None:
-                pending.append(dynamic_tool.uuid)
+        self._save(dynamic_tool)
         self.app.toolbox.load_dynamic_tool(dynamic_tool)
         return dynamic_tool
 
     def create_unprivileged_tool(
-        self, user: model.User, tool_payload: DynamicUnprivilegedToolCreatePayload, commit: bool = True
+        self, user: model.User, tool_payload: DynamicUnprivilegedToolCreatePayload
     ) -> DynamicTool:
-        """Create a user's private tool; ``commit=False`` only flushes."""
+        """Create a user's private tool; inside ``rollback_tools_on_error`` it is only flushed."""
         self.ensure_beta_tool_formats_enabled()
         self.ensure_can_use_unprivileged_tool(user)
         lint_errors = lint_user_tool_source(tool_payload.representation)
@@ -236,16 +232,22 @@ class DynamicToolManager(ModelManager[DynamicTool]):
         session = self.session()
         session.flush()
         session.add(UserDynamicToolAssociation(user_id=user.id, dynamic_tool_id=dynamic_tool.id))
-        if commit:
+        self._save(dynamic_tool)
+        return dynamic_tool
+
+    def _save(self, dynamic_tool: DynamicTool) -> None:
+        """Commit, or inside ``rollback_tools_on_error`` flush (no autoflush) and track for unloading."""
+        session = self.session()
+        pending = session.info.get(UNCOMMITTED_TOOLS_KEY)
+        if pending is None:
             session.commit()
         else:
-            # The session doesn't autoflush; ownership lookups by uuid need the association.
             session.flush()
-        return dynamic_tool
+            pending.append(dynamic_tool.uuid)
 
     @contextmanager
     def rollback_tools_on_error(self, discard: bool = False) -> Iterator[None]:
-        """Roll back the session on error and unload tools loaded by ``create_tool(commit=False)``.
+        """Defer commits of tools created within; on error roll back and unload them.
 
         ``discard`` also unloads them on success, for dry runs that never commit.
         """
