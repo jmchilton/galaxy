@@ -1,12 +1,17 @@
 import os
+import subprocess
+import sys
+import threading
 from unittest.mock import MagicMock
 
 import pytest
 
+from galaxy.objectstore import caching
 from galaxy.objectstore._caching_base import CachingConcreteObjectStore
 from galaxy.objectstore.caching import (
     CacheShard,
     CacheShardManager,
+    CacheTarget,
     enable_cache_monitor,
     InProcessCacheMonitor,
 )
@@ -413,3 +418,40 @@ def test_start_cache_monitor_if_needed_disabled(tmp_path):
     backend.enable_cache_monitor = False
     backend._start_cache_monitor_if_needed()
     assert backend.cache_monitor is None
+
+
+EXIT_WITHOUT_SHUTDOWN_SCRIPT = """
+import sys
+from galaxy.objectstore.caching import CacheTarget, InProcessCacheMonitor
+InProcessCacheMonitor([CacheTarget(sys.argv[1], 1, 0.9)], 600, 600)
+"""
+
+
+def test_cache_monitor_thread_does_not_block_exit(tmp_path):
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)}
+    command = [sys.executable, "-c", EXIT_WITHOUT_SHUTDOWN_SCRIPT, str(tmp_path)]
+    assert subprocess.run(command, env=env, timeout=30).returncode == 0
+
+
+def test_cache_monitor_shutdown_interrupts_sleep(tmp_path):
+    monitor = InProcessCacheMonitor([CacheTarget(str(tmp_path), 1, 0.9)], 600, 600)
+    monitor.shutdown()
+    assert not monitor.cache_monitor_thread.is_alive()
+
+
+def test_cache_monitor_survives_check_error(tmp_path, monkeypatch):
+    calls = []
+    second_call = threading.Event()
+
+    def failing_check_caches(targets):
+        calls.append(targets)
+        if len(calls) > 1:
+            second_call.set()
+        raise FileNotFoundError("removed by another process")
+
+    monkeypatch.setattr(caching, "check_caches", failing_check_caches)
+    monitor = InProcessCacheMonitor([CacheTarget(str(tmp_path), 1, 0.9)], 0, None)
+    try:
+        assert second_call.wait(5)
+    finally:
+        monitor.shutdown()

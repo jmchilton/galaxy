@@ -14,7 +14,6 @@ from galaxy.util import (
     nice_size,
     string_as_bool,
 )
-from galaxy.util.sleeper import Sleeper
 
 log = logging.getLogger(__name__)
 
@@ -290,34 +289,34 @@ class InProcessCacheMonitor:
         # It is set to True in shutdown(), causing
         # the cache monitor thread to return/terminate
         self.stop_cache_monitor_event = threading.Event()
-        # Helper for interruptable sleep
-        self.sleeper = Sleeper()
 
         self.cache_targets = cache_targets
         self.interval = interval
         self.initial_sleep = initial_sleep
 
+        # Daemon so scripts that build an object store without calling shutdown() can still exit.
         self.cache_monitor_thread = threading.Thread(
             target=self._cache_monitor,
             name="CacheMonitorThread",
+            daemon=True,
         )
         self.cache_monitor_thread.start()
 
     def _cache_monitor(self):
         if self.initial_sleep is not None:
-            time.sleep(
-                self.initial_sleep
-            )  # startup sleep hack - probably originally implemented to prevent contention at app startup
+            # startup sleep hack - probably originally implemented to prevent contention at app startup
+            self.stop_cache_monitor_event.wait(self.initial_sleep)
         while not self.stop_cache_monitor_event.is_set():
-            check_caches(self.cache_targets)
-            self.sleeper.sleep(self.interval)
+            try:
+                check_caches(self.cache_targets)
+            except Exception:
+                # e.g. another process removed a file mid-scan; retry next interval.
+                log.exception("Error checking object store cache")
+            self.stop_cache_monitor_event.wait(self.interval)
 
     def shutdown(self):
         # Set the event object so the cache monitor thread terminates
         self.stop_cache_monitor_event.set()
-
-        # wake up from sleeping
-        self.sleeper.wake()
 
         # Wait for the cache monitor thread to join before ending
         self.cache_monitor_thread.join(5)
