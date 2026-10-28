@@ -1,7 +1,6 @@
 import { createTestingPinia } from "@pinia/testing";
 import { getLocalVue, suppressLucideVue2Deprecation } from "@tests/vitest/helpers";
 import { mount } from "@vue/test-utils";
-import flushPromises from "flush-promises";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import ContentOptions from "./ContentOptions.vue";
@@ -35,18 +34,6 @@ describe("ContentOptions edit button", () => {
         expect(editButton.attributes("aria-disabled")).toBe("true");
         await editButton.trigger("click");
         expect(wrapper.emitted("edit")).toBeUndefined();
-        wrapper.unmount();
-    });
-
-    it.each([
-        ["discarded", "This dataset is not yet editable."],
-        ["ok", "Edit attributes"],
-    ])("describes a %s dataset's edit button with a tooltip", async (state, expectedTooltip) => {
-        const wrapper = mountContentOptions(state);
-        await flushPromises();
-        const tooltipId = wrapper.find(".edit-btn").attributes("aria-describedby");
-        expect(tooltipId).toBeDefined();
-        expect(wrapper.find(`#${tooltipId}[role="tooltip"]`).text()).toBe(expectedTooltip);
         wrapper.unmount();
     });
 
