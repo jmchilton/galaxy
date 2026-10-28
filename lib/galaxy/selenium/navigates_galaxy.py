@@ -3162,12 +3162,8 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
                 wait_type=WAIT_TYPES.UX_RENDER,
             )
             text = g_tooltip.text
-            if click_away:
-                self.click_center()
-            return text
-
-        tooltip_element = tooltip_balloon.wait_for_visible()
-        text = tooltip_element.text
+        else:
+            text = tooltip_balloon.wait_for_visible().text
         if click_away:
             self.click_center()
         return text

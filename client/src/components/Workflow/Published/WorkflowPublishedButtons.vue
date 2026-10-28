@@ -36,18 +36,6 @@ function copyLink() {
     copy(fullLink.value, "Link copied to clipboard");
 }
 
-const editButtonTitle = computed(() => {
-    if (userStore.isAnonymous) {
-        return "Log in to edit Workflow";
-    } else {
-        if (props.workflowInfo.deleted) {
-            return "You cannot edit a deleted workflow. Restore it first.";
-        } else {
-            return "Edit Workflow";
-        }
-    }
-});
-
 function logInTitle(title: string) {
     if (userStore.isAnonymous) {
         return `Log in to ${title}`;
@@ -87,7 +75,8 @@ function logInTitle(title: string) {
             tooltip
             :disabled="workflowInfo.deleted"
             class="workflow-edit-button"
-            :title="editButtonTitle"
+            title="Edit Workflow"
+            disabled-title="You cannot edit a deleted workflow. Restore it first."
             color="blue"
             outline
             :to="`/workflows/edit?id=${workflowInfo.id}`">
