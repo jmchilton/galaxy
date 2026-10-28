@@ -177,6 +177,14 @@ class _ExtractionHelpersMixin:
                 return icj_id
         raise AssertionError(f"No ICJ in history {history_id} contains job {job_id}")
 
+    def _extract_by_ids_raw(self, payload: dict[str, Any]) -> "Response":
+        return self._post("workflows/extract", data=payload, json=True)
+
+    def _extract_by_ids(self, payload: dict[str, Any]) -> dict[str, Any]:
+        response = self._extract_by_ids_raw(payload)
+        self._assert_status_code_is(response, 200)
+        return response.json()
+
     def _run_grep1_on_converted_input(self, history_id: str) -> tuple[dict[str, Any], str]:
         """Run Grep1 on a fastqsanger.gz upload, which Galaxy implicitly converts first; return (upload, job id)."""
         hda = self.dataset_populator.new_dataset_from_test_data(
@@ -850,19 +858,12 @@ class TestWorkflowExtractionByIdsApi(_ExtractionHelpersMixin, BaseWorkflowsApiTe
     def _extract_and_download_workflow_by_ids(self, **payload):
         if "workflow_name" not in payload:
             payload["workflow_name"] = "test import from history (by id)"
-        response = self._post("workflows/extract", data=payload, json=True)
-        self._assert_status_code_is(response, 200)
-        new_workflow_id = response.json()["id"]
-        download = self._get(f"workflows/{new_workflow_id}/download")
-        self._assert_status_code_is(download, 200)
-        return download.json()
+        return self.workflow_populator.download_workflow(self._extract_by_ids(payload)["id"])
 
     def _extract_workflow_id_by_ids(self, **payload):
         if "workflow_name" not in payload:
             payload["workflow_name"] = "extract roundtrip"
-        response = self._post("workflows/extract", data=payload, json=True)
-        self._assert_status_code_is(response, 200)
-        return response.json()["id"]
+        return self._extract_by_ids(payload)["id"]
 
     def _seed_two_inputs_and_run_cat1(self, history_id, c1, c2, **run_kwargs):
         d1 = self.dataset_populator.new_dataset(history_id, content=c1)
@@ -881,7 +882,7 @@ class TestWorkflowExtractionByIdsApi(_ExtractionHelpersMixin, BaseWorkflowsApiTe
         return d1, d2, run["jobs"][0]["id"]
 
     def _assert_extract_rejected(self, payload, allowed_codes):
-        response = self._post("workflows/extract", data=payload, json=True)
+        response = self._extract_by_ids_raw(payload)
         assert response.status_code in allowed_codes, response.text
 
     @skip_without_tool("__EXTRACT_DATASET__")
