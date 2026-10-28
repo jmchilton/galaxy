@@ -387,6 +387,21 @@ class TestToolBox(BaseToolBoxTestCase):
         assert test_tool.repository_owner is None
         assert test_tool.installed_changeset_revision is None
 
+    def test_unload_dynamic_tool_restores_previous_default(self):
+        self._init_tool()
+        self._setup_two_versions_in_config(section=False)
+        self._setup_two_versions()
+        newest = self.toolbox.get_tool("test_tool")
+        assert newest.version == "0.2"
+        tool_uuid = uuid4()
+        self.toolbox._tools_by_uuid[tool_uuid] = newest
+
+        self.toolbox.unload_dynamic_tool(tool_uuid)
+
+        assert self.toolbox.get_tool("test_tool").version == "0.1"
+        assert self.toolbox.get_tool("test_tool", tool_version="0.2").version == "0.1"
+        assert tool_uuid not in self.toolbox._tools_by_uuid
+
     def test_tool_shed_request_version(self):
         self._init_tool()
         self._setup_two_versions_in_config(section=False)

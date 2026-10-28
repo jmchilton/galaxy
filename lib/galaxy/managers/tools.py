@@ -239,12 +239,16 @@ class DynamicToolManager(ModelManager[DynamicTool]):
         if commit:
             session.commit()
         else:
+            # The session doesn't autoflush; ownership lookups by uuid need the association.
             session.flush()
         return dynamic_tool
 
     @contextmanager
-    def rollback_tools_on_error(self) -> Iterator[None]:
-        """Roll back the session on error and unload tools loaded by ``create_tool(commit=False)``."""
+    def rollback_tools_on_error(self, discard: bool = False) -> Iterator[None]:
+        """Roll back the session on error and unload tools loaded by ``create_tool(commit=False)``.
+
+        ``discard`` also unloads them on success, for dry runs that never commit.
+        """
         session = self.session()
         if UNCOMMITTED_TOOLS_KEY in session.info:
             # Nested; the outermost scope rolls back.
@@ -259,6 +263,10 @@ class DynamicToolManager(ModelManager[DynamicTool]):
             for tool_uuid in uuids:
                 self.app.toolbox.unload_dynamic_tool(tool_uuid)
             raise
+        else:
+            if discard:
+                for tool_uuid in uuids:
+                    self.app.toolbox.unload_dynamic_tool(tool_uuid)
         finally:
             session.info.pop(UNCOMMITTED_TOOLS_KEY, None)
 

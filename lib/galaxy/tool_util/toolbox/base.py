@@ -454,6 +454,10 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
             if versions:
                 # Restore the newest remaining version as the default.
                 self._tools_by_id[tool_id] = max(versions.values(), key=lambda t: t.version_object)
+        else:
+            self._invalidate_tool_caches(tool_id)
+            if tool.old_id and tool in self._tools_by_old_id.get(tool.old_id, []):
+                self._tools_by_old_id[tool.old_id].remove(tool)
         if not versions:
             self._tool_versions_by_id.pop(tool_id, None)
 

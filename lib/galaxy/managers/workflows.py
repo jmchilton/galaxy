@@ -836,7 +836,7 @@ class WorkflowContentsManager(UsesAnnotations):
         raw_workflow_description: RawWorkflowDescription,
         workflow_update_options: WorkflowUpdateOptions,
     ) -> tuple[Workflow, list[str]]:
-        with trans.app.dynamic_tool_manager.rollback_tools_on_error():
+        with trans.app.dynamic_tool_manager.rollback_tools_on_error(discard=workflow_update_options.dry_run):
             return self._update_workflow_from_raw_description(
                 trans, stored_workflow, raw_workflow_description, workflow_update_options
             )
