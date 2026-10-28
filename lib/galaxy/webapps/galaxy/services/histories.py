@@ -110,7 +110,11 @@ from galaxy.webapps.galaxy.services.base import (
 )
 from galaxy.webapps.galaxy.services.notifications import NotificationService
 from galaxy.webapps.galaxy.services.sharable import ShareableService
-from galaxy.workflow.extract import summarize
+from galaxy.workflow.extract import (
+    _original_key,
+    IdKey,
+    summarize,
+)
 
 log = logging.getLogger(__name__)
 
@@ -885,13 +889,31 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
                 invalid=None,
             )
 
-        jobs_list = []
+        # summarize() records a copied collection as its original; input rows list this history's copies.
+        collections_here: dict[IdKey, list[HistoryItem]] = {}
+        for hdca in history.contents_iter(types=["dataset_collection"]):
+            collections_here.setdefault(_original_key(hdca), []).append(hdca)
+        # One input row per original, listing its copies; its key holds its place in jobs_list.
+        inputs: dict[IdKey, tuple[Optional[str], list[HistoryItem]]] = {}
+        jobs_list: list[Union[WorkflowExtractionJob, IdKey]] = []
+
+        def add_inputs(producer_name: Optional[str], datasets: list[tuple[Optional[str], HistoryItem]]) -> None:
+            for _, data in datasets:
+                key = _original_key(data)
+                if key not in inputs:
+                    inputs[key] = (producer_name, [])
+                    jobs_list.append(key)
+                copies = inputs[key][1]
+                for copy in collections_here.get(key, [data]):
+                    if copy not in copies:
+                        copies.append(copy)
+
         for job, datasets in jobs.items():
             is_fake = getattr(job, "is_fake", False)
 
             if is_fake:
                 # FakeJob / DatasetCollectionCreationJob: input with no creating tool.
-                jobs_list.append(input_row(getattr(job, "name", None), [data for _, data in datasets]))
+                add_inputs(getattr(job, "name", None), datasets)
             else:
                 outputs = [serialize_output(data) for _, data in datasets]
                 checked = any(not data.deleted for _, data in datasets)
@@ -924,7 +946,7 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
                     )
                 elif not tool.is_workflow_compatible:
                     # Not a workflow step (e.g. upload, data fetch) — treat as input.
-                    jobs_list.append(input_row(tool.name, [data for _, data in datasets]))
+                    add_inputs(tool.name, datasets)
                 else:
                     tool_version_warning = (
                         (
@@ -960,7 +982,9 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
             {
                 "history_id": history.id,
                 "warnings": list(warnings),
-                "jobs": jobs_list,
+                "jobs": [
+                    row if isinstance(row, WorkflowExtractionJob) else input_row(*inputs[row]) for row in jobs_list
+                ],
             }
         )
 
