@@ -1734,6 +1734,31 @@ def summarize_job_parameters(trans: ProvidesUserContext, job: Job) -> dict[str, 
     """
     # More client logic here than is ideal but it is hard to reason about
     # tool parameter types on the client relative to the server.
+    security_agent = trans.app.security_agent
+    is_admin = trans.user_is_admin
+    user_roles = trans.get_current_user_roles()
+    DataInput = Union[
+        model.HistoryDatasetAssociation, model.DatasetCollectionElement, model.HistoryDatasetCollectionAssociation
+    ]
+
+    def can_access_data_input(item: DataInput) -> bool:
+        if is_admin:
+            return True
+        if isinstance(item, model.HistoryDatasetAssociation):
+            return security_agent.can_access_dataset(user_roles, item.dataset)
+        if isinstance(item, model.DatasetCollectionElement):
+            # Same rule as the DCE show endpoint: a leaf element is accessible with its collection.
+            collection = item.child_collection or item.collection
+        else:
+            collection = item.collection
+        return security_agent.can_access_collection(user_roles, collection)
+
+    def data_input_value(src: str, item: DataInput, **details) -> dict[str, Any]:
+        """Describe a data input, by ``src`` and ``id`` only if the user can't access it."""
+        value = {"src": src, "id": item.id}
+        if can_access_data_input(item):
+            value.update(details)
+        return value
 
     def inputs_recursive(input_params, param_values, depth=1, upgrade_messages=None):
         if upgrade_messages is None:
@@ -1806,12 +1831,11 @@ def summarize_job_parameters(trans: ProvidesUserContext, job: Job) -> dict[str, 
                     value: list[Union[dict[str, Any], None]] = []
                     for element in listify(input_value):
                         if isinstance(element, model.HistoryDatasetAssociation):
-                            hda = element
-                            value.append({"src": "hda", "id": element.id, "hid": hda.hid, "name": hda.name})
+                            value.append(data_input_value("hda", element, hid=element.hid, name=element.name))
                         elif isinstance(element, model.DatasetCollectionElement):
-                            value.append({"src": "dce", "id": element.id, "name": element.element_identifier})
+                            value.append(data_input_value("dce", element, name=element.element_identifier))
                         elif isinstance(element, model.HistoryDatasetCollectionAssociation):
-                            value.append({"src": "hdca", "id": element.id, "hid": element.hid, "name": element.name})
+                            value.append(data_input_value("hdca", element, hid=element.hid, name=element.name))
                         elif element is None:
                             value.append(None)
                         else:

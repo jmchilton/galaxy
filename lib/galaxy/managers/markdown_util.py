@@ -837,7 +837,7 @@ class ToBasicMarkdownDirectiveHandler(GalaxyInternalMarkdownDirectiveHandler):
             markdown += " | "
             value = parameter["value"]
             if isinstance(value, list):
-                markdown += ", ".join(f"{p['hid']}: {p['name']}" for p in value)
+                markdown += ", ".join(_data_input_text(p) for p in value)
             else:
                 markdown += value
             markdown += " |\n"
@@ -1325,6 +1325,16 @@ def _workflow_license_as_simple_markdown(stored_workflow):
 def _check_object(object_id: Optional[int], line: str) -> None:
     if object_id is None:
         raise MalformedContents(f"Missing object identifier [{line}].")
+
+
+def _data_input_text(item: Optional[dict[str, Any]]) -> str:
+    if item is None:
+        return "No input provided"
+    if item.get("name") is None:
+        return "(not accessible)"
+    if item.get("hid") is None:
+        return item["name"]
+    return f"{item['hid']}: {item['name']}"
 
 
 def _database_time_to_str(database_time: datetime) -> str:
