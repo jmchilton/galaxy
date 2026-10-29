@@ -1213,6 +1213,7 @@ class DeleteLibraryDatasets(Action):
         FROM target_lds t
              LEFT OUTER JOIN deleted_ldda_ids ON t.id = deleted_ldda_ids.library_dataset_id
              LEFT OUTER JOIN purged_lds ON t.id = purged_lds.id
+       WHERE deleted_ldda_ids.id IS NOT NULL OR purged_lds.id IS NOT NULL
     ORDER BY t.id
     """
 

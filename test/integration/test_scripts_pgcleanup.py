@@ -1,5 +1,7 @@
 import datetime
+import os
 import string
+import tempfile
 from typing import Any
 
 from sqlalchemy import select
@@ -68,6 +70,16 @@ class TestScriptsPgCleanupIntegration(BaseScriptsIntegrationTestCase):
             "dataset_deleted": bool(dataset.deleted),
             "dataset_purged": bool(dataset.purged),
         }
+
+    def _pgcleanup_action_log(self, extra_args: list[str], action: str) -> str:
+        """Run pgcleanup and return the named action's log; empty if it logged no rows."""
+        with tempfile.TemporaryDirectory() as log_dir:
+            self._pgcleanup_check_output(["--log-dir", log_dir] + extra_args)
+            log_path = os.path.join(log_dir, f"{action}.log")
+            if not os.path.exists(log_path):
+                return ""
+            with open(log_path) as f:
+                return f.read()
 
     def test_help(self):
         self._skip_unless_postgres()
@@ -397,8 +409,13 @@ class TestScriptsPgCleanupIntegration(BaseScriptsIntegrationTestCase):
         assert self._library_dataset_state(library_dataset)["version_deleted"] is False
 
         # ...but --force-retry revisits them to reconcile the missing flags
-        self._pgcleanup_check_output(["--older-than", "0", "--force-retry", "delete_library_datasets"])
+        logged = f"library_dataset_id: {self._decode_id(library_dataset['id'])}\n"
+        force_retry = ["--older-than", "0", "--force-retry", "delete_library_datasets"]
+        assert logged in self._pgcleanup_action_log(force_retry, "delete_library_datasets")
         assert self._library_dataset_state(library_dataset)["version_deleted"] is True
+
+        # a reconciled library dataset is not reported again
+        assert logged not in self._pgcleanup_action_log(force_retry, "delete_library_datasets")
 
     def test_delete_library_datasets_force_retry_null_purged(self):
         self._skip_unless_postgres()
