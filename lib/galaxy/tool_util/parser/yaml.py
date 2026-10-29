@@ -435,8 +435,8 @@ def _parse_test(i: int, test_dict: dict) -> ToolSourceTest:
     test_dict["outputs"] = new_outputs
     test_dict["output_collections"] = output_collections
     test_dict["command"] = __to_test_assert_list(test_dict.get("command", []))
-    test_dict["stdout"] = __to_test_assert_list(test_dict.get("stdout", []))
-    test_dict["stderr"] = __to_test_assert_list(test_dict.get("stderr", []))
+    test_dict["stdout"] = __to_test_assert_list(test_dict.get("assert_stdout", test_dict.get("stdout", [])))
+    test_dict["stderr"] = __to_test_assert_list(test_dict.get("assert_stderr", test_dict.get("stderr", [])))
     test_dict["expect_exit_code"] = test_dict.get("expect_exit_code", None)
     test_dict["expect_failure"] = test_dict.get("expect_failure", False)
     test_dict["expect_test_failure"] = test_dict.get("expect_test_failure", False)
