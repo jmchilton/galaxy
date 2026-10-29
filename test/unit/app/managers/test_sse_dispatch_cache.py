@@ -15,6 +15,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from galaxy.managers.sse_dispatch import SSEEventDispatcher
+from galaxy.util.unittest_utils import FakeClock
 
 
 def _fake_queue(name: str = "queue") -> MagicMock:
@@ -44,23 +45,6 @@ def fake_declare():
 
     calls["provider"] = _provider
     return calls
-
-
-class FakeClock:
-    """Controllable time source passed to ``SSEEventDispatcher``.
-
-    Lets tests advance the dispatcher's TTL cache deterministically without
-    reaching into ``cachetools`` internals.
-    """
-
-    def __init__(self, start: float = 0.0) -> None:
-        self.now = start
-
-    def __call__(self) -> float:
-        return self.now
-
-    def advance(self, seconds: float) -> None:
-        self.now += seconds
 
 
 @pytest.fixture

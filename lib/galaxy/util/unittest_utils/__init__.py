@@ -191,3 +191,16 @@ def transient_failure(issue: int, potentially_fixed: bool = False) -> Callable[[
         return wrapper
 
     return decorator
+
+
+class FakeClock:
+    """A ``time.monotonic`` stand-in that only moves when advanced."""
+
+    def __init__(self, start: float = 0.0) -> None:
+        self.now = start
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
