@@ -1287,3 +1287,36 @@ def test_yaml_tool_test_keeps_collection_type_and_metadata_assertions():
     assert output_collection["attributes"]["type"] == "paired"
     _, forward_attributes = output_collection["element_tests"]["forward"]
     assert forward_attributes["metadata"] == {"dbkey": "hg19"}
+
+
+def test_yaml_tool_test_stdout_and_stderr_assertions():
+    tool_source = YamlToolSource(
+        {
+            "outputs": {},
+            "tests": [
+                {
+                    "inputs": {},
+                    "outputs": {},
+                    "assert_stdout": [{"has_line": {"line": "out line"}}],
+                    "assert_stderr": [{"has_text": {"text": "err text"}}],
+                }
+            ],
+        }
+    )
+    test = tool_source.parse_tests_to_dict()["tests"][0]
+    assert test["stdout"] == [
+        {"tag": "has_line", "attributes": {"that": "has_line", "line": "out line"}, "children": []}
+    ]
+    assert test["stderr"] == [
+        {"tag": "has_text", "attributes": {"that": "has_text", "text": "err text"}, "children": []}
+    ]
+
+
+def test_yaml_tool_test_without_outputs():
+    tool_source = YamlToolSource(
+        {"outputs": {}, "tests": [{"inputs": {}, "assert_stdout": [{"has_line": {"line": "out line"}}]}]}
+    )
+    test = tool_source.parse_tests_to_dict()["tests"][0]
+    assert test["outputs"] == []
+    assert test["output_collections"] == []
+    assert [assertion["tag"] for assertion in test["stdout"]] == ["has_line"]
