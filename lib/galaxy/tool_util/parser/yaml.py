@@ -418,41 +418,16 @@ def __parse_test_inputs(i: int, test_inputs: Union[list, dict]) -> ToolSourceTes
 def _parse_test(i: int, test_dict: dict) -> ToolSourceTest:
     test_dict["inputs"] = __parse_test_inputs(i, deepcopy(test_dict["inputs"]))
     outputs = test_dict["outputs"]
+    named_outputs = outputs.items() if is_dict(outputs) else ((output["name"], output) for output in outputs)
 
     new_outputs = []
-    if is_dict(outputs):
-        for key, value in outputs.items():
-            if is_dict(value):
-                attributes = value
-                file = attributes.get("file")
-            else:
-                file = value
-                attributes = {}
-            new_outputs.append({"name": key, "value": file, "attributes": attributes})
-    else:
-        for output in outputs:
-            name = output["name"]
-            value = output.get("file", None)
-            attributes = output
-            new_outputs.append({"name": name, "value": value, "attributes": attributes})
-
-    for output in new_outputs:
-        attributes = output["attributes"]
-        defaults = {
-            "compare": "diff",
-            "lines_diff": 0,
-            "delta": DEFAULT_DELTA,
-            "delta_frac": DEFAULT_DELTA_FRAC,
-            "sort": DEFAULT_SORT,
-            "decompress": DEFAULT_DECOMPRESS,
-        }
-        # TODO
-        attributes["extra_files"] = []
-        # TODO
-        attributes["metadata"] = {}
-        assert_list = __to_test_assert_list(attributes.get("asserts", []))
-        attributes["assert_list"] = assert_list
-        _ensure_has(attributes, defaults)
+    for name, value in named_outputs:
+        if is_dict(value):
+            attributes, file = value, value.get("file")
+        else:
+            attributes, file = {}, value
+        _parse_test_output_attributes(attributes)
+        new_outputs.append({"name": name, "value": file, "attributes": attributes})
 
     test_dict["outputs"] = new_outputs
     # TODO: implement output collections for YAML tools.
@@ -466,6 +441,23 @@ def _parse_test(i: int, test_dict: dict) -> ToolSourceTest:
     test_dict["value_state_representation"] = "test_case_json"
     test_dict["credentials"] = __parse_credentials_yaml(test_dict.get("credentials", None))
     return cast(ToolSourceTest, test_dict)
+
+
+def _parse_test_output_attributes(attributes: dict) -> None:
+    defaults = {
+        "compare": "diff",
+        "lines_diff": 0,
+        "delta": DEFAULT_DELTA,
+        "delta_frac": DEFAULT_DELTA_FRAC,
+        "sort": DEFAULT_SORT,
+        "decompress": DEFAULT_DECOMPRESS,
+    }
+    # TODO
+    attributes["extra_files"] = []
+    # TODO
+    attributes["metadata"] = {}
+    attributes["assert_list"] = __to_test_assert_list(attributes.get("asserts", []))
+    _ensure_has(attributes, defaults)
 
 
 _direct_credential_adapter: TypeAdapter = TypeAdapter(List[DirectCredential])
