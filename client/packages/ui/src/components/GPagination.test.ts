@@ -98,6 +98,104 @@ describe("GPagination", () => {
         ]);
     });
 
+    it("pins only the first page number", () => {
+        const props = { firstNumber: true };
+
+        expect(visibleItems(mountPagination({ ...props, modelValue: 1 }))).toEqual([
+            "‹",
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "…",
+            "›",
+            "»",
+        ]);
+        expect(visibleItems(mountPagination({ ...props, modelValue: 5 }))).toEqual([
+            "‹",
+            "1",
+            "…",
+            "4",
+            "5",
+            "6",
+            "…",
+            "›",
+            "»",
+        ]);
+        expect(visibleItems(mountPagination({ ...props, modelValue: 10 }))).toEqual([
+            "‹",
+            "1",
+            "…",
+            "7",
+            "8",
+            "9",
+            "10",
+            "›",
+            "»",
+        ]);
+    });
+
+    it("pins only the last page number", () => {
+        const props = { lastNumber: true };
+
+        expect(visibleItems(mountPagination({ ...props, modelValue: 1 }))).toEqual([
+            "«",
+            "‹",
+            "1",
+            "2",
+            "3",
+            "4",
+            "…",
+            "10",
+            "›",
+        ]);
+        expect(visibleItems(mountPagination({ ...props, modelValue: 5 }))).toEqual([
+            "«",
+            "‹",
+            "…",
+            "4",
+            "5",
+            "6",
+            "…",
+            "10",
+            "›",
+        ]);
+        expect(visibleItems(mountPagination({ ...props, modelValue: 10 }))).toEqual([
+            "«",
+            "‹",
+            "…",
+            "6",
+            "7",
+            "8",
+            "9",
+            "10",
+            "›",
+        ]);
+    });
+
+    it("drops the ellipses with hideEllipsis", () => {
+        expect(visibleItems(mountPagination({ modelValue: 1, hideEllipsis: true }))).toEqual([
+            "«",
+            "‹",
+            "1",
+            "2",
+            "3",
+            "4",
+            "›",
+            "»",
+        ]);
+        expect(visibleItems(mountPagination({ modelValue: 5, hideEllipsis: true }))).toEqual([
+            "«",
+            "‹",
+            "4",
+            "5",
+            "6",
+            "›",
+            "»",
+        ]);
+    });
+
     it("shows no ellipses with a limit of 3 or less", () => {
         expect(visibleItems(mountPagination({ limit: 3, modelValue: 1 }))).toEqual(["«", "‹", "1", "2", "3", "›", "»"]);
         expect(visibleItems(mountPagination({ limit: 3, modelValue: 5 }))).toEqual(["«", "‹", "4", "5", "6", "›", "»"]);
