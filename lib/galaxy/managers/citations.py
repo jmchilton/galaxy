@@ -1,6 +1,10 @@
 import functools
 import logging
-from collections.abc import Iterable
+import time
+from collections.abc import (
+    Callable,
+    Iterable,
+)
 from typing import (
     Optional,
     Union,
@@ -29,6 +33,7 @@ DOI_MAX_RESPONSE_BYTES = 64 * 1024
 DOI_FAILURE_EXPIRE = 600
 DOI_FETCH_FAILED = "__galaxy_doi_fetch_failed__"
 DOI_MAX_FETCHES_PER_REQUEST = 10
+DOI_FETCH_REQUEST_DEADLINE = 30.0
 MAX_CITATIONS_PER_TOOL = 50
 MAX_BIBTEX_CITATION_LENGTH = 32 * 1024
 
@@ -42,13 +47,16 @@ class DoiFetchSkipped(Exception):
 
 
 class DoiFetchBudget:
-    """Number of uncached DOI lookups one request may make."""
+    """Number of uncached DOI lookups one request may make, and how long it may keep starting them."""
 
-    def __init__(self, max_fetches: int) -> None:
+    def __init__(self, max_fetches: int, clock: Callable[[], float] = time.monotonic) -> None:
         self.remaining = max_fetches
+        self._clock = clock
+        self.deadline = clock() + DOI_FETCH_REQUEST_DEADLINE
 
     def take(self) -> bool:
-        if self.remaining <= 0:
+        # A fetch started before the deadline still runs to its own timeout.
+        if self.remaining <= 0 or self._clock() >= self.deadline:
             return False
         self.remaining -= 1
         return True
