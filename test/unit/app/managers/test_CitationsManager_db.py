@@ -26,7 +26,7 @@ class MockDoiCache(DoiCache):
 
 
 @responses.activate
-def test_DoiCache(url_factory):  # noqa: F811
+def test_DoiCache(url_factory, fake_dns):  # noqa: F811
     db_url = url_factory()
     with create_and_drop_database(db_url):
         doi_cache = MockDoiCache(galaxy.config.GalaxyAppConfiguration(override_tempdir=False), db_url)
