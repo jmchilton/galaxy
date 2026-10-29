@@ -46,6 +46,7 @@ from galaxy.managers.users import UserManager
 from galaxy.model import (
     HistoryDatasetAssociation,
     HistoryDatasetCollectionAssociation,
+    HistoryItem,
     ImplicitCollectionJobs,
     ImplicitCollectionJobsJobAssociation,
 )
@@ -870,28 +871,30 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
                 return "input_collection"
             return "input_dataset"
 
+        def input_row(producer_name: Optional[str], copies: list[HistoryItem]) -> WorkflowExtractionJob:
+            outputs = [serialize_output(copy) for copy in copies]
+            return WorkflowExtractionJob(
+                id=None,
+                step_type=input_step_type(outputs),
+                tool_name=producer_name,
+                tool_id=None,
+                tool_version=None,
+                checked=any(not copy.deleted for copy in copies),
+                tool_version_warning=None,
+                outputs=outputs,
+                invalid=None,
+            )
+
         jobs_list = []
         for job, datasets in jobs.items():
             is_fake = getattr(job, "is_fake", False)
-            outputs = [serialize_output(data) for _, data in datasets]
-            checked = any(not data.deleted for _, data in datasets)
 
             if is_fake:
                 # FakeJob / DatasetCollectionCreationJob: input with no creating tool.
-                jobs_list.append(
-                    WorkflowExtractionJob(
-                        id=None,
-                        step_type=input_step_type(outputs),
-                        tool_name=getattr(job, "name", None),
-                        tool_id=None,
-                        tool_version=None,
-                        checked=checked,
-                        tool_version_warning=None,
-                        outputs=outputs,
-                        invalid=None,
-                    )
-                )
+                jobs_list.append(input_row(getattr(job, "name", None), [data for _, data in datasets]))
             else:
+                outputs = [serialize_output(data) for _, data in datasets]
+                checked = any(not data.deleted for _, data in datasets)
                 custom_tools_inaccessible = False
                 try:
                     tool = trans.app.toolbox.tool_for_job(job, user=trans.user)
@@ -920,19 +923,7 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
                     )
                 elif not tool.is_workflow_compatible:
                     # Not a workflow step (e.g. upload, data fetch) — treat as input.
-                    jobs_list.append(
-                        WorkflowExtractionJob(
-                            id=None,
-                            step_type=input_step_type(outputs),
-                            tool_name=tool.name,
-                            tool_id=None,
-                            tool_version=None,
-                            checked=checked,
-                            tool_version_warning=None,
-                            outputs=outputs,
-                            invalid=None,
-                        )
-                    )
+                    jobs_list.append(input_row(tool.name, [data for _, data in datasets]))
                 else:
                     tool_version_warning = (
                         (
