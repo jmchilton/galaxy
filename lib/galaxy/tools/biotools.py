@@ -26,7 +26,7 @@ def get_galaxy_biotools_metadata_source(config) -> BiotoolsMetadataSource:
         "cache.table_name": config.biotools_service_cache_table_name,
         "cache.schema_name": config.biotools_service_cache_schema_name,
     }
-    cache = CacheManager(**parse_cache_config_options(cache_opts)).get_cache("doi")
+    cache = CacheManager(**parse_cache_config_options(cache_opts)).get_cache("biotools")
     biotools_metadata_source_config.cache = cache
     biotools_metadata_source_config.validate_url = functools.partial(
         validate_non_local, ip_allowlist=config.fetch_url_allowlist_ips
