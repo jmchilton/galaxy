@@ -4,25 +4,27 @@ from typing import (
     Optional,
     Union,
 )
+from urllib.parse import quote
 
 from beaker.cache import CacheManager
 from beaker.util import parse_cache_config_options
 
+from galaxy.files.uris import validate_non_local
 from galaxy.schema.citations import (
     BibtexCitationResponse,
     CitationErrorResponse,
 )
 from galaxy.structured_app import BasicSharedApp
 from galaxy.tool_util_models.tool_source import Citation
-from galaxy.util import (
-    DEFAULT_SOCKET_TIMEOUT,
-    requests,
-)
+from galaxy.util.requests import bounded_get
 
 log = logging.getLogger(__name__)
 
 CitationT = Union["BibtexCitation", "DoiCitation"]
 OptionalCitationT = Optional[CitationT]
+
+DOI_FETCH_TIMEOUT = 10.0
+DOI_MAX_RESPONSE_BYTES = 64 * 1024
 
 
 class CitationsManager:
@@ -60,6 +62,8 @@ class CitationsManager:
 
 
 class DoiCache:
+    _ip_allowlist: list = []
+
     def __init__(self, config):
         cache_opts = {
             "cache.type": config.citation_cache_type,
@@ -70,19 +74,20 @@ class DoiCache:
             "cache.schema_name": config.citation_cache_schema_name,
         }
         self._cache = CacheManager(**parse_cache_config_options(cache_opts)).get_cache("doi")
+        self._ip_allowlist = getattr(config, "fetch_url_allowlist_ips", None) or []
 
     def _raw_get_bibtex(self, doi):
-        doi_url = f"https://doi.org/{doi}"
-        headers = {"Accept": "application/x-bibtex"}
-        res = requests.get(doi_url, headers=headers, timeout=DEFAULT_SOCKET_TIMEOUT)
-        # To decode the response content, res.text tries to determine the
-        # content encoding from the Content-Type header (res.encoding), and if
-        # that fails, falls back to guessing from the content itself (res.apparent_encoding).
-        # The guessed encoding is sometimes wrong, better to default to utf-8.
-        res.raise_for_status()
-        if res.encoding is None:
-            res.encoding = "utf-8"
-        return res.text
+        # bounded_get decodes with the declared charset, else utf-8 (guessing is sometimes wrong).
+        return bounded_get(
+            f"https://doi.org/{quote(doi, safe='/')}",
+            headers={"Accept": "application/x-bibtex"},
+            timeout=DOI_FETCH_TIMEOUT,
+            max_bytes=DOI_MAX_RESPONSE_BYTES,
+            validate_url=self._validate_url,
+        )
+
+    def _validate_url(self, url: str) -> None:
+        validate_non_local(url, self._ip_allowlist)
 
     def get_bibtex(self, doi):
         createfunc = functools.partial(self._raw_get_bibtex, doi)

@@ -6,6 +6,7 @@ import responses
 
 from galaxy.managers.citations import (
     CitationCollection,
+    DOI_MAX_RESPONSE_BYTES,
     DoiCache,
     parse_citation,
 )
@@ -28,7 +29,7 @@ def _cache_config(tmp_database_dir):
 
 
 @pytest.fixture
-def doi_cache(tmp_path):
+def doi_cache(tmp_path, fake_dns):
     return DoiCache(_cache_config(str(tmp_path)))
 
 
@@ -41,7 +42,7 @@ def _bibtex_citation(content=EXAMPLE_BIBTEX):
 
 
 @responses.activate
-def test_DoiCache():
+def test_DoiCache(fake_dns):
     with tempfile.TemporaryDirectory() as tmp_database_dir:
         doi_cache = DoiCache(_cache_config(tmp_database_dir))
         dois = (("10.1093/bioinformatics/bts252", "Jörg"), ("10.1101/2021.12.24.474111", "Özkurt"))
@@ -82,3 +83,41 @@ def test_citation_collection_dedupes_bibtex():
     assert collection.add(_bibtex_citation())
     assert not collection.add(_bibtex_citation())
     assert len(collection) == 1
+
+
+@responses.activate
+def test_doi_cache_encodes_doi_in_url(doi_cache):
+    doi = "10.1000/a?b#c"
+    responses.add(method="GET", url="https://doi.org/10.1000/a%3Fb%23c", body=EXAMPLE_BIBTEX)
+    assert doi_cache.get_bibtex(doi) == EXAMPLE_BIBTEX
+
+
+@responses.activate
+def test_doi_cache_follows_public_redirect(doi_cache):
+    responses.add(
+        method="GET",
+        url=f"https://doi.org/{EXAMPLE_DOI}",
+        status=302,
+        headers={"Location": "https://api.crossref.org/v1/works/x/transform"},
+    )
+    responses.add(method="GET", url="https://api.crossref.org/v1/works/x/transform", body=EXAMPLE_BIBTEX)
+    assert doi_cache.get_bibtex(EXAMPLE_DOI) == EXAMPLE_BIBTEX
+
+
+@responses.activate
+def test_doi_citation_does_not_follow_redirect_to_local_address(doi_cache):
+    responses.add(
+        method="GET",
+        url=f"https://doi.org/{EXAMPLE_DOI}",
+        status=302,
+        headers={"Location": "https://internal.example/x"},
+    )
+    responses.add(method="GET", url="https://internal.example/x", body=EXAMPLE_BIBTEX)
+    assert "Failed to fetch BibTeX for DOI." in _doi_citation(doi_cache).to_bibtex()
+    assert len(responses.calls) == 1
+
+
+@responses.activate
+def test_doi_citation_caps_response_size(doi_cache):
+    responses.add(method="GET", url=f"https://doi.org/{EXAMPLE_DOI}", body="x" * (DOI_MAX_RESPONSE_BYTES + 1))
+    assert "Failed to fetch BibTeX for DOI." in _doi_citation(doi_cache).to_bibtex()
