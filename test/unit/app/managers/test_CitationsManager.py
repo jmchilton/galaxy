@@ -168,3 +168,24 @@ def test_citations_to_bibtex_limits_fetches(doi_cache):
     second = citations_to_bibtex(citations, max_fetches=1)
     assert second[2].content == "@article{10.1000/2}"
     assert len(responses.calls) == 3
+
+
+@responses.activate
+def test_citations_to_bibtex_stops_fetching_after_deadline(doi_cache, monkeypatch):
+    # Each fetch advances the clock the budget reads (not bounded_get's) past the request deadline.
+    clock = [0.0]
+    monkeypatch.setattr(citations_module, "time", Bunch(monotonic=lambda: clock[0]))
+
+    def slow_fetch(request):
+        clock[0] += citations_module.DOI_FETCH_REQUEST_DEADLINE
+        return (200, {}, "@article{slow}")
+
+    dois = [f"10.1000/{i}" for i in range(3)]
+    for doi in dois:
+        responses.add_callback(responses.GET, f"https://doi.org/{doi}", callback=slow_fetch)
+    citations = [_doi_citation(doi_cache, doi) for doi in dois]
+
+    results = citations_to_bibtex(citations, max_fetches=10)
+    assert results[0].content == "@article{slow}"
+    assert all("Failed to fetch BibTeX for DOI." in r.content for r in results[1:])
+    assert len(responses.calls) == 1
