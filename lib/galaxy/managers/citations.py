@@ -157,6 +157,9 @@ class BaseCitation:
     def equals(self, other_citation):
         if self.has_doi() and other_citation.has_doi():
             return self.doi() == other_citation.doi()
+        elif self.has_doi() or other_citation.has_doi():
+            # Resolving the DOI just to compare isn't worth a fetch.
+            return False
         else:
             # TODO: Do a better job figuring out if this is the same citation.
             return self.to_bibtex() == other_citation.to_bibtex()

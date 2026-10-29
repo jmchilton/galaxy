@@ -121,3 +121,13 @@ def test_doi_citation_does_not_follow_redirect_to_local_address(doi_cache):
 def test_doi_citation_caps_response_size(doi_cache):
     responses.add(method="GET", url=f"https://doi.org/{EXAMPLE_DOI}", body="x" * (DOI_MAX_RESPONSE_BYTES + 1))
     assert "Failed to fetch BibTeX for DOI." in _doi_citation(doi_cache).to_bibtex()
+
+
+@responses.activate
+def test_citation_collection_mixed_types_do_not_fetch(doi_cache):
+    responses.add(method="GET", url=f"https://doi.org/{EXAMPLE_DOI}", body=EXAMPLE_BIBTEX)
+    collection = CitationCollection()
+    assert collection.add(_bibtex_citation())
+    assert collection.add(_doi_citation(doi_cache))
+    assert len(collection) == 2
+    assert len(responses.calls) == 0
