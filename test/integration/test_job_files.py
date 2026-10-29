@@ -109,14 +109,13 @@ class TestJobFilesIntegration(integration_util.IntegrationTestCase):
         def files():
             return {"file": io.StringIO("some initial text data")}
 
-        post_url = self._api_url(f"jobs/{job_id}/files", use_key=False)
-        response = requests.post(post_url, data=data, files=files())
+        response = self._post_job_files(job_id, data, files())
         api_asserts.assert_status_code_is_ok(response)
         assert open(path).read() == "some initial text data"
 
         work_dir_file = os.path.join(working_directory, "work")
         data = {"path": work_dir_file, "job_key": job_key}
-        response = requests.post(post_url, data=data, files=files())
+        response = self._post_job_files(job_id, data, files())
         api_asserts.assert_status_code_is_ok(response)
         assert open(work_dir_file).read() == "some initial text data"
 
@@ -124,7 +123,7 @@ class TestJobFilesIntegration(integration_util.IntegrationTestCase):
         # readable
         self._change_job_state(job, "ok")
 
-        response = requests.post(post_url, data=data, files=files())
+        response = self._post_job_files(job_id, data, files())
         _assert_insufficient_permissions(response)
 
     def test_write_with_tus(self):
@@ -154,8 +153,7 @@ class TestJobFilesIntegration(integration_util.IntegrationTestCase):
         tus_session_id = upload_session_url.rsplit("/", 1)[1]  # type: ignore[unreachable]
 
         data = {"path": path, "job_key": job_key, "session_id": tus_session_id}
-        post_url = self._api_url(f"jobs/{job_id}/files", use_key=False)
-        response = requests.post(post_url, data=data)
+        response = self._post_job_files(job_id, data)
         api_asserts.assert_status_code_is_ok(response)
         assert open(path).read() == "some initial text data"
 
@@ -166,9 +164,19 @@ class TestJobFilesIntegration(integration_util.IntegrationTestCase):
         data = {"path": t_file.name, "job_key": job_key}
         file = io.StringIO("some initial text data")
         files = {"file": file}
-        post_url = self._api_url(f"jobs/{job_id}/files", use_key=True)
-        response = requests.post(post_url, data=data, files=files)
+        response = self._post_job_files(job_id, data, files, use_key=True)
         _assert_insufficient_permissions(response)
+
+    def test_write_relative_path_rejected(self):
+        job, _, _ = self.create_static_job_with_state("running")
+        job_id, job_key = self._api_job_keys(job)
+        relative_path = os.path.join(f"job_files_relative_{job_id}", "work")
+        data = {"path": relative_path, "job_key": job_key}
+        files = {"file": io.StringIO("some initial text data")}
+        response = self._post_job_files(job_id, data, files)
+        api_asserts.assert_status_code_is(response, 400)
+        api_asserts.assert_error_message_contains(response, "absolute path")
+        assert not os.path.exists(relative_path)
 
     @property
     def sa_session(self):
@@ -207,6 +215,10 @@ class TestJobFilesIntegration(integration_util.IntegrationTestCase):
         job_key = self._app.security.encode_id(job.id, kind="jobs_files")
         assert job_key
         return job_id, job_key
+
+    def _post_job_files(self, job_id, data, files=None, use_key=False):
+        post_url = self._api_url(f"jobs/{job_id}/files", use_key=use_key)
+        return requests.post(post_url, data=data, files=files)
 
     def _change_job_state(self, job, state):
         job.state = state
