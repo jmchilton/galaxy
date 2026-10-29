@@ -26,6 +26,9 @@ LEGACY_DIALECT = {
     "runtime_version": {"runtime_version": {"command": "echo --version"}},
     "numeric_version": {"version": 1.0},
     "package_requirement": {"requirements": [{"type": "package", "name": "bwa", "version": "1.0"}]},
+    "container_requirement": {
+        "requirements": [{"type": "container", "container": {"type": "docker", "container_id": "busybox"}}]
+    },
     "boolean_checked": {"inputs": [{"name": "flag", "type": "boolean", "checked": True}]},
     "repeat_blocks": {"inputs": [{"name": "rep", "type": "repeat", "blocks": [{"name": "n", "type": "integer"}]}]},
     "conditional_when": {
@@ -75,6 +78,7 @@ LEGACY_ERROR_LOCATIONS = {
     "runtime_version": ("runtime_version",),
     "numeric_version": ("version",),
     "package_requirement": ("requirements", 0),
+    "container_requirement": ("requirements", 0),
     "boolean_checked": ("inputs", 0, "boolean", "checked"),
     "repeat_blocks": ("inputs", 0, "repeat", "blocks"),
     "conditional_when": ("inputs", 0, "conditional", "when"),

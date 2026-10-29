@@ -48,13 +48,6 @@ class Requirement(ToolSourceBaseModel):
     type: Literal["package", "set_environment"]
 
 
-class ContainerRequirement(ToolSourceBaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    type: Literal["container"]
-    container: Container
-
-
 class PackageRequirement(Requirement):
     type: Literal["package"]
     name: str

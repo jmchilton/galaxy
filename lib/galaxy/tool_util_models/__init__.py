@@ -59,7 +59,6 @@ from .tool_outputs import (
 from .tool_source import (
     Citation,
     Container,
-    ContainerRequirement,
     HelpContent,
     JavascriptRequirement,
     MarkdownHelpContent,
@@ -205,7 +204,7 @@ class _DynamicToolSourceBase(ToolSourceBaseModel):
         ),
     ] = None
     requirements: Annotated[
-        Optional[List[Union[JavascriptRequirement, ResourceRequirement, ContainerRequirement]]],
+        Optional[List[Union[JavascriptRequirement, ResourceRequirement]]],
         Field(description=("JavaScript helpers and compute resource requests needed to execute this tool.")),
     ] = []
     shell_command: Annotated[
@@ -408,12 +407,6 @@ class UserToolSourceAuthoringView(_DynamicToolSourceBase):
             examples=["quay.io/biocontainers/python:3.13"],
         ),
     ]
-    # User-defined tools select their image only through the top-level ``container``
-    # field, so the trusted-tool container requirement form is not offered here.
-    requirements: Annotated[
-        Optional[List[Union[JavascriptRequirement, ResourceRequirement]]],
-        Field(description="JavaScript helpers and compute resource requests needed to execute this tool."),
-    ] = []  # type: ignore[assignment]
     # Required here (it's optional on the base for stored/legacy rows). Galaxy's
     # linter rejects a versionless tool, so forcing it into the structured-output
     # ``required`` set stops the model dropping it -- notably on a retry, where the

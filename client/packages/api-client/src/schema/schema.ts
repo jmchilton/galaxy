@@ -9341,25 +9341,6 @@ export interface components {
                 | components["schemas"]["OutputReferenceByOrderIndex"]
                 | components["schemas"]["OutputReferenceByLabel"];
         };
-        /** Container */
-        Container: {
-            /** Container Id */
-            container_id: string;
-            /**
-             * Type
-             * @enum {string}
-             */
-            type: "docker" | "singularity";
-        };
-        /** ContainerRequirement */
-        ContainerRequirement: {
-            container: components["schemas"]["Container"];
-            /**
-             * Type
-             * @constant
-             */
-            type: "container";
-        };
         /** ContentTypeMessage */
         ContentTypeMessage: {
             /** Content Type */
@@ -28621,11 +28602,7 @@ export interface components {
              * @default []
              */
             requirements:
-                | (
-                      | components["schemas"]["JavascriptRequirement"]
-                      | components["schemas"]["ResourceRequirement"]
-                      | components["schemas"]["ContainerRequirement"]
-                  )[]
+                | (components["schemas"]["JavascriptRequirement"] | components["schemas"]["ResourceRequirement"])[]
                 | null;
             /**
              * shell_command
