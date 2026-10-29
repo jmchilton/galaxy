@@ -124,6 +124,9 @@ class GalaxyAppConfigurationAttributes:
     citation_cache_url: str | None
     citation_cache_table_name: str
     citation_cache_schema_name: str | None
+    citation_cache_expire: int
+    citation_fetch_timeout: float
+    citation_max_fetches_per_request: int
     mulled_resolution_cache_type: str
     mulled_resolution_cache_data_dir: str
     mulled_resolution_cache_lock_dir: str
