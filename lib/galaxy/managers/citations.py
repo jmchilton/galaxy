@@ -21,7 +21,10 @@ from galaxy.schema.citations import (
 )
 from galaxy.structured_app import BasicSharedApp
 from galaxy.tool_util_models.tool_source import Citation
-from galaxy.util.requests import bounded_get
+from galaxy.util.requests import (
+    bounded_get,
+    cached_fetch,
+)
 
 log = logging.getLogger(__name__)
 
@@ -31,19 +34,10 @@ OptionalCitationT = Optional[CitationT]
 DOI_FETCH_TIMEOUT = 10.0
 DOI_MAX_RESPONSE_BYTES = 64 * 1024
 DOI_FAILURE_EXPIRE = 600
-DOI_FETCH_FAILED = "__galaxy_doi_fetch_failed__"
 DOI_MAX_FETCHES_PER_REQUEST = 10
 DOI_FETCH_REQUEST_DEADLINE = 30.0
 MAX_CITATIONS_PER_TOOL = 50
 MAX_BIBTEX_CITATION_LENGTH = 32 * 1024
-
-
-class DoiFetchFailed(Exception):
-    pass
-
-
-class DoiFetchSkipped(Exception):
-    pass
 
 
 class DoiFetchBudget:
@@ -159,20 +153,13 @@ class DoiCache:
         )
 
     def get_bibtex(self, doi: str, budget: Optional[DoiFetchBudget] = None) -> str:
-        try:
-            bibtex = self._cache.get(key=doi)
-        except KeyError:
-            if budget is not None and not budget.take():
-                raise DoiFetchSkipped(doi)
-            try:
-                bibtex = self._raw_get_bibtex(doi)
-            except Exception:
-                self._cache.put(doi, DOI_FETCH_FAILED, expiretime=DOI_FAILURE_EXPIRE)
-                raise
-            self._cache.put(doi, bibtex)
-        if bibtex == DOI_FETCH_FAILED:
-            raise DoiFetchFailed(doi)
-        return bibtex
+        return cached_fetch(
+            self._cache,
+            doi,
+            functools.partial(self._raw_get_bibtex, doi),
+            failure_expire=DOI_FAILURE_EXPIRE,
+            may_fetch=budget.take if budget is not None else None,
+        )
 
 
 def citations_to_bibtex(

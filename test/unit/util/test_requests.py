@@ -2,9 +2,11 @@ import gzip
 import socket
 import threading
 import time
+import uuid
 
 import pytest
 import responses
+from beaker.cache import CacheManager
 from requests.adapters import HTTPAdapter
 
 from galaxy.util import requests as galaxy_requests
@@ -260,3 +262,87 @@ def test_bounded_get_decodes_gzip():
         headers={"Content-Encoding": "gzip"},
     )
     assert galaxy_requests.bounded_get("https://example.com/a") == "Jörg"
+
+
+@pytest.fixture
+def memory_cache():
+    return CacheManager(type="memory").get_cache(uuid.uuid4().hex)
+
+
+def _counting_fetch(*results):
+    calls = []
+
+    def fetch():
+        result = results[len(calls)]
+        calls.append(result)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    return fetch, calls
+
+
+def _http_error(status):
+    response = galaxy_requests.Response()
+    response.status_code = status
+    return galaxy_requests.exceptions.HTTPError(response=response)
+
+
+def test_cached_fetch_caches_success(memory_cache):
+    fetch, calls = _counting_fetch("value")
+    assert galaxy_requests.cached_fetch(memory_cache, "k", fetch, failure_expire=60) == "value"
+    assert galaxy_requests.cached_fetch(memory_cache, "k", fetch, failure_expire=60) == "value"
+    assert len(calls) == 1
+
+
+def test_cached_fetch_caches_failure_briefly(memory_cache, monkeypatch):
+    fetch, calls = _counting_fetch(_http_error(503), "value")
+    for _ in range(2):
+        with pytest.raises(galaxy_requests.CachedFetchFailed):
+            galaxy_requests.cached_fetch(memory_cache, "k", fetch, failure_expire=60)
+    assert len(calls) == 1
+
+    now = time.time()
+    monkeypatch.setattr("beaker.container.time.time", lambda: now + 61)
+    assert galaxy_requests.cached_fetch(memory_cache, "k", fetch, failure_expire=60) == "value"
+
+
+def test_cached_fetch_can_keep_not_found(memory_cache, monkeypatch):
+    fetch, calls = _counting_fetch(_http_error(404), "value")
+    with pytest.raises(galaxy_requests.CachedFetchFailed):
+        galaxy_requests.cached_fetch(memory_cache, "k", fetch, failure_expire=60, cache_not_found=True)
+
+    now = time.time()
+    monkeypatch.setattr("beaker.container.time.time", lambda: now + 61)
+    with pytest.raises(galaxy_requests.CachedFetchFailed):
+        galaxy_requests.cached_fetch(memory_cache, "k", fetch, failure_expire=60, cache_not_found=True)
+    assert len(calls) == 1
+
+
+def test_cached_fetch_skips_when_not_allowed(memory_cache):
+    fetch, calls = _counting_fetch("value")
+    with pytest.raises(galaxy_requests.CachedFetchSkipped):
+        galaxy_requests.cached_fetch(memory_cache, "k", fetch, failure_expire=60, may_fetch=lambda: False)
+    assert calls == []
+
+
+def test_cached_fetch_hits_do_not_ask_may_fetch(memory_cache):
+    """Cached successes, failures and 404s never spend a fetch allowance."""
+    fetch, calls = _counting_fetch("value", _http_error(503), _http_error(404))
+    galaxy_requests.cached_fetch(memory_cache, "ok", fetch, failure_expire=60)
+    for key in ("failed", "missing"):
+        with pytest.raises(galaxy_requests.CachedFetchFailed):
+            galaxy_requests.cached_fetch(memory_cache, key, fetch, failure_expire=60, cache_not_found=True)
+
+    asked = []
+
+    def may_fetch():
+        asked.append(True)
+        return False
+
+    assert galaxy_requests.cached_fetch(memory_cache, "ok", fetch, failure_expire=60, may_fetch=may_fetch) == "value"
+    for key in ("failed", "missing"):
+        with pytest.raises(galaxy_requests.CachedFetchFailed):
+            galaxy_requests.cached_fetch(memory_cache, key, fetch, failure_expire=60, may_fetch=may_fetch)
+    assert asked == []
+    assert len(calls) == 3

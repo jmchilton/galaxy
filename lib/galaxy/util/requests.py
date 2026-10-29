@@ -1,5 +1,6 @@
 import time
 from typing import (
+    Any,
     Callable,
     Dict,
     Iterator,
@@ -20,7 +21,10 @@ from requests import (  # noqa: F401
 )
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
-from typing_extensions import ParamSpec
+from typing_extensions import (
+    ParamSpec,
+    Protocol,
+)
 
 from .user_agent import get_default_headers
 
@@ -30,6 +34,8 @@ DEFAULT_BOUNDED_TIMEOUT = 15.0
 DEFAULT_BOUNDED_MAX_BYTES = 1024 * 1024
 DEFAULT_BOUNDED_MAX_REDIRECTS = 3
 BOUNDED_READ_CHUNK_SIZE = 16 * 1024
+
+CACHED_FETCH_FAILED = "__galaxy_cached_fetch_failed__"
 
 UrlValidator = Callable[[str], object]
 
@@ -133,3 +139,55 @@ def _remaining(deadline: float) -> float:
     if remaining <= 0:
         raise BoundedFetchError("Timed out")
     return remaining
+
+
+class FetchCache(Protocol):
+    """A beaker ``Cache``-like store; ``get`` raises ``KeyError`` for missing or expired keys."""
+
+    def get(self, key: str) -> Any: ...
+
+    def put(self, key: str, value: Any, expiretime: Optional[float] = None) -> None: ...
+
+
+class CachedFetchFailed(Exception):
+    pass
+
+
+class CachedFetchSkipped(Exception):
+    pass
+
+
+def cached_fetch(
+    cache: FetchCache,
+    key: str,
+    fetch: Callable[[], str],
+    *,
+    failure_expire: float,
+    cache_not_found: bool = False,
+    may_fetch: Optional[Callable[[], bool]] = None,
+) -> str:
+    """Return ``fetch()``'s result for ``key`` from ``cache``, fetching on a miss.
+
+    Failures are cached for ``failure_expire`` seconds; with ``cache_not_found``, a 404 is kept like a success.
+    """
+    try:
+        value = cache.get(key)
+    except KeyError:
+        if may_fetch is not None and not may_fetch():
+            raise CachedFetchSkipped(key)
+        try:
+            value = fetch()
+        except Exception as e:
+            if cache_not_found and _is_not_found(e):
+                cache.put(key, CACHED_FETCH_FAILED)
+            else:
+                cache.put(key, CACHED_FETCH_FAILED, expiretime=failure_expire)
+            raise CachedFetchFailed(f"{key}: {e!r}") from e
+        cache.put(key, value)
+    if value == CACHED_FETCH_FAILED:
+        raise CachedFetchFailed(f"{key}: failed recently")
+    return value
+
+
+def _is_not_found(e: Exception) -> bool:
+    return isinstance(e, exceptions.HTTPError) and e.response is not None and e.response.status_code == 404
