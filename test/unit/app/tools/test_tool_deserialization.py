@@ -109,8 +109,7 @@ shell_command: |
 inputs:
   - name: alignment
     type: data
-    extensions:
-      - cram
+    format: [cram]
 outputs:
   - name: output1
     type: data

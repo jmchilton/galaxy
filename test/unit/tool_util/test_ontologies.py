@@ -13,9 +13,10 @@ description: "The Bowtie Mapper"
 xrefs:
   - type: bio.tools
     value: bwa
-command: "bowtie --map-the-stuff"
+shell_command: "bowtie --map-the-stuff"
 outputs:
   out1:
+    type: data
     format: bam
     from_work_dir: out1.bam
 edam_operations:
@@ -36,9 +37,10 @@ description: "The Bowtie Mapper"
 xrefs:
   - type: bio.tools
     value: bwa
-command: "bowtie --map-the-stuff"
+shell_command: "bowtie --map-the-stuff"
 outputs:
   out1:
+    type: data
     format: bam
     from_work_dir: out1.bam
 inputs:
@@ -52,9 +54,10 @@ class: GalaxyTool
 id: sort1
 version: 1.0.2
 description: "The Bowtie Mapper"
-command: "bowtie --map-the-stuff"
+shell_command: "bowtie --map-the-stuff"
 outputs:
   out1:
+    type: data
     format: bam
     from_work_dir: out1.bam
 inputs:

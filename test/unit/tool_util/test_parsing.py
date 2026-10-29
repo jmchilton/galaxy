@@ -149,14 +149,9 @@ description: "The Bowtie Mapper"
 xrefs:
   - type: bio.tools
     value: bwa
-command: "bowtie_wrapper.pl --map-the-stuff"
-interpreter: "perl"
-runtime_version:
-  command: "bowtie --version"
+shell_command: "bowtie_wrapper.pl --map-the-stuff"
+container: "awesome/bowtie"
 requirements:
-  - type: package
-    name: bwa
-    version: 1.0.1
   - type: resource
     cores_min: 1
   - type: resource
@@ -173,31 +168,9 @@ requirements:
     shm_size: 67108864
   - type: resource
     timelimit: 60
-containers:
-  - type: docker
-    identifier: "awesome/bowtie"
-credentials:
-  - name: Apollo
-    version: gmod.org/apollo
-    secrets:
-      - name: username
-        label: Your Apollo username
-        description: Username for Apollo
-        inject_as_env: apollo_user
-        optional: true
-      - name: password
-        label: Your Apollo password
-        description: Password for Apollo
-        inject_as_env: apollo_pass
-        optional: true
-    variables:
-      - name: server
-        label: Your Apollo server
-        description: URL of your Apollo server
-        inject_as_env: apollo_url
-        optional: true
 outputs:
   out1:
+    type: data
     format: bam
     from_work_dir: out1.bam
 inputs:
@@ -214,7 +187,8 @@ inputs:
       - name: nestsample
         type: text
 help:
-|
+  format: markdown
+  content: |
     This is HELP TEXT2!!!
 tests:
    - inputs:
@@ -587,8 +561,8 @@ class TestYamlLoader(BaseLoaderTestCase):
         assert self._tool_source.parse_request_param_translation_elem() is None
 
     def test_command_parsing(self):
-        assert self._tool_source.parse_command() == "bowtie_wrapper.pl --map-the-stuff"
-        assert self._tool_source.parse_interpreter() == "perl"
+        assert self._tool_source.parse_shell_command() == "bowtie_wrapper.pl --map-the-stuff"
+        assert self._tool_source.parse_command() is None
 
     def test_parse_redirect_url_params_elem(self):
         assert self._tool_source.parse_redirect_url_params_elem() is None
@@ -597,8 +571,7 @@ class TestYamlLoader(BaseLoaderTestCase):
         assert self._tool_source.parse_description() == "The Bowtie Mapper"
 
     def test_version_command(self):
-        assert self._tool_source.parse_version_command() == "bowtie --version"
-        assert self._tool_source.parse_version_command_interpreter() is None
+        assert self._tool_source.parse_version_command() is None
 
     def test_parallelism(self):
         assert self._tool_source.parse_parallelism() is None
@@ -613,7 +586,7 @@ class TestYamlLoader(BaseLoaderTestCase):
         software_requirements, containers, resource_requirements, _, credentials = (
             self._tool_source.parse_requirements()
         )
-        assert software_requirements.to_dict() == [{"name": "bwa", "type": "package", "version": "1.0.1", "specs": []}]
+        assert software_requirements.to_dict() == []
         assert len(containers) == 1
         assert containers[0].to_dict() == {
             "identifier": "awesome/bowtie",
@@ -645,9 +618,7 @@ class TestYamlLoader(BaseLoaderTestCase):
             "resource_type": "timelimit",
             "value_or_expression": 60,
         }
-        assert len(credentials) == 1
-        assert len(credentials[0].secrets) == 2
-        assert len(credentials[0].variables) == 1
+        assert credentials == []
 
     def test_outputs(self):
         outputs, output_collections = self._tool_source.parse_outputs(object())
