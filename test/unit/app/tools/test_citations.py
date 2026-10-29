@@ -2,6 +2,8 @@ from galaxy.managers.citations import (
     BibtexCitation,
     CitationCollection,
     CitationsManager,
+    MAX_BIBTEX_CITATION_LENGTH,
+    MAX_CITATIONS_PER_TOOL,
     parse_citation,
 )
 from galaxy.model.unittest_utils import GalaxyDataTestApp
@@ -76,3 +78,19 @@ def test_tool_loads_citations_in_order(tmp_path):
     dois = [f"10.1000/{i}" for i in range(3)]
     tool = _tool_with_citations(tmp_path, "".join(f'<citation type="doi">{doi}</citation>' for doi in dois))
     assert [citation.doi() for citation in tool.citations] == dois
+
+
+def test_tool_citations_are_capped(tmp_path):
+    dois = [f"10.1000/{i}" for i in range(MAX_CITATIONS_PER_TOOL + 5)]
+    tool = _tool_with_citations(tmp_path, "".join(f'<citation type="doi">{doi}</citation>' for doi in dois))
+    assert [citation.doi() for citation in tool.citations] == dois[:MAX_CITATIONS_PER_TOOL]
+
+
+def test_tool_drops_oversized_bibtex_citation(tmp_path):
+    prefix = "@article{big, note={"
+    at_limit = prefix + "x" * (MAX_BIBTEX_CITATION_LENGTH - len(prefix) - 2) + "}}"
+    oversized = at_limit.replace("x", "xx", 1)
+    tool = _tool_with_citations(
+        tmp_path, f'<citation type="bibtex">{oversized}</citation><citation type="bibtex">{at_limit}</citation>'
+    )
+    assert [citation.to_bibtex() for citation in tool.citations] == [at_limit]
