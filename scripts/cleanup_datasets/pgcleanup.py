@@ -1200,7 +1200,7 @@ class DeleteLibraryDatasets(Action):
                       SET purged = true{update_time_sql}
                      FROM target_lds t
                     WHERE ld.id = t.id
-                          AND NOT ld.purged
+                          AND ld.purged IS NOT TRUE
                 RETURNING ld.id),
              ld_events
           AS (INSERT INTO cleanup_event_library_dataset_association

@@ -400,6 +400,23 @@ class TestScriptsPgCleanupIntegration(BaseScriptsIntegrationTestCase):
         self._pgcleanup_check_output(["--older-than", "0", "--force-retry", "delete_library_datasets"])
         assert self._library_dataset_state(library_dataset)["version_deleted"] is True
 
+    def test_delete_library_datasets_force_retry_null_purged(self):
+        self._skip_unless_postgres()
+
+        _, library_dataset = self.library_populator.new_library_dataset_in_private_library(
+            "pgcleanup_library_dataset_null_purged"
+        )
+        self.library_populator.delete_library_dataset(library_dataset["id"])
+        # legacy rows may carry a NULL purged flag
+        ld = self._db_get(model.LibraryDataset, library_dataset["id"])
+        ld.purged = None
+        self._app.model.session.commit()
+
+        self._pgcleanup_check_output(["--older-than", "0", "--force-retry", "delete_library_datasets"])
+        state = self._library_dataset_state(library_dataset)
+        assert state["version_deleted"] is True
+        assert state["library_dataset_purged"] is True
+
     def test_purge_historyless_hdas(self):
         # same as above - this is just a negative test for things being broken
         # we could access the model layer to write a test to verify the positive
