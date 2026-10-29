@@ -1,9 +1,11 @@
 import os.path
 import tempfile
+import time
 
 import pytest
 import responses
 
+from galaxy.managers import citations as citations_module
 from galaxy.managers.citations import (
     CitationCollection,
     DOI_MAX_RESPONSE_BYTES,
@@ -131,3 +133,17 @@ def test_citation_collection_mixed_types_do_not_fetch(doi_cache):
     assert collection.add(_doi_citation(doi_cache))
     assert len(collection) == 2
     assert len(responses.calls) == 0
+
+
+@responses.activate
+def test_doi_fetch_failure_is_cached_briefly(doi_cache, monkeypatch):
+    responses.add(method="GET", url=f"https://doi.org/{EXAMPLE_DOI}", status=500)
+    assert "Failed to fetch BibTeX for DOI." in _doi_citation(doi_cache).to_bibtex()
+    assert "Failed to fetch BibTeX for DOI." in _doi_citation(doi_cache).to_bibtex()
+    assert len(responses.calls) == 1
+
+    now = time.time()
+    monkeypatch.setattr("beaker.container.time.time", lambda: now + citations_module.DOI_FAILURE_EXPIRE + 1)
+    responses.replace(responses.GET, f"https://doi.org/{EXAMPLE_DOI}", body=EXAMPLE_BIBTEX)
+    assert _doi_citation(doi_cache).to_bibtex() == EXAMPLE_BIBTEX
+    assert len(responses.calls) == 2
