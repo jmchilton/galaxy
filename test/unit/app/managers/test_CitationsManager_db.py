@@ -2,13 +2,11 @@ import time
 
 import pytest
 import responses
-from requests.exceptions import HTTPError
 
 import galaxy.config
 from galaxy.managers.citations import (
     DOI_FAILURE_EXPIRE,
     DoiCache,
-    DoiFetchFailed,
 )
 from galaxy.model.unittest_utils.beaker_testing_utils import is_cache_empty
 from galaxy.model.unittest_utils.migration_scripts_testing_utils import tmp_directory  # noqa: F401
@@ -16,6 +14,7 @@ from galaxy.model.unittest_utils.model_testing_utils import (  # noqa: F401  (ur
     create_and_drop_database,
     url_factory,
 )
+from galaxy.util.requests import CachedFetchFailed
 
 
 class MockDoiCache(DoiCache):
@@ -56,10 +55,9 @@ def test_DoiCache_failure_expires(url_factory, fake_dns, monkeypatch):  # noqa: 
     with create_and_drop_database(db_url):
         doi_cache = MockDoiCache(galaxy.config.GalaxyAppConfiguration(override_tempdir=False), db_url)
         responses.add(method="GET", url=f"https://doi.org/{doi}", status=500)
-        with pytest.raises(HTTPError):
-            doi_cache.get_bibtex(doi)
-        with pytest.raises(DoiFetchFailed):
-            doi_cache.get_bibtex(doi)
+        for _ in range(2):
+            with pytest.raises(CachedFetchFailed):
+                doi_cache.get_bibtex(doi)
         assert len(responses.calls) == 1
 
         now = time.time()
