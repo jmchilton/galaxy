@@ -122,8 +122,10 @@ def test_doi_citation_does_not_follow_redirect_to_local_address(doi_cache):
 
 @responses.activate
 def test_doi_citation_caps_response_size(doi_cache):
-    responses.add(method="GET", url=f"https://doi.org/{EXAMPLE_DOI}", body="x" * (DOI_MAX_RESPONSE_BYTES + 1))
-    assert "Failed to fetch BibTeX for DOI." in _doi_citation(doi_cache).to_bibtex()
+    responses.add(method="GET", url=f"https://doi.org/{EXAMPLE_DOI}", body="x" * DOI_MAX_RESPONSE_BYTES)
+    responses.add(method="GET", url="https://doi.org/10.1000/big", body="x" * (DOI_MAX_RESPONSE_BYTES + 1))
+    assert _doi_citation(doi_cache).to_bibtex() == "x" * DOI_MAX_RESPONSE_BYTES
+    assert "Failed to fetch BibTeX for DOI." in _doi_citation(doi_cache, "10.1000/big").to_bibtex()
 
 
 @responses.activate
