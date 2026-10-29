@@ -255,7 +255,7 @@ class TestScriptsPgCleanupIntegration(BaseScriptsIntegrationTestCase):
         # deleting a library dataset through the API only flags the library dataset, its versions
         # (and therefore the dataset they reference) are left alone - which is why datasets that
         # only live in libraries are never deleted or purged by any other cleanup action
-        self._assert_status_code_is_ok(self._delete(f"libraries/datasets/{library_dataset['id']}"))
+        self.library_populator.delete_library_dataset(library_dataset["id"])
         assert self._library_dataset_state(library_dataset) == {
             "library_dataset_deleted": True,
             "library_dataset_purged": False,
@@ -296,7 +296,7 @@ class TestScriptsPgCleanupIntegration(BaseScriptsIntegrationTestCase):
         _, library_dataset = self.library_populator.new_library_dataset_in_private_library(
             "pgcleanup_library_dataset_force_retry"
         )
-        self._assert_status_code_is_ok(self._delete(f"libraries/datasets/{library_dataset['id']}"))
+        self.library_populator.delete_library_dataset(library_dataset["id"])
         self._pgcleanup_check_output(
             ["--older-than", "0", "delete_library_datasets", "delete_datasets", "purge_datasets"]
         )
