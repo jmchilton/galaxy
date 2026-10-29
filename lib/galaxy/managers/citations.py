@@ -1,4 +1,3 @@
-import functools
 import logging
 from collections.abc import Iterable
 from typing import (
@@ -26,6 +25,12 @@ OptionalCitationT = Optional[CitationT]
 
 DOI_FETCH_TIMEOUT = 10.0
 DOI_MAX_RESPONSE_BYTES = 64 * 1024
+DOI_FAILURE_EXPIRE = 600
+DOI_FETCH_FAILED = "__galaxy_doi_fetch_failed__"
+
+
+class DoiFetchFailed(Exception):
+    pass
 
 
 class CitationsManager:
@@ -102,8 +107,18 @@ class DoiCache:
         validate_non_local(url, self._ip_allowlist)
 
     def get_bibtex(self, doi):
-        createfunc = functools.partial(self._raw_get_bibtex, doi)
-        return self._cache.get(key=doi, createfunc=createfunc)
+        try:
+            bibtex = self._cache.get(key=doi)
+        except KeyError:
+            try:
+                bibtex = self._raw_get_bibtex(doi)
+            except Exception:
+                self._cache.put(doi, DOI_FETCH_FAILED, expiretime=DOI_FAILURE_EXPIRE)
+                raise
+            self._cache.put(doi, bibtex)
+        if bibtex == DOI_FETCH_FAILED:
+            raise DoiFetchFailed(doi)
+        return bibtex
 
 
 def citations_to_bibtex(citations: Iterable[CitationT]) -> list[BibtexCitationResponse]:
