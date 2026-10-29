@@ -190,12 +190,7 @@ class TestRecalculateUserDiskUsageIntegration(IntegrationTestCase, RecalculateDi
         with self._different_user(f"user_{uuid4()}@bx.psu.edu"):
             other_history_id = self.dataset_populator.new_history()
             # Copy an output while its job runs, before the job charges it
-            copy_response = self.dataset_populator._post(
-                f"histories/{other_history_id}/contents",
-                {"source": "hda", "content": output_id, "type": "dataset"},
-                json=True,
-            )
-            assert_status_code_is_ok(copy_response)
+            copy = self.dataset_populator.copy_dataset(other_history_id, output_id)
             self.dataset_populator.wait_for_history(other_history_id, assert_ok=True)
 
             # The copy is counted when the job finishes, and a recalculation agrees
@@ -204,9 +199,7 @@ class TestRecalculateUserDiskUsageIntegration(IntegrationTestCase, RecalculateDi
             assert self.dataset_populator.total_disk_usage() == 2
 
             # Purging it brings the usage back to 0
-            self.dataset_populator.delete_dataset(
-                other_history_id, copy_response.json()["id"], purge=True, wait_for_purge=True
-            )
+            self.dataset_populator.delete_dataset(other_history_id, copy["id"], purge=True, wait_for_purge=True)
             assert self.dataset_populator.total_disk_usage() == 0
 
     def test_copies_of_another_users_datasets_are_counted(self):
@@ -220,12 +213,7 @@ class TestRecalculateUserDiskUsageIntegration(IntegrationTestCase, RecalculateDi
         with self._different_user(f"user_{uuid4()}@bx.psu.edu"):
             other_history_id = self.dataset_populator.new_history()
             # Copy a dataset, and a collection with its datasets
-            copy_response = self.dataset_populator._post(
-                f"histories/{other_history_id}/contents",
-                {"source": "hda", "content": hda_id, "type": "dataset"},
-                json=True,
-            )
-            assert_status_code_is_ok(copy_response)
+            copy = self.dataset_populator.copy_dataset(other_history_id, hda_id)
             hdca_copy = self.dataset_collection_populator.copy_collection(other_history_id, hdca_id).json()
 
             # The copies are counted, and a recalculation agrees
@@ -235,7 +223,7 @@ class TestRecalculateUserDiskUsageIntegration(IntegrationTestCase, RecalculateDi
             assert self.dataset_populator.total_disk_usage() == expected_usage
 
             # Purging them brings the usage back to 0
-            copy_ids = [copy_response.json()["id"]] + [element["object"]["id"] for element in hdca_copy["elements"]]
+            copy_ids = [copy["id"]] + [element["object"]["id"] for element in hdca_copy["elements"]]
             for copy_id in copy_ids:
                 self.dataset_populator.delete_dataset(other_history_id, copy_id, purge=True, wait_for_purge=True)
             assert self.dataset_populator.total_disk_usage() == 0
@@ -422,12 +410,7 @@ class TestCopiedRunningOutputDiskUsageIntegration(IntegrationTestCase):
         self.dataset_populator.wait_for_job(job_id, ok_states=["running"])
 
         # Copy an output while the job runs, before its file is in the object store
-        copy_response = self.dataset_populator._post(
-            f"histories/{other_history_id}/contents",
-            {"source": "hda", "content": output_ids[0], "type": "dataset"},
-            json=True,
-        )
-        assert_status_code_is_ok(copy_response)
+        copy = self.dataset_populator.copy_dataset(other_history_id, output_ids[0])
         assert self.dataset_populator.get_job_details(job_id).json()["state"] == "running"
         self.dataset_populator.wait_for_job(job_id, assert_ok=True)
 
@@ -443,9 +426,7 @@ class TestCopiedRunningOutputDiskUsageIntegration(IntegrationTestCase):
         # Purging the outputs and the copy brings the usage back to where it started
         for output_id in output_ids:
             self.dataset_populator.delete_dataset(history_id, output_id, purge=True, wait_for_purge=True)
-        self.dataset_populator.delete_dataset(
-            other_history_id, copy_response.json()["id"], purge=True, wait_for_purge=True
-        )
+        self.dataset_populator.delete_dataset(other_history_id, copy["id"], purge=True, wait_for_purge=True)
         assert self.dataset_populator.total_disk_usage() == initial_usage
 
 

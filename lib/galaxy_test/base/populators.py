@@ -1108,6 +1108,13 @@ class BaseDatasetPopulator(BasePopulator):
     def copy_history(self, history_id, name="API Test Copied History", **kwds) -> Response:
         return self._post("histories", data={"name": name, "history_id": history_id, **kwds})
 
+    def copy_dataset(self, history_id: str, hda_id: str) -> dict[str, Any]:
+        """Copy an HDA into a history and return the copy."""
+        payload = {"source": "hda", "content": hda_id, "type": "dataset"}
+        copy_response = self._post(f"histories/{history_id}/contents", payload, json=True)
+        api_asserts.assert_status_code_is_ok(copy_response)
+        return copy_response.json()
+
     def fetch_payload(
         self,
         history_id: str,
