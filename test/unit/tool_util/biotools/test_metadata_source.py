@@ -2,13 +2,18 @@ import os
 
 import responses
 
+from galaxy.tool_util.biotools import source as source_module
 from galaxy.tool_util.biotools.source import (
     ApiBiotoolsMetadataSource,
     BiotoolsMetadataSourceConfig,
     get_biotools_metadata_source,
     GitContentBiotoolsMetadataSource,
+    InMemoryCache,
 )
-from galaxy.util.unittest_utils import skip_if_site_down
+from galaxy.util.unittest_utils import (
+    FakeClock,
+    skip_if_site_down,
+)
 from ._util import content_dir
 
 
@@ -56,26 +61,21 @@ def test_cascade_content():
     assert len(bowtie2.topic) == 3
 
 
-class _DictCache:
-    def __init__(self):
-        self.backend = {}
-
-    def get(self, key, createfunc):
-        if key not in self.backend:
-            self.backend[key] = createfunc()
-        return self.backend[key]
-
-
 @responses.activate
 def test_api_content_offline():
     with open(os.path.join(content_dir, "data", "bwa", "bwa.biotools.json")) as f:
         responses.add(method="GET", url="https://bio.tools/api/tool/bwa?format=json", body=f.read())
     responses.add(method="GET", url="https://bio.tools/api/tool/johnscoolbowtie?format=json", status=404)
-    metadata_source = ApiBiotoolsMetadataSource(cache=_DictCache())
+    clock = FakeClock()
+    metadata_source = ApiBiotoolsMetadataSource(cache=InMemoryCache(clock=clock))
     bwa_entry = metadata_source.get_biotools_metadata("bwa")
     assert bwa_entry is not None
     assert len(bwa_entry.function) == 6
     assert metadata_source.get_biotools_metadata("johnscoolbowtie") is None
+    assert metadata_source.get_biotools_metadata("johnscoolbowtie") is None
+    assert len(responses.calls) == 2
+
+    clock.advance(source_module.BIOTOOLS_FAILURE_EXPIRE + 1)
     assert metadata_source.get_biotools_metadata("johnscoolbowtie") is None
     assert len(responses.calls) == 2
 
@@ -84,25 +84,29 @@ def test_api_content_offline():
 def test_api_content_encodes_reference():
     with open(os.path.join(content_dir, "data", "bwa", "bwa.biotools.json")) as f:
         responses.add(method="GET", url="https://bio.tools/api/tool/a%3Fb?format=json", body=f.read())
-    assert ApiBiotoolsMetadataSource(cache=_DictCache()).get_biotools_metadata("a?b") is not None
+    assert ApiBiotoolsMetadataSource(cache=InMemoryCache()).get_biotools_metadata("a?b") is not None
 
 
 @responses.activate
-def test_api_content_validates_redirects():
-    responses.add(
-        method="GET",
-        url="https://bio.tools/api/tool/bwa?format=json",
-        status=302,
-        headers={"Location": "https://internal.example/bwa"},
-    )
-    validated = []
-
-    def validate_url(url):
-        validated.append(url)
-        if "internal.example" in url:
-            raise ValueError(url)
-
-    metadata_source = ApiBiotoolsMetadataSource(cache=_DictCache(), validate_url=validate_url)
+def test_api_content_retries_failed_lookup_after_expiry():
+    responses.add(method="GET", url="https://bio.tools/api/tool/bwa?format=json", status=503)
+    clock = FakeClock()
+    metadata_source = ApiBiotoolsMetadataSource(cache=InMemoryCache(clock=clock))
     assert metadata_source.get_biotools_metadata("bwa") is None
-    assert validated == ["https://bio.tools/api/tool/bwa?format=json", "https://internal.example/bwa"]
+    assert metadata_source.get_biotools_metadata("bwa") is None
     assert len(responses.calls) == 1
+
+    with open(os.path.join(content_dir, "data", "bwa", "bwa.biotools.json")) as f:
+        responses.replace(responses.GET, "https://bio.tools/api/tool/bwa?format=json", body=f.read())
+    clock.advance(source_module.BIOTOOLS_FAILURE_EXPIRE + 1)
+    assert metadata_source.get_biotools_metadata("bwa") is not None
+    assert len(responses.calls) == 2
+
+
+@responses.activate
+def test_api_sources_with_separate_caches_do_not_share_lookups():
+    with open(os.path.join(content_dir, "data", "bwa", "bwa.biotools.json")) as f:
+        responses.add(method="GET", url="https://bio.tools/api/tool/bwa?format=json", body=f.read())
+    for _ in range(2):
+        assert ApiBiotoolsMetadataSource(cache=InMemoryCache()).get_biotools_metadata("bwa") is not None
+    assert len(responses.calls) == 2

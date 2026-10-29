@@ -1,19 +1,27 @@
 import functools
 import json
 import os
+import time
 from typing import (
+    Any,
     Callable,
     Dict,
     List,
     Optional,
+    Tuple,
 )
 from urllib.parse import quote
 
 from galaxy.util.requests import (
     bounded_get,
+    cached_fetch,
+    CachedFetchFailed,
+    FetchCache,
     UrlValidator,
 )
 from .interface import BiotoolsEntry
+
+BIOTOOLS_FAILURE_EXPIRE = 3600
 
 
 class BiotoolsMetadataSource:
@@ -38,44 +46,57 @@ class GitContentBiotoolsMetadataSource(BiotoolsMetadataSource):
 
 
 class InMemoryCache:
-    backend: Dict[str, Optional[str]] = {}
+    """A ``FetchCache`` kept in a dict, with optional per-entry expiry."""
 
-    def get(self, key: str, createfunc: Callable[[], Optional[str]]):
-        backend = self.backend
-        if key not in backend:
-            backend[key] = createfunc()
+    def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
+        self._backend: Dict[str, Tuple[Any, Optional[float]]] = {}
+        self._clock = clock
 
-        return backend.get(key)
+    def get(self, key: str) -> Any:
+        value, expires = self._backend[key]
+        if expires is not None and self._clock() >= expires:
+            del self._backend[key]
+            raise KeyError(key)
+        return value
+
+    def put(self, key: str, value: Any, expiretime: Optional[float] = None) -> None:
+        self._backend[key] = (value, None if expiretime is None else self._clock() + expiretime)
+
+
+# Shared so short-lived sources, like one per linted xref, reuse lookups.
+DEFAULT_CACHE = InMemoryCache()
 
 
 class ApiBiotoolsMetadataSource(BiotoolsMetadataSource):
     """Parse entries from bio.tools API."""
 
-    def __init__(self, cache=None, validate_url: Optional[UrlValidator] = None):
-        self._cache = cache or InMemoryCache()
+    def __init__(self, cache: Optional[FetchCache] = None, validate_url: Optional[UrlValidator] = None):
+        self._cache = cache or DEFAULT_CACHE
         self._validate_url = validate_url
 
-    def _raw_get_metadata(self, biotools_reference) -> Optional[str]:
+    def _raw_get_metadata(self, biotools_reference: str) -> str:
         api_url = f"https://bio.tools/api/tool/{quote(biotools_reference, safe='')}?format=json"
-        try:
-            return bounded_get(api_url, validate_url=self._validate_url)
-        except Exception:
-            return None
+        return bounded_get(api_url, validate_url=self._validate_url)
 
     def get_biotools_metadata(self, biotools_reference: str) -> Optional[BiotoolsEntry]:
-        createfunc = functools.partial(self._raw_get_metadata, biotools_reference)
-        content = self._cache.get(key=biotools_reference, createfunc=createfunc)
-        if content is not None:
-            return BiotoolsEntry.from_json(json.loads(content))
-        else:
+        try:
+            content = cached_fetch(
+                self._cache,
+                biotools_reference,
+                functools.partial(self._raw_get_metadata, biotools_reference),
+                failure_expire=BIOTOOLS_FAILURE_EXPIRE,
+                cache_not_found=True,
+            )
+        except CachedFetchFailed:
             return None
+        return BiotoolsEntry.from_json(json.loads(content))
 
 
 class CascadingBiotoolsMetadataSource(BiotoolsMetadataSource):
     def __init__(
         self,
         use_api=False,
-        cache=None,
+        cache: Optional[FetchCache] = None,
         content_directory: Optional[str] = None,
         validate_url: Optional[UrlValidator] = None,
     ):
@@ -99,7 +120,7 @@ class CascadingBiotoolsMetadataSource(BiotoolsMetadataSource):
 class BiotoolsMetadataSourceConfig:
     use_api: bool = False
     content_directory: Optional[str] = None
-    cache = None
+    cache: Optional[FetchCache] = None
     validate_url: Optional[UrlValidator] = None
 
 
