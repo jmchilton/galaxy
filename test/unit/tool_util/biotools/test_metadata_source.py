@@ -78,3 +78,31 @@ def test_api_content_offline():
     assert metadata_source.get_biotools_metadata("johnscoolbowtie") is None
     assert metadata_source.get_biotools_metadata("johnscoolbowtie") is None
     assert len(responses.calls) == 2
+
+
+@responses.activate
+def test_api_content_encodes_reference():
+    with open(os.path.join(content_dir, "data", "bwa", "bwa.biotools.json")) as f:
+        responses.add(method="GET", url="https://bio.tools/api/tool/a%3Fb?format=json", body=f.read())
+    assert ApiBiotoolsMetadataSource(cache=_DictCache()).get_biotools_metadata("a?b") is not None
+
+
+@responses.activate
+def test_api_content_validates_redirects():
+    responses.add(
+        method="GET",
+        url="https://bio.tools/api/tool/bwa?format=json",
+        status=302,
+        headers={"Location": "https://internal.example/bwa"},
+    )
+    validated = []
+
+    def validate_url(url):
+        validated.append(url)
+        if "internal.example" in url:
+            raise ValueError(url)
+
+    metadata_source = ApiBiotoolsMetadataSource(cache=_DictCache(), validate_url=validate_url)
+    assert metadata_source.get_biotools_metadata("bwa") is None
+    assert validated == ["https://bio.tools/api/tool/bwa?format=json", "https://internal.example/bwa"]
+    assert len(responses.calls) == 1
