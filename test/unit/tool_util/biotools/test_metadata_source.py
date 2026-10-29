@@ -1,3 +1,7 @@
+import os
+
+import responses
+
 from galaxy.tool_util.biotools.source import (
     ApiBiotoolsMetadataSource,
     BiotoolsMetadataSourceConfig,
@@ -50,3 +54,27 @@ def test_cascade_content():
     bowtie2 = metadata_source.get_biotools_metadata("bowtie2")
     assert bowtie2 is not None
     assert len(bowtie2.topic) == 3
+
+
+class _DictCache:
+    def __init__(self):
+        self.backend = {}
+
+    def get(self, key, createfunc):
+        if key not in self.backend:
+            self.backend[key] = createfunc()
+        return self.backend[key]
+
+
+@responses.activate
+def test_api_content_offline():
+    with open(os.path.join(content_dir, "data", "bwa", "bwa.biotools.json")) as f:
+        responses.add(method="GET", url="https://bio.tools/api/tool/bwa?format=json", body=f.read())
+    responses.add(method="GET", url="https://bio.tools/api/tool/johnscoolbowtie?format=json", status=404)
+    metadata_source = ApiBiotoolsMetadataSource(cache=_DictCache())
+    bwa_entry = metadata_source.get_biotools_metadata("bwa")
+    assert bwa_entry is not None
+    assert len(bwa_entry.function) == 6
+    assert metadata_source.get_biotools_metadata("johnscoolbowtie") is None
+    assert metadata_source.get_biotools_metadata("johnscoolbowtie") is None
+    assert len(responses.calls) == 2
