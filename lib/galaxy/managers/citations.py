@@ -56,6 +56,14 @@ class CitationsManager:
     def parse_citation(self, citation_model: Citation) -> OptionalCitationT:
         return parse_citation(citation_model, self)
 
+    def parse_citations(self, citation_models: list[Citation]) -> list[CitationT]:
+        citations: list[CitationT] = []
+        for citation_model in citation_models:
+            citation = self.parse_citation(citation_model)
+            if citation:
+                citations.append(citation)
+        return citations
+
     def _get_tool(self, tool_id):
         tool = self.app.toolbox.get_tool(tool_id)
         return tool
