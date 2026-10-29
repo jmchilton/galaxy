@@ -20,15 +20,6 @@ from pydantic import TypeAdapter
 from galaxy.tool_util.unittest_utils import functional_test_tool_directory
 from galaxy.tool_util_models import DynamicToolSources
 
-# Fixtures that predate the narrow authoring schema and use conventions
-# (``checked``, ``display``, ``blocks``, ``when``, unquoted version floats,
-# dict-style collection outputs) that cannot be represented via
-# ``UserToolSource`` / ``YamlToolSource``.
-_LEGACY_FIXTURES = {
-    "simple_constructs.yml",
-    "collection_creates_pair_y.yml",
-}
-
 _dynamic_tool_source_adapter: TypeAdapter = TypeAdapter(DynamicToolSources)
 
 
@@ -40,8 +31,6 @@ def _collect_yaml_tool_fixtures() -> List[str]:
         if not os.path.isdir(directory):
             continue
         for name in sorted(os.listdir(directory)):
-            if name in _LEGACY_FIXTURES:
-                continue
             if not name.endswith(".yml"):
                 continue
             full = os.path.join(directory, name)

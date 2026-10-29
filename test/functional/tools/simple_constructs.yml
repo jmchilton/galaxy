@@ -1,7 +1,7 @@
 id: simple_constructs_y
 name: simple_constructs_y
 class: GalaxyTool
-version: 1.0
+version: '1.0'
 description: Simple constructs
 edam_operations:
   - operation_0004
@@ -47,7 +47,6 @@ inputs:
       label: C Drop
 - name: radio_select
   type: select
-  display: radio
   options:
     - value: a_radio
       label: A Radio
@@ -57,7 +56,6 @@ inputs:
     - value: c_radio
       label: C Radio
 - name: check_select
-  display: checkboxes
   type: select
   multiple: true
   options:
@@ -79,18 +77,21 @@ inputs:
   test_parameter:
     type: boolean
     name: p1use
-  when:
-    true:
-      - name: p1val
-        type: text
-        value: p1used
-    false:
-      - name: p1val
-        type: text
-        value: p1notused
+  whens:
+    - discriminator: true
+      parameters:
+        - name: p1val
+          type: text
+          value: p1used
+    - discriminator: false
+      parameters:
+        - name: p1val
+          type: text
+          value: p1notused
 
 outputs:
   out_file1:
+    type: data
     from_work_dir: out_file1.txt
     format: txt
 tests:

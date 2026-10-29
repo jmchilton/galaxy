@@ -222,20 +222,22 @@ HELP_MARKDOWN_INVALID_RST = """
 
 HELP_YAML_MARKDOWN_INVALID_RST = """
 class: GalaxyTool
-id: id
-name: name
+id: help_markdown
+name: help markdown
 version: '1.0'
-command: echo test
-help: |
-  **xxl__
+shell_command: echo test
+help:
+  format: markdown
+  content: |
+    **xxl__
 """
 
 HELP_YAML_RST_INVALID = """
 class: GalaxyTool
-id: id
-name: name
+id: help_rst
+name: help rst
 version: '1.0'
-command: echo test
+shell_command: echo test
 help:
   format: restructuredtext
   content: |
@@ -910,8 +912,9 @@ TESTS_ABSENT = """
 """
 TESTS_ABSENT_YAML = """
 class: GalaxyTool
-name: name
-id: id
+name: no tests
+id: no_tests
+shell_command: echo test
 """
 TESTS_ABSENT_DATA_SOURCE = """
 <tool id="id" name="name" tool_type="data_source"/>
@@ -2589,19 +2592,19 @@ YAML_TOOL = """
 class: GalaxyTool
 id: simple_constructs_y
 name: simple_constructs_y
-version: 1.0
-command:
+version: '1.0'
+shell_command:
   >
-    echo "$booltest"  >> $out_file1;
+    echo "$(inputs.booltest)" > out_file1.txt;
 inputs:
 - name: booltest
   type: boolean
-  truevalue: booltrue
-  falsevalue: boolfalse
   value: false
 outputs:
   out_file1:
+    type: data
     format: txt
+    from_work_dir: out_file1.txt
 """
 
 
