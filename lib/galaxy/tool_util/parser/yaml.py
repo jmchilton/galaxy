@@ -50,6 +50,8 @@ from .interface import (
     InputSource,
     PageSource,
     PagesSource,
+    resolve_element_tests,
+    TestCollectionOutputDef,
     ToolSource,
     ToolSourceTest,
     ToolSourceTestInputs,
@@ -421,17 +423,17 @@ def _parse_test(i: int, test_dict: dict) -> ToolSourceTest:
     named_outputs = outputs.items() if is_dict(outputs) else ((output["name"], output) for output in outputs)
 
     new_outputs = []
+    output_collections = []
     for name, value in named_outputs:
-        if is_dict(value):
-            attributes, file = value, value.get("file")
+        attributes = value if is_dict(value) else {"file": value}
+        if _is_collection_test(attributes):
+            output_collections.append(_parse_test_output_collection({**attributes, "name": name}))
         else:
-            attributes, file = {}, value
-        _parse_test_output_attributes(attributes)
-        new_outputs.append({"name": name, "value": file, "attributes": attributes})
+            _parse_test_output_attributes(attributes)
+            new_outputs.append({"name": name, "value": attributes.get("file"), "attributes": attributes})
 
     test_dict["outputs"] = new_outputs
-    # TODO: implement output collections for YAML tools.
-    test_dict["output_collections"] = []
+    test_dict["output_collections"] = output_collections
     test_dict["command"] = __to_test_assert_list(test_dict.get("command", []))
     test_dict["stdout"] = __to_test_assert_list(test_dict.get("stdout", []))
     test_dict["stderr"] = __to_test_assert_list(test_dict.get("stderr", []))
@@ -441,6 +443,10 @@ def _parse_test(i: int, test_dict: dict) -> ToolSourceTest:
     test_dict["value_state_representation"] = "test_case_json"
     test_dict["credentials"] = __parse_credentials_yaml(test_dict.get("credentials", None))
     return cast(ToolSourceTest, test_dict)
+
+
+def _is_collection_test(value) -> bool:
+    return is_dict(value) and value.get("class") == "Collection"
 
 
 def _parse_test_output_attributes(attributes: dict) -> None:
@@ -454,10 +460,25 @@ def _parse_test_output_attributes(attributes: dict) -> None:
     }
     # TODO
     attributes["extra_files"] = []
-    # TODO
-    attributes["metadata"] = {}
+    attributes["metadata"] = attributes.get("metadata") or {}
     attributes["assert_list"] = __to_test_assert_list(attributes.get("asserts", []))
     _ensure_has(attributes, defaults)
+
+
+def _parse_test_element_tests(element_tests: dict) -> Dict[str, Tuple[Optional[str], dict]]:
+    parsed = {}
+    for identifier, attributes in element_tests.items():
+        if _is_collection_test(attributes):
+            attributes["element_tests"] = _parse_test_element_tests(resolve_element_tests(attributes))
+        else:
+            _parse_test_output_attributes(attributes)
+        parsed[identifier] = (attributes.pop("file", None), attributes)
+    return parsed
+
+
+def _parse_test_output_collection(as_dict: dict) -> dict:
+    as_dict["element_tests"] = _parse_test_element_tests(resolve_element_tests(as_dict))
+    return TestCollectionOutputDef.from_yaml_test_format(as_dict).to_dict()
 
 
 _direct_credential_adapter: TypeAdapter = TypeAdapter(List[DirectCredential])

@@ -1002,6 +1002,54 @@ class TestCollectionOutputYaml(FunctionalTestToolTestCase):
         outputs, output_collections = self._tool_source.parse_outputs(None)
         assert len(output_collections) == 1
 
+    def test_collection_output_tests(self):
+        test = self._tool_source.parse_tests_to_dict()["tests"][0]
+        assert test["outputs"] == []
+        (output_collection,) = test["output_collections"]
+        assert output_collection["name"] == "paired_output"
+        assert output_collection["attributes"]["type"] == "paired"
+        element_tests = output_collection["element_tests"]
+        assert list(element_tests) == ["forward", "reverse"]
+        forward_file, forward_attributes = element_tests["forward"]
+        assert forward_file is None
+        assert [(a["tag"], a["attributes"]["text"]) for a in forward_attributes["assert_list"]] == [
+            ("has_text", "This is a line of text.\nThis is a line of text.")
+        ]
+        assert forward_attributes["compare"] == "diff"
+
+
+def test_yaml_collection_output_element_files():
+    tool_source = YamlToolSource(
+        {
+            "outputs": {"nested": {"type": "collection", "collection_type": "list:paired"}},
+            "tests": [
+                {
+                    "inputs": {},
+                    "outputs": {
+                        "nested": {
+                            "class": "Collection",
+                            "collection_type": "list:paired",
+                            "elements": {
+                                "sample": {
+                                    "class": "Collection",
+                                    "elements": {"forward": {"file": "f.txt"}, "reverse": {"file": "r.txt"}},
+                                }
+                            },
+                        }
+                    },
+                }
+            ],
+        }
+    )
+    output_collections = tool_source.parse_tests_to_dict()["tests"][0]["output_collections"]
+    assert [output_collection["name"] for output_collection in output_collections] == ["nested"]
+    (output_collection,) = output_collections
+    sample_file, sample_attributes = output_collection["element_tests"]["sample"]
+    assert sample_file is None
+    assert {
+        identifier: element_file for identifier, (element_file, _) in sample_attributes["element_tests"].items()
+    } == {"forward": "f.txt", "reverse": "r.txt"}
+
 
 @pytest.mark.parametrize("format_source", [None, "input"])
 @pytest.mark.parametrize("rule_format", [None, "tabular"])
@@ -1207,3 +1255,35 @@ T = TypeVar("T")
 def assert_output_model_of_type(obj, clazz: Type[T]) -> T:
     assert isinstance(obj, clazz)
     return obj
+
+
+def test_yaml_tool_test_keeps_collection_type_and_metadata_assertions():
+    tool_source = YamlToolSource(
+        {
+            "outputs": {
+                "out": {"type": "data", "format": "txt"},
+                "pair": {"type": "collection", "collection_type": "paired"},
+            },
+            "tests": [
+                {
+                    "inputs": {},
+                    "outputs": {
+                        "out": {"metadata": {"dbkey": "hg38"}},
+                        "pair": {
+                            "class": "Collection",
+                            "attributes": {"collection_type": "paired"},
+                            "elements": {"forward": {"metadata": {"dbkey": "hg19"}}},
+                        },
+                    },
+                }
+            ],
+        }
+    )
+    test = tool_source.parse_tests_to_dict()["tests"][0]
+    assert [output["name"] for output in test["outputs"]] == ["out"]
+    (output,) = test["outputs"]
+    assert output["attributes"]["metadata"] == {"dbkey": "hg38"}
+    (output_collection,) = test["output_collections"]
+    assert output_collection["attributes"]["type"] == "paired"
+    _, forward_attributes = output_collection["element_tests"]["forward"]
+    assert forward_attributes["metadata"] == {"dbkey": "hg19"}

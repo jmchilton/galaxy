@@ -974,6 +974,8 @@ class TestCollectionOutputDef:
             as_dict["element_tests"] = resolve_element_tests(as_dict)
         if "collection_type" in as_dict:
             attributes["type"] = as_dict["collection_type"]
+        elif "collection_type" in attributes:
+            attributes["type"] = attributes["collection_type"]
         return TestCollectionOutputDef.from_dict(as_dict)
 
     def to_dict(self):
