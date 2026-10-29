@@ -229,6 +229,46 @@ tests:
          compare: sim_size
 """
 
+TOOL_YAML_CLASSLESS = """
+name: "Bowtie Mapper"
+id: bowtie
+version: 1.0.2
+command: "bowtie_wrapper.pl --map-the-stuff"
+interpreter: "perl"
+runtime_version:
+  command: "bowtie --version"
+requirements:
+  - type: package
+    name: bwa
+    version: 1.0.1
+containers:
+  - type: docker
+    identifier: "awesome/bowtie"
+credentials:
+  - name: Apollo
+    version: gmod.org/apollo
+    secrets:
+      - name: username
+        label: Your Apollo username
+        description: Username for Apollo
+        inject_as_env: apollo_user
+        optional: true
+      - name: password
+        label: Your Apollo password
+        description: Password for Apollo
+        inject_as_env: apollo_pass
+        optional: true
+    variables:
+      - name: server
+        label: Your Apollo server
+        description: URL of your Apollo server
+        inject_as_env: apollo_url
+        optional: true
+outputs:
+  out1:
+    format: bam
+"""
+
 TOOL_EXPRESSION_XML_1 = """
 <tool name="parse_int" id="parse_int" version="0.1.0" tool_type="expression">
     <description>Parse Int</description>
@@ -673,6 +713,33 @@ class TestYamlLoader(BaseLoaderTestCase):
 
     def test_sanitize(self):
         assert self._tool_source.parse_sanitize() is True
+
+
+class TestClasslessYamlLoader(BaseLoaderTestCase):
+    source_file_name = "bwa_classless.yml"
+    source_contents = TOOL_YAML_CLASSLESS
+
+    def test_command_parsing(self):
+        assert self._tool_source.parse_command() == "bowtie_wrapper.pl --map-the-stuff"
+        assert self._tool_source.parse_interpreter() == "perl"
+
+    def test_version_command(self):
+        assert self._tool_source.parse_version_command() == "bowtie --version"
+        assert self._tool_source.parse_version_command_interpreter() is None
+
+    def test_requirements(self):
+        software_requirements, containers, _, _, credentials = self._tool_source.parse_requirements()
+        assert software_requirements.to_dict() == [{"name": "bwa", "type": "package", "version": "1.0.1", "specs": []}]
+        assert len(containers) == 1
+        assert containers[0].to_dict() == {
+            "identifier": "awesome/bowtie",
+            "type": "docker",
+            "resolve_dependencies": False,
+            "shell": "/bin/sh",
+        }
+        assert len(credentials) == 1
+        assert len(credentials[0].secrets) == 2
+        assert len(credentials[0].variables) == 1
 
 
 class TestDataSourceLoader(BaseLoaderTestCase):

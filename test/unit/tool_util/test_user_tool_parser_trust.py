@@ -98,6 +98,21 @@ def test_admin_yaml_tool_keeps_expression_validators(inputs):
     _parse_all_validators(YamlToolSource(_tool("GalaxyTool", inputs)))
 
 
+# Class-less YAML tools nest repeats under ``blocks``.
+CLASSLESS_EXPRESSION_VALIDATORS = [param for param in NESTED_EXPRESSION_VALIDATORS if "repeat" not in param.id]
+
+
+def _classless_tool(inputs: List[Dict[str, Any]]) -> Dict[str, Any]:
+    tool = _tool("GalaxyTool", inputs)
+    del tool["class"]
+    return tool
+
+
+@pytest.mark.parametrize("inputs", CLASSLESS_EXPRESSION_VALIDATORS)
+def test_classless_yaml_tool_keeps_expression_validators(inputs):
+    _parse_all_validators(YamlToolSource(_classless_tool(inputs)))
+
+
 def test_user_tool_keeps_safe_validators():
     inputs = [
         _text("length", LENGTH_VALIDATOR),
@@ -139,6 +154,11 @@ def test_admin_yaml_tool_keeps_dynamic_options():
     assert [s.get("dynamic_options") for s in _input_sources(tool_source)] == ["x()"]
 
 
+def test_classless_yaml_tool_keeps_dynamic_options():
+    tool_source = YamlToolSource(_classless_tool([{"name": "sel", "type": "select", "dynamic_options": "x()"}]))
+    assert [s.get("dynamic_options") for s in _input_sources(tool_source)] == ["x()"]
+
+
 @pytest.mark.parametrize(
     "extra",
     [
@@ -157,3 +177,7 @@ def test_user_tool_refuses_keys_outside_its_schema(extra):
 def test_admin_yaml_tool_keeps_parser_only_keys():
     tool_source = YamlToolSource(_tool("GalaxyTool", [], command="echo 1"))
     assert tool_source.parse_command() == "echo 1"
+
+
+def test_classless_yaml_tool_keeps_parser_only_keys():
+    assert YamlToolSource(_classless_tool([]) | {"command": "echo 1"}).parse_command() == "echo 1"
