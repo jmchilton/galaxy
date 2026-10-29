@@ -245,12 +245,10 @@ class Citation(ToolSourceBaseModel):
                 "dynamic_tool.citation_empty",
                 "citation content must not be empty",
             )
-        # Normalize the legacy 'doi:' prefix to a bare DOI so older tools load and
+        # Strip whitespace and the legacy 'doi:' prefix so older tools load and
         # so downstream DOI resolution (https://doi.org/<doi>) gets a clean value.
-        normalized = DOI_PREFIX_RE.sub("", content, count=1)
-        if normalized != content:
-            content = normalized
-            self.content = normalized
+        content = DOI_PREFIX_RE.sub("", content, count=1)
+        self.content = content
         citation_type = (self.type or "").strip().lower()
         if citation_type == "doi":
             if not DOI_RE.match(content):

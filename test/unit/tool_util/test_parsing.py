@@ -24,6 +24,7 @@ from galaxy.tool_util_models.tool_outputs import (
     ToolOutputCollection,
     ToolOutputDataset,
 )
+from galaxy.tool_util_models.tool_source import Citation
 from galaxy.util import galaxy_directory
 from galaxy.util.resources import (
     as_file,
@@ -1140,3 +1141,8 @@ T = TypeVar("T")
 def assert_output_model_of_type(obj, clazz: Type[T]) -> T:
     assert isinstance(obj, clazz)
     return obj
+
+
+def test_citation_content_is_stripped():
+    assert Citation(type="doi", content="10.1000/x\n").content == "10.1000/x"
+    assert Citation(type="bibtex", content="  @article{x}\n").content == "@article{x}"
