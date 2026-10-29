@@ -1,4 +1,5 @@
 import fnmatch
+import logging
 import os
 import re
 from abc import (
@@ -8,13 +9,16 @@ from abc import (
 from os.path import join
 from typing import (
     Any,
+    Callable,
     cast,
     Dict,
+    Iterable,
     List,
     Optional,
     Sequence,
     Tuple,
     TYPE_CHECKING,
+    TypeVar,
     Union,
 )
 
@@ -54,6 +58,10 @@ from .util import (
     _parse_name,
     text_input_is_optional,
 )
+
+log = logging.getLogger(__name__)
+
+RawCitationT = TypeVar("RawCitationT")
 
 if TYPE_CHECKING:
     from galaxy.tool_util.deps.requirements import (
@@ -413,6 +421,25 @@ class ToolSource(metaclass=ABCMeta):
     def parse_citations(self) -> List[Citation]:
         """Return a list of citations."""
         return []
+
+    def _parse_citation_list(
+        self, raw_citations: Iterable[RawCitationT], parse: Callable[[RawCitationT], Optional[Citation]]
+    ) -> List[Citation]:
+        """Parse citations; an invalid one fails a 26.1+ profile tool and is skipped with a warning before."""
+        citations: List[Citation] = []
+        for raw_citation in raw_citations:
+            try:
+                citation = parse(raw_citation)
+            except Exception as e:
+                if packaging.version.Version(self.parse_profile()) >= packaging.version.Version("26.1"):
+                    raise
+                log.warning(
+                    "Tool '%s' has an invalid citation that will be skipped: %s", self.source_path or self.parse_id(), e
+                )
+                continue
+            if citation:
+                citations.append(citation)
+        return citations
 
     @abstractmethod
     def parse_python_template_version(self) -> Optional[packaging.version.Version]:

@@ -739,32 +739,10 @@ class XmlToolSource(ToolSource):
 
     def parse_citations(self) -> List[Citation]:
         """Return a list of citations."""
-        citations: List[Citation] = []
-        root = self.root
-        citations_elem = root.find("citations")
+        citations_elem = self.root.find("citations")
         if citations_elem is None:
-            return citations
-
-        for citation_elem in citations_elem:
-            try:
-                citation = parse_citation_elem(citation_elem)
-            except Exception as e:
-                # Only fail to load fatally for tools targeting 26.1+. Older tools
-                # skip the offending citation, but log it so the drop is visible
-                # rather than silent.
-                if Version(self.parse_profile()) < Version("26.1"):
-                    log.warning(
-                        "Tool '%s' has an invalid citation that will be skipped: %s",
-                        self._source_path or self.parse_id(),
-                        e,
-                    )
-                    continue
-                else:
-                    raise
-            if citation:
-                citations.append(citation)
-
-        return citations
+            return []
+        return self._parse_citation_list(citations_elem, parse_citation_elem)
 
     def parse_python_template_version(self):
         python_template_version = self.root.get("python_template_version")
