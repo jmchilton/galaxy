@@ -1526,6 +1526,24 @@ test_data:
         assert input_step["label"] == "letters", input_step
 
     @summarize_instance_history_on_error
+    def test_copies_of_job_less_collection_share_one_input_card(self, history_id):
+        """A collection built from existing datasets has no creating job; it and its copy share one input card."""
+        hdca = self.dataset_collection_populator.create_list_in_history(
+            history_id, contents=["a\n", "b\n"], direct_upload=False
+        ).json()
+        hdca_copy = self._copy_content_to_history(history_id, hdca)
+        self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+        summary = self._get_extraction_summary(history_id)
+        (input_row,) = self._rows_by_type(summary, "input_collection")
+        assert input_row["tool_name"] == "Dataset Collection Creation", input_row
+        assert [o["id"] for o in input_row["outputs"]] == [hdca["id"], hdca_copy["id"]], input_row
+        downloaded = self._extract_and_download_workflow_by_ids(
+            hdca_ids=[hdca["id"], hdca_copy["id"]], dataset_collection_names=["letters", "letters"]
+        )
+        (input_step,) = self.assert_steps_of_type(downloaded, "data_collection_input", expected_len=1)
+        assert input_step["label"] == "letters", input_step
+
+    @summarize_instance_history_on_error
     def test_copies_from_a_history_no_longer_shared_extract_by_local_ids(self, history_id):
         """Input cards list this history's copies, not their source in another user's now-private history."""
         with self._different_user("extract_copy_source@bx.psu.edu"):
