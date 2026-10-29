@@ -1,14 +1,10 @@
-import functools
 import time
 
 import pytest
 import responses
-from beaker.cache import CacheManager
-from beaker.util import parse_cache_config_options
 from requests.exceptions import HTTPError
 
 import galaxy.config
-from galaxy.files.uris import validate_non_local
 from galaxy.managers.citations import (
     DOI_FAILURE_EXPIRE,
     DoiCache,
@@ -24,16 +20,18 @@ from galaxy.model.unittest_utils.model_testing_utils import (  # noqa: F401  (ur
 
 class MockDoiCache(DoiCache):
     def __init__(self, config, db_url):
-        cache_opts = {
+        self._db_url = db_url
+        super().__init__(config)
+        self._cache.clear()
+
+    def _cache_options(self, config):
+        return {
             "cache.type": "ext:database",
             "cache.data_dir": config.citation_cache_data_dir,
-            "cache.url": db_url,
+            "cache.url": self._db_url,
             "cache.table_name": config.citation_cache_table_name,
             "cache.schema_name": config.citation_cache_schema_name,
         }
-        self._cache = CacheManager(**parse_cache_config_options(cache_opts)).get_cache("doi")
-        self._validate_url = functools.partial(validate_non_local, ip_allowlist=[])
-        self._cache.clear()
 
 
 @responses.activate

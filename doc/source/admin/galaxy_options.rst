@@ -1516,6 +1516,40 @@
 :Type: str
 
 
+~~~~~~~~~~~~~~~~~~~~~~~~~
+``citation_cache_expire``
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+:Description:
+    Seconds a fetched DOI citation stays in the citation cache. 0
+    keeps entries until the cache is cleared.
+:Default: ``0``
+:Type: int
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+``citation_fetch_timeout``
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+:Description:
+    Seconds allowed for fetching one DOI citation's BibTeX from
+    https://doi.org/, including redirects.
+:Default: ``10.0``
+:Type: float
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+``citation_max_fetches_per_request``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+:Description:
+    Maximum number of uncached DOI citations resolved for one tool or
+    history citations request. The rest show a DOI-only entry until a
+    later request resolves them.
+:Default: ``10``
+:Type: int
+
+
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ``mulled_resolution_cache_type``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
