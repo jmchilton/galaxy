@@ -719,52 +719,7 @@ class ToolOutputBoolean(GenericToolOutputSimple[bool, str]):
     type: Literal["boolean"]
 
 
-# Incoming / authoring variants: ``hidden`` is optional (it has a sensible
-# default), but ``name`` stays *required* -- unlike datasets/collections, a simple
-# value output has no discovery step to supply a name, so an unnamed one can never
-# be referenced. Previously these reused the strict types above, whose unbound type
-# vars also forced ``hidden`` to be required -- a bug that made the published schema
-# demand a ``hidden`` flag on every simple output.
-class IncomingToolOutputSimple(GenericToolOutputSimple[NotRequired[bool], str]):
-    hidden: Annotated[Optional[bool], Field(description="If true, the output will not be shown in the history.")] = None
-
-
-class IncomingToolOutputText(IncomingToolOutputSimple):
-    """A text value emitted as a workflow-visible scalar output."""
-
-    model_config = ConfigDict(json_schema_extra={"examples": [{"name": "message", "type": "text"}]})
-    type: Literal["text"]
-
-
-class IncomingToolOutputInteger(IncomingToolOutputSimple):
-    """An integer value emitted as a workflow-visible scalar output."""
-
-    model_config = ConfigDict(json_schema_extra={"examples": [{"name": "match_count", "type": "integer"}]})
-    type: Literal["integer"]
-
-
-class IncomingToolOutputFloat(IncomingToolOutputSimple):
-    """A floating-point value emitted as a workflow-visible scalar output."""
-
-    model_config = ConfigDict(json_schema_extra={"examples": [{"name": "score", "type": "float"}]})
-    type: Literal["float"]
-
-
-class IncomingToolOutputBoolean(IncomingToolOutputSimple):
-    """A boolean value emitted as a workflow-visible scalar output."""
-
-    model_config = ConfigDict(json_schema_extra={"examples": [{"name": "matched", "type": "boolean"}]})
-    type: Literal["boolean"]
-
-
-IncomingToolOutputT = Union[
-    IncomingToolOutputDataset,
-    IncomingToolOutputCollection,
-    IncomingToolOutputText,
-    IncomingToolOutputInteger,
-    IncomingToolOutputFloat,
-    IncomingToolOutputBoolean,
-]
+IncomingToolOutputT = Union[IncomingToolOutputDataset, IncomingToolOutputCollection]
 IncomingToolOutput = Annotated[IncomingToolOutputT, Field(discriminator="type")]
 IncomingUserToolOutputT = Union[IncomingUserToolOutputDataset, IncomingUserToolOutputCollection]
 IncomingUserToolOutput = Annotated[IncomingUserToolOutputT, Field(discriminator="type")]
