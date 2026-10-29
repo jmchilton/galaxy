@@ -1,3 +1,4 @@
+import functools
 import logging
 from collections.abc import Iterable
 from typing import (
@@ -115,8 +116,6 @@ class CitationsManager:
 
 
 class DoiCache:
-    _ip_allowlist: list = []
-
     def __init__(self, config):
         cache_opts = {
             "cache.type": config.citation_cache_type,
@@ -127,7 +126,10 @@ class DoiCache:
             "cache.schema_name": config.citation_cache_schema_name,
         }
         self._cache = CacheManager(**parse_cache_config_options(cache_opts)).get_cache("doi")
-        self._ip_allowlist = getattr(config, "fetch_url_allowlist_ips", None) or []
+        # The Tool Shed's config has no fetch_url_allowlist.
+        self._validate_url = functools.partial(
+            validate_non_local, ip_allowlist=getattr(config, "fetch_url_allowlist_ips", None) or []
+        )
 
     def _raw_get_bibtex(self, doi):
         # bounded_get decodes with the declared charset, else utf-8 (guessing is sometimes wrong).
@@ -138,9 +140,6 @@ class DoiCache:
             max_bytes=DOI_MAX_RESPONSE_BYTES,
             validate_url=self._validate_url,
         )
-
-    def _validate_url(self, url: str) -> None:
-        validate_non_local(url, self._ip_allowlist)
 
     def get_bibtex(self, doi, budget: Optional[DoiFetchBudget] = None):
         try:

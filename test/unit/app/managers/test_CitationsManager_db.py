@@ -1,3 +1,4 @@
+import functools
 import time
 
 import pytest
@@ -7,6 +8,7 @@ from beaker.util import parse_cache_config_options
 from requests.exceptions import HTTPError
 
 import galaxy.config
+from galaxy.files.uris import validate_non_local
 from galaxy.managers.citations import (
     DOI_FAILURE_EXPIRE,
     DoiCache,
@@ -30,6 +32,7 @@ class MockDoiCache(DoiCache):
             "cache.schema_name": config.citation_cache_schema_name,
         }
         self._cache = CacheManager(**parse_cache_config_options(cache_opts)).get_cache("doi")
+        self._validate_url = functools.partial(validate_non_local, ip_allowlist=[])
         self._cache.clear()
 
 
