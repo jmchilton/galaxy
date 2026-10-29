@@ -1093,6 +1093,31 @@ mapping:
           the database schema name of the table used by beaker for
           citation related caching.
 
+      citation_cache_expire:
+        type: int
+        default: 0
+        required: false
+        desc: |
+          Seconds a fetched DOI citation stays in the citation cache. 0 keeps
+          entries until the cache is cleared.
+
+      citation_fetch_timeout:
+        type: float
+        default: 10.0
+        required: false
+        desc: |
+          Seconds allowed for fetching one DOI citation's BibTeX from
+          https://doi.org/, including redirects.
+
+      citation_max_fetches_per_request:
+        type: int
+        default: 10
+        required: false
+        desc: |
+          Maximum number of uncached DOI citations resolved for one tool or
+          history citations request. The rest show a DOI-only entry until a
+          later request resolves them.
+
       mulled_resolution_cache_type:
         type: str
         default: file

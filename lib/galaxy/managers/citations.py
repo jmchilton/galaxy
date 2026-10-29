@@ -62,6 +62,10 @@ class CitationsManager:
     def __init__(self, app: BasicSharedApp) -> None:
         self.app = app
         self.doi_cache = DoiCache(app.config)
+        # The Tool Shed's config has no citation fetch options.
+        self.max_fetches_per_request = getattr(
+            app.config, "citation_max_fetches_per_request", DOI_MAX_FETCHES_PER_REQUEST
+        )
 
     def citations_for_tool(self, tool):
         return tool.citations
@@ -112,7 +116,7 @@ class CitationsManager:
         return citations
 
     def citations_to_bibtex(self, citations: Iterable[CitationT]) -> list[BibtexCitationResponse]:
-        return citations_to_bibtex(citations)
+        return citations_to_bibtex(citations, self.max_fetches_per_request)
 
     def _get_tool(self, tool_id):
         tool = self.app.toolbox.get_tool(tool_id)
@@ -121,7 +125,17 @@ class CitationsManager:
 
 class DoiCache:
     def __init__(self, config):
-        cache_opts = {
+        # The Tool Shed's config has no fetch_url_allowlist or citation fetch options.
+        self._cache = CacheManager(**parse_cache_config_options(self._cache_options(config))).get_cache(
+            "doi", expire=getattr(config, "citation_cache_expire", 0) or None
+        )
+        self._fetch_timeout = getattr(config, "citation_fetch_timeout", DOI_FETCH_TIMEOUT)
+        self._validate_url = functools.partial(
+            validate_non_local, ip_allowlist=getattr(config, "fetch_url_allowlist_ips", None) or []
+        )
+
+    def _cache_options(self, config) -> dict:
+        return {
             "cache.type": config.citation_cache_type,
             "cache.data_dir": config.citation_cache_data_dir,
             "cache.lock_dir": config.citation_cache_lock_dir,
@@ -129,23 +143,18 @@ class DoiCache:
             "cache.table_name": config.citation_cache_table_name,
             "cache.schema_name": config.citation_cache_schema_name,
         }
-        self._cache = CacheManager(**parse_cache_config_options(cache_opts)).get_cache("doi")
-        # The Tool Shed's config has no fetch_url_allowlist.
-        self._validate_url = functools.partial(
-            validate_non_local, ip_allowlist=getattr(config, "fetch_url_allowlist_ips", None) or []
-        )
 
     def _raw_get_bibtex(self, doi):
         # bounded_get decodes with the declared charset, else utf-8 (guessing is sometimes wrong).
         return bounded_get(
             f"https://doi.org/{quote(doi, safe='/')}",
             headers={"Accept": "application/x-bibtex"},
-            timeout=DOI_FETCH_TIMEOUT,
+            timeout=self._fetch_timeout,
             max_bytes=DOI_MAX_RESPONSE_BYTES,
             validate_url=self._validate_url,
         )
 
-    def get_bibtex(self, doi, budget: Optional[DoiFetchBudget] = None):
+    def get_bibtex(self, doi: str, budget: Optional[DoiFetchBudget] = None) -> str:
         try:
             bibtex = self._cache.get(key=doi)
         except KeyError:

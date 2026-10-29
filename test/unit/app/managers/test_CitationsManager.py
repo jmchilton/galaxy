@@ -9,6 +9,7 @@ from galaxy.managers import citations as citations_module
 from galaxy.managers.citations import (
     CitationCollection,
     citations_to_bibtex,
+    CitationsManager,
     DOI_MAX_RESPONSE_BYTES,
     DoiCache,
     parse_citation,
@@ -189,3 +190,30 @@ def test_citations_to_bibtex_stops_fetching_after_deadline(doi_cache, monkeypatc
     assert results[0].content == "@article{slow}"
     assert all("Failed to fetch BibTeX for DOI." in r.content for r in results[1:])
     assert len(responses.calls) == 1
+
+
+@responses.activate
+def test_doi_cache_reads_fetch_config(tmp_path, fake_dns, monkeypatch):
+    config = _cache_config(str(tmp_path))
+    config.citation_fetch_timeout = 3.0
+    config.citation_cache_expire = 60
+    responses.add(method="GET", url=f"https://doi.org/{EXAMPLE_DOI}", body=EXAMPLE_BIBTEX)
+    doi_cache = DoiCache(config)
+    assert doi_cache.get_bibtex(EXAMPLE_DOI) == EXAMPLE_BIBTEX
+    assert 0 < responses.calls[0].request.req_kwargs["timeout"] <= 3.0
+
+    now = time.time()
+    monkeypatch.setattr("beaker.container.time.time", lambda: now + 61)
+    assert doi_cache.get_bibtex(EXAMPLE_DOI) == EXAMPLE_BIBTEX
+    assert len(responses.calls) == 2
+
+
+@responses.activate
+def test_citations_manager_reads_max_fetches_config(tmp_path, fake_dns):
+    config = _cache_config(str(tmp_path))
+    config.citation_max_fetches_per_request = 0
+    responses.add(method="GET", url=f"https://doi.org/{EXAMPLE_DOI}", body=EXAMPLE_BIBTEX)
+    manager = CitationsManager(Bunch(config=config))
+    (response,) = manager.citations_to_bibtex([_doi_citation(manager.doi_cache)])
+    assert "Failed to fetch BibTeX for DOI." in response.content
+    assert len(responses.calls) == 0
