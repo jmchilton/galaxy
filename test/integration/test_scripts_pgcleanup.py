@@ -320,6 +320,44 @@ class TestScriptsPgCleanupIntegration(BaseScriptsIntegrationTestCase):
         ldda = self._db_get(model.LibraryDatasetDatasetAssociation, library_dataset["ldda_id"])
         assert ldda.update_time == two_days_ago
 
+    def test_delete_library_datasets_keeps_dataset_shared_with_history(self):
+        self._skip_unless_postgres()
+
+        _, library_dataset = self.library_populator.new_library_dataset_in_private_library(
+            "pgcleanup_library_dataset_shared"
+        )
+        history_id = self.dataset_populator.new_history()
+        import_response = self._post(
+            f"histories/{history_id}/contents",
+            data={"source": "library", "content": library_dataset["id"], "type": "dataset"},
+            json=True,
+        )
+        self._assert_status_code_is_ok(import_response)
+        hda = import_response.json()
+        hda_model = self._db_get(model.HistoryDatasetAssociation, hda["id"])
+        ldda = self._db_get(model.LibraryDatasetDatasetAssociation, library_dataset["ldda_id"])
+        assert hda_model.dataset_id == ldda.dataset_id
+
+        self.library_populator.delete_library_dataset(library_dataset["id"])
+        chain = ["--older-than", "0", "delete_library_datasets", "delete_datasets", "purge_datasets"]
+        self._pgcleanup_check_output(chain)
+        assert self._library_dataset_state(library_dataset) == {
+            "library_dataset_deleted": True,
+            "library_dataset_purged": True,
+            "version_deleted": True,
+            "dataset_deleted": False,
+            "dataset_purged": False,
+        }
+        assert not self.is_purged(history_id, hda)
+
+        # once the history copy is purged too, the dataset goes
+        self.dataset_populator.delete_dataset(history_id, hda["id"], purge=True, wait_for_purge=True)
+        assert self._library_dataset_state(library_dataset)["dataset_deleted"] is False
+        self._pgcleanup_check_output(chain)
+        state = self._library_dataset_state(library_dataset)
+        assert state["dataset_deleted"] is True
+        assert state["dataset_purged"] is True
+
     def test_delete_library_datasets_force_retry(self):
         self._skip_unless_postgres()
 
