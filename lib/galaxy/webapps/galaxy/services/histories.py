@@ -644,7 +644,7 @@ class HistoriesService(ServiceBase, ConsumesModelStores, ServesExportStores):
                 continue
             tool_ids.add(tool_id)
         citations, errors = self.citations_manager.citations_for_tool_ids(tool_ids)
-        return [citation.to_dict("bibtex") for citation in citations] + errors
+        return self.citations_manager.citations_to_bibtex(citations) + errors
 
     def index_exports(
         self,

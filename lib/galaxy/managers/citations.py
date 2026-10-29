@@ -1,5 +1,6 @@
 import functools
 import logging
+from collections.abc import Iterable
 from typing import (
     Optional,
     Union,
@@ -64,6 +65,9 @@ class CitationsManager:
                 citations.append(citation)
         return citations
 
+    def citations_to_bibtex(self, citations: Iterable[CitationT]) -> list[BibtexCitationResponse]:
+        return citations_to_bibtex(citations)
+
     def _get_tool(self, tool_id):
         tool = self.app.toolbox.get_tool(tool_id)
         return tool
@@ -100,6 +104,10 @@ class DoiCache:
     def get_bibtex(self, doi):
         createfunc = functools.partial(self._raw_get_bibtex, doi)
         return self._cache.get(key=doi, createfunc=createfunc)
+
+
+def citations_to_bibtex(citations: Iterable[CitationT]) -> list[BibtexCitationResponse]:
+    return [BibtexCitationResponse(content=citation.to_bibtex()) for citation in citations]
 
 
 def parse_citation(citation_model: Citation, citation_manager) -> OptionalCitationT:
