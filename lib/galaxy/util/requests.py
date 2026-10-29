@@ -1,6 +1,15 @@
+import time
 from typing import (
     Callable,
+    Dict,
+    Iterator,
+    Optional,
+    Sequence,
     Union,
+)
+from urllib.parse import (
+    urljoin,
+    urlparse,
 )
 
 import requests
@@ -17,6 +26,12 @@ from .user_agent import get_default_headers
 
 DEFAULT_RETRIES = 3
 DEFAULT_BACKOFF_FACTOR = 0.1
+DEFAULT_BOUNDED_TIMEOUT = 15.0
+DEFAULT_BOUNDED_MAX_BYTES = 1024 * 1024
+DEFAULT_BOUNDED_MAX_REDIRECTS = 3
+BOUNDED_READ_CHUNK_SIZE = 16 * 1024
+
+UrlValidator = Callable[[str], object]
 
 
 class Session(requests.Session):
@@ -55,3 +70,66 @@ post = _request_decorator(requests.post)
 options = _request_decorator(requests.options)
 put = _request_decorator(requests.put)
 session = Session
+
+
+class BoundedFetchError(Exception):
+    pass
+
+
+def bounded_get(
+    url: str,
+    *,
+    headers: Optional[Dict[str, str]] = None,
+    timeout: float = DEFAULT_BOUNDED_TIMEOUT,
+    max_bytes: int = DEFAULT_BOUNDED_MAX_BYTES,
+    max_redirects: int = DEFAULT_BOUNDED_MAX_REDIRECTS,
+    allowed_schemes: Sequence[str] = ("https",),
+    validate_url: Optional[UrlValidator] = None,
+) -> str:
+    """GET ``url`` as text within a time, response size and redirect budget.
+
+    Each URL (including every redirect target) is normalized and checked with ``validate_url`` before it is
+    requested. The deadline is checked between body reads; connecting and reading headers are bounded only
+    per socket read (by the time left) and by ``http.client``'s header limits, and DNS resolution isn't covered.
+    """
+    deadline = time.monotonic() + timeout
+    with Session() as session:
+        for _ in range(max_redirects + 1):
+            parsed_url = urlparse(url)
+            url = parsed_url.geturl()
+            if parsed_url.scheme not in allowed_schemes:
+                raise BoundedFetchError(f"Refusing to fetch '{url}', scheme not in {list(allowed_schemes)}")
+            if validate_url is not None:
+                validate_url(url)
+            with session.get(
+                url, headers=headers, timeout=_remaining(deadline), stream=True, allow_redirects=False
+            ) as response:
+                if response.is_redirect:
+                    url = urljoin(url, response.headers["location"])
+                    continue
+                response.raise_for_status()
+                content = bytearray()
+                for chunk in _iter_reads(response):
+                    content.extend(chunk)
+                    if len(content) > max_bytes:
+                        raise BoundedFetchError(f"Response from '{url}' exceeds {max_bytes} bytes")
+                    _remaining(deadline)
+                return content.decode(response.encoding or "utf-8", errors="replace")
+    raise BoundedFetchError(f"Too many redirects fetching '{url}'")
+
+
+def _iter_reads(response: Response) -> Iterator[bytes]:
+    # urllib3 2's read1 returns whatever one socket read yields; iter_content waits to fill each chunk.
+    read1 = getattr(response.raw, "read1", None)
+    if read1 is None:
+        yield from response.iter_content(chunk_size=BOUNDED_READ_CHUNK_SIZE)
+        return
+    while chunk := read1(BOUNDED_READ_CHUNK_SIZE, decode_content=True):
+        yield chunk
+
+
+def _remaining(deadline: float) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise BoundedFetchError("Timed out")
+    return remaining
