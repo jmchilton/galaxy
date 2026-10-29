@@ -1,7 +1,9 @@
+import datetime
 import string
 from typing import Any
 
 from galaxy import model
+from galaxy.util import now
 from galaxy_test.base.populators import (
     LibraryPopulator,
     skip_without_tool,
@@ -289,6 +291,34 @@ class TestScriptsPgCleanupIntegration(BaseScriptsIntegrationTestCase):
             "dataset_deleted": True,
             "dataset_purged": True,
         }
+
+    def test_delete_library_datasets_chains_with_retention_window(self):
+        self._skip_unless_postgres()
+
+        _, library_dataset = self.library_populator.new_library_dataset_in_private_library(
+            "pgcleanup_library_dataset_retention"
+        )
+        self.library_populator.delete_library_dataset(library_dataset["id"])
+        two_days_ago = now() - datetime.timedelta(days=2)
+        ld = self._db_get(model.LibraryDataset, library_dataset["id"])
+        ldda = self._db_get(model.LibraryDatasetDatasetAssociation, library_dataset["ldda_id"])
+        ld.update_time = two_days_ago
+        ldda.update_time = two_days_ago
+        self._app.model.session.commit()
+
+        self._pgcleanup_check_output(
+            ["--older-than", "1", "delete_library_datasets", "delete_datasets", "purge_datasets"]
+        )
+        # purge_datasets waits a retention window on the update_time delete_datasets just stamped
+        assert self._library_dataset_state(library_dataset) == {
+            "library_dataset_deleted": True,
+            "library_dataset_purged": True,
+            "version_deleted": True,
+            "dataset_deleted": True,
+            "dataset_purged": False,
+        }
+        ldda = self._db_get(model.LibraryDatasetDatasetAssociation, library_dataset["ldda_id"])
+        assert ldda.update_time == two_days_ago
 
     def test_delete_library_datasets_force_retry(self):
         self._skip_unless_postgres()
