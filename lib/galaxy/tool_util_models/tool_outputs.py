@@ -217,6 +217,7 @@ class IncomingToolOutputDataset(
     """A dataset collected from a file produced in the job working directory."""
 
     model_config = ConfigDict(
+        extra="forbid",
         json_schema_extra={
             "examples": [
                 {
@@ -227,7 +228,7 @@ class IncomingToolOutputDataset(
                     "from_work_dir": "result.txt",
                 }
             ]
-        }
+        },
     )
     name: Annotated[
         Optional[str],
@@ -384,7 +385,6 @@ class IncomingUserToolOutputDataset(IncomingToolOutputDataset):
     """A user-defined tool dataset discovered only from files inside the job working directory."""
 
     model_config = ConfigDict(
-        extra="forbid",
         json_schema_extra={
             "examples": [
                 {

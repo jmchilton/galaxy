@@ -156,3 +156,16 @@ def test_admin_yaml_tool_rejects_label_referencing_undeclared_input() -> None:
     with pytest.raises(ValidationError) as exc_info:
         YamlToolSource(**doc)
     assert [error["type"] for error in exc_info.value.errors()] == ["dynamic_tool.undeclared_input_ref"]
+
+
+def test_admin_yaml_tool_rejects_unknown_dataset_output_field() -> None:
+    doc = {
+        **VALID_TOOL,
+        "class": "GalaxyTool",
+        "outputs": [{"type": "data", "name": "out", "from_work_dir": "out.txt", "format_souce": "data_input"}],
+    }
+    with pytest.raises(ValidationError) as exc_info:
+        YamlToolSource(**doc)
+    assert [(error["type"], error["loc"]) for error in exc_info.value.errors()] == [
+        ("extra_forbidden", ("outputs", 0, "data", "format_souce"))
+    ]
