@@ -169,3 +169,13 @@ def test_admin_yaml_tool_rejects_unknown_dataset_output_field() -> None:
     assert [(error["type"], error["loc"]) for error in exc_info.value.errors()] == [
         ("extra_forbidden", ("outputs", 0, "data", "format_souce"))
     ]
+
+
+@pytest.mark.parametrize("output_type", ["text", "integer", "float", "boolean"])
+def test_admin_yaml_tool_rejects_scalar_outputs(output_type: str) -> None:
+    doc = {**VALID_TOOL, "class": "GalaxyTool", "outputs": [{"type": output_type, "name": "out"}]}
+    with pytest.raises(ValidationError) as exc_info:
+        YamlToolSource(**doc)
+    assert [(error["type"], error["loc"]) for error in exc_info.value.errors()] == [
+        ("union_tag_invalid", ("outputs", 0))
+    ]

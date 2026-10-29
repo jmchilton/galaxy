@@ -101,9 +101,9 @@ DynamicToolOutputs = Annotated[
     List[IncomingToolOutput],
     Field(
         description=(
-            "Results Galaxy collects after the command finishes. A data output identifies its produced file "
-            "with `from_work_dir` or `discover_datasets`; a collection output uses `discover_datasets`. "
-            "Scalar output types are `text`, `integer`, `float`, and `boolean`."
+            "Datasets and dataset collections Galaxy collects after the command finishes. A data output "
+            "identifies its produced file with `from_work_dir` or `discover_datasets`; a collection output "
+            "uses `discover_datasets`."
         )
     ),
 ]

@@ -16233,36 +16233,6 @@ export interface components {
             type: "in_range";
         };
         /**
-         * IncomingToolOutputBoolean
-         * @description A boolean value emitted as a workflow-visible scalar output.
-         * @example {
-         *       "name": "matched",
-         *       "type": "boolean"
-         *     }
-         */
-        IncomingToolOutputBoolean: {
-            /**
-             * Hidden
-             * @description If true, the output will not be shown in the history.
-             */
-            hidden?: boolean | null;
-            /**
-             * Label
-             * @description Name shown for the produced dataset or collection in the history.
-             */
-            label?: string | null;
-            /**
-             * Name
-             * @description Identifier used to connect this output in workflows and address it in tool tests.
-             */
-            name: string;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "boolean";
-        };
-        /**
          * IncomingToolOutputCollection
          * @description A dataset collection populated by discovering files produced by the command.
          * @example {
@@ -16408,96 +16378,6 @@ export interface components {
              * @enum {string}
              */
             type: "data";
-        };
-        /**
-         * IncomingToolOutputFloat
-         * @description A floating-point value emitted as a workflow-visible scalar output.
-         * @example {
-         *       "name": "score",
-         *       "type": "float"
-         *     }
-         */
-        IncomingToolOutputFloat: {
-            /**
-             * Hidden
-             * @description If true, the output will not be shown in the history.
-             */
-            hidden?: boolean | null;
-            /**
-             * Label
-             * @description Name shown for the produced dataset or collection in the history.
-             */
-            label?: string | null;
-            /**
-             * Name
-             * @description Identifier used to connect this output in workflows and address it in tool tests.
-             */
-            name: string;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "float";
-        };
-        /**
-         * IncomingToolOutputInteger
-         * @description An integer value emitted as a workflow-visible scalar output.
-         * @example {
-         *       "name": "match_count",
-         *       "type": "integer"
-         *     }
-         */
-        IncomingToolOutputInteger: {
-            /**
-             * Hidden
-             * @description If true, the output will not be shown in the history.
-             */
-            hidden?: boolean | null;
-            /**
-             * Label
-             * @description Name shown for the produced dataset or collection in the history.
-             */
-            label?: string | null;
-            /**
-             * Name
-             * @description Identifier used to connect this output in workflows and address it in tool tests.
-             */
-            name: string;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "integer";
-        };
-        /**
-         * IncomingToolOutputText
-         * @description A text value emitted as a workflow-visible scalar output.
-         * @example {
-         *       "name": "message",
-         *       "type": "text"
-         *     }
-         */
-        IncomingToolOutputText: {
-            /**
-             * Hidden
-             * @description If true, the output will not be shown in the history.
-             */
-            hidden?: boolean | null;
-            /**
-             * Label
-             * @description Name shown for the produced dataset or collection in the history.
-             */
-            label?: string | null;
-            /**
-             * Name
-             * @description Identifier used to connect this output in workflows and address it in tool tests.
-             */
-            name: string;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "text";
         };
         /**
          * IncomingUserToolOutputCollection
@@ -28726,16 +28606,12 @@ export interface components {
             name: string;
             /**
              * outputs
-             * @description Results Galaxy collects after the command finishes. A data output identifies its produced file with `from_work_dir` or `discover_datasets`; a collection output uses `discover_datasets`. Scalar output types are `text`, `integer`, `float`, and `boolean`.
+             * @description Datasets and dataset collections Galaxy collects after the command finishes. A data output identifies its produced file with `from_work_dir` or `discover_datasets`; a collection output uses `discover_datasets`.
              * @default []
              */
             outputs: (
                 | components["schemas"]["IncomingToolOutputDataset"]
                 | components["schemas"]["IncomingToolOutputCollection"]
-                | components["schemas"]["IncomingToolOutputText"]
-                | components["schemas"]["IncomingToolOutputInteger"]
-                | components["schemas"]["IncomingToolOutputFloat"]
-                | components["schemas"]["IncomingToolOutputBoolean"]
             )[];
             /** profile */
             profile?: number | null;
