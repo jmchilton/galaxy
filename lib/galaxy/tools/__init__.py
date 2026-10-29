@@ -1924,7 +1924,7 @@ class Tool(UsesDictVisibleKeys, MaybeToolParameterBundle):
         citations_manager = getattr(self.app, "citations_manager", None)
         if citations_manager is None:
             return []
-        return citations_manager.parse_citations(citation_models)
+        return citations_manager.parse_citations(citation_models, tool_id=self.id)
 
     def parse_input_elem(self, page_source: PageSource, enctypes, context=None) -> "ToolInputsT":
         """

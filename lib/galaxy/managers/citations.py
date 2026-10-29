@@ -28,6 +28,8 @@ DOI_MAX_RESPONSE_BYTES = 64 * 1024
 DOI_FAILURE_EXPIRE = 600
 DOI_FETCH_FAILED = "__galaxy_doi_fetch_failed__"
 DOI_MAX_FETCHES_PER_REQUEST = 10
+MAX_CITATIONS_PER_TOOL = 50
+MAX_BIBTEX_CITATION_LENGTH = 32 * 1024
 
 
 class DoiFetchFailed(Exception):
@@ -80,12 +82,28 @@ class CitationsManager:
     def parse_citation(self, citation_model: Citation) -> OptionalCitationT:
         return parse_citation(citation_model, self)
 
-    def parse_citations(self, citation_models: list[Citation]) -> list[CitationT]:
+    def parse_citations(self, citation_models: list[Citation], tool_id: Optional[str] = None) -> list[CitationT]:
+        """Parse a tool's citations, dropping oversized BibTeX and any beyond MAX_CITATIONS_PER_TOOL."""
         citations: list[CitationT] = []
         for citation_model in citation_models:
+            if citation_model.type == "bibtex" and len(citation_model.content) > MAX_BIBTEX_CITATION_LENGTH:
+                log.warning(
+                    "Tool '%s' has a BibTeX citation over %d characters, skipping it.",
+                    tool_id,
+                    MAX_BIBTEX_CITATION_LENGTH,
+                )
+                continue
             citation = self.parse_citation(citation_model)
             if citation:
                 citations.append(citation)
+        if len(citations) > MAX_CITATIONS_PER_TOOL:
+            log.warning(
+                "Tool '%s' declares %d citations, keeping the first %d.",
+                tool_id,
+                len(citations),
+                MAX_CITATIONS_PER_TOOL,
+            )
+            citations = citations[:MAX_CITATIONS_PER_TOOL]
         return citations
 
     def citations_to_bibtex(self, citations: Iterable[CitationT]) -> list[BibtexCitationResponse]:
