@@ -1,10 +1,6 @@
 import { del, ref, set } from "vue";
 
-import { ApiError, isRetryableApiError, MAX_RETRIES, RETRY_BACKOFF_CAP_MS, retryBackoffMs } from "@/utils/simple-error";
-
-function retryAfterMsOf(error: Error): number | undefined {
-    return error instanceof ApiError ? error.retryAfterMs : undefined;
-}
+import { isRetryableApiError, retryAfterMsOf, retryBackoffMs, shouldRetryApiError } from "@/utils/simple-error";
 
 /**
  * Per-id retry bookkeeping for lazily fetched items: counts failures, and after a
@@ -23,11 +19,7 @@ export function useRetryGate(isRetryable: (error: Error) => boolean = isRetryabl
 
     /** True while ``error`` is not final: a retry is pending or in flight. */
     function isRetrying(id: string, error: Error): boolean {
-        const retryAfterMs = retryAfterMsOf(error);
-        if (retryAfterMs !== undefined && retryAfterMs > RETRY_BACKOFF_CAP_MS) {
-            return false;
-        }
-        return isRetryable(error) && (retryCounts.value[id] ?? 0) <= MAX_RETRIES;
+        return shouldRetryApiError(error, retryCounts.value[id] ?? 0, isRetryable);
     }
 
     /** True while ``id`` is waiting out a backoff. */

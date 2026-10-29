@@ -99,6 +99,26 @@ export function isRetryableApiError(error: Error): boolean {
     return false;
 }
 
+export function retryAfterMsOf(error: Error): number | undefined {
+    return error instanceof ApiError ? error.retryAfterMs : undefined;
+}
+
+/**
+ * True if a request that has failed ``failures`` times, most recently with ``error``,
+ * should be retried. A ``Retry-After`` over ``RETRY_BACKOFF_CAP_MS`` is final.
+ */
+export function shouldRetryApiError(
+    error: Error,
+    failures: number,
+    isRetryable: (error: Error) => boolean = isRetryableApiError,
+): boolean {
+    const retryAfterMs = retryAfterMsOf(error);
+    if (retryAfterMs !== undefined && retryAfterMs > RETRY_BACKOFF_CAP_MS) {
+        return false;
+    }
+    return isRetryable(error) && failures <= MAX_RETRIES;
+}
+
 /**
  * Exponential backoff delay for a 1-based retry attempt: at least half the
  * backoff and at least ``retryAfterMs``, plus jitter of up to half the backoff

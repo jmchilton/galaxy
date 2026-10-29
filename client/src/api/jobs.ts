@@ -1,12 +1,5 @@
 import type { components } from "@/api/schema";
-import {
-    ApiError,
-    isRetryableApiError,
-    MAX_RETRIES,
-    rethrowSimpleWithStatus,
-    RETRY_BACKOFF_CAP_MS,
-    retryBackoffMs,
-} from "@/utils/simple-error";
+import { rethrowSimpleWithStatus, retryAfterMsOf, retryBackoffMs, shouldRetryApiError } from "@/utils/simple-error";
 
 import { GalaxyApi } from "./client";
 
@@ -98,16 +91,10 @@ export async function stopJobs(
                 await deleteJob(jobId, message);
                 return;
             } catch (error) {
-                const retryAfterMs = error instanceof ApiError ? error.retryAfterMs : undefined;
-                const canRetry =
-                    error instanceof Error &&
-                    isRetryableApiError(error) &&
-                    attempt <= MAX_RETRIES &&
-                    (retryAfterMs === undefined || retryAfterMs <= RETRY_BACKOFF_CAP_MS);
-                if (!canRetry) {
+                if (!(error instanceof Error && shouldRetryApiError(error, attempt))) {
                     throw error;
                 }
-                await new Promise((resolve) => setTimeout(resolve, retryBackoffMs(attempt, retryAfterMs)));
+                await new Promise((resolve) => setTimeout(resolve, retryBackoffMs(attempt, retryAfterMsOf(error))));
             }
         }
     }
