@@ -2,6 +2,8 @@ import datetime
 import string
 from typing import Any
 
+from sqlalchemy import select
+
 from galaxy import model
 from galaxy.util import now
 from galaxy_test.base.populators import (
@@ -279,6 +281,19 @@ class TestScriptsPgCleanupIntegration(BaseScriptsIntegrationTestCase):
             "dataset_deleted": False,
             "dataset_purged": False,
         }
+        sa_session = self._app.model.session
+        ld_events = sa_session.scalars(
+            select(model.CleanupEventLibraryDatasetAssociation.cleanup_event_id).filter_by(
+                library_dataset_id=self._decode_id(library_dataset["id"])
+            )
+        ).all()
+        ldda_events = sa_session.scalars(
+            select(model.CleanupEventLibraryDatasetDatasetAssociationAssociation.cleanup_event_id).filter_by(
+                ldda_id=self._decode_id(library_dataset["ldda_id"])
+            )
+        ).all()
+        assert len(ld_events) == 1
+        assert ldda_events == ld_events
 
         # chaining the pre-existing actions now reaches the dataset itself
         self._pgcleanup_check_output(
