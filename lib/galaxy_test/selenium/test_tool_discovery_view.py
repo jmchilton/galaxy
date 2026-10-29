@@ -59,7 +59,7 @@ class TestToolDiscoveryViewAnonymous(SeleniumTestCase):
     def test_tool_discovery_favorite_button_prompts_login_anonymous(self):
         tools_list = self._open_tools_list_with_filter_failed()
         button = tools_list.favorite_tool_button(tool_id=self.FILTER_FAILED_TOOL_ID).wait_for_visible()
-        assert button.get_attribute("title") == "Login or Register to Favorite Tools"
+        assert button.get_attribute("data-title") == "Login or Register to Favorite Tools"
 
     @selenium_test
     def test_tool_discovery_help_toggle_shows_and_hides(self):
@@ -139,5 +139,5 @@ class TestToolDiscoveryViewLoggedIn(SeleniumTestCase):
         # Verify favorite button is available (not showing login message)
         button = tools_list.favorite_tool_button(tool_id="__FILTER_FAILED_DATASETS__").wait_for_visible()
         # When logged in, the title should not be the login prompt
-        title = button.get_attribute("title")
+        title = button.get_attribute("data-title")
         assert title != "Login or Register to Favorite Tools"
