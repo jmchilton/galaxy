@@ -811,7 +811,7 @@ class ToolsController(BaseGalaxyAPIController, UsesVisualizationMixin):
     @expose_api_anonymous_and_sessionless
     def citations(self, trans: GalaxyWebTransaction, id, **kwds):
         citations, errors = self.citations_manager.citations_for_tool_ids([id])
-        return [citation.to_dict("bibtex").model_dump() for citation in citations] + [
+        return [citation.model_dump() for citation in self.citations_manager.citations_to_bibtex(citations)] + [
             error.model_dump() for error in errors
         ]
 
