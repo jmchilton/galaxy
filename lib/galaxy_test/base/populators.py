@@ -1001,13 +1001,18 @@ class BaseDatasetPopulator(BasePopulator):
         return landing_reponse.json()
 
     def create_tool_from_path(self, tool_path: str) -> dict[str, Any]:
+        create_response = self.create_tool_from_path_raw(tool_path)
+        assert create_response.status_code == 200, create_response.text
+        return create_response.json()
+
+    def create_tool_from_path_raw(self, tool_path: str) -> Response:
         tool_directory = os.path.dirname(os.path.abspath(tool_path))
         payload = dict(
             src="from_path",
             path=tool_path,
             tool_directory=tool_directory,
         )
-        return self._create_tool_raw(payload)
+        return self._post_dynamic_tool(payload)
 
     def _unprivileged_tool_request(
         self,
@@ -1118,13 +1123,16 @@ class BaseDatasetPopulator(BasePopulator):
         return self._create_tool_raw(payload)
 
     def _create_tool_raw(self, payload) -> dict[str, Any]:
-        using_requirement("admin")
-        try:
-            create_response = self._post("dynamic_tools", data=payload, admin=True, json=True)
-        except TypeError:
-            create_response = self._post("dynamic_tools", data=payload, json=True)
+        create_response = self._post_dynamic_tool(payload)
         assert create_response.status_code == 200, create_response.text
         return create_response.json()
+
+    def _post_dynamic_tool(self, payload) -> Response:
+        using_requirement("admin")
+        try:
+            return self._post("dynamic_tools", data=payload, admin=True, json=True)
+        except TypeError:
+            return self._post("dynamic_tools", data=payload, json=True)
 
     def list_dynamic_tools(self) -> list:
         using_requirement("admin")
