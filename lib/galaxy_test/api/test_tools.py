@@ -2568,6 +2568,16 @@ class TestToolsApi(ApiTestCase, TestsTools):
         assert "command: Extra inputs are not permitted" in response.json()["err_msg"]
         assert tool_id not in [tool["tool_id"] for tool in self.dataset_populator.list_dynamic_tools()]
 
+    def test_dynamic_tool_citations(self):
+        bibtex = "@article{dynamic_tool_citation, title={A Tool}}"
+        tool_id = "minimal_tool_with_citation"
+        self.dataset_populator.create_tool(
+            {**MINIMAL_TOOL, "id": tool_id, "citations": [{"type": "bibtex", "content": bibtex}]}
+        )
+        response = self._get(f"tools/{tool_id}/citations")
+        self._assert_status_code_is(response, 200)
+        assert response.json() == [{"format": "bibtex", "content": bibtex}]
+
     def test_dynamic_tool_no_id(self):
         # Create tool.
         tool_response = self.dataset_populator.create_tool(MINIMAL_TOOL_NO_ID)

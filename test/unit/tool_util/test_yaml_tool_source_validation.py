@@ -109,3 +109,21 @@ def test_validation_leaves_mapping_outputs_in_place():
     assert tool_source.root_dict["outputs"] == {"out": {"type": "data", "format": "txt", "from_work_dir": "out.txt"}}
     outputs, _ = tool_source.parse_outputs(None)
     assert list(outputs) == ["out"]
+
+
+INVALID_DOI_CITATION = {"type": "doi", "content": "not-a-doi"}
+
+
+def test_classless_tool_skips_invalid_citation_before_profile_26_1():
+    citations = [INVALID_DOI_CITATION, {"type": "doi", "content": "10.1234/abc.def"}]
+    tool = _tool("GalaxyTool", {"citations": citations})
+    del tool["class"]
+    assert [(c.type, c.content) for c in YamlToolSource(tool).parse_citations()] == [("doi", "10.1234/abc.def")]
+
+
+def test_classless_tool_rejects_invalid_citation_from_profile_26_1():
+    tool = _tool("GalaxyTool", {"profile": "26.1", "citations": [INVALID_DOI_CITATION]})
+    del tool["class"]
+    with pytest.raises(ValidationError) as exc_info:
+        YamlToolSource(tool).parse_citations()
+    assert [error["type"] for error in exc_info.value.errors()] == ["dynamic_tool.citation_doi_invalid"]

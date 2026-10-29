@@ -43,6 +43,7 @@ from galaxy.tool_util_models.testing_types import (
 )
 from galaxy.tool_util_models.tool_outputs import lift_legacy_collection_structure
 from galaxy.tool_util_models.tool_source import (
+    Citation,
     HelpContent,
     JsonTestCollectionDefDict,
     XrefDict,
@@ -282,6 +283,7 @@ class YamlToolSource(ToolSource):
         output_dict = lift_legacy_collection_structure(output_dict)
         name = output_dict.get("name")
         label = output_dict.get("label")
+        hidden = output_dict.get("hidden") or False
         default_format = output_dict.get("format", "data")
         collection_type = output_dict.get("collection_type", None)
         # XML tools spell this ``type_source``; the pydantic UDT model spells it
@@ -309,6 +311,7 @@ class YamlToolSource(ToolSource):
             structure,
             label=label,
             filters=filters,
+            hidden=hidden,
             default_format=default_format,
             inherit_format=inherit_format,
             inherit_metadata=inherit_metadata,
@@ -402,6 +405,9 @@ class YamlToolSource(ToolSource):
 
     def parse_interactivetool(self):
         return self.root_dict.get("entry_points", [])
+
+    def parse_citations(self) -> List[Citation]:
+        return self._parse_citation_list(self.root_dict.get("citations") or [], Citation.model_validate)
 
     def parse_python_template_version(self):
         python_template_version = self.root_dict.get("python_template_version")

@@ -127,6 +127,31 @@ class TestUnprivilegedToolsLabelsApi(ApiTestCase):
             run = self._run(history_id, representation, {"input": {"src": "hda", "id": self._reads(history_id)["id"]}})
         assert run["output_collections"][0]["name"] == "reads.txt split"
 
+    def test_hidden_collection_output_is_hidden(self):
+        outputs = [
+            {
+                "type": "collection",
+                "name": name,
+                "collection_type": "list",
+                "discover_datasets": [{"pattern": "*.txt"}],
+                "hidden": name == "hidden",
+            }
+            for name in ("hidden", "shown")
+        ]
+        representation = _user_tool(shell_command="cp '$(inputs.input.path)' a.txt", outputs=outputs)
+        with (
+            self.dataset_populator.test_history() as history_id,
+            self.dataset_populator.user_tool_execute_permissions(),
+        ):
+            run = self._run(history_id, representation, {"input": {"src": "hda", "id": self._reads(history_id)["id"]}})
+            visible = {
+                output["output_name"]: self.dataset_populator.get_history_collection_details(
+                    history_id, content_id=output["id"]
+                )["visible"]
+                for output in run["output_collections"]
+            }
+        assert visible == {"hidden": False, "shown": True}
+
     def test_mapped_over_labels(self):
         representation = _user_tool(
             inputs=[

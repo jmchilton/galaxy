@@ -1265,6 +1265,8 @@ class OutputCollections:
                 output_name=name,
                 **element_kwds,
             )
+            if output.hidden:
+                hdca.visible = False
             # name here is name of the output element - not name
             # of the hdca.
             self.history.stage_addition(hdca)
