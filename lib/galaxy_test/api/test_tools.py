@@ -214,6 +214,12 @@ class TestToolsApi(ApiTestCase, TestsTools):
         assert tool["help_format"] == "restructuredtext"
         assert "**WARNING:**" in tool["help"]
 
+    @skip_without_tool("bibtex")
+    def test_tool_citations(self):
+        citations = self._get("tools/bibtex/citations").json()
+        assert len(citations) == 28
+        assert all(c["format"] == "bibtex" and c["content"].lstrip().startswith("@") for c in citations)
+
     @skip_without_tool("help_features_markdown")
     def test_no_panel_index_tool_help_markdown(self):
         tools_index = self._get("tools", data=dict(in_panel=False, tool_help=True)).json()
