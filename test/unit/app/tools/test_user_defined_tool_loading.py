@@ -149,3 +149,30 @@ class TestUserDefinedToolLoading(BaseToolBoxTestCase):
             self.toolbox.get_unprivileged_tool(owner, dynamic_tool.uuid)
         assert "tool editor" in str(exc_info.value)
         assert self.toolbox.tool_for_job(self._job(owner, dynamic_tool), check_access=False) is None
+
+    def test_stored_galaxy_tool_that_fails_its_model_is_refused(self):
+        owner = self._executor()
+        session = self.app.model.context
+        representation = {
+            "class": "GalaxyTool",
+            "id": "legacy_admin_tool",
+            "name": "Legacy admin tool",
+            "version": "1.0.0",
+            "command": "echo 42 > $out",
+            "outputs": {"out": {"type": "data", "format": "txt"}},
+        }
+        dynamic_tool = model.DynamicTool(
+            tool_format="GalaxyTool",
+            tool_id=representation["id"],
+            tool_version=representation["version"],
+            uuid=uuid4(),
+            value=representation,
+            public=True,
+            active=True,
+        )
+        session.add(dynamic_tool)
+        session.commit()
+
+        with pytest.raises(exceptions.ToolMissingException, match="command: Extra inputs are not permitted"):
+            self.toolbox.dynamic_tool_to_tool(dynamic_tool)
+        assert self.toolbox.tool_for_job(self._job(owner, dynamic_tool), check_access=False) is None

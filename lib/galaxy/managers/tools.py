@@ -8,6 +8,7 @@ from typing import (
 )
 from uuid import UUID
 
+from pydantic import ValidationError
 from sqlalchemy import (
     select,
     sql,
@@ -27,9 +28,15 @@ from galaxy.model import (
 )
 from galaxy.tool_util.cwl import tool_proxy
 from galaxy.tool_util.lint import lint_user_tool_source
-from galaxy.tool_util.parser.yaml import YamlToolSource
+from galaxy.tool_util.parser.yaml import (
+    validate_galaxy_tool_source,
+    YamlToolSource,
+)
 from galaxy.tool_util.toolbox import AbstractToolBox
-from galaxy.tool_util_models import UserToolSource
+from galaxy.tool_util_models import (
+    format_validation_errors,
+    UserToolSource,
+)
 from galaxy.tool_util_models.dynamic_tool_models import (
     DynamicToolPayload,
     DynamicUnprivilegedToolCreatePayload,
@@ -150,6 +157,12 @@ class DynamicToolManager(ModelManager[DynamicTool]):
         tool_path: Optional[str] = None
         if tool_payload.src == "from_path":
             tool_format, representation, _ = artifact_class(None, tool_payload.model_dump())
+            if tool_format == "GalaxyTool":
+                try:
+                    validate_galaxy_tool_source(representation)
+                except ValidationError as e:
+                    errors = "; ".join(format_validation_errors(e))
+                    raise exceptions.RequestParameterInvalidException(f"Invalid GalaxyTool file: {errors}") from e
             tool_directory = tool_payload.tool_directory
             tool_path = tool_payload.path
         else:

@@ -25,7 +25,10 @@ from galaxy.tool_util.parser.util import (
     DEFAULT_DELTA_FRAC,
     DEFAULT_SORT,
 )
-from galaxy.tool_util_models import UserToolSource
+from galaxy.tool_util_models import (
+    UserToolSource,
+    YamlToolSource as GalaxyToolSourceModel,
+)
 from galaxy.tool_util_models.parameter_validators import AnyValidatorModel
 from galaxy.tool_util_models.parameters import (
     DiscriminatorType,
@@ -81,6 +84,12 @@ class UntrustedToolSourceError(ValueError):
     """A user-defined tool uses a key that only admin-installed tools may set."""
 
 
+def validate_galaxy_tool_source(root_dict: Dict) -> None:
+    """Validate a ``GalaxyTool`` dict against its authoring model; raises ``ValidationError``."""
+    # The model normalizes mapping-form inputs/outputs in place.
+    GalaxyToolSourceModel.model_validate(deepcopy(root_dict))
+
+
 class YamlToolSource(ToolSource):
     language = "yaml"
 
@@ -90,6 +99,8 @@ class YamlToolSource(ToolSource):
         self._macro_paths: List[str] = []
         if not self._trusted and (unsupported := sorted(set(root_dict) - USER_TOOL_ROOT_KEYS)):
             raise UntrustedToolSourceError(f"User-defined tools may not set {', '.join(unsupported)}.")
+        if self.parse_class() == "GalaxyTool":
+            validate_galaxy_tool_source(root_dict)
 
     @property
     def _trusted(self) -> bool:
@@ -265,9 +276,9 @@ class YamlToolSource(ToolSource):
         return output
 
     def _parse_output_collection(self, tool, name, output_dict):
-        # YamlToolSource bypasses the pydantic UserToolSource model (see
-        # Toolbox.dynamic_tool_to_tool), so the legacy ``structure:`` wrapper
-        # has to be lifted here too — not just in the model_validator.
+        # YamlToolSource reads the raw dict, not the validated pydantic model,
+        # so the legacy ``structure:`` wrapper has to be lifted here too — not
+        # just in the model_validator.
         output_dict = lift_legacy_collection_structure(output_dict)
         name = output_dict.get("name")
         label = output_dict.get("label")

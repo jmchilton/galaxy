@@ -29,6 +29,7 @@ from uuid import UUID
 
 import webob.exc
 from packaging.version import Version
+from pydantic import ValidationError
 from sqlalchemy import (
     delete,
     func,
@@ -143,6 +144,7 @@ from galaxy.tool_util.version import (
 )
 from galaxy.tool_util.version_updates import WORKFLOW_SAFE_TOOL_VERSION_UPDATES
 from galaxy.tool_util_models import (
+    format_validation_errors,
     lift_user_tool_source,
     UserToolSource,
 )
@@ -694,7 +696,14 @@ class ToolBox(AbstractToolBox):
         if tool_format == "GalaxyUserTool":
             tool_representation, dropped_fields = _lift_stored_user_tool(dynamic_tool, tool_representation)
         if tool_format in ("GalaxyTool", "GalaxyUserTool"):
-            tool_source = YamlToolSource(tool_representation)
+            try:
+                tool_source = YamlToolSource(tool_representation)
+            except ValidationError as e:
+                raise exceptions.ToolMissingException(
+                    f"Tool '{dynamic_tool.tool_id}' can no longer be loaded because its stored definition is not "
+                    f"valid for this Galaxy version: {'; '.join(format_validation_errors(e))}.",
+                    tool_id=dynamic_tool.tool_id,
+                ) from e
         else:
             raise Exception(f"Unknown tool representation format [{tool_format}].")
         tool = create_tool_from_source(self.app, tool_source=tool_source, tool_dir=None, dynamic=True)
