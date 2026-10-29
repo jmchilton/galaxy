@@ -6,6 +6,7 @@ from typing import (
 )
 
 import pytest
+from pydantic import ValidationError
 
 from galaxy.tool_util.parser.interface import InputSource
 from galaxy.tool_util.parser.parameter_validators import UnsafeValidatorConfiguredInUntrustedContext
@@ -94,8 +95,9 @@ def test_user_tool_refuses_expression_validators_at_any_depth(inputs):
 
 
 @pytest.mark.parametrize("inputs", NESTED_EXPRESSION_VALIDATORS)
-def test_admin_yaml_tool_keeps_expression_validators(inputs):
-    _parse_all_validators(YamlToolSource(_tool("GalaxyTool", inputs)))
+def test_admin_yaml_tool_refuses_expression_validators(inputs):
+    with pytest.raises(ValidationError, match="expression"):
+        YamlToolSource(_tool("GalaxyTool", inputs))
 
 
 # Class-less YAML tools nest repeats under ``blocks``.
@@ -149,9 +151,9 @@ def test_user_tool_refuses_dynamic_options(inputs):
         list(_input_sources(tool_source))
 
 
-def test_admin_yaml_tool_keeps_dynamic_options():
-    tool_source = YamlToolSource(_tool("GalaxyTool", [{"name": "sel", "type": "select", "dynamic_options": "x()"}]))
-    assert [s.get("dynamic_options") for s in _input_sources(tool_source)] == ["x()"]
+def test_admin_yaml_tool_refuses_dynamic_options():
+    with pytest.raises(ValidationError, match="dynamic_options"):
+        YamlToolSource(_tool("GalaxyTool", [{"name": "sel", "type": "select", "dynamic_options": "x()"}]))
 
 
 def test_classless_yaml_tool_keeps_dynamic_options():
@@ -159,24 +161,28 @@ def test_classless_yaml_tool_keeps_dynamic_options():
     assert [s.get("dynamic_options") for s in _input_sources(tool_source)] == ["x()"]
 
 
-@pytest.mark.parametrize(
-    "extra",
-    [
-        {"command": "echo $__app__"},
-        {"base_command": ["cat"], "arguments": ["$(inputs.input.path)"]},
-        {"runtime_version": {"command": "echo 1"}},
-        {"tool_type": "data_source"},
-        {"entry_points": [{"name": "port", "port": 8080}]},
-    ],
-)
+PARSER_ONLY_KEYS = [
+    {"command": "echo $__app__"},
+    {"base_command": ["cat"], "arguments": ["$(inputs.input.path)"]},
+    {"runtime_version": {"command": "echo 1"}},
+    {"tool_type": "data_source"},
+    {"entry_points": [{"name": "port", "port": 8080}]},
+]
+
+
+@pytest.mark.parametrize("extra", PARSER_ONLY_KEYS)
 def test_user_tool_refuses_keys_outside_its_schema(extra):
     with pytest.raises(UntrustedToolSourceError, match=next(iter(extra))):
         YamlToolSource(_tool("GalaxyUserTool", [], **extra))
 
 
-def test_admin_yaml_tool_keeps_parser_only_keys():
-    tool_source = YamlToolSource(_tool("GalaxyTool", [], command="echo 1"))
-    assert tool_source.parse_command() == "echo 1"
+@pytest.mark.parametrize("extra", PARSER_ONLY_KEYS)
+def test_admin_yaml_tool_refuses_keys_outside_its_schema(extra):
+    with pytest.raises(ValidationError) as exc_info:
+        YamlToolSource(_tool("GalaxyTool", [], **extra))
+    assert ("extra_forbidden", (next(iter(extra)),)) in [
+        (error["type"], error["loc"]) for error in exc_info.value.errors()
+    ]
 
 
 def test_classless_yaml_tool_keeps_parser_only_keys():

@@ -3,6 +3,7 @@ import base64
 import contextlib
 import json
 import os
+import tempfile
 import zipfile
 from io import BytesIO
 from typing import (
@@ -2545,6 +2546,27 @@ class TestToolsApi(ApiTestCase, TestsTools):
         self.dataset_populator.wait_for_history(history_id, assert_ok=True)
         output_content = self.dataset_populator.get_history_dataset_content(history_id)
         assert output_content == "Hello World 2\n"
+
+    def test_dynamic_tool_from_path_rejects_legacy_dialect(self):
+        tool_id = "legacy_from_path_tool"
+        with tempfile.TemporaryDirectory() as tool_directory:
+            tool_path = os.path.join(tool_directory, "legacy_tool.json")
+            with open(tool_path, "w") as f:
+                json.dump(
+                    {
+                        "class": "GalaxyTool",
+                        "id": tool_id,
+                        "name": "Legacy Tool",
+                        "version": "0.1",
+                        "command": "echo 42 > $out",
+                        "outputs": {"out": {"type": "data", "format": "txt"}},
+                    },
+                    f,
+                )
+            response = self.dataset_populator.create_tool_from_path_raw(tool_path)
+        self._assert_status_code_is(response, 400)
+        assert "command: Extra inputs are not permitted" in response.json()["err_msg"]
+        assert tool_id not in [tool["tool_id"] for tool in self.dataset_populator.list_dynamic_tools()]
 
     def test_dynamic_tool_no_id(self):
         # Create tool.
