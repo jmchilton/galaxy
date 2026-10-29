@@ -15,6 +15,7 @@ from galaxy.managers.citations import (
 )
 from galaxy.tool_util_models.tool_source import Citation
 from galaxy.util.bunch import Bunch
+from galaxy.util.unittest_utils import FakeClock
 
 EXAMPLE_DOI = "10.1093/bioinformatics/bts252"
 EXAMPLE_BIBTEX = "@article{goecks2010, title={Galaxy}}"
@@ -168,3 +169,23 @@ def test_citations_to_bibtex_limits_fetches(doi_cache):
     second = citations_to_bibtex(citations, max_fetches=1)
     assert second[2].content == "@article{10.1000/2}"
     assert len(responses.calls) == 3
+
+
+@responses.activate
+def test_doi_fetch_budget_stops_fetching_after_deadline(doi_cache):
+    clock = FakeClock()
+
+    def slow_fetch(request):
+        clock.advance(citations_module.DOI_FETCH_REQUEST_DEADLINE)
+        return (200, {}, "@article{slow}")
+
+    dois = [f"10.1000/{i}" for i in range(3)]
+    for doi in dois:
+        responses.add_callback(responses.GET, f"https://doi.org/{doi}", callback=slow_fetch)
+    citations = [_doi_citation(doi_cache, doi) for doi in dois]
+
+    budget = citations_module.DoiFetchBudget(10, clock=clock)
+    results = [citation.to_bibtex(budget) for citation in citations]
+    assert results[0] == "@article{slow}"
+    assert all("Failed to fetch BibTeX for DOI." in r for r in results[1:])
+    assert len(responses.calls) == 1
