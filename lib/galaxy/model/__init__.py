@@ -8372,9 +8372,14 @@ class HistoryDatasetCollectionAssociation(
                     create_time = row.create_time
                     if store_id is not None and create_time is not None:
                         store_times[store_id] = min(create_time, store_times.get(store_id, create_time))
-            # Convert to set of (object_store_id, oldest_create_time) pairs
-            store_times_summary = set(store_times.items())
-            self._dataset_dbkeys_and_extensions_summary = (dbkeys, extensions, states, deleted, store_times_summary)
+            # Frozen so readers can't corrupt the per-instance cache.
+            self._dataset_dbkeys_and_extensions_summary = (
+                frozenset(dbkeys),
+                frozenset(extensions),
+                states,
+                deleted,
+                frozenset(store_times.items()),
+            )
         return self._dataset_dbkeys_and_extensions_summary
 
     @property
