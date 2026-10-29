@@ -8,6 +8,7 @@ import responses
 from galaxy.managers import citations as citations_module
 from galaxy.managers.citations import (
     CitationCollection,
+    citations_to_bibtex,
     DOI_MAX_RESPONSE_BYTES,
     DoiCache,
     parse_citation,
@@ -147,3 +148,21 @@ def test_doi_fetch_failure_is_cached_briefly(doi_cache, monkeypatch):
     responses.replace(responses.GET, f"https://doi.org/{EXAMPLE_DOI}", body=EXAMPLE_BIBTEX)
     assert _doi_citation(doi_cache).to_bibtex() == EXAMPLE_BIBTEX
     assert len(responses.calls) == 2
+
+
+@responses.activate
+def test_citations_to_bibtex_limits_fetches(doi_cache):
+    dois = [f"10.1000/{i}" for i in range(3)]
+    for doi in dois:
+        responses.add(method="GET", url=f"https://doi.org/{doi}", body=f"@article{{{doi}}}")
+    doi_cache.get_bibtex(dois[0])
+    citations = [_doi_citation(doi_cache, doi) for doi in dois]
+
+    first = citations_to_bibtex(citations, max_fetches=1)
+    assert [r.content for r in first[:2]] == ["@article{10.1000/0}", "@article{10.1000/1}"]
+    assert "Failed to fetch BibTeX for DOI." in first[2].content
+    assert len(responses.calls) == 2
+
+    second = citations_to_bibtex(citations, max_fetches=1)
+    assert second[2].content == "@article{10.1000/2}"
+    assert len(responses.calls) == 3

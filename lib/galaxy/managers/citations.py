@@ -27,10 +27,28 @@ DOI_FETCH_TIMEOUT = 10.0
 DOI_MAX_RESPONSE_BYTES = 64 * 1024
 DOI_FAILURE_EXPIRE = 600
 DOI_FETCH_FAILED = "__galaxy_doi_fetch_failed__"
+DOI_MAX_FETCHES_PER_REQUEST = 10
 
 
 class DoiFetchFailed(Exception):
     pass
+
+
+class DoiFetchSkipped(Exception):
+    pass
+
+
+class DoiFetchBudget:
+    """Number of uncached DOI lookups one request may make."""
+
+    def __init__(self, max_fetches: int) -> None:
+        self.remaining = max_fetches
+
+    def take(self) -> bool:
+        if self.remaining <= 0:
+            return False
+        self.remaining -= 1
+        return True
 
 
 class CitationsManager:
@@ -106,10 +124,12 @@ class DoiCache:
     def _validate_url(self, url: str) -> None:
         validate_non_local(url, self._ip_allowlist)
 
-    def get_bibtex(self, doi):
+    def get_bibtex(self, doi, budget: Optional[DoiFetchBudget] = None):
         try:
             bibtex = self._cache.get(key=doi)
         except KeyError:
+            if budget is not None and not budget.take():
+                raise DoiFetchSkipped(doi)
             try:
                 bibtex = self._raw_get_bibtex(doi)
             except Exception:
@@ -121,8 +141,11 @@ class DoiCache:
         return bibtex
 
 
-def citations_to_bibtex(citations: Iterable[CitationT]) -> list[BibtexCitationResponse]:
-    return [BibtexCitationResponse(content=citation.to_bibtex()) for citation in citations]
+def citations_to_bibtex(
+    citations: Iterable[CitationT], max_fetches: int = DOI_MAX_FETCHES_PER_REQUEST
+) -> list[BibtexCitationResponse]:
+    budget = DoiFetchBudget(max_fetches)
+    return [BibtexCitationResponse(content=citation.to_bibtex(budget)) for citation in citations]
 
 
 def parse_citation(citation_model: Citation, citation_manager) -> OptionalCitationT:
@@ -187,7 +210,7 @@ class BibtexCitation(BaseCitation):
     def __init__(self, citation_model: Citation, citation_manager: CitationsManager):
         self.raw_bibtex = citation_model.content
 
-    def to_bibtex(self) -> str:
+    def to_bibtex(self, budget: Optional[DoiFetchBudget] = None) -> str:
         return self.raw_bibtex
 
 
@@ -207,12 +230,12 @@ class DoiCitation(BaseCitation):
     def doi(self):
         return self.__doi
 
-    def to_bibtex(self) -> str:
+    def to_bibtex(self, budget: Optional[DoiFetchBudget] = None) -> str:
         if self.raw_bibtex is BIBTEX_UNSET:
             try:
-                self.raw_bibtex = self.doi_cache.get_bibtex(self.__doi)
-            except Exception:
-                log.debug("Failed to fetch bibtex for DOI %s", self.__doi)
+                self.raw_bibtex = self.doi_cache.get_bibtex(self.__doi, budget)
+            except Exception as e:
+                log.debug("No bibtex for DOI %s: %r", self.__doi, e)
 
         if self.raw_bibtex is BIBTEX_UNSET:
             return f"""@MISC{{{self.__doi},
