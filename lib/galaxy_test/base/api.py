@@ -182,15 +182,19 @@ class UsesApiTestCaseMixin:
         """
         self._setup_user(email, password)
         with requests.Session() as session:
-            login_page = session.get(urljoin(self.url, "login/start"))
-            csrf_token_match = re.search(r'session_csrf_token": "(.*?)"', login_page.text)
-            assert csrf_token_match, "session_csrf_token not found on login page"
-            login_response = session.post(
-                urljoin(self.url, "user/login"),
-                data={"login": email, "password": password, "session_csrf_token": csrf_token_match.group(1)},
-            )
-            assert_status_code_is(login_response, 200)
+            self._log_in(session, email, password)
             yield session
+
+    def _log_in(self, session: requests.Session, email: str, password: str = "testpass") -> None:
+        """Log ``session`` in as ``email`` via the web login form."""
+        login_page = session.get(urljoin(self.url, "login/start"))
+        csrf_token_match = re.search(r'session_csrf_token": "(.*?)"', login_page.text)
+        assert csrf_token_match, "session_csrf_token not found on login page"
+        login_response = session.post(
+            urljoin(self.url, "user/login"),
+            data={"login": email, "password": password, "session_csrf_token": csrf_token_match.group(1)},
+        )
+        assert_status_code_is(login_response, 200)
 
     @contextmanager
     def _different_user_with_address(self, desc: str):
