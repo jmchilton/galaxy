@@ -1,5 +1,11 @@
 import type { components } from "@/api/schema";
-import { rethrowSimpleWithStatus, retryAfterMsOf, retryBackoffMs, shouldRetryApiError } from "@/utils/simple-error";
+import {
+    ApiError,
+    rethrowSimpleWithStatus,
+    retryAfterMsOf,
+    retryBackoffMs,
+    shouldRetryApiError,
+} from "@/utils/simple-error";
 
 import { GalaxyApi } from "./client";
 
@@ -74,7 +80,8 @@ export interface StopJobsResult {
 
 /**
  * Stop several jobs with bounded concurrency, retrying rate-limited and transient
- * failures with backoff. Never rejects: failures are collected per job.
+ * failures with backoff. A 429 pauses every worker; once a rate-limited job gives
+ * up, queued jobs fail with its error unsent. Never rejects: failures are collected per job.
  * @param onProgress Called with the number of jobs handled so far.
  */
 export async function stopJobs(
@@ -84,17 +91,36 @@ export async function stopJobs(
 ): Promise<StopJobsResult> {
     const result: StopJobsResult = { stopped: [], failed: [] };
     const queue = [...jobIds];
+    let pauseUntil = 0;
+    let rateLimitError: Error | undefined;
+
+    async function waitForPause() {
+        let waitMs: number;
+        while ((waitMs = pauseUntil - Date.now()) > 0) {
+            await new Promise((resolve) => setTimeout(resolve, waitMs));
+        }
+    }
 
     async function stopWithRetry(jobId: string) {
         for (let attempt = 1; ; attempt++) {
+            await waitForPause();
             try {
                 await deleteJob(jobId, message);
                 return;
             } catch (error) {
+                const rateLimited = error instanceof ApiError && error.status === 429;
                 if (!(error instanceof Error && shouldRetryApiError(error, attempt))) {
+                    if (rateLimited) {
+                        rateLimitError = error;
+                    }
                     throw error;
                 }
-                await new Promise((resolve) => setTimeout(resolve, retryBackoffMs(attempt, retryAfterMsOf(error))));
+                const backoffMs = retryBackoffMs(attempt, retryAfterMsOf(error));
+                if (rateLimited) {
+                    pauseUntil = Math.max(pauseUntil, Date.now() + backoffMs);
+                } else {
+                    await new Promise((resolve) => setTimeout(resolve, backoffMs));
+                }
             }
         }
     }
@@ -103,6 +129,9 @@ export async function stopJobs(
         let jobId;
         while ((jobId = queue.shift()) !== undefined) {
             try {
+                if (rateLimitError) {
+                    throw rateLimitError;
+                }
                 await stopWithRetry(jobId);
                 result.stopped.push(jobId);
             } catch (error) {
