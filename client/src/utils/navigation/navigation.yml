@@ -1355,6 +1355,8 @@ workflow_extract:
     mapped_tool_card: '[data-step-kind="mapped-tool"]'
     tool_card_checkbox: '[data-step-type="tool"] input[id^="g-card-select-"]'
     tool_card_checkbox_checked: '[data-step-type="tool"] input[id^="g-card-select-"]:checked'
+    input_collection_card: '[data-step-type="input_collection"]'
+    input_collection_item_by_hid: '[data-step-type="input_collection"] [data-hid="${hid}"]'
     card_checkbox_by_job_id: '[data-job-id="${job_id}"] input[id^="g-card-select-"]'
     card_by_icj_id: '[data-icj-id="${icj_id}"]'
     card_checkbox_by_icj_id: '[data-icj-id="${icj_id}"] input[id^="g-card-select-"]'

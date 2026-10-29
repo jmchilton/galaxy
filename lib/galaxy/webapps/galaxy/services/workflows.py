@@ -68,6 +68,10 @@ from galaxy.workflow.extract import (
     extract_workflow,
     extract_workflow_by_ids,
     ExtractionLabelIndex,
+    group_hid_inputs_by_original,
+    group_inputs_by_original,
+    HidInputGroup,
+    InputGroup,
     normalize_output_label_key,
 )
 from galaxy.workflow.run import queue_invoke
@@ -171,6 +175,19 @@ def _describe_tool_references(tools: list[dict[str, Any]], require_exact_tool_ve
     else:
         descriptions = [tool["tool_id"] for tool in tools]
     return ", ".join(dict.fromkeys(descriptions))
+
+
+def _validate_parallel_names(names: list[str], names_field: str, ids: list[int], ids_field: str) -> None:
+    """Input names, when given, must name each of their parallel ids exactly once."""
+    if names and len(names) != len(ids):
+        raise exceptions.RequestParameterInvalidException(
+            f"{names_field} has {len(names)} entries but {ids_field} has {len(ids)}; they must be parallel"
+        )
+
+
+def _input_names(groups: list[InputGroup] | list[HidInputGroup]) -> list[str]:
+    """One name per workflow input, as extraction assigns them."""
+    return [group.name for group in groups if group.name is not None]
 
 
 class WorkflowsService(ServiceBase):
@@ -406,7 +423,23 @@ class WorkflowsService(ServiceBase):
     ) -> WorkflowExtractionResult:
         if trans.user is None:
             raise exceptions.AuthenticationRequired("Workflow extraction requires an authenticated user.")
-        _validate_extraction_labels(payload.dataset_names, payload.dataset_collection_names)
+        _validate_parallel_names(payload.dataset_names, "dataset_names", payload.dataset_hids, "dataset_hids")
+        _validate_parallel_names(
+            payload.dataset_collection_names,
+            "dataset_collection_names",
+            payload.dataset_collection_hids,
+            "dataset_collection_hids",
+        )
+        _validate_extraction_labels(
+            _input_names(
+                group_hid_inputs_by_original(trans, history.id, "dataset", payload.dataset_hids, payload.dataset_names)
+            ),
+            _input_names(
+                group_hid_inputs_by_original(
+                    trans, history.id, "collection", payload.dataset_collection_hids, payload.dataset_collection_names
+                )
+            ),
+        )
         stored_workflow = extract_workflow(
             trans,
             user=trans.user,
@@ -512,7 +545,17 @@ class WorkflowsService(ServiceBase):
                 )
             step_label_strings.append(step_label.label)
 
-        _validate_extraction_labels(payload.dataset_names, payload.dataset_collection_names, step_label_strings)
+        _validate_parallel_names(payload.dataset_names, "dataset_names", payload.hda_ids, "hda_ids")
+        _validate_parallel_names(
+            payload.dataset_collection_names, "dataset_collection_names", payload.hdca_ids, "hdca_ids"
+        )
+        _validate_extraction_labels(
+            _input_names(group_inputs_by_original(trans, "dataset", payload.hda_ids, payload.dataset_names)),
+            _input_names(
+                group_inputs_by_original(trans, "collection", payload.hdca_ids, payload.dataset_collection_names)
+            ),
+            step_label_strings,
+        )
 
         output_targets = collect_output_label_targets(
             trans,

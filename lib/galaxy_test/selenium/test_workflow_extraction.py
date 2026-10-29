@@ -314,6 +314,32 @@ test_data:
         workflow = self.get_workflow_by_name(workflow_name)
         self.assert_cat1_workflow_structure(workflow)
 
+    @selenium_test
+    @managed_history
+    def test_extract_collection_with_in_history_copy(self):
+        """A list and its in-history copy share one input card, extracted as one collection input."""
+        history_id = self.current_history_id()
+        hdca = self.dataset_collection_populator.create_list_in_history(
+            history_id, contents=["a\n", "b\n"], wait=True
+        ).json()["outputs"][0]
+        copy = self.dataset_collection_populator.copy_collection(history_id, hdca["id"]).json()
+        self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+
+        self.navigate_to_workflow_extraction()
+        workflow_extract = self.components.workflow_extract
+        for hid in (hdca["hid"], copy["hid"]):
+            workflow_extract.input_collection_item_by_hid(hid=hid).wait_for_visible()
+        assert len(workflow_extract.input_collection_card.all()) == 1
+        self.screenshot("workflow_extract_collection_with_copy")
+
+        workflow_name = "Selenium Collection Copy"
+        self.extract_workflow_set_name(workflow_name)
+        self.extract_workflow_submit()
+
+        workflow = self.get_workflow_by_name(workflow_name)
+        assert len(workflow["steps"]) == 1, workflow["steps"]
+        self.assert_input_step_collection_type(workflow, "list")
+
     @skip_without_tool("random_lines1")
     @selenium_test
     @managed_history

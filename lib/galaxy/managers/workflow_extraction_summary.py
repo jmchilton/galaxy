@@ -29,7 +29,10 @@ from typing import (
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from galaxy.exceptions import InsufficientPermissionsException
+from galaxy.exceptions import (
+    InsufficientPermissionsException,
+    ItemAccessibilityException,
+)
 from galaxy.managers.context import ProvidesHistoryContext
 from galaxy.managers.markdown_util import (
     ContentRef,
@@ -110,10 +113,16 @@ def _resolve_content(trans: ProvidesHistoryContext, ref: ContentRef) -> HistoryI
 
 
 def _tool_for_job(trans: ProvidesHistoryContext, job: Job) -> Optional["Tool"]:
+    return _job_tool(trans, job)[0]
+
+
+def _job_tool(trans: ProvidesHistoryContext, job: Job) -> tuple[Optional["Tool"], bool]:
+    """The job's tool (None when missing or inaccessible) and whether the user may not use it."""
     try:
-        return trans.app.toolbox.tool_for_job(job, user=trans.user)
-    except InsufficientPermissionsException:
-        return None
+        return trans.app.toolbox.tool_for_job(job, user=trans.user), False
+    except (InsufficientPermissionsException, ItemAccessibilityException):
+        # No execute role, or a user tool the viewer doesn't own / that was deactivated.
+        return None, True
 
 
 def _job_output_contents(job: Job) -> list[HistoryItem]:
@@ -343,7 +352,6 @@ def _workflow_output_name(content: HistoryItem, output_name: str | None) -> str 
 
 def _input_extraction_row(
     trans: ProvidesHistoryContext,
-    job: SummaryJob,
     datasets: SummaryDatasets,
     *,
     seeded: bool,
@@ -369,36 +377,26 @@ def _input_extraction_row(
     )
 
 
-def _extraction_row(
+def _input_seeding(datasets: SummaryDatasets, closure: ClosureResult | None) -> tuple[bool, str | None]:
+    """``(seeded, seed_warning)`` for an input row holding ``datasets``."""
+    if closure is None:
+        return False, None
+    content_keys = {_content_key(data) for _, data in datasets}
+    seed_warning = SEED_AS_INPUT_WARNING if content_keys & closure.seed_warning_refs else None
+    return bool(content_keys & closure.content_refs), seed_warning
+
+
+def _tool_row(
     trans: ProvidesHistoryContext,
-    job: SummaryJob,
+    job: Job,
+    tool: Optional["Tool"],
+    custom_tools_inaccessible: bool,
     datasets: SummaryDatasets,
     icj_assoc_by_job_id: dict[int, ImplicitCollectionJobsJobAssociation],
     closure: ClosureResult | None,
 ) -> WorkflowExtractionJob:
+    """A workflow step row, or an invalid one when ``tool`` is missing or inaccessible."""
     referenced = closure.referenced_output_refs if closure else set()
-    content_keys = {_content_key(data) for _, data in datasets}
-    input_seeded = bool(closure and (content_keys & closure.content_refs))
-    seed_warning = SEED_AS_INPUT_WARNING if closure and (content_keys & closure.seed_warning_refs) else None
-
-    if getattr(job, "is_fake", False):
-        # FakeJob / DatasetCollectionCreationJob: input with no creating tool.
-        return _input_extraction_row(
-            trans,
-            job,
-            datasets,
-            seeded=input_seeded,
-            tool_name=getattr(job, "name", None),
-            seed_warning=seed_warning,
-        )
-
-    custom_tools_inaccessible = False
-    try:
-        tool = trans.app.toolbox.tool_for_job(job, user=trans.user)
-    except InsufficientPermissionsException:
-        tool = None
-        custom_tools_inaccessible = True
-
     tool_outputs = [
         _serialize_output(
             trans, data, _workflow_output_name(data, output_name), exposed=_content_key(data) in referenced
@@ -425,12 +423,6 @@ def _extraction_row(
             tool_version_warning=None,
             outputs=tool_outputs,
             invalid=invalid_reason,
-        )
-
-    if not tool.is_workflow_compatible:
-        # Not a workflow step (e.g. upload, data fetch) — treat as input.
-        return _input_extraction_row(
-            trans, job, datasets, seeded=input_seeded, tool_name=tool.name, seed_warning=seed_warning
         )
 
     tool_version_warning = (
@@ -484,11 +476,68 @@ def _synthesize_cross_history_inputs(
             continue
         seed_warning = SEED_AS_INPUT_WARNING if ref in closure.seed_warning_refs else None
         synthesized.append(
-            _input_extraction_row(
-                trans, content, [(None, content)], seeded=True, tool_name=None, seed_warning=seed_warning
-            )
+            _input_extraction_row(trans, [(None, content)], seeded=True, tool_name=None, seed_warning=seed_warning)
         )
     return synthesized
+
+
+def _collections_by_original(history: History) -> dict[ContentRef, SummaryDatasets]:
+    """``history``'s collections keyed by their original's ref.
+
+    ``summarize`` records a copied collection as its original, which may sit in a history
+    the user can no longer access; input rows list these in-history collections instead.
+    """
+    collections: dict[ContentRef, SummaryDatasets] = {}
+    for hdca in history.contents_iter(types=["dataset_collection"]):
+        collections.setdefault(_content_key(hdca), []).append((None, hdca))
+    return collections
+
+
+def _summary_rows(
+    trans: ProvidesHistoryContext,
+    history: History,
+    jobs: dict[SummaryJob, SummaryDatasets],
+    closure: ClosureResult | None,
+) -> list[WorkflowExtractionJob]:
+    """One row per step job, and one input row per original that non-step jobs left here,
+    listing its in-history copies: extraction makes all copies of one original a single input."""
+    icj_assoc_by_job_id = _icj_assoc_by_job_id(trans, jobs)
+    collections_here = _collections_by_original(history)
+    # Input rows are filled in once all their copies are known; None marks their place.
+    pending: list[tuple[WorkflowExtractionJob | None, SummaryDatasets, str | None]] = []
+    inputs: dict[ContentRef, SummaryDatasets] = {}
+    for job, datasets in jobs.items():
+        if getattr(job, "is_fake", False):
+            # FakeJob / DatasetCollectionCreationJob: input with no creating tool.
+            producer_name = getattr(job, "name", None)
+        else:
+            tool, custom_tools_inaccessible = _job_tool(trans, job)
+            if tool is None or tool.is_workflow_compatible:
+                tool_row = _tool_row(
+                    trans, job, tool, custom_tools_inaccessible, datasets, icj_assoc_by_job_id, closure
+                )
+                pending.append((tool_row, datasets, None))
+                continue
+            # Not a workflow step (e.g. upload, data fetch) — treat as input.
+            producer_name = tool.name
+        for item in datasets:
+            ref = _content_key(item[1])
+            copies = inputs.get(ref)
+            if copies is None:
+                copies = inputs[ref] = []
+                pending.append((None, copies, producer_name))
+            for copy in collections_here.get(ref, [item]):
+                if all(data.id != copy[1].id for _, data in copies):
+                    copies.append(copy)
+    rows: list[WorkflowExtractionJob] = []
+    for row, datasets, producer_name in pending:
+        if row is None:
+            seeded, seed_warning = _input_seeding(datasets, closure)
+            row = _input_extraction_row(
+                trans, datasets, seeded=seeded, tool_name=producer_name, seed_warning=seed_warning
+            )
+        rows.append(row)
+    return rows
 
 
 def build_extraction_summary(
@@ -501,9 +550,7 @@ def build_extraction_summary(
     not already present are synthesized as input rows.
     """
     jobs, warnings = summarize(trans, history)
-    icj_assoc_by_job_id = _icj_assoc_by_job_id(trans, jobs)
-
-    jobs_list = [_extraction_row(trans, job, datasets, icj_assoc_by_job_id, closure) for job, datasets in jobs.items()]
+    jobs_list = _summary_rows(trans, history, jobs, closure)
     all_warnings = list(warnings)
     if closure is not None:
         represented_keys = {_content_key(data) for datasets in jobs.values() for _, data in datasets}
