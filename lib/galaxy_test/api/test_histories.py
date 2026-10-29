@@ -72,6 +72,15 @@ class TestHistoriesApi(ApiTestCase, BaseHistories):
         indexed_history = [h for h in index_response if h["id"] == created_id][0]
         assert indexed_history["name"] == "TestHistory1"
 
+    @skip_without_tool("bibtex")
+    def test_history_citations(self):
+        history_id = self.dataset_populator.new_history()
+        self.dataset_populator.run_tool("bibtex", {"input1": 3}, history_id)
+        self.dataset_populator.wait_for_history(history_id)
+        citations = self._get(f"histories/{history_id}/citations").json()
+        assert len(citations) == 28
+        assert all(c["format"] == "bibtex" for c in citations)
+
     def test_create_history_json(self):
         name = "TestHistoryJson"
         post_data = dict(name=name)
