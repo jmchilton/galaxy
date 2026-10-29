@@ -1,8 +1,11 @@
 """Adapt Galaxy-agnostic abstraction galaxy.tool_util.biotools to Galaxy config and dependencies."""
 
+import functools
+
 from beaker.cache import CacheManager
 from beaker.util import parse_cache_config_options
 
+from galaxy.files.uris import validate_non_local
 from galaxy.tool_util.biotools import (
     BiotoolsMetadataSource,
     BiotoolsMetadataSourceConfig,
@@ -25,4 +28,7 @@ def get_galaxy_biotools_metadata_source(config) -> BiotoolsMetadataSource:
     }
     cache = CacheManager(**parse_cache_config_options(cache_opts)).get_cache("doi")
     biotools_metadata_source_config.cache = cache
+    biotools_metadata_source_config.validate_url = functools.partial(
+        validate_non_local, ip_allowlist=config.fetch_url_allowlist_ips
+    )
     return get_biotools_metadata_source(biotools_metadata_source_config)

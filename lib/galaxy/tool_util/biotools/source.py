@@ -7,10 +7,11 @@ from typing import (
     List,
     Optional,
 )
+from urllib.parse import quote
 
-from galaxy.util import (
-    DEFAULT_SOCKET_TIMEOUT,
-    requests,
+from galaxy.util.requests import (
+    bounded_get,
+    UrlValidator,
 )
 from .interface import BiotoolsEntry
 
@@ -50,16 +51,14 @@ class InMemoryCache:
 class ApiBiotoolsMetadataSource(BiotoolsMetadataSource):
     """Parse entries from bio.tools API."""
 
-    def __init__(self, cache=None):
+    def __init__(self, cache=None, validate_url: Optional[UrlValidator] = None):
         self._cache = cache or InMemoryCache()
+        self._validate_url = validate_url
 
     def _raw_get_metadata(self, biotools_reference) -> Optional[str]:
-        api_url = f"https://bio.tools/api/tool/{biotools_reference}?format=json"
+        api_url = f"https://bio.tools/api/tool/{quote(biotools_reference, safe='')}?format=json"
         try:
-            req = requests.get(api_url, timeout=DEFAULT_SOCKET_TIMEOUT)
-            req.raise_for_status()
-            req.encoding = req.apparent_encoding
-            return req.text
+            return bounded_get(api_url, validate_url=self._validate_url)
         except Exception:
             return None
 
@@ -73,13 +72,19 @@ class ApiBiotoolsMetadataSource(BiotoolsMetadataSource):
 
 
 class CascadingBiotoolsMetadataSource(BiotoolsMetadataSource):
-    def __init__(self, use_api=False, cache=None, content_directory: Optional[str] = None):
+    def __init__(
+        self,
+        use_api=False,
+        cache=None,
+        content_directory: Optional[str] = None,
+        validate_url: Optional[UrlValidator] = None,
+    ):
         sources: List[BiotoolsMetadataSource] = []
         if content_directory:
             git_content_source = GitContentBiotoolsMetadataSource(content_directory)
             sources.append(git_content_source)
         if use_api:
-            api_metadata_source = ApiBiotoolsMetadataSource(cache=cache)
+            api_metadata_source = ApiBiotoolsMetadataSource(cache=cache, validate_url=validate_url)
             sources.append(api_metadata_source)
         self._sources = sources
 
@@ -95,6 +100,7 @@ class BiotoolsMetadataSourceConfig:
     use_api: bool = False
     content_directory: Optional[str] = None
     cache = None
+    validate_url: Optional[UrlValidator] = None
 
 
 def get_biotools_metadata_source(metadata_source_config: BiotoolsMetadataSourceConfig) -> BiotoolsMetadataSource:
@@ -102,4 +108,5 @@ def get_biotools_metadata_source(metadata_source_config: BiotoolsMetadataSourceC
         use_api=metadata_source_config.use_api,
         content_directory=metadata_source_config.content_directory,
         cache=metadata_source_config.cache,
+        validate_url=metadata_source_config.validate_url,
     )
