@@ -824,6 +824,14 @@ steps:
             workflows = workflows_response.json()
             assert len(workflows) == expected_number_of_workflows
 
+            # Without shared workflows, the count covers only my 2 workflows and the imported one
+            own_workflows_response = self._get("workflows?show_shared=false")
+            self._assert_status_code_is(own_workflows_response, 200)
+            assert own_workflows_response.headers["Total_matches"] == "3"
+            own_workflow_ids = [w["id"] for w in own_workflows_response.json()]
+            assert len(own_workflow_ids) == 3
+            assert their_shared_workflow_id not in own_workflow_ids
+
     def test_upload(self):
         self.__test_upload(use_deprecated_route=False)
 
