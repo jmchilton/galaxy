@@ -52,7 +52,7 @@ const { confirm } = useConfirmDialog();
 const limit = ref(24);
 const offset = ref(0);
 const fetching = ref(true);
-// My workflows are filtered by owner, so keep loading until the user is known
+// Cards decide ownership from the current user, so keep loading until the user is known
 const loading = computed(() => fetching.value || (props.activeList === "my" && !userStore.currentUser));
 const overlay = ref(false);
 const filterText = ref("");
@@ -63,12 +63,7 @@ const showBulkAddTagsModal = ref(false);
 const bulkTagsLoading = ref(false);
 const bulkDeleteOrRestoreLoading = ref(false);
 const bulkUnshareLoading = ref(false);
-const workflowsFetched = ref<WorkflowSummary[]>([]);
-const workflowsLoaded = computed(() =>
-    props.activeList === "my"
-        ? workflowsFetched.value.filter((w) => userStore.matchesCurrentUsername(w.owner))
-        : workflowsFetched.value,
-);
+const workflowsLoaded = ref<WorkflowSummary[]>([]);
 
 const searchPlaceHolder = computed(() => {
     let placeHolder = "Search my workflows";
@@ -215,7 +210,7 @@ async function load(overlayLoading = false, silent = false) {
             skipStepCounts: true,
         });
 
-        workflowsFetched.value = data;
+        workflowsLoaded.value = data;
 
         totalWorkflows.value = totalMatches;
     } catch (e) {
