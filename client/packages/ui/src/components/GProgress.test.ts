@@ -77,6 +77,37 @@ describe("GProgress", () => {
         expect(wrapper.get('[role="progressbar"]').attributes("aria-valuetext")).toBe("3 of 10 files");
     });
 
+    it("prefers the label to the percentage, and the percentage to the value", () => {
+        expect(mount(GProgress, { props: { value: 1, max: 4, label: "one", showProgress: true } }).text()).toBe("one");
+        expect(mount(GProgress, { props: { value: 1, max: 4, showProgress: true, showValue: true } }).text()).toBe(
+            "25",
+        );
+    });
+
+    it("reads a non-numeric value as 0", () => {
+        const bar = mount(GProgress, { props: { value: "lots" } }).get('[role="progressbar"]');
+
+        expect(bar.attributes("aria-valuenow")).toBe("0");
+        expect(bar.attributes("style")).toContain("width: 0%");
+    });
+
+    it("passes the variant and stripes to the single bar and sets the track height", () => {
+        const wrapper = mount(GProgress, { props: { value: 10, variant: "danger", animated: true, height: "2px" } });
+        const bar = wrapper.get('[role="progressbar"]');
+
+        expect(wrapper.attributes("style")).toContain("height: 2px");
+        expect(bar.classes()).toEqual(
+            expect.arrayContaining(["g-danger", "g-progress-bar-striped", "g-progress-bar-animated"]),
+        );
+    });
+
+    it("defaults bars to primary without stripes and marks empty ones", () => {
+        const bar = mount(GProgress, { props: { value: 0 } }).get('[role="progressbar"]');
+
+        expect(bar.classes()).toEqual(expect.arrayContaining(["g-primary", "g-progress-bar-empty"]));
+        expect(bar.classes()).not.toContain("g-progress-bar-striped");
+    });
+
     it("shows no text by default", () => {
         expect(mount(GProgress, { props: { value: 50 } }).text()).toBe("");
     });
@@ -170,6 +201,15 @@ describe("GProgress", () => {
         expect(bar.text()).toBe("50");
     });
 
+    it("leaves unlabelled stacked bars ungrouped", () => {
+        const wrapper = mountStacked(`
+            <GProgress :max="10">
+                <GProgressBar :value="2" />
+            </GProgress>`);
+
+        expect(wrapper.get(".g-progress").attributes("role")).toBeUndefined();
+    });
+
     it("lets a bar override the progress maximum", () => {
         const wrapper = mountStacked(`
             <GProgress :max="10">
@@ -190,6 +230,32 @@ describe("GProgress", () => {
 
         expect(inherits!.text()).toBe("25");
         expect(own!.text()).toBe("");
+    });
+
+    it("falls back to the progress maximum when a bar's own is zero or not a number", () => {
+        const wrapper = mountStacked(`
+            <GProgress :max="10">
+                <GProgressBar :value="2" :max="0" />
+                <GProgressBar :value="2" max="none" />
+            </GProgress>`);
+
+        for (const bar of bars(wrapper)) {
+            expect(bar.attributes("aria-valuemax")).toBe("10");
+            expect(bar.attributes("style")).toContain("width: 20%");
+        }
+    });
+
+    it("lets bars take variant and stripes from the progress unless they set their own", () => {
+        const wrapper = mountStacked(`
+            <GProgress :max="4" variant="success" striped>
+                <GProgressBar :value="1" />
+                <GProgressBar :value="1" variant="warning" :striped="false" />
+            </GProgress>`);
+        const [inherits, own] = bars(wrapper);
+
+        expect(inherits!.classes()).toEqual(expect.arrayContaining(["g-success", "g-progress-bar-striped"]));
+        expect(own!.classes()).toContain("g-warning");
+        expect(own!.classes()).not.toContain("g-progress-bar-striped");
     });
 
     it("passes attributes such as data-* and title to the bar element", () => {
