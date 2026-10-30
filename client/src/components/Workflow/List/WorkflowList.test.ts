@@ -15,6 +15,7 @@ import { generateRandomWorkflowList } from "../testUtils";
 
 import WorkflowCardList from "./WorkflowCardList.vue";
 import WorkflowList from "./WorkflowList.vue";
+import FilterMenu from "@/components/Common/FilterMenu.vue";
 import LoadingSpan from "@/components/LoadingSpan.vue";
 
 const { server, http } = useServerMock();
@@ -137,6 +138,18 @@ describe("WorkflowList", () => {
         for (const [options] of mockedLoadWorkflows.mock.calls) {
             expect(options.showShared).toBe(showShared);
         }
+    });
+
+    it("reports is:shared_with_me as an invalid filter on the my tab without requesting it", async () => {
+        mockedLoadWorkflows.mockResolvedValue({ data: [], totalMatches: 0 });
+        const wrapper = await mountWorkflowList();
+        const callsBeforeFilter = mockedLoadWorkflows.mock.calls.length;
+
+        wrapper.findComponent(FilterMenu).vm.$emit("update:filterText", "is:shared_with_me");
+        await flushPromises();
+
+        expect(wrapper.find("#no-workflow-found-invalid").text()).toContain("shared_with_me");
+        expect(mockedLoadWorkflows).toHaveBeenCalledTimes(callsBeforeFilter);
     });
 
     it("toggle show deleted workflows", async () => {
