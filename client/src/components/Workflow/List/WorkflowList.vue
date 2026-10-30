@@ -205,8 +205,8 @@ async function load(overlayLoading = false, silent = false) {
             offset: offset.value,
             filterText: search?.trim(),
             showPublished: published.value,
-            // Shared workflows are hidden on the my tab, so leave them out of the page and total count too
-            showShared: props.activeList === "my" ? false : undefined,
+            // My workflows excludes shared workflows from the page and total count; Shared with me needs them
+            showShared: published.value ? undefined : sharedWithMe.value,
             skipStepCounts: true,
         });
 

@@ -126,11 +126,17 @@ describe("WorkflowList", () => {
         expect(wrapper.findComponent(LoadingSpan).exists()).toBe(false);
     });
 
-    it("fetches only the user's own workflows on the my tab, so the total matches what is listed", async () => {
+    it.each([
+        ["my", false],
+        ["shared_with_me", true],
+    ] as const)("requests shared workflows on the %s tab only when it lists them", async (activeList, showShared) => {
         mockedLoadWorkflows.mockResolvedValue({ data: [], totalMatches: 0 });
-        await mountWorkflowList();
+        await mountWorkflowList(activeList);
 
-        expect(mockedLoadWorkflows).toHaveBeenCalledWith(expect.objectContaining({ showShared: false }));
+        expect(mockedLoadWorkflows).toHaveBeenCalled();
+        for (const [options] of mockedLoadWorkflows.mock.calls) {
+            expect(options.showShared).toBe(showShared);
+        }
     });
 
     it("toggle show deleted workflows", async () => {
