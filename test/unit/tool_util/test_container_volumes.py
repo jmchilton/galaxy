@@ -30,6 +30,8 @@ def _container(container_class, tool_directory):
         "$tool_directory:ro,$working_directory:rw,$job_directory:rw",
         "$working_directory:rw,$tool_directory:ro,$job_directory:rw",
         "$working_directory:rw,$job_directory:rw,$tool_directory:ro",
+        "${tool_directory}:ro,$working_directory:rw,$job_directory:rw",
+        "$tool_directory:ro,$working_directory:rw,$tool_directory/data:/data:ro,$job_directory:rw",
     ],
 )
 def test_tool_directory_stripped_without_tool_directory(container_class, volumes_str):

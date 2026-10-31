@@ -388,12 +388,10 @@ class HasDockerLikeVolumes:
 
         # Not all tools have a tool_directory - strip this out if supplied by
         # job_conf.
-        tool_directory_index = volumes_str.find("$tool_directory")
-        if tool_directory_index >= 0:
-            end_index = volumes_str.find(",", tool_directory_index)
-            if end_index < 0:
-                end_index = len(volumes_str)
-            volumes_str = volumes_str[0:tool_directory_index] + volumes_str[end_index : len(volumes_str)]
+        if "tool_directory" not in variables:
+            volumes_str = ",".join(
+                v for v in volumes_str.split(",") if "$tool_directory" not in v and "${tool_directory}" not in v
+            )
 
         return volumes_str
 
