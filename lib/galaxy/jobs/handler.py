@@ -325,16 +325,18 @@ class JobHandlerQueue(BaseJobHandlerQueue):
         tool_uuid = None
         if job.dynamic_tool and (uuid := job.dynamic_tool.uuid):
             tool_uuid = uuid
+        unavailable_reason = None
         try:
-            tool_available = self.app.toolbox.has_tool(
+            if not self.app.toolbox.has_tool(
                 tool_id=job.tool_id, tool_version=job.tool_version, tool_uuid=tool_uuid, exact=True, user=job.user
-            )
-        except (ObjectNotFound, ToolMissingException):
+            ):
+                unavailable_reason = "removed from tool config"
+        except (ObjectNotFound, ToolMissingException) as e:
             # A tool looked up by uuid raises instead of returning False, e.g. a user-defined
             # tool whose owner lost the execution role or whose definition no longer loads.
-            tool_available = False
-        if not tool_available:
-            log.warning(f"({job.id}) Tool '{job.tool_id}' removed from tool config, unable to recover job")
+            unavailable_reason = f"(uuid {tool_uuid}) not available to the job's owner: {e}"
+        if unavailable_reason:
+            log.warning(f"({job.id}) Tool '{job.tool_id}' {unavailable_reason}, unable to recover job")
             self.job_wrapper(job).fail(
                 "This tool was disabled before the job completed.  Please contact your Galaxy administrator."
             )

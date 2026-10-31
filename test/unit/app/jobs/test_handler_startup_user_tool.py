@@ -20,7 +20,7 @@ from galaxy.jobs.handler import JobHandlerQueue
         ObjectNotFound("Failed to find a tool with uuid"),
     ],
 )
-def test_job_with_unavailable_user_tool_fails_at_startup(error):
+def test_job_with_unavailable_user_tool_fails_at_startup(error, caplog):
     job = model.Job()
     job.id = 1
     job.tool_id = "user_tool"
@@ -35,3 +35,5 @@ def test_job_with_unavailable_user_tool_fails_at_startup(error):
         "This tool was disabled before the job completed.  Please contact your Galaxy administrator."
     )
     queue.dispatcher.recover.assert_not_called()
+    assert "not available to the job's owner" in caplog.text
+    assert "removed from tool config" not in caplog.text
