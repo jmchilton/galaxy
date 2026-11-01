@@ -141,14 +141,34 @@ class TestPages(SeleniumTestCase, UsesUploadActivity):
                 "pages_cell_editor_insert_menu" if screenshot else None,
             )
 
+        # Focus must follow the moved cell. Cells are keyed by position, so the menu alone would
+        # refocus the actions button at the old position, which now belongs to the open cell swapped in.
+        next_cell = self.components.markdown_cell_editor.cell(index=1)
+        self._markdown_cell_menu_select_with_key(
+            cell.actions_button,
+            cell.actions_option(title="Move Down"),
+            cell.actions_menu,
+            Key.ENTER,
+            focused=next_cell.actions_button,
+        )
+        self._markdown_cell_menu_select_with_key(
+            next_cell.actions_button,
+            next_cell.actions_option(title="Move Up"),
+            next_cell.actions_menu,
+            Key.SPACE,
+            focused=cell.actions_button,
+        )
+
     def _markdown_cell_menu_select_with_key(
         self,
         button: SmartTarget,
         option: SmartTarget,
         menu: SmartTarget,
         key: Key,
-        screenshot_name: str | None,
+        screenshot_name: str | None = None,
+        focused: SmartTarget | None = None,
     ) -> None:
+        """Choose ``option`` by ``key`` and check the menu closes and focus lands on ``focused`` (default ``button``)."""
         button.wait_for_and_click()
         option_element = option.wait_for_visible()
         self.screenshot_if(screenshot_name)
@@ -158,7 +178,8 @@ class TestPages(SeleniumTestCase, UsesUploadActivity):
         # A key press that also activated the refocused button would reopen the menu in this window.
         self.sleep_for(self.wait_types.UX_RENDER)
         menu.assert_absent_or_hidden()
-        assert self.execute_script("return document.activeElement === arguments[0];", button.wait_for_visible())
+        expected_focus = (focused or button).wait_for_visible()
+        assert self.execute_script("return document.activeElement === arguments[0];", expected_focus)
 
     @selenium_test
     @managed_history
