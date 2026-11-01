@@ -3,8 +3,6 @@ import { SingleQueryProvider } from "components/providers/SingleQueryProvider";
 import { getAppRoot } from "onload/loadConfig";
 import { rethrowSimple } from "utils/simple-error";
 
-import { CONFIG_DOES_NOT_ALLOW } from "@/api/errorCodes";
-
 import { cleanPaginationParameters, stateIsTerminal } from "./utils";
 
 async function jobDetails({ jobId }) {
@@ -34,7 +32,7 @@ async function jobConsoleOutput({
             },
         });
         if (status == 403) {
-            if (data.err_code == CONFIG_DOES_NOT_ALLOW) {
+            if (data.err_code == 403004) {
                 console.log("This job destination does not support console output");
                 return { state: "ok" };
             }

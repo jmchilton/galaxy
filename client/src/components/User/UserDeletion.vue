@@ -6,9 +6,11 @@ import { storeToRefs } from "pinia";
 import { computed, ref } from "vue";
 
 import { GalaxyApi, isRegisteredUser } from "@/api";
-import { CONFIG_DOES_NOT_ALLOW } from "@/api/errorCodes";
 import { useUserStore } from "@/stores/userStore";
 import { userLogoutClient } from "@/utils/logout";
+
+/** Backend `err_code` of a refusal by this instance's configuration (`CONFIG_DOES_NOT_ALLOW`) */
+const CONFIG_DOES_NOT_ALLOW = 403004;
 
 const emit = defineEmits<{
     (e: "reset"): void;
