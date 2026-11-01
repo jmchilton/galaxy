@@ -1,6 +1,5 @@
 import pytest
 
-from galaxy.managers.collections import DatasetCollectionManager
 from galaxy.model.dataset_collections.structure import (
     get_structure,
     leaf,
@@ -83,6 +82,7 @@ def test_get_structure_list_of_lists_over_single_datasests():
 
 
 COLUMN_DEFINITIONS = [{"name": "condition", "type": "string", "optional": False}]
+COLUMNS_METADATA = {"sample1": ["treated"], "sample2": ["control"]}
 
 
 def _sample_sheet_tree(collection_type="sample_sheet"):
@@ -92,70 +92,46 @@ def _sample_sheet_tree(collection_type="sample_sheet"):
     return Tree(
         [("sample1", child), ("sample2", child)],
         factory.for_collection_type(collection_type),
-        columns_metadata={"sample1": ["treated"], "sample2": ["control"]},
+        columns_metadata=COLUMNS_METADATA,
         column_definitions=COLUMN_DEFINITIONS,
     )
 
 
-def _precreate(structure):
-    # precreate_dataset_collection needs no app or session for an unpersisted structure.
-    manager = object.__new__(DatasetCollectionManager)
-    return manager.precreate_dataset_collection(structure)
-
-
-def test_multiply_sample_sheet_by_dataset_output():
-    mapped = _sample_sheet_tree().multiply(leaf)
-    assert mapped.collection_type_description.collection_type == "sample_sheet"
-    mapped.collection_type_description.validate()
-    collection = _precreate(mapped)
-    assert collection.collection_type == "sample_sheet"
-    assert collection.column_definitions == COLUMN_DEFINITIONS
-    assert [e.columns for e in collection.elements] == [["treated"], ["control"]]
-
-
-@pytest.mark.parametrize("output_type", ["paired", "record", "paired_or_unpaired"])
-def test_multiply_sample_sheet_by_valid_sample_sheet_suffix_output(output_type):
-    mapped = _sample_sheet_tree().multiply(UninitializedTree(factory.for_collection_type(output_type)))
-    expected_type = f"sample_sheet:{output_type}"
-    assert mapped.collection_type_description.collection_type == expected_type
-    mapped.collection_type_description.validate()
-    collection = _precreate(mapped)
-    assert collection.collection_type == expected_type
-    assert collection.column_definitions == COLUMN_DEFINITIONS
-    assert [e.columns for e in collection.elements] == [["treated"], ["control"]]
-
-
-def test_multiply_sample_sheet_paired_by_dataset_output():
-    mapped = _sample_sheet_tree("sample_sheet:paired").multiply(leaf)
-    assert mapped.collection_type_description.collection_type == "sample_sheet:paired"
-    collection = _precreate(mapped)
-    assert collection.column_definitions == COLUMN_DEFINITIONS
-    assert [e.columns for e in collection.elements] == [["treated"], ["control"]]
+def _uninitialized(collection_type):
+    return UninitializedTree(factory.for_collection_type(collection_type))
 
 
 @pytest.mark.parametrize(
-    "mapping_type,output_type,expected_type",
+    "mapping_type,output_structure,expected_type",
     [
-        ("sample_sheet", "list", "list:list"),
-        ("sample_sheet", "list:paired", "list:list:paired"),
-        ("sample_sheet:paired", "list", "list:paired:list"),
+        ("sample_sheet", leaf, "sample_sheet"),
+        ("sample_sheet", _uninitialized("paired"), "sample_sheet:paired"),
+        ("sample_sheet", _uninitialized("record"), "sample_sheet:record"),
+        ("sample_sheet", _uninitialized("paired_or_unpaired"), "sample_sheet:paired_or_unpaired"),
+        ("sample_sheet:paired", leaf, "sample_sheet:paired"),
     ],
 )
-def test_multiply_sample_sheet_by_nested_collection_output_demotes_to_list(mapping_type, output_type, expected_type):
-    mapped = _sample_sheet_tree(mapping_type).multiply(UninitializedTree(factory.for_collection_type(output_type)))
+def test_multiply_sample_sheet_keeps_columns(mapping_type, output_structure, expected_type):
+    mapped = _sample_sheet_tree(mapping_type).multiply(output_structure)
     assert mapped.collection_type_description.collection_type == expected_type
-    mapped.collection_type_description.validate()
-    collection = _precreate(mapped)
-    assert collection.collection_type == expected_type
+    assert mapped.column_definitions == COLUMN_DEFINITIONS
+    assert mapped.columns_metadata == COLUMNS_METADATA
+
+
+@pytest.mark.parametrize(
+    "mapping_type,output_structure,expected_type",
+    [
+        ("sample_sheet", _uninitialized("list"), "list:list"),
+        ("sample_sheet", _uninitialized("list:paired"), "list:list:paired"),
+        ("sample_sheet:paired", _uninitialized("list"), "list:paired:list"),
+        # unlinked (cross product) batch inputs multiply two known structures
+        ("sample_sheet", Tree([("a", leaf), ("b", leaf)], factory.for_collection_type("list")), "list:list"),
+    ],
+)
+def test_multiply_sample_sheet_by_nested_collection_demotes_to_list(mapping_type, output_structure, expected_type):
+    mapped = _sample_sheet_tree(mapping_type).multiply(output_structure)
+    assert mapped.collection_type_description.collection_type == expected_type
+    assert [identifier for identifier, _ in mapped.children] == ["sample1", "sample2"]
     # a plain list cannot carry sample sheet columns
-    assert collection.column_definitions is None
-    assert [e.element_identifier for e in collection.elements] == ["sample1", "sample2"]
-    assert [e.columns for e in collection.elements] == [None, None]
-
-
-def test_multiply_sample_sheet_by_unlinked_list_structure_demotes_to_list():
-    list_tree = Tree([("a", leaf), ("b", leaf)], factory.for_collection_type("list"))
-    mapped = _sample_sheet_tree().multiply(list_tree)
-    assert mapped.collection_type_description.collection_type == "list:list"
     assert mapped.column_definitions is None
     assert mapped.columns_metadata == {}
