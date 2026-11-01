@@ -355,7 +355,7 @@ class has_line_matching_model(base_has_line_matching_model):
     starting with ``chr1``, use ``chr1.*``; the expressions ``chr1`` and
     ``^chr1`` only match a line that is exactly ``chr1``. The wrapping
     does not group the expression, so put alternatives in a group, e.g.
-    ``(?:chr1|chr2) .*`` rather than ``chr1|chr2 .*``.
+    ``(?:chr1|chr2)\t.*`` rather than ``chr1|chr2\t.*``.
 
     ```xml
     <has_line_matching expression="chr1.*" n="2"/>
@@ -382,7 +382,7 @@ class has_line_matching_model_relaxed(base_has_line_matching_model_relaxed):
     starting with ``chr1``, use ``chr1.*``; the expressions ``chr1`` and
     ``^chr1`` only match a line that is exactly ``chr1``. The wrapping
     does not group the expression, so put alternatives in a group, e.g.
-    ``(?:chr1|chr2) .*`` rather than ``chr1|chr2 .*``.
+    ``(?:chr1|chr2)\t.*`` rather than ``chr1|chr2\t.*``.
 
     ```xml
     <has_line_matching expression="chr1.*" n="2"/>
@@ -682,7 +682,7 @@ class has_text_model_relaxed(base_has_text_model_relaxed):
     that: Literal["has_text"] = Field("has_text", title="That")
 
 
-has_text_matching_expression_description = """The regular expression to search for anywhere in the output. It is not anchored, and ``^``/``$`` refer to the start and end of the whole output."""
+has_text_matching_expression_description = """The regular expression to search for anywhere in the output. It is not anchored, and ``^``/``$`` refer to the start and end of the whole output unless multiline mode is enabled with ``(?m)``."""
 
 has_text_matching_n_description = """Desired number, can be suffixed by ``(k|M|G|T|P|E)i?``"""
 
@@ -817,7 +817,8 @@ class has_text_matching_model(base_has_text_matching_model):
 
     The expression is searched for anywhere in the output, as with
     Python's ``re.search``. It is not applied line by line, so ``^``
-    and ``$`` match only at the start and end of the whole output. Use
+    and ``$`` match only at the start and end of the whole output
+    unless multiline mode is enabled with ``(?m)``. Use
     ``has_line_matching`` to match complete lines."""
 
     model_config = ConfigDict(extra="forbid", title="Assert Has Text Matching")
@@ -839,7 +840,8 @@ class has_text_matching_model_relaxed(base_has_text_matching_model_relaxed):
 
     The expression is searched for anywhere in the output, as with
     Python's ``re.search``. It is not applied line by line, so ``^``
-    and ``$`` match only at the start and end of the whole output. Use
+    and ``$`` match only at the start and end of the whole output
+    unless multiline mode is enabled with ``(?m)``. Use
     ``has_line_matching`` to match complete lines."""
 
     model_config = ConfigDict(extra="forbid", title="Assert Has Text Matching (Relaxed)")

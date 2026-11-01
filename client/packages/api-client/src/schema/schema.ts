@@ -30201,7 +30201,7 @@ export interface components {
             delta: number | string;
             /**
              * Expression
-             * @description The regular expression to search for anywhere in the output. It is not anchored, and ``^``/``$`` refer to the start and end of the whole output.
+             * @description The regular expression to search for anywhere in the output. It is not anchored, and ``^``/``$`` refer to the start and end of the whole output unless multiline mode is enabled with ``(?m)``.
              */
             expression: string;
             /**
@@ -31449,7 +31449,7 @@ export interface components {
          *     starting with ``chr1``, use ``chr1.*``; the expressions ``chr1`` and
          *     ``^chr1`` only match a line that is exactly ``chr1``. The wrapping
          *     does not group the expression, so put alternatives in a group, e.g.
-         *     ``(?:chr1|chr2) .*`` rather than ``chr1|chr2 .*``.
+         *     ``(?:chr1|chr2)\t.*`` rather than ``chr1|chr2\t.*``.
          *
          *     ```xml
          *     <has_line_matching expression="chr1.*" n="2"/>
@@ -31795,7 +31795,8 @@ export interface components {
          *
          *     The expression is searched for anywhere in the output, as with
          *     Python's ``re.search``. It is not applied line by line, so ``^``
-         *     and ``$`` match only at the start and end of the whole output. Use
+         *     and ``$`` match only at the start and end of the whole output
+         *     unless multiline mode is enabled with ``(?m)``. Use
          *     ``has_line_matching`` to match complete lines.
          */
         has_text_matching_model: {
@@ -31807,7 +31808,7 @@ export interface components {
             delta: number | string;
             /**
              * Expression
-             * @description The regular expression to search for anywhere in the output. It is not anchored, and ``^``/``$`` refer to the start and end of the whole output.
+             * @description The regular expression to search for anywhere in the output. It is not anchored, and ``^``/``$`` refer to the start and end of the whole output unless multiline mode is enabled with ``(?m)``.
              */
             expression: string;
             /**

@@ -2546,7 +2546,7 @@ The expression must match an entire line: it is checked as
 starting with ``chr1``, use ``chr1.*``; the expressions ``chr1`` and
 ``^chr1`` only match a line that is exactly ``chr1``. The wrapping
 does not group the expression, so put alternatives in a group, e.g.
-``(?:chr1|chr2) .*`` rather than ``chr1|chr2 .*``.
+``(?:chr1|chr2)\t.*`` rather than ``chr1|chr2\t.*``.
 
 ```xml
 <has_line_matching expression="chr1.*" n="2"/>
@@ -2676,7 +2676,8 @@ occurrences.
 
 The expression is searched for anywhere in the output, as with
 Python's ``re.search``. It is not applied line by line, so ``^``
-and ``$`` match only at the start and end of the whole output. Use
+and ``$`` match only at the start and end of the whole output
+unless multiline mode is enabled with ``(?m)``. Use
 ``has_line_matching`` to match complete lines.
 
 $attribute_list::5]]></xs:documentation>
@@ -2684,7 +2685,7 @@ $attribute_list::5]]></xs:documentation>
         <xs:complexType>
           <xs:attribute name="expression" type="xs:string" use="required">
             <xs:annotation>
-              <xs:documentation xml:lang="en"><![CDATA[The regular expression to search for anywhere in the output. It is not anchored, and ``^``/``$`` refer to the start and end of the whole output.]]></xs:documentation>
+              <xs:documentation xml:lang="en"><![CDATA[The regular expression to search for anywhere in the output. It is not anchored, and ``^``/``$`` refer to the start and end of the whole output unless multiline mode is enabled with ``(?m)``.]]></xs:documentation>
             </xs:annotation>
           </xs:attribute>
           <xs:attribute name="n" type="Bytes" use="optional">
