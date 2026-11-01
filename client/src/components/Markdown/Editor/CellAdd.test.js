@@ -87,6 +87,17 @@ describe("CellAdd.vue", () => {
         });
     });
 
+    it("closes the menu when a cell option is clicked", async () => {
+        const wrapper = mountTarget();
+        await wrapper.vm.$nextTick();
+        await wrapper.findComponent(GButton).trigger("click");
+        const menu = wrapper.get(".popper-element");
+        expect(menu.isVisible()).toBe(true);
+        await wrapper.findComponent(CellOption).trigger("click");
+        expect(menu.isVisible()).toBe(false);
+        wrapper.unmount();
+    });
+
     it("returns focus to the add button when Escape closes the menu from the search box", async () => {
         const wrapper = mountTarget();
         const button = wrapper.findComponent(GButton);
