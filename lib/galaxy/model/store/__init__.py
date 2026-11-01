@@ -857,6 +857,7 @@ class ModelImportStore(metaclass=abc.ABCMeta):
                 if "ldda" in ld_attrs:
                     ldda = object_import_tracker.lddas_by_key[ld_attrs["ldda"][object_key]]
                     ld.library_dataset_dataset_association = ldda
+                    ldda.library_dataset = ld
                 self._session_add(ld)
 
             self._flush()

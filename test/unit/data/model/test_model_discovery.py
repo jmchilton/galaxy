@@ -113,6 +113,7 @@ def test_persist_target_library_dataset():
 
     assert len(new_root.datasets) == 1
     ldda = new_root.datasets[0].library_dataset_dataset_association
+    assert ldda.library_dataset is new_root.datasets[0]
     assert ldda.metadata.data_lines == 2
     with open(ldda.get_file_name()) as f:
         assert f.read().startswith("hello world\n")
@@ -157,6 +158,7 @@ def test_persist_target_library_folder():
     assert len(child_folder.folders) == 0
     assert len(child_folder.datasets) == 1
     ldda = child_folder.datasets[0].library_dataset_dataset_association
+    assert ldda.library_dataset is child_folder.datasets[0]
     assert ldda.metadata.data_lines == 2
     with open(ldda.get_file_name()) as f:
         assert f.read().startswith("hello world\n")
