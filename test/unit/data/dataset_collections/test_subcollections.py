@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 
 from galaxy import exceptions
@@ -21,19 +23,21 @@ def list_of_lists_of_pairs():
     )
 
 
+def split_identifiers(collection, collection_type: str) -> list[str]:
+    elements: list[Any] = _split_dataset_collection(collection, collection_type)
+    return [e.element_identifier for e in elements]
+
+
 def test_split_list_of_lists_over_list():
-    elements = _split_dataset_collection(list_of_lists().collection, "list")
-    assert [e.element_identifier for e in elements] == ["outer1", "outer2"]
+    assert split_identifiers(list_of_lists().collection, "list") == ["outer1", "outer2"]
 
 
 def test_split_list_of_lists_over_list_paired_or_unpaired():
-    elements = _split_dataset_collection(list_of_lists().collection, "list:paired_or_unpaired")
-    assert [e.element_identifier for e in elements] == ["outer1", "outer2"]
+    assert split_identifiers(list_of_lists().collection, "list:paired_or_unpaired") == ["outer1", "outer2"]
 
 
 def test_split_list_of_lists_of_pairs_over_list_paired_or_unpaired():
-    elements = _split_dataset_collection(list_of_lists_of_pairs().collection, "list:paired_or_unpaired")
-    assert [e.element_identifier for e in elements] == ["outer1"]
+    assert split_identifiers(list_of_lists_of_pairs().collection, "list:paired_or_unpaired") == ["outer1"]
 
 
 def test_split_list_paired_over_list_paired_or_unpaired_fails():
