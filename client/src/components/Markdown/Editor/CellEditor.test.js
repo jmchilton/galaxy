@@ -1,22 +1,17 @@
 import { mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { useServerMock } from "@/api/client/__mocks__";
-
 import CellEditor from "./CellEditor.vue";
-
-const { server, http } = useServerMock();
 
 const MARKDOWN = "First\n```python\nx = 1\n```\nLast";
 
 let container;
 
 function mountTarget() {
-    server.use(http.get("/api/plugins", ({ response }) => response(200).json([])));
     return mount(CellEditor, {
         props: { markdownText: MARKDOWN },
         attachTo: container,
-        global: { stubs: { CellCode: true, SectionWrapper: true } },
+        global: { stubs: { CellAdd: true, CellCode: true, SectionWrapper: true } },
     });
 }
 
@@ -71,6 +66,14 @@ describe("CellEditor.vue", () => {
         await chooseAction(wrapper, 1, "Move Down");
         expect(cell(wrapper, 1).find(".cell-actions-button").exists()).toBe(true);
         expect(document.activeElement).toBe(cell(wrapper, 2).get(".cell-actions-button").element);
+        wrapper.unmount();
+    });
+
+    it("moves focus with the cell on Move Up", async () => {
+        const wrapper = mountTarget();
+        await wrapper.vm.$nextTick();
+        await chooseAction(wrapper, 2, "Move Up");
+        expect(document.activeElement).toBe(cell(wrapper, 1).get(".cell-actions-button").element);
         wrapper.unmount();
     });
 });

@@ -141,7 +141,9 @@ function parseCells(configure: boolean = false, toggle: boolean = false) {
 // actions button at its old position. Follow the cell to its new position.
 function focusCellActions(cellIndex: number) {
     nextTick(() => {
-        editorRef.value?.querySelector<HTMLElement>(`[data-cell-index="${cellIndex}"] .cell-actions-button`)?.focus();
+        editorRef.value
+            ?.querySelector<HTMLElement>(`[data-cell-index="${cellIndex}"] .cell-actions-button`)
+            ?.focus({ preventScroll: true });
     });
 }
 
