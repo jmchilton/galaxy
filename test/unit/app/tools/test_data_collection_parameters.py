@@ -102,3 +102,38 @@ def test_from_json_rejects_incompatible_adapter():
     adapter = PromoteCollectionElementToCollectionAdapter(_collection("list").elements[0])
     with pytest.raises(ParameterValueError, match="collection of type 'paired_or_unpaired' was supplied"):
         _param("list").from_json(adapter, _trans())
+
+
+@pytest.mark.parametrize(
+    "accepts,supplied",
+    [
+        ("paired", "list:paired"),
+        ("list", "list:list"),
+        ("paired_or_unpaired", "list"),
+    ],
+)
+def test_from_json_allow_map_over_accepts_mappable_hdca(accepts, supplied):
+    hdca = _hdca(supplied)
+    assert _param(accepts).from_json(hdca, _trans(), allow_map_over=True) is hdca
+    with pytest.raises(ParameterValueError, match=f"collection of type '{supplied}' was supplied"):
+        _param(accepts).from_json(hdca, _trans())
+
+
+@pytest.mark.parametrize(
+    "accepts,supplied",
+    [
+        ("paired", "list"),
+        ("list:paired", "list"),
+        ("sample_sheet", "list:list"),
+    ],
+)
+def test_from_json_allow_map_over_rejects_unmappable_hdca(accepts, supplied):
+    with pytest.raises(ParameterValueError, match=f"collection of type '{supplied}' was supplied"):
+        _param(accepts).from_json(_hdca(supplied), _trans(), allow_map_over=True)
+
+
+def test_from_json_checks_subcollection_element_type():
+    paired_element = _collection("list:paired").elements[0]
+    assert _param("paired").from_json(paired_element, _trans()) is paired_element
+    with pytest.raises(ParameterValueError, match="collection of type 'paired' was supplied"):
+        _param("list").from_json(paired_element, _trans())
