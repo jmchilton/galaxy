@@ -3078,12 +3078,9 @@ class DataCollectionToolParameter(BaseDataToolParameter):
         # An unexpanded batch value (e.g. tool form state) names the collection
         # being mapped over rather than the value bound to this parameter; the
         # type of each bound value is checked once the batch is expanded.
-        is_unexpanded_batch = (
-            isinstance(value, MutableMapping)
-            and "values" in value
-            and (bool(value.get("batch")) or value.get("__class__") == "Batch")
-        )
+        batch_wrapper = False
         if isinstance(value, MutableMapping) and "values" in value:
+            batch_wrapper = bool(value.get("batch")) or value.get("__class__") == "Batch"
             value = self.to_python(value, trans.app)
         if isinstance(value, str) and value.find(",") > 0:
             value = [int(value_part) for value_part in value.split(",")]
@@ -3132,36 +3129,31 @@ class DataCollectionToolParameter(BaseDataToolParameter):
                     raise ParameterValueError(
                         "the previously selected dataset collection has elements that are deleted.", self.name
                     )
-            if not is_unexpanded_batch:
-                self._check_collection_type(rval, allow_map_over=allow_map_over)
+            if not batch_wrapper:
+                self._check_collection_type(rval, allow_map_over)
         return rval
 
-    def _check_collection_type(self, value: ItemFromSrcCollection, allow_map_over: bool = False) -> None:
+    def _check_collection_type(self, value: ItemFromSrcCollection, allow_map_over: bool) -> None:
         """Reject a collection whose type this parameter does not accept.
 
         Mapping over a collection binds its sub-collection elements (or
         adapters) to the parameter, so those arrive here instead of the
         collection being mapped over.
         """
-        collection_types = self.collection_types
-        if not collection_types:
-            return
         if isinstance(value, HistoryDatasetCollectionAssociation):
             collection_type = value.collection.collection_type
         elif isinstance(value, DatasetCollectionElement):
-            child_collection = value.child_collection
-            if child_collection is None:
+            if (child_collection := value.child_collection) is None:
                 return
             collection_type = child_collection.collection_type
         else:
             collection_type = value.collection_type
-        supplied = COLLECTION_TYPE_DESCRIPTION_FACTORY.for_collection_type(collection_type)
-        for accepted_type in collection_types:
-            if COLLECTION_TYPE_DESCRIPTION_FACTORY.for_collection_type(accepted_type).accepts(collection_type):
-                return
-            if allow_map_over and supplied.can_map_over(accepted_type):
-                return
-        accepted = ", ".join(f"'{t}'" for t in collection_types)
+        history_query = query.HistoryQuery.from_parameter(self, COLLECTION_TYPE_DESCRIPTION_FACTORY)
+        if history_query.direct_match_type(collection_type):
+            return
+        if allow_map_over and history_query.can_map_over_type(collection_type):
+            return
+        accepted = ", ".join(f"'{t}'" for t in self.collection_types or [])
         raise ParameterValueError(
             f"a dataset collection of type '{collection_type}' was supplied, but this parameter accepts only {accepted}",
             self.name,

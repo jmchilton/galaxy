@@ -369,22 +369,15 @@ def qualify_legacy_data_input_reference(inputs, reference: str) -> str | None:
 
 
 def check_param(
-    trans,
-    param: ToolParameter,
-    incoming_value,
-    param_values,
-    simple_errors: bool = True,
-    allow_collection_map_over: bool = False,
+    trans, param: ToolParameter, incoming_value, param_values, simple_errors: bool = True, allow_map_over: bool = False
 ) -> tuple[Any, str | ValueError | None]:
     """
     Check the value of a single parameter `param`. The value in
     `incoming_value` is converted from its HTML encoding and validated.
     The `param_values` argument contains the processed values of
     previous parameters (this may actually be an ExpressionContext
-    when dealing with grouping scenarios).
-
-    `allow_collection_map_over` lets a collection parameter take a
-    collection it can be mapped over, for callers that map over it later.
+    when dealing with grouping scenarios). `allow_map_over` lets a
+    collection parameter take a collection it can be mapped over.
     """
     value = incoming_value
     error: str | ValueError | None = None
@@ -392,7 +385,7 @@ def check_param(
         if trans.workflow_building_mode:
             if is_runtime_value(value):
                 return runtime_to_json(value), None
-        if allow_collection_map_over and isinstance(param, DataCollectionToolParameter):
+        if allow_map_over and isinstance(param, DataCollectionToolParameter):
             value = param.from_json(value, trans, param_values, allow_map_over=True)
         else:
             value = param.from_json(value, trans, param_values)
