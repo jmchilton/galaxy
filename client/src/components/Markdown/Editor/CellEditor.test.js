@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import CellEditor from "./CellEditor.vue";
 
 const MARKDOWN = "First\n```python\nx = 1\n```\nLast";
+const ACTIONS_BUTTON = '[data-description="markdown cell actions button"]';
 
 let container;
 
@@ -21,7 +22,7 @@ function cell(wrapper, index) {
 
 async function chooseAction(wrapper, cellIndex, title) {
     await cell(wrapper, cellIndex).get('[data-description="markdown cell toggle button"]').trigger("click");
-    await cell(wrapper, cellIndex).get('[data-description="markdown cell actions button"]').trigger("click");
+    await cell(wrapper, cellIndex).get(ACTIONS_BUTTON).trigger("click");
     const option = cell(wrapper, cellIndex).get(`[data-option-title="${title}"]`);
     option.element.focus();
     await option.trigger("keydown", { key: "Enter" });
@@ -54,8 +55,8 @@ describe("CellEditor.vue", () => {
         await wrapper.vm.$nextTick();
         await chooseAction(wrapper, 0, "Move Down");
         // The collapsed cell swapped into position 0 has no actions button to keep focus.
-        expect(cell(wrapper, 0).find(".cell-actions-button").exists()).toBe(false);
-        expect(document.activeElement).toBe(cell(wrapper, 1).get(".cell-actions-button").element);
+        expect(cell(wrapper, 0).find(ACTIONS_BUTTON).exists()).toBe(false);
+        expect(document.activeElement).toBe(cell(wrapper, 1).get(ACTIONS_BUTTON).element);
         wrapper.unmount();
     });
 
@@ -64,8 +65,8 @@ describe("CellEditor.vue", () => {
         await wrapper.vm.$nextTick();
         await cell(wrapper, 2).get('[data-description="markdown cell toggle button"]').trigger("click");
         await chooseAction(wrapper, 1, "Move Down");
-        expect(cell(wrapper, 1).find(".cell-actions-button").exists()).toBe(true);
-        expect(document.activeElement).toBe(cell(wrapper, 2).get(".cell-actions-button").element);
+        expect(cell(wrapper, 1).find(ACTIONS_BUTTON).exists()).toBe(true);
+        expect(document.activeElement).toBe(cell(wrapper, 2).get(ACTIONS_BUTTON).element);
         wrapper.unmount();
     });
 
@@ -73,7 +74,7 @@ describe("CellEditor.vue", () => {
         const wrapper = mountTarget();
         await wrapper.vm.$nextTick();
         await chooseAction(wrapper, 2, "Move Up");
-        expect(document.activeElement).toBe(cell(wrapper, 1).get(".cell-actions-button").element);
+        expect(document.activeElement).toBe(cell(wrapper, 1).get(ACTIONS_BUTTON).element);
         wrapper.unmount();
     });
 });
