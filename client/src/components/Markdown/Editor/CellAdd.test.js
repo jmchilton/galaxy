@@ -110,4 +110,41 @@ describe("CellAdd.vue", () => {
         expect(document.activeElement).toBe(button.element);
         wrapper.unmount();
     });
+
+    it("closes and returns focus to the add button when an option is chosen with Enter or Space", async () => {
+        const wrapper = mountTarget();
+        await wrapper.vm.$nextTick();
+        const button = wrapper.findComponent(GButton);
+        const menu = wrapper.get(".popper-element");
+
+        for (const key of ["Enter", " "]) {
+            await button.trigger("click");
+            expect(menu.isVisible()).toBe(true);
+            const option = wrapper.findComponent(CellOption);
+            option.element.focus();
+            expect(document.activeElement).toBe(option.element);
+            const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+            option.element.dispatchEvent(event);
+            await wrapper.vm.$nextTick();
+            // A default Enter would re-activate the trigger button that now has focus.
+            expect(event.defaultPrevented).toBe(true);
+            expect(menu.isVisible()).toBe(false);
+            expect(document.activeElement).toBe(button.element);
+        }
+        expect(wrapper.emitted("click")).toHaveLength(2);
+        wrapper.unmount();
+    });
+
+    it("returns focus to the add button when a focused option is clicked", async () => {
+        const wrapper = mountTarget();
+        await wrapper.vm.$nextTick();
+        const button = wrapper.findComponent(GButton);
+        await button.trigger("click");
+        const option = wrapper.findComponent(CellOption);
+        option.element.focus();
+        await option.trigger("click");
+        expect(wrapper.get(".popper-element").isVisible()).toBe(false);
+        expect(document.activeElement).toBe(button.element);
+        wrapper.unmount();
+    });
 });

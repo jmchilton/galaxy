@@ -22,9 +22,9 @@
                 role="menu"
                 aria-label="cell actions"
                 tabindex="0"
-                @click="popperRef.visible = false"
-                @keydown.enter="popperRef.visible = false"
-                @keydown.space.prevent="popperRef.visible = false">
+                @click="popperRef.close()"
+                @keydown.enter.prevent="popperRef.close()"
+                @keydown.space.prevent="popperRef.close()">
                 <span class="d-flex justify-content-between">
                     <small class="my-1 mx-3 text-info">{{ title }}</small>
                 </span>

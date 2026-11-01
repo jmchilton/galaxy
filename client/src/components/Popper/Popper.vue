@@ -101,6 +101,7 @@ function onEscape() {
 }
 
 defineExpose({
+    close,
     visible,
     reference,
     popper,
