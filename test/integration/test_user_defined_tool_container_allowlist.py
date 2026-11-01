@@ -1,5 +1,6 @@
 """User defined tools with the default user_defined_tool_allowed_containers setting."""
 
+import os
 from typing import Any
 
 from galaxy.tools import Tool
@@ -10,12 +11,13 @@ from galaxy_test.base.populators import (
 )
 from galaxy_test.driver import integration_util
 
+SCRIPT_DIRECTORY = os.path.abspath(os.path.dirname(__file__))
+EMBEDDED_PULSAR_JOB_CONFIG_FILE = os.path.join(SCRIPT_DIRECTORY, "embedded_pulsar_job_conf.yml")
 BIOCONTAINERS_TOOL = {**TOOL_WITH_SHELL_COMMAND, "container": "quay.io/biocontainers/coreutils:9.5"}
 
 
-class TestUserDefinedToolContainerAllowlist(integration_util.IntegrationTestCase, TestsTools):
+class BaseUserDefinedToolContainerAllowlist(integration_util.IntegrationTestCase, TestsTools):
     dataset_populator: DatasetPopulator
-    framework_tool_and_types = True
 
     @classmethod
     def handle_galaxy_config_kwds(cls, config):
@@ -26,19 +28,7 @@ class TestUserDefinedToolContainerAllowlist(integration_util.IntegrationTestCase
         super().setUp()
         self.dataset_populator = DatasetPopulator(self.galaxy_interactor)
 
-    def test_create_rejects_container_outside_allowlist(self):
-        with self.dataset_populator.user_tool_execute_permissions():
-            assert TOOL_WITH_SHELL_COMMAND["container"] == "busybox"
-            response = self.dataset_populator.create_unprivileged_tool_raw(TOOL_WITH_SHELL_COMMAND)
-            assert response.status_code == 400, response.text
-            message = response.json()["err_msg"]
-            assert "Container 'busybox' is not allowed" in message
-            assert "quay.io/biocontainers/*" in message
-
-            created = self.dataset_populator.create_unprivileged_tool(BIOCONTAINERS_TOOL)
-            assert created["active"]
-
-    def test_job_of_stored_tool_with_disallowed_container_fails(self):
+    def _assert_job_of_stored_disallowed_tool_fails(self):
         with (
             self.dataset_populator.test_history() as history_id,
             self.dataset_populator.user_tool_execute_permissions(),
@@ -59,6 +49,29 @@ class TestUserDefinedToolContainerAllowlist(integration_util.IntegrationTestCase
                 history_id, dataset_id=response["outputs"][0]["id"], assert_ok=False
             )
             assert "Container 'busybox' is not allowed for user defined tools" in output["misc_info"]
+
+    def _store_tool_row(self, representation: dict[str, Any]) -> str:
+        user_id = self._app.security.decode_id(self.dataset_populator.user_id())
+        return integration_util.store_user_tool_row(self._app, user_id, representation)
+
+
+class TestUserDefinedToolContainerAllowlist(BaseUserDefinedToolContainerAllowlist):
+    framework_tool_and_types = True
+
+    def test_create_rejects_container_outside_allowlist(self):
+        with self.dataset_populator.user_tool_execute_permissions():
+            assert TOOL_WITH_SHELL_COMMAND["container"] == "busybox"
+            response = self.dataset_populator.create_unprivileged_tool_raw(TOOL_WITH_SHELL_COMMAND)
+            assert response.status_code == 400, response.text
+            message = response.json()["err_msg"]
+            assert "Container 'busybox' is not allowed" in message
+            assert "quay.io/biocontainers/*" in message
+
+            created = self.dataset_populator.create_unprivileged_tool(BIOCONTAINERS_TOOL)
+            assert created["active"]
+
+    def test_job_of_stored_tool_with_disallowed_container_fails(self):
+        self._assert_job_of_stored_disallowed_tool_fails()
 
     def test_job_of_tool_with_allowed_container_runs(self):
         with (
@@ -85,6 +98,12 @@ class TestUserDefinedToolContainerAllowlist(integration_util.IntegrationTestCase
             response = self.dataset_populator.run_tool("job_environment_default_legacy", {}, history_id)
             self.dataset_populator.wait_for_job(response["jobs"][0]["id"], assert_ok=True)
 
-    def _store_tool_row(self, representation: dict[str, Any]) -> str:
-        user_id = self._app.security.decode_id(self.dataset_populator.user_id())
-        return integration_util.store_user_tool_row(self._app, user_id, representation)
+
+class TestUserDefinedToolContainerAllowlistPulsar(BaseUserDefinedToolContainerAllowlist):
+    @classmethod
+    def handle_galaxy_config_kwds(cls, config):
+        super().handle_galaxy_config_kwds(config)
+        config["job_config_file"] = EMBEDDED_PULSAR_JOB_CONFIG_FILE
+
+    def test_job_of_stored_tool_with_disallowed_container_fails(self):
+        self._assert_job_of_stored_disallowed_tool_fails()
