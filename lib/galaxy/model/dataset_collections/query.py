@@ -56,10 +56,13 @@ class HistoryQuery:
         return HistoryQuery.from_collection_types(collection_types, collection_type_descriptions)
 
     def direct_match(self, hdca: HdcaLike) -> bool:
+        return self.direct_match_type(hdca.collection.collection_type)
+
+    def direct_match_type(self, collection_type: str) -> bool:
         collection_type_descriptions = self.collection_type_descriptions
         if collection_type_descriptions is not None:
             for collection_type_description in collection_type_descriptions:
-                matches = collection_type_description.accepts(hdca.collection.collection_type)
+                matches = collection_type_description.accepts(collection_type)
                 if matches:
                     return True
             return False
@@ -67,11 +70,13 @@ class HistoryQuery:
         return True
 
     def can_map_over(self, hdca: HdcaLike):
+        return self.can_map_over_type(hdca.collection.collection_type)
+
+    def can_map_over_type(self, hdca_collection_type: str):
         collection_type_descriptions = self.collection_type_descriptions
         if collection_type_descriptions is None:
             return False
 
-        hdca_collection_type = hdca.collection.collection_type
         for collection_type_description in collection_type_descriptions:
             # See note about the way this is sorted above.
             factory = collection_type_description.collection_type_description_factory
