@@ -100,16 +100,11 @@ class TestLibraryContents(SeleniumTestCase, UsesLibraryAssertions, UsesUploadAct
         library_name = self._get_random_name(prefix="download_library")
         library_populator = LibraryPopulator(self.api_interactor_for_logged_in_user())
         library = library_populator.new_library(library_name)
-        test_data_path = self.get_filename("1.txt")
-        with open(test_data_path, "rb") as fh:
-            contents = fh.read()
-            fh.seek(0)
-            # The uploaded file's basename becomes the library dataset's name.
-            payload, files = library_populator.create_dataset_request(library, file=fh, file_type="txt")
-            [dataset] = library_populator.raw_library_contents_create(library["id"], payload, files=files).json()
-        library_populator.wait_on_library_dataset(library["id"], dataset["id"])
+        contents = "library download content\n"
+        items = [{"src": "pasted", "paste_content": contents, "name": "download_me", "ext": "txt"}]
+        library_populator.fetch_to_folder(library["root_folder_id"], items)
         self.libraries_open_with_name(library_name)
-        self.libraries_folder_select_datasets(["1.txt"])
+        self.libraries_folder_select_datasets(["download_me"])
         download_button = self.components.libraries.folder.download_button
         download_button.wait_for_visible()
         self.screenshot("libraries_folder_download_selected")
@@ -120,8 +115,8 @@ class TestLibraryContents(SeleniumTestCase, UsesLibraryAssertions, UsesUploadAct
         )
         with zipfile.ZipFile(zip_path) as archive:
             # Entries are "<library name>/<dataset name>.<extension>".
-            assert archive.namelist() == [f"{library_name}/1.txt.txt"]
-            assert archive.read(f"{library_name}/1.txt.txt") == contents
+            assert archive.namelist() == [f"{library_name}/download_me.txt"]
+            assert archive.read(f"{library_name}/download_me.txt").decode() == contents
 
     @selenium_test
     @requires_admin
