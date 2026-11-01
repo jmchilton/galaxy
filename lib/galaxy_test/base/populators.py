@@ -4055,6 +4055,10 @@ class LibraryPopulator:
         response.raise_for_status()
         return response.json()
 
+    def download_library_datasets_raw(self, ld_ids: str, archive_format: str = "zip") -> Response:
+        """Download library datasets ``ld_ids`` (comma-separated) as ``archive_format``."""
+        return self.galaxy_interactor.get(f"libraries/datasets/download/{archive_format}", {"ld_ids": ld_ids})
+
     def new_library_dataset_in_private_library(self, library_name="private_dataset", wait=True):
         library = self.new_private_library(library_name)
         payload, files = self.create_dataset_request(library, file_type="txt", contents="create_test")

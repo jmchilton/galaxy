@@ -57,11 +57,11 @@ class TestLibrariesApi(ApiTestCase):
         ld = self.library_populator.new_library_dataset(
             "DownloadExtensionLibrary", contents=VTK_POLY_DATA, file_type="vtkxml"
         )
-        response = self._get("libraries/datasets/download/uncompressed", {"ld_ids": ld["id"]})
+        response = self.library_populator.download_library_datasets_raw(ld["id"], "uncompressed")
         self._assert_status_code_is(response, 200)
         assert response.headers["Content-Disposition"].endswith('.vtp"')
 
-        response = self._get("libraries/datasets/download/zip", {"ld_ids": ld["id"]})
+        response = self.library_populator.download_library_datasets_raw(ld["id"])
         self._assert_status_code_is(response, 200)
         [archive_path] = zipfile.ZipFile(BytesIO(response.content)).namelist()
         assert archive_path.endswith(".vtp")
@@ -71,7 +71,7 @@ class TestLibrariesApi(ApiTestCase):
         """Datasets fetched into a library download as a zip with their folder path."""
         library, ld = self._fetch_pasted_to_new_library("download_fetched", "fetched content\n")
 
-        response = self._get("libraries/datasets/download/zip", {"ld_ids": ld["id"]})
+        response = self.library_populator.download_library_datasets_raw(ld["id"])
         self._assert_status_code_is(response, 200)
         assert 'filename="selected_library_files.zip"' in response.headers["Content-Disposition"]
         archive = zipfile.ZipFile(BytesIO(response.content))
