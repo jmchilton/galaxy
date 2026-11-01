@@ -3401,6 +3401,16 @@ class TestToolsApi(ApiTestCase, TestsTools):
             assert self.dataset_populator.wait_on_tool_request(tool_request_id)
             self.dataset_populator.wait_for_history(history_id, assert_ok=True)
 
+    @skip_without_tool("collection_paired_test")
+    def test_build_map_over_collection_input_has_no_error(self):
+        # The tool form state for a map-over names the collection being mapped
+        # over (here a list:paired), not the paired value each job receives.
+        with self.dataset_populator.test_history() as history_id:
+            hdca_id = self.dataset_collection_populator.example_list_of_pairs(history_id)
+            inputs = {"f1": {"batch": True, "values": [{"src": "hdca", "id": hdca_id, "map_over_type": "paired"}]}}
+            build = self.dataset_populator.build_tool_state("collection_paired_test", history_id, inputs)
+            assert not build.get("errors"), build["errors"]
+
     @skip_without_tool("identifier_source")
     def test_default_identifier_source_map_over(self):
         with self.dataset_populator.test_history() as history_id:
