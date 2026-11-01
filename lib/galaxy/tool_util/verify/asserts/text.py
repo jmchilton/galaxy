@@ -19,7 +19,7 @@ from ._util import (
 
 Text = Annotated[str, AssertionParameter("The text to search for in the output.")]
 Line = Annotated[str, AssertionParameter("The full line of text to search for in the output.")]
-Expression = Annotated[
+TextExpression = Annotated[
     str,
     AssertionParameter(
         "The regular expression to search for anywhere in the output. "
@@ -129,7 +129,7 @@ def assert_has_n_lines(
 
 def assert_has_text_matching(
     output: Output,
-    expression: Expression,
+    expression: TextExpression,
     n: N = None,
     delta: Delta = 0,
     min: Min = None,
