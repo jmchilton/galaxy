@@ -1203,12 +1203,18 @@ class PulsarComputeEnvironment(ComputeEnvironment):
 
     def input_extra_files_rewrite(self, dataset):
         input_path_rewrite = self.input_path_rewrite(dataset)
+        if input_path_rewrite is None:
+            # Not staged or rewritten (e.g. a ``none`` file action): the job reads
+            # the extra files in place, as it does the dataset itself.
+            return dataset.extra_files_path
         remote_extra_files_path_rewrite = dataset_path_to_extra_path(input_path_rewrite)
         self.path_rewrites_input_extra[dataset.extra_files_path] = remote_extra_files_path_rewrite
         return remote_extra_files_path_rewrite
 
     def output_extra_files_rewrite(self, dataset):
         output_path_rewrite = self.output_path_rewrite(dataset)
+        if output_path_rewrite is None:
+            return dataset.extra_files_path
         remote_extra_files_path_rewrite = dataset_path_to_extra_path(output_path_rewrite)
         return remote_extra_files_path_rewrite
 

@@ -89,3 +89,34 @@ def test_rewrite_action_rewrites_extra_files_beside_dataset():
     assert compute_environment.path_rewrites_input_extra == {
         "/galaxy/files/dataset_1_files": "/mnt/files/dataset_1_files"
     }
+
+
+def test_none_action_leaves_extra_files_in_place():
+    compute_environment = _compute_environment("none")
+    dataset = FakeDataset("dataset_1")
+
+    assert compute_environment.input_path_rewrite(dataset) is None
+    assert compute_environment.input_extra_files_rewrite(dataset) == "/galaxy/files/dataset_1_files"
+    assert compute_environment.output_extra_files_rewrite(dataset) == "/galaxy/files/dataset_1_files"
+    # Nothing to stage.
+    assert compute_environment.path_rewrites_input_extra == {}
+
+
+def test_unchanged_rewrite_action_leaves_extra_files_in_place():
+    file_actions = {
+        "paths": [
+            {
+                "path": LOCAL_FILES,
+                "action": "rewrite",
+                "source_directory": LOCAL_FILES,
+                "destination_directory": LOCAL_FILES,
+            }
+        ]
+    }
+    compute_environment = _compute_environment("transfer", file_actions)
+    dataset = FakeDataset("dataset_1")
+
+    assert compute_environment.input_path_rewrite(dataset) is None
+    assert compute_environment.input_extra_files_rewrite(dataset) == "/galaxy/files/dataset_1_files"
+    assert compute_environment.output_extra_files_rewrite(dataset) == "/galaxy/files/dataset_1_files"
+    assert compute_environment.path_rewrites_input_extra == {}
