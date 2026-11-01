@@ -142,11 +142,14 @@ from galaxy.util.tool_shed.common_util import get_tool_shed_url_from_tool_shed_r
 from galaxy.util.tool_version import remove_version_from_guid
 from galaxy.workflow.workflow_parameter_input_definitions import (
     check_validators,
+    form_str_to_parameter_options,
     get_default_parameter,
     INPUT_PARAMETER_TYPES,
     numeric_bounds_inverted,
     NumericBounds,
+    parameter_options_to_form_str,
     split_numeric_bounds,
+    STATIC_OPTIONS_FORM_HELP,
     validators_from_form,
     validators_to_form,
 )
@@ -1580,12 +1583,12 @@ class InputParameterModule(WorkflowModule):
                 restrictions_list = parameter_def.get("restrictions") or parameter_def.get("suggestions")
                 if restrictions_list is None:
                     restrictions_list = []
-                restriction_values = self._parameter_option_def_to_tool_form_str(restrictions_list)
+                restriction_values = parameter_options_to_form_str(restrictions_list)
                 restrictions_source = dict(
                     name="restrictions",
                     label="Restricted Values",
                     value=restriction_values,
-                    help="Comma-separated list of all permitted values",
+                    help=f"Comma-separated list of all permitted values. {STATIC_OPTIONS_FORM_HELP}",
                 )
                 restrictions = TextToolParameter(None, restrictions_source)
 
@@ -1593,7 +1596,7 @@ class InputParameterModule(WorkflowModule):
                     name="suggestions",
                     label="Suggested Values",
                     value=restriction_values,
-                    help="Comma-separated list of some potential values",
+                    help=f"Comma-separated list of some potential values. {STATIC_OPTIONS_FORM_HELP}",
                 )
                 suggestions = TextToolParameter(None, suggestions_source)
 
@@ -1935,22 +1938,15 @@ class InputParameterModule(WorkflowModule):
         state["parameter_definition"]["restrictions"]["how"] = restrictions_how
 
         if restrictions_how == "staticRestrictions":
-            state["parameter_definition"]["restrictions"]["restrictions"] = self._parameter_option_def_to_tool_form_str(
-                restrictions
-            )
+            state["parameter_definition"]["restrictions"]["restrictions"] = parameter_options_to_form_str(restrictions)
         if restrictions_how == "staticSuggestions":
-            state["parameter_definition"]["restrictions"]["suggestions"] = self._parameter_option_def_to_tool_form_str(
-                suggestions
-            )
+            state["parameter_definition"]["restrictions"]["suggestions"] = parameter_options_to_form_str(suggestions)
         if default_set:
             state["parameter_definition"]["optional"]["specify_default"] = {}
             state["parameter_definition"]["optional"]["specify_default"]["specify_default"] = True
             state["parameter_definition"]["optional"]["specify_default"]["default"] = default_value
         state = json.dumps(state)
         return state
-
-    def _parameter_option_def_to_tool_form_str(self, parameter_def):
-        return ",".join(f"{o['value']}:{o['label']}" if isinstance(o, dict) else o for o in parameter_def)
 
     def get_export_state(self):
         export_state = self._parse_state_into_dict()
@@ -1978,17 +1974,6 @@ class InputParameterModule(WorkflowModule):
             restrictions_cond_values = parameters_def.get("restrictions")
             if restrictions_cond_values:
 
-                def _string_to_parameter_def_option(str_value):
-                    items = []
-                    for option_part in str_value.split(","):
-                        option_part = option_part.strip()
-                        if ":" not in option_part:
-                            items.append(option_part)
-                        else:
-                            value, label = option_part.split(":", 1)
-                            items.append({"value": value, "label": label})
-                    return items
-
                 # how better be in here.
                 how = restrictions_cond_values["how"]
                 if how == "none":
@@ -1997,10 +1982,10 @@ class InputParameterModule(WorkflowModule):
                     rval["restrictOnConnections"] = True
                 elif how == "staticRestrictions":
                     restriction_values = restrictions_cond_values["restrictions"]
-                    rval.update({"restrictions": _string_to_parameter_def_option(restriction_values)})
+                    rval.update({"restrictions": form_str_to_parameter_options(restriction_values)})
                 elif how == "staticSuggestions":
                     suggestion_values = restrictions_cond_values["suggestions"]
-                    rval.update({"suggestions": _string_to_parameter_def_option(suggestion_values)})
+                    rval.update({"suggestions": form_str_to_parameter_options(suggestion_values)})
                 else:
                     log.warning("Unknown restriction conditional type encountered for workflow parameter.")
 

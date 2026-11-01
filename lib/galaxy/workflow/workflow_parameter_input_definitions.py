@@ -255,3 +255,96 @@ def _load_extra_validators(value: str | None) -> list[tuple[int, dict[str, Any]]
 
 def _is_position_validator_pair(pair: Any) -> bool:
     return isinstance(pair, list) and len(pair) == 2 and type(pair[0]) is int and isinstance(pair[1], dict)
+
+
+# The workflow editor edits a text input's static restrictions and suggestions as one string:
+# comma-separated entries, each a value or ``value:label``. A backslash makes the next ``\``, ``,``, ``:``
+# or whitespace character literal; other backslashes are kept as typed.
+_OPTION_STRING_ESCAPABLE = "\\,:"
+_EMPTY_OPTION_FORM_STR = ":"
+STATIC_OPTIONS_FORM_HELP = (
+    "Use value:label to label a value, and a lone : for an empty value. "
+    "Type \\, \\: or \\\\ for a literal comma, colon or backslash."
+)
+OptionChars = list[tuple[str, bool]]
+
+
+def parameter_options_to_form_str(options: list[Any]) -> str:
+    """Encode persisted static options as the editor's string, so ``form_str_to_parameter_options`` recovers them."""
+    return ",".join(_option_to_form_str(option) for option in options)
+
+
+def form_str_to_parameter_options(form_str: str) -> list[str | dict[str, str]]:
+    """Parse the editor's static options string; an entry with nothing in it (a stray comma) is dropped."""
+    options: list[str | dict[str, str]] = []
+    for entry in _split_option_chars(_option_chars(form_str), ","):
+        value_and_label = _split_option_chars(entry, ":", maxsplit=1)
+        value = _strip_option_chars(value_and_label[0])
+        if len(value_and_label) == 1:
+            if value:
+                options.append(value)
+            continue
+        label = _strip_option_chars(value_and_label[1])
+        if value == "" and label == "":
+            # The empty option's encoding, ``:``.
+            options.append("")
+        else:
+            options.append({"value": value, "label": label})
+    return options
+
+
+def _option_to_form_str(option: Any) -> str:
+    if isinstance(option, dict):
+        value = str(option["value"])
+        label = option.get("label")
+        if label is not None:
+            return f"{_escape_option_part(value)}:{_escape_option_part(str(label))}"
+        option = value
+    value = str(option)
+    if value == "":
+        return _EMPTY_OPTION_FORM_STR
+    return _escape_option_part(value)
+
+
+def _escape_option_part(text: str) -> str:
+    escaped = "".join(f"\\{char}" if char in _OPTION_STRING_ESCAPABLE else char for char in text)
+    # Parsing strips unescaped whitespace from each end, so escape whitespace there.
+    start = len(escaped) - len(escaped.lstrip())
+    end = max(len(escaped.rstrip()), start)
+    leading, core, trailing = escaped[:start], escaped[start:end], escaped[end:]
+    return "".join(f"\\{char}" for char in leading) + core + "".join(f"\\{char}" for char in trailing)
+
+
+def _option_chars(form_str: str) -> OptionChars:
+    """Pair each character with whether a backslash escaped it."""
+    chars: OptionChars = []
+    i = 0
+    while i < len(form_str):
+        char = form_str[i]
+        next_char = form_str[i + 1] if i + 1 < len(form_str) else None
+        if char == "\\" and next_char is not None and (next_char in _OPTION_STRING_ESCAPABLE or next_char.isspace()):
+            chars.append((next_char, True))
+            i += 2
+        else:
+            chars.append((char, False))
+            i += 1
+    return chars
+
+
+def _split_option_chars(chars: OptionChars, separator: str, maxsplit: int = -1) -> list[OptionChars]:
+    parts: list[OptionChars] = [[]]
+    for char, escaped in chars:
+        if char == separator and not escaped and (maxsplit < 0 or len(parts) <= maxsplit):
+            parts.append([])
+        else:
+            parts[-1].append((char, escaped))
+    return parts
+
+
+def _strip_option_chars(chars: OptionChars) -> str:
+    start, end = 0, len(chars)
+    while start < end and chars[start][0].isspace() and not chars[start][1]:
+        start += 1
+    while end > start and chars[end - 1][0].isspace() and not chars[end - 1][1]:
+        end -= 1
+    return "".join(char for char, _ in chars[start:end])

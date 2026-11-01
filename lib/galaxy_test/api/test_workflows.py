@@ -9586,6 +9586,26 @@ steps:
             hda2 = self.dataset_populator.get_history_dataset_details(history_id, hid=2)
             assert hda2["validated_state"] == "invalid"
 
+    def test_text_input_static_restrictions_survive_download(self):
+        # Loading a step goes through the editor's value:label,... string; separators must survive it (#24375).
+        restrictions = ["a:b", "1,2", "", {"value": "chr1:100-200", "label": "Region 1, forward"}]
+        workflow_id = self.workflow_populator.upload_yaml_workflow(f"""
+class: GalaxyWorkflow
+inputs:
+  choice:
+    type: text
+    restrictions: {json.dumps(restrictions)}
+steps: []
+""")
+        native = self._download_workflow(workflow_id)
+        tool_state = json.loads(native["steps"]["0"]["tool_state"])
+        assert tool_state["restrictions"] == restrictions
+
+        # Saving the downloaded workflow again keeps them too.
+        reimported_id = self.workflow_populator.create_workflow(native)
+        reimported = self._download_workflow(reimported_id)
+        assert json.loads(reimported["steps"]["0"]["tool_state"])["restrictions"] == restrictions
+
     @skip_without_tool("dbkey_filter_input")
     def test_value_restriction_with_data_meta_filter(self):
         workflow_id = self.workflow_populator.upload_yaml_workflow("""
