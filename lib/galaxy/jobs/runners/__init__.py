@@ -655,11 +655,8 @@ class BaseJobRunner:
             # resolvers may map an allowed image to e.g. a cached Singularity image path.
             allowlist = self.app.dynamic_tool_manager.container_allowlist
             for container_description in tool.containers:
-                if not allowlist.allows(container_description.identifier):
-                    raise ContainerNotAllowedError(
-                        f"Container '{container_description.identifier}' is not allowed for user defined tools "
-                        f"on this Galaxy server. Allowed containers: {allowlist.describe()}"
-                    )
+                if rejection := allowlist.rejection(container_description.identifier):
+                    raise ContainerNotAllowedError(rejection)
         if not compute_tool_directory:
             compute_tool_directory = str(tool.tool_dir) if tool.tool_dir is not None else None
 

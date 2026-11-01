@@ -88,3 +88,14 @@ def test_container_allowlist(entries, identifier, allowed):
 def test_container_allowlist_rejects_malformed_entries(entry):
     with pytest.raises(ImageReferenceError):
         ContainerAllowlist([entry])
+
+
+def test_container_allowlist_rejection_messages():
+    allowlist = ContainerAllowlist(DEFAULT)
+    assert allowlist.rejection("quay.io/biocontainers/samtools:1.17") is None
+    rejection = allowlist.rejection("busybox")
+    assert rejection is not None
+    assert rejection.startswith("Container 'busybox' is not allowed for user defined tools")
+    assert rejection.endswith("Allowed containers: quay.io/biocontainers/*")
+    invalid = allowlist.rejection("oras://quay.io/biocontainers/samtools:1.17")
+    assert invalid is not None and invalid.startswith("Invalid container:")
