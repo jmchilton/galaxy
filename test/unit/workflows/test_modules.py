@@ -306,6 +306,32 @@ def test_text_input_regex_validator_negate_from_tool_form(form_value, negate):
     ]
 
 
+STATIC_OPTION_ROUND_TRIP_CASES = [
+    ["a", "b"],
+    [{"value": "a", "label": "Alpha"}, "b"],
+]
+
+
+@pytest.mark.parametrize("how", ["restrictions", "suggestions"])
+@pytest.mark.parametrize("options", STATIC_OPTION_ROUND_TRIP_CASES)
+def test_text_input_static_options_round_trip(how, options):
+    # Loading a step converts static options to the editor's string; exporting parses it back.
+    module = __text_options_module(**{how: options})
+    assert module.get_export_state()[how] == options
+
+
+@pytest.mark.parametrize("how", ["restrictions", "suggestions"])
+def test_text_input_static_options_editor_string(how):
+    module = __text_options_module(**{how: [{"value": "a", "label": "Alpha"}, "b"]})
+    assert __static_options_form_value(module, how) == "a:Alpha,b"
+
+
+@pytest.mark.parametrize("how", ["restrictions", "suggestions"])
+def test_text_input_static_options_from_tool_form(how):
+    step = __text_options_step_from_tool_form(how, "a:Alpha, b")
+    assert step.tool_inputs[how] == [{"value": "a", "label": "Alpha"}, "b"]
+
+
 def test_cannot_create_tool_modules_for_missing_tools():
     trans = MockTrans()
     module = modules.module_factory.from_dict(trans, {"type": "tool", "tool_id": "cat1"})
@@ -844,6 +870,41 @@ def __editor_default_parameter(module, parameter_type):
     type_case = __case(module.get_inputs()["parameter_definition"], parameter_type)
     specify_default = __case(type_case.inputs["optional"], "true").inputs["default"]
     return __case(specify_default, "true").inputs["default"]
+
+
+def __text_options_module(**tool_inputs):
+    step = __step(
+        type="parameter_input",
+        label="Choice",
+        tool_inputs={"parameter_type": "text", "optional": False, **tool_inputs},
+    )
+    return modules.module_factory.from_workflow_step(MockTrans(), step)
+
+
+def __static_options_form_value(module, how):
+    return module.state.inputs["parameter_definition"]["restrictions"][how]
+
+
+def __text_options_step_from_tool_form(how, form_value):
+    # Mirrors the editor's build_module and save: form values arrive as the flattened tool form state.
+    trans = MockTrans()
+    trans.workflow_building_mode = workflow_building_modes.ENABLED
+    module = modules.module_factory.from_dict(trans, {"type": "parameter_input"}, from_tool_form=True)
+    form_how = "staticRestrictions" if how == "restrictions" else "staticSuggestions"
+    incoming = {
+        "parameter_definition|parameter_type": "text",
+        "parameter_definition|optional|optional": "false",
+        "parameter_definition|restrictions|how": form_how,
+        f"parameter_definition|restrictions|{how}": form_value,
+    }
+    module_state: dict[str, Any] = {}
+    errors: dict[str, Any] = {}
+    populate_state(trans, module.get_inputs(), incoming, module_state, errors=errors, check=True)
+    assert not errors
+    module.recover_state(module_state, from_tool_form=True)
+    step = model.WorkflowStep()
+    module.save_to_step(step)
+    return step
 
 
 def __case(conditional, value):
