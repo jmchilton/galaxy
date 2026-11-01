@@ -103,10 +103,10 @@ class TestLibraryContents(SeleniumTestCase, UsesLibraryAssertions, UsesUploadAct
             "selected_library_files.zip",
         )
         with zipfile.ZipFile(zip_path) as archive:
-            names = archive.namelist()
-            # Entries are "<library name>/<dataset name>.<extension>".
-            assert len(names) == 1 and names[0].startswith(f"{self.name}/1.txt."), names
-            contents = archive.read(names[0])
+            [entry] = archive.namelist()
+            # Entries are "<library name>/<dataset name>.<extension>"; the extension is the sniffed datatype's.
+            assert entry.startswith(f"{self.name}/1.txt."), entry
+            contents = archive.read(entry)
         with open(self.get_filename("1.txt"), "rb") as fh:
             assert contents == fh.read()
 
