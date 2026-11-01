@@ -3078,8 +3078,10 @@ class DataCollectionToolParameter(BaseDataToolParameter):
         # An unexpanded batch value (e.g. tool form state) names the collection
         # being mapped over rather than the value bound to this parameter; the
         # type of each bound value is checked once the batch is expanded.
-        is_unexpanded_batch = isinstance(value, MutableMapping) and (
-            bool(value.get("batch")) or value.get("__class__") == "Batch"
+        is_unexpanded_batch = (
+            isinstance(value, MutableMapping)
+            and "values" in value
+            and (bool(value.get("batch")) or value.get("__class__") == "Batch")
         )
         if isinstance(value, MutableMapping) and "values" in value:
             value = self.to_python(value, trans.app)

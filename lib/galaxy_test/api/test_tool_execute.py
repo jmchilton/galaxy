@@ -707,6 +707,18 @@ def test_paired_input_rejects_list_element(
 
 
 @requires_tool_id("collection_paired_test")
+def test_paired_input_rejects_list_flagged_batch_without_values(
+    target_history: TargetHistory, required_tool: RequiredTool, tool_input_format: DescribeToolInputs
+):
+    # Without a ``values`` wrapper nothing is mapped over, so the list is bound directly.
+    if tool_input_format.is_request:
+        pytest.skip("tool request inputs are schema-validated before reaching the parameter")
+    hdca = target_history.with_list()
+    execute = required_tool.execute().with_inputs(tool_input_format.when.any({"f1": {"batch": True, **hdca.src_dict}}))
+    execute.assert_fails.with_error_containing(PAIRED_REJECTS_LIST)
+
+
+@requires_tool_id("collection_paired_test")
 def test_paired_input_rejects_mapping_list_of_lists_over_lists(
     target_history: TargetHistory, required_tool: RequiredTool, tool_input_format: DescribeToolInputs
 ):
