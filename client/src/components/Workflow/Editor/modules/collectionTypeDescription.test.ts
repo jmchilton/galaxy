@@ -61,3 +61,12 @@ describe("append over sample_sheet", () => {
         expect(ct("sample_sheet:paired").append(ct("paired")).collectionType).toBe("list:paired:paired");
     });
 });
+
+describe("append nesting a sample_sheet", () => {
+    it("demotes every sample_sheet rank to list", () => {
+        expect(ct("sample_sheet").append(ct("sample_sheet")).collectionType).toBe("list:list");
+        expect(ct("list").append(ct("sample_sheet")).collectionType).toBe("list:list");
+        expect(ct("list").append(ct("sample_sheet:paired")).collectionType).toBe("list:list:paired");
+        expect(ct("paired").append(ct("sample_sheet")).collectionType).toBe("paired:list");
+    });
+});

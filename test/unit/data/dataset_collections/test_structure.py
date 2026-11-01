@@ -135,3 +135,15 @@ def test_multiply_sample_sheet_by_nested_collection_demotes_to_list(mapping_type
     # a plain list cannot carry sample sheet columns
     assert mapped.column_definitions is None
     assert mapped.columns_metadata == {}
+
+
+@pytest.mark.parametrize("outer_type", ["list", "sample_sheet"])
+def test_multiply_by_unlinked_sample_sheet_demotes_inner_sample_sheets(outer_type):
+    outer = Tree([("a", leaf), ("b", leaf)], factory.for_collection_type(outer_type))
+    mapped = outer.multiply(_sample_sheet_tree("sample_sheet:paired"))
+    assert mapped.collection_type_description.collection_type == "list:list:paired"
+    for _, child in mapped.children:
+        assert child.collection_type_description.collection_type == "list:paired"
+        assert child.column_definitions is None
+        assert child.columns_metadata == {}
+        assert child.children[0][1].collection_type_description.collection_type == "paired"

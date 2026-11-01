@@ -76,6 +76,19 @@ function normalizeCollectionType(collectionType: string): string {
     return collectionType;
 }
 
+/**
+ * Replace every sample_sheet rank with list. sample_sheet is only valid as the
+ * outermost rank, followed by at most a single paired, record or paired_or_unpaired
+ * rank - composing collection types (e.g. mapping a list output over a sample sheet)
+ * can violate that. Mirrors demote_sample_sheet_ranks on the server.
+ */
+function demoteSampleSheetRanks(collectionType: string): string {
+    return collectionType
+        .split(":")
+        .map((rank) => (rank === "sample_sheet" ? "list" : rank))
+        .join(":");
+}
+
 export class CollectionTypeDescription implements CollectionTypeDescriptor {
     collectionType: string;
     isCollection: true;
@@ -94,10 +107,8 @@ export class CollectionTypeDescription implements CollectionTypeDescriptor {
             return other;
         }
         let collectionType = `${this.collectionType}:${other.collectionType}`;
-        if (collectionType.startsWith("sample_sheet") && !isValidCollectionTypeStr(collectionType)) {
-            // A sample_sheet outer level can only be followed by a single paired, record
-            // or paired_or_unpaired level - otherwise demote it to a plain list.
-            collectionType = normalizeCollectionType(collectionType);
+        if (!isValidCollectionTypeStr(collectionType)) {
+            collectionType = demoteSampleSheetRanks(collectionType);
         }
         return new CollectionTypeDescription(collectionType);
     }

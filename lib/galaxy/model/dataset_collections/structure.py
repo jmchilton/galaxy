@@ -7,6 +7,7 @@ from typing import (
 )
 
 from galaxy.model import DatasetCollectionElement
+from .type_description import demote_sample_sheet_ranks
 
 if TYPE_CHECKING:
     from galaxy.model import (
@@ -168,19 +169,18 @@ class Tree(BaseTree):
         for identifier, structure in self.children:
             new_children.append((identifier, structure.multiply(other_structure)))
 
-        # Preserve sample sheet columns when multiplying, unless the outer level
-        # was demoted to a plain list (e.g. sample_sheet x list -> list:list).
         if new_collection_type.collection_type.startswith("sample_sheet"):
-            columns_metadata = self.columns_metadata.copy()
-            column_definitions = self.column_definitions
-        else:
-            columns_metadata = None
-            column_definitions = None
+            return Tree(
+                new_children,
+                new_collection_type,
+                columns_metadata=self.columns_metadata.copy(),
+                column_definitions=self.column_definitions,
+            )
+        # Any sample sheet level was demoted to a plain list (e.g. sample_sheet x list ->
+        # list:list), and a list cannot carry sample sheet columns.
         return Tree(
-            new_children,
+            [(identifier, _demote_sample_sheets(structure)) for identifier, structure in new_children],
             new_collection_type,
-            columns_metadata=columns_metadata,
-            column_definitions=column_definitions,
         )
 
     def clone(self):
@@ -194,6 +194,26 @@ class Tree(BaseTree):
 
     def __str__(self):
         return f"Tree[collection_type={self.collection_type_description},children=({','.join(f'{identifier_and_element[0]}={identifier_and_element[1]}' for identifier_and_element in self.children)})]"
+
+
+def _demote_sample_sheets(structure):
+    """Retype nested sample sheet structures as lists, dropping their columns."""
+    if structure.is_leaf:
+        return structure
+    collection_type_description = structure.collection_type_description
+    collection_type = collection_type_description.collection_type
+    if "sample_sheet" not in collection_type:
+        return structure
+    demoted_description = collection_type_description.collection_type_description_factory.for_collection_type(
+        demote_sample_sheet_ranks(collection_type)
+    )
+    if not structure.children_known:
+        return UninitializedTree(demoted_description)
+    return Tree(
+        [(identifier, _demote_sample_sheets(child)) for identifier, child in structure.children],
+        demoted_description,
+        when_values=structure.when_values,
+    )
 
 
 def tool_output_to_structure(get_sliced_input_collection_structure, tool_output, collections_manager):

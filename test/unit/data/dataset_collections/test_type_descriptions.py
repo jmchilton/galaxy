@@ -205,6 +205,11 @@ def test_validate():
         ("sample_sheet", "paired:paired", "list:paired:paired"),
         ("sample_sheet:paired", "list", "list:paired:list"),
         ("sample_sheet:paired", "paired", "list:paired:paired"),
+        # cross products of unlinked batch inputs can nest a sample sheet anywhere
+        ("sample_sheet", "sample_sheet", "list:list"),
+        ("list", "sample_sheet", "list:list"),
+        ("list", "sample_sheet:paired", "list:list:paired"),
+        ("paired", "sample_sheet", "paired:list"),
     ],
 )
 def test_multiply_sample_sheet_by_invalid_suffix_demotes_to_list(mapped_over, target, expected):

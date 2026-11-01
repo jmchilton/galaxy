@@ -211,11 +211,20 @@ def map_over_collection_type(mapped_over_collection_type, target_collection_type
             target_collection_type = target_collection_type.collection_type
 
         collection_type = f"{mapped_over_collection_type}:{target_collection_type}"
-        if collection_type.startswith("sample_sheet") and COLLECTION_TYPE_REGEX.match(collection_type) is None:
-            # A sample_sheet outer level can only be followed by a single paired, record
-            # or paired_or_unpaired level - otherwise demote it to a plain list.
-            collection_type = _normalize_collection_type(collection_type)
+        if COLLECTION_TYPE_REGEX.match(collection_type) is None:
+            collection_type = demote_sample_sheet_ranks(collection_type)
         return collection_type
+
+
+def demote_sample_sheet_ranks(collection_type: str) -> str:
+    """Replace every ``sample_sheet`` rank with ``list``.
+
+    ``sample_sheet`` is only valid as the outermost rank, followed by at most a single
+    ``paired``, ``record`` or ``paired_or_unpaired`` rank. Composing collection types
+    (e.g. mapping a ``list`` output over a sample sheet) can violate that, and the
+    closest valid type treats each sample sheet as the list it behaves like.
+    """
+    return ":".join("list" if rank == "sample_sheet" else rank for rank in collection_type.split(":"))
 
 
 def _normalize_collection_type(collection_type: str) -> str:
