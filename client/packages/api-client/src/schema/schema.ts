@@ -29971,7 +29971,7 @@ export interface components {
             delta: number | string;
             /**
              * Expression
-             * @description The regular expression that must match an entire line of the output. It is anchored as ``^expression$`` on each line, so end a prefix with ``.*`` (``foo.*`` rather than ``foo``) and group alternatives (``(?:a|b)``).
+             * @description The regular expression that must match an entire line of the output. It is anchored as ``^expression$`` at line boundaries (multiline mode), so end a prefix with ``.*`` (``foo.*`` rather than ``foo``) and group alternatives (``(?:a|b)``).
              */
             expression: string;
             /**
@@ -31444,12 +31444,14 @@ export interface components {
          *     regular expression specified by the argument expression. If n is given
          *     the assertion checks for exactly n occurrences.
          *
-         *     The expression must match an entire line: it is checked as
-         *     ``^expression$`` against each line of the output. To count lines
-         *     starting with ``chr1``, use ``chr1.*``; the expressions ``chr1`` and
-         *     ``^chr1`` only match a line that is exactly ``chr1``. The wrapping
-         *     does not group the expression, so put alternatives in a group, e.g.
-         *     ``(?:chr1|chr2)\t.*`` rather than ``chr1|chr2\t.*``.
+         *     The expression must match an entire line: it is searched for as
+         *     ``^expression$`` in multiline mode, so ``^`` and ``$`` match at line
+         *     boundaries. To count lines starting with ``chr1``, use ``chr1.*``;
+         *     the expressions ``chr1`` and ``^chr1`` only match a line that is
+         *     exactly ``chr1``. The wrapping does not group the expression, so put
+         *     alternatives in a group, e.g. ``(?:chr1|chr2)\t.*`` rather than
+         *     ``chr1|chr2\t.*``. Parts of the expression that can match a newline
+         *     (e.g. ``\s``) can let a match span several lines.
          *
          *     ```xml
          *     <has_line_matching expression="chr1.*" n="2"/>
@@ -31464,7 +31466,7 @@ export interface components {
             delta: number | string;
             /**
              * Expression
-             * @description The regular expression that must match an entire line of the output. It is anchored as ``^expression$`` on each line, so end a prefix with ``.*`` (``foo.*`` rather than ``foo``) and group alternatives (``(?:a|b)``).
+             * @description The regular expression that must match an entire line of the output. It is anchored as ``^expression$`` at line boundaries (multiline mode), so end a prefix with ``.*`` (``foo.*`` rather than ``foo``) and group alternatives (``(?:a|b)``).
              */
             expression: string;
             /**
