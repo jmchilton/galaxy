@@ -1,6 +1,15 @@
-"""Unit tests for the path rewrites of ``PulsarComputeEnvironment``."""
+"""Unit tests for the path rewrites of ``PulsarComputeEnvironment``.
 
-from types import SimpleNamespace
+Staging (``transfer``/``copy``) and ``none`` are covered end to end by the
+composite tools in ``test/integration/test_pulsar_embedded.py`` and
+``test/integration/test_pulsar_embedded_none_local_metadata.py``. These tests
+cover the ``rewrite`` file action, which no integration test exercises.
+"""
+
+from dataclasses import (
+    dataclass,
+    field,
+)
 from typing import (
     Any,
     Optional,
@@ -13,74 +22,78 @@ LOCAL_WORKING_DIRECTORY = "/galaxy/jobs/1"
 REMOTE_JOB_DIRECTORY = "/pulsar/1"
 
 
+@dataclass
 class FakeDataset:
-    def __init__(self, name: str):
-        self.file_name = f"{LOCAL_FILES}/{name}.dat"
-        self.extra_files_path = f"{LOCAL_FILES}/{name}_files"
+    name: str
+
+    @property
+    def extra_files_path(self) -> str:
+        return f"{LOCAL_FILES}/{self.name}_files"
 
     def get_file_name(self) -> str:
-        return self.file_name
+        return f"{LOCAL_FILES}/{self.name}.dat"
 
 
 class FakeLocalComputeEnvironment:
-    def input_path_rewrite(self, dataset):
-        return None
+    """Galaxy's own compute environment: datasets are read and written in place."""
 
-    def output_path_rewrite(self, dataset):
-        return None
+    def input_path_rewrite(self, dataset: FakeDataset) -> str:
+        return dataset.get_file_name()
 
-    def working_directory(self):
+    def output_path_rewrite(self, dataset: FakeDataset) -> str:
+        return dataset.get_file_name()
+
+    def working_directory(self) -> str:
         return LOCAL_WORKING_DIRECTORY
 
-    def version_path(self):
+    def version_path(self) -> str:
         return f"{LOCAL_WORKING_DIRECTORY}/COMMAND_VERSION"
 
 
-def _compute_environment(default_file_action: str, file_actions: Optional[dict[str, Any]] = None):
-    pulsar_client = SimpleNamespace(
-        action_config_path=None,
-        file_actions=file_actions or {},
-        default_file_action=default_file_action,
-        files_endpoint=None,
-    )
-    job_wrapper = SimpleNamespace(default_compute_environment=lambda: FakeLocalComputeEnvironment())
-    remote_job_config = {
-        "inputs_directory": f"{REMOTE_JOB_DIRECTORY}/inputs",
-        "outputs_directory": f"{REMOTE_JOB_DIRECTORY}/outputs",
-        "working_directory": f"{REMOTE_JOB_DIRECTORY}/working",
-        "unstructured_files_directory": f"{REMOTE_JOB_DIRECTORY}/unstructured",
-        "configs_directory": f"{REMOTE_JOB_DIRECTORY}/configs",
-        "tools_directory": f"{REMOTE_JOB_DIRECTORY}/tools",
-        "system_properties": {"separator": "/"},
-    }
-    return PulsarComputeEnvironment(pulsar_client, job_wrapper, remote_job_config)
+class FakeJobWrapper:
+    def default_compute_environment(self) -> FakeLocalComputeEnvironment:
+        return FakeLocalComputeEnvironment()
 
 
-def test_transfer_rewrites_extra_files_into_job_directory():
-    compute_environment = _compute_environment("transfer")
-    dataset = FakeDataset("dataset_1")
+@dataclass
+class FakePulsarClient:
+    """The client attributes Pulsar's ``FileActionMapper`` reads."""
 
-    assert compute_environment.input_path_rewrite(dataset) == "/pulsar/1/inputs/dataset_1.dat"
-    assert compute_environment.input_extra_files_rewrite(dataset) == "/pulsar/1/inputs/dataset_1_files"
-    assert compute_environment.output_extra_files_rewrite(dataset) == "/pulsar/1/outputs/dataset_1_files"
-    # Input extra files are recorded so the client stages them.
-    assert compute_environment.path_rewrites_input_extra == {
-        "/galaxy/files/dataset_1_files": "/pulsar/1/inputs/dataset_1_files"
-    }
+    default_file_action: str
+    file_actions: dict[str, Any] = field(default_factory=dict)
+    action_config_path: Optional[str] = None
+    files_endpoint: Optional[str] = None
 
 
-def test_rewrite_action_rewrites_extra_files_beside_dataset():
+REMOTE_JOB_CONFIG = {
+    "inputs_directory": f"{REMOTE_JOB_DIRECTORY}/inputs",
+    "outputs_directory": f"{REMOTE_JOB_DIRECTORY}/outputs",
+    "working_directory": f"{REMOTE_JOB_DIRECTORY}/working",
+    "unstructured_files_directory": f"{REMOTE_JOB_DIRECTORY}/unstructured",
+    "configs_directory": f"{REMOTE_JOB_DIRECTORY}/configs",
+    "tools_directory": f"{REMOTE_JOB_DIRECTORY}/tools",
+    "system_properties": {"separator": "/"},
+}
+
+
+def _rewrite_compute_environment(destination_directory: str) -> PulsarComputeEnvironment:
+    """Pulsar sees Galaxy's files at ``destination_directory`` without staging them."""
     file_actions = {
         "paths": [
             {
                 "path": LOCAL_FILES,
                 "action": "rewrite",
                 "source_directory": LOCAL_FILES,
-                "destination_directory": "/mnt/files",
+                "destination_directory": destination_directory,
             }
         ]
     }
-    compute_environment = _compute_environment("transfer", file_actions)
+    pulsar_client = FakePulsarClient(default_file_action="transfer", file_actions=file_actions)
+    return PulsarComputeEnvironment(pulsar_client, FakeJobWrapper(), REMOTE_JOB_CONFIG)
+
+
+def test_rewrite_action_rewrites_extra_files_beside_dataset():
+    compute_environment = _rewrite_compute_environment("/mnt/files")
     dataset = FakeDataset("dataset_1")
 
     assert compute_environment.input_path_rewrite(dataset) == "/mnt/files/dataset_1.dat"
@@ -91,32 +104,12 @@ def test_rewrite_action_rewrites_extra_files_beside_dataset():
     }
 
 
-def test_none_action_leaves_extra_files_in_place():
-    compute_environment = _compute_environment("none")
+def test_unchanged_rewrite_action_leaves_extra_files_in_place():
+    compute_environment = _rewrite_compute_environment(LOCAL_FILES)
     dataset = FakeDataset("dataset_1")
 
     assert compute_environment.input_path_rewrite(dataset) is None
     assert compute_environment.input_extra_files_rewrite(dataset) == "/galaxy/files/dataset_1_files"
     assert compute_environment.output_extra_files_rewrite(dataset) == "/galaxy/files/dataset_1_files"
     # Nothing to stage.
-    assert compute_environment.path_rewrites_input_extra == {}
-
-
-def test_unchanged_rewrite_action_leaves_extra_files_in_place():
-    file_actions = {
-        "paths": [
-            {
-                "path": LOCAL_FILES,
-                "action": "rewrite",
-                "source_directory": LOCAL_FILES,
-                "destination_directory": LOCAL_FILES,
-            }
-        ]
-    }
-    compute_environment = _compute_environment("transfer", file_actions)
-    dataset = FakeDataset("dataset_1")
-
-    assert compute_environment.input_path_rewrite(dataset) is None
-    assert compute_environment.input_extra_files_rewrite(dataset) == "/galaxy/files/dataset_1_files"
-    assert compute_environment.output_extra_files_rewrite(dataset) == "/galaxy/files/dataset_1_files"
     assert compute_environment.path_rewrites_input_extra == {}
