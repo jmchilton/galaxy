@@ -1,0 +1,89 @@
+"""Collection-type handling in ``DataCollectionToolParameter.from_json``."""
+
+from types import SimpleNamespace
+
+import pytest
+
+from galaxy import model
+from galaxy.model.dataset_collections.adapters import PromoteCollectionElementToCollectionAdapter
+from galaxy.tools.parameters.basic import (
+    DataCollectionToolParameter,
+    workflow_building_modes,
+)
+from galaxy.util import parse_xml_string
+
+
+def _param(collection_type=None):
+    type_attribute = f'collection_type="{collection_type}"' if collection_type else ""
+    return DataCollectionToolParameter(
+        None, parse_xml_string(f'<param name="input" type="data_collection" {type_attribute}/>')
+    )
+
+
+def _hda():
+    hda = model.HistoryDatasetAssociation(extension="txt", dataset=model.Dataset())
+    hda.dataset.state = model.Dataset.states.OK
+    return hda
+
+
+def _collection(collection_type):
+    """Build a populated collection with two elements at every level."""
+    collection = model.DatasetCollection(collection_type=collection_type, populated=True)
+    rank_type, _, child_type = collection_type.partition(":")
+    identifiers = ["forward", "reverse"] if rank_type == "paired" else ["a", "b"]
+    for index, identifier in enumerate(identifiers):
+        element = _collection(child_type) if child_type else _hda()
+        model.DatasetCollectionElement(
+            collection=collection, element=element, element_index=index, element_identifier=identifier
+        )
+    return collection
+
+
+def _hdca(collection_type):
+    return model.HistoryDatasetCollectionAssociation(collection=_collection(collection_type), deleted=False)
+
+
+def _trans():
+    return SimpleNamespace(
+        sa_session=None, security=None, workflow_building_mode=workflow_building_modes.DISABLED, history=None
+    )
+
+
+@pytest.mark.parametrize(
+    "accepts,supplied",
+    [
+        ("list", "list"),
+        ("paired", "paired"),
+        ("list,list:paired", "list:paired"),
+        ("list", "sample_sheet"),
+        ("list:paired", "sample_sheet:paired"),
+        ("paired_or_unpaired", "paired"),
+        ("paired_or_unpaired", "paired_or_unpaired"),
+        ("list:paired_or_unpaired", "list"),
+        ("list:paired_or_unpaired", "list:paired"),
+        (None, "paired"),
+        (None, "list:list"),
+    ],
+)
+def test_from_json_accepts_compatible_hdca(accepts, supplied):
+    hdca = _hdca(supplied)
+    assert _param(accepts).from_json(hdca, _trans()) is hdca
+
+
+@pytest.mark.parametrize(
+    "accepts,supplied",
+    [
+        ("list", "list:list"),
+        ("paired", "list:paired"),
+    ],
+)
+def test_from_json_accepts_compatible_subcollection_dce(accepts, supplied):
+    # Mapping over a nested collection binds each sub-collection element.
+    dce = _collection(supplied).elements[0]
+    assert _param(accepts).from_json(dce, _trans()) is dce
+
+
+def test_from_json_accepts_promoted_element_adapter():
+    # Mapping a flat list over a paired_or_unpaired input binds adapters.
+    adapter = PromoteCollectionElementToCollectionAdapter(_collection("list").elements[0])
+    assert _param("paired_or_unpaired").from_json(adapter, _trans()) is adapter
