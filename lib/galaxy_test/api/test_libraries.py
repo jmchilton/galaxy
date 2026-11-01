@@ -66,6 +66,34 @@ class TestLibrariesApi(ApiTestCase):
         assert archive_path.endswith(".vtp")
 
     @requires_new_library
+    def test_download_fetched_dataset(self):
+        library, ld = self._fetch_pasted_to_new_library("download_fetched", "fetched content\n")
+
+        response = self.library_populator.download_library_datasets_raw(ld["id"])
+        self._assert_status_code_is(response, 200)
+        assert 'filename="selected_library_files.zip"' in response.headers["Content-Disposition"]
+        archive = zipfile.ZipFile(BytesIO(response.content))
+        assert archive.namelist() == [f"{library['name']}/fetched.txt.txt"]
+        assert archive.read(f"{library['name']}/fetched.txt.txt") == b"fetched content\n"
+
+    @requires_new_library
+    def test_show_fetched_ldda(self):
+        library, ld = self._fetch_pasted_to_new_library("show_fetched", "fetched content\n")
+        ldda_id = self.library_populator.show_ld(library["id"], ld["id"])["ldda_id"]
+
+        ldda = self.library_populator.show_ldda(ldda_id)
+        assert ldda["name"] == "fetched.txt"
+
+    def _fetch_pasted_to_new_library(self, test_name: str, content: str):
+        history_id, library, destination = self._setup_fetch_to_folder(test_name)
+        items = [{"src": "pasted", "paste_content": content, "name": "fetched.txt", "ext": "txt"}]
+        self.dataset_populator.fetch(
+            {"history_id": history_id, "targets": [{"destination": destination, "items": items}]}
+        )
+        ld = self.library_populator.get_library_contents_with_path(library["id"], "/fetched.txt")
+        return library, ld
+
+    @requires_new_library
     def test_index(self):
         self.library_populator.new_library("TestIndexLibraries")
         libraries = self.library_populator.get_libraries()
