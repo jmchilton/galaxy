@@ -117,3 +117,39 @@ def test_from_json_rejects_incompatible_adapter():
     adapter = PromoteCollectionElementToCollectionAdapter(_collection("list").elements[0])
     with pytest.raises(ParameterValueError, match="collection of type 'paired_or_unpaired' was supplied"):
         _param("list").from_json(adapter, _trans())
+
+
+def _trans_resolving(hdca):
+    # ``history_item_dict_to_python`` resolves ``{"src": "hdca", "id": ...}`` through the app.
+    app = SimpleNamespace(model=SimpleNamespace(context=SimpleNamespace(get=lambda cls, id: hdca)))
+    trans = _trans()
+    trans.app = app
+    trans.sa_session = app.model.context
+    trans.security = SimpleNamespace(decode_id=lambda id: id)
+    app.security = trans.security
+    return trans
+
+
+def test_from_json_skips_unexpanded_batch_value():
+    # Tool form state for a map-over names the collection being mapped over.
+    hdca = _hdca("list:paired")
+    value = {"batch": True, "values": [{"src": "hdca", "id": 1, "map_over_type": "paired"}]}
+    assert _param("paired").from_json(value, _trans_resolving(hdca)) is hdca
+
+
+def test_from_json_checks_non_batch_values_dict():
+    hdca = _hdca("list:paired")
+    value = {"batch": False, "values": [{"src": "hdca", "id": 1}]}
+    with pytest.raises(ParameterValueError, match="collection of type 'list:paired' was supplied"):
+        _param("paired").from_json(value, _trans_resolving(hdca))
+
+
+def test_from_json_allow_map_over_accepts_mappable_collection():
+    # Workflow runtime values are mapped over the input when they do not match directly.
+    hdca = _hdca("list:paired")
+    assert _param("paired").from_json(hdca, _trans(), allow_map_over=True) is hdca
+
+
+def test_from_json_allow_map_over_rejects_unmappable_collection():
+    with pytest.raises(ParameterValueError, match="collection of type 'list' was supplied"):
+        _param("paired").from_json(_hdca("list"), _trans(), allow_map_over=True)

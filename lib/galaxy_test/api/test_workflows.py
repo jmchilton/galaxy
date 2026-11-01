@@ -11021,6 +11021,75 @@ steps:
                 history_id=history_id, workflow_id=workflow_id, invocation_id=invocation_response.json()["id"]
             )
 
+    @skip_without_tool("collection_paired_conditional_structured_like")
+    def test_run_step_parameter_dict_rejects_incompatible_collection(self):
+        # A runtime collection that the paired input neither accepts nor can map over.
+        with self.dataset_populator.test_history() as history_id:
+            hdca = self.dataset_collection_populator.create_list_in_history(
+                history_id, contents=["a", "b"], wait=True
+            ).json()["outputs"][0]
+            workflow_id = self._upload_yaml_workflow("""
+class: GalaxyWorkflow
+steps:
+  "0":
+    tool_id: collection_paired_conditional_structured_like
+    state:
+      cond:
+        input1:
+          __class__: RuntimeValue
+""")
+            workflow_request = {
+                "history": f"hist_id={history_id}",
+                "parameters": dumps({"0": {"cond|input1": {"values": [{"id": hdca["id"], "src": "hdca"}]}}}),
+                "parameters_normalized": True,
+            }
+            invocation_response = self._post(f"workflows/{workflow_id}/invocations", data=workflow_request, json=True)
+            self._assert_status_code_is(invocation_response, 400)
+            step_error = invocation_response.json()["err_data"]["0"]["cond|input1"]
+            assert "of type 'list' was supplied" in step_error, step_error
+            assert not self.dataset_populator.history_jobs_for_tool(
+                history_id, "collection_paired_conditional_structured_like"
+            )
+
+    @skip_without_tool("collection_paired_test")
+    def test_untyped_collection_input_incompatible_with_tool_fails_job(self):
+        # An untyped workflow input passes a list straight to a paired tool input
+        # (neither a direct match nor mappable), so the job is rejected at job preparation.
+        with self.dataset_populator.test_history() as history_id:
+            self.workflow_populator.run_workflow(
+                """
+class: GalaxyWorkflow
+inputs:
+  input:
+    type: collection
+steps:
+  paired_step:
+    tool_id: collection_paired_test
+    in:
+      f1: input
+""",
+                test_data="""
+input:
+  collection_type: list
+  elements:
+    - identifier: a
+      content: "a"
+    - identifier: b
+      content: "b"
+""",
+                history_id=history_id,
+                assert_ok=False,
+                wait=True,
+            )
+            jobs = self.dataset_populator.history_jobs_for_tool(history_id, "collection_paired_test")
+            assert len(jobs) == 1, jobs
+            job = self.dataset_populator.get_job_details(jobs[0]["id"], full=True).json()
+            assert job["state"] == "error", job
+            output = self.dataset_populator.get_history_dataset_details(
+                history_id, dataset_id=job["outputs"]["out1"]["id"], assert_ok=False
+            )
+            assert "of type 'list' was supplied" in output["misc_info"], output
+
     @skip_without_tool("validation_default")
     def test_parameter_substitution_validation_value_errors_1(self):
         substitions = dict(select_param='" ; echo "moo')
