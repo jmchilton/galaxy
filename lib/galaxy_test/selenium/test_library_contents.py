@@ -110,9 +110,12 @@ class TestLibraryContents(SeleniumTestCase, UsesLibraryAssertions, UsesUploadAct
         library_populator.wait_on_library_dataset(library["id"], dataset["id"])
         self.libraries_open_with_name(library_name)
         self.libraries_folder_select_datasets(["1.txt"])
+        download_button = self.components.libraries.folder.download_button
+        download_button.wait_for_visible()
+        self.screenshot("libraries_folder_download_selected")
 
         zip_path = self.download_file_from(
-            self.components.libraries.folder.download_button.wait_for_and_click,
+            download_button.wait_for_and_click,
             "selected_library_files.zip",
         )
         with zipfile.ZipFile(zip_path) as archive:
