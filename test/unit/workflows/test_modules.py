@@ -510,6 +510,9 @@ def _construct_steps_for_map_over() -> list[MapOverTestCase]:
         ("list:list", ["list", "pair"], "dataset", "list"),
         ("list:list", ["list", "pair"], "list", "list:list"),
         ("list:list", ["list", "pair"], "list:list", "list:list:list"),
+        ("sample_sheet", "dataset", "dataset", "sample_sheet"),
+        ("sample_sheet", "dataset", "paired", "sample_sheet:paired"),
+        ("sample_sheet:paired", "dataset", "dataset", "sample_sheet:paired"),
     ]
     test_cases = []
     for data_input, step_input_def, step_output_def, expected_collection_type in test_case_args:
