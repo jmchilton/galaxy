@@ -1,3 +1,4 @@
+import itertools
 import json
 from datetime import timedelta
 from typing import (
@@ -25,7 +26,11 @@ from galaxy.util import (
     now,
 )
 from galaxy.workflow import modules
-from galaxy.workflow.workflow_parameter_input_definitions import split_numeric_bounds
+from galaxy.workflow.workflow_parameter_input_definitions import (
+    form_str_to_parameter_options,
+    parameter_options_to_form_str,
+    split_numeric_bounds,
+)
 from .workflow_support import (
     MockTrans,
     yaml_to_model,
@@ -327,6 +332,7 @@ STATIC_OPTION_ROUND_TRIP_CASES = [
         ([{"value": "a"}, "b"], ["a", "b"]),
         ([1, 2.5, {"value": 3, "label": 4}], ["1", "2.5", {"value": "3", "label": "4"}]),
         ([{"value": "", "label": ""}], [""]),
+        ([None, {"value": None, "label": "Nothing"}], ["", {"value": "", "label": "Nothing"}]),
     ],
 )
 def test_text_input_static_options_normalized_round_trip(options, expected):
@@ -358,14 +364,29 @@ def test_text_input_static_options_normalized_round_trip(options, expected):
         (" a : Alpha , b ", [{"value": "a", "label": "Alpha"}, "b"]),
     ],
 )
-def test_text_input_static_options_form_parsing(form_value, expected):
-    step = __text_options_step_from_tool_form("restrictions", form_value)
-    assert step.tool_inputs["restrictions"] == expected
+def test_static_options_form_parsing(form_value, expected):
+    assert form_str_to_parameter_options(form_value) == expected
+
+
+def test_static_options_form_str_round_trips_special_characters():
+    texts = ["".join(chars) for n in range(5) for chars in itertools.product("a\\,: ", repeat=n)]
+    for text in texts:
+        # An empty value with an empty label loads as "" (see test_text_input_static_options_normalized_round_trip).
+        labeled = {"value": text, "label": text or "Empty"}
+        for options in ([text, "b"], [labeled, "b"]):
+            assert form_str_to_parameter_options(parameter_options_to_form_str(options)) == options, options
+
+
+def test_text_input_static_options_from_tool_form_escapes():
+    step = __text_options_step_from_tool_form("restrictions", "a\\:b,,1\\,2:One\\, two,:")
+    assert step.tool_inputs["restrictions"] == ["a:b", {"value": "1,2", "label": "One, two"}, ""]
 
 
 def test_text_input_static_options_editor_string_escapes():
-    module = __text_options_module(restrictions=["a:b", {"value": "1,2", "label": " x\\"}, ""])
-    assert __static_options_form_value(module, "restrictions") == "a\\:b,1\\,2:\\ x\\\\,:"
+    # Backslashes are only doubled where parsing would otherwise read an escape, so typed paths read back as typed.
+    options = ["a:b", {"value": "1,2", "label": " x\\"}, "", "C\\data", "a\\,b"]
+    module = __text_options_module(restrictions=options)
+    assert __static_options_form_value(module, "restrictions") == "a\\:b,1\\,2:\\ x\\\\,:,C\\data,a\\\\\\,b"
 
 
 @pytest.mark.parametrize("how", ["restrictions", "suggestions"])

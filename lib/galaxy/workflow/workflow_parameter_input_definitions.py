@@ -259,7 +259,7 @@ def _is_position_validator_pair(pair: Any) -> bool:
 
 # The workflow editor edits a text input's static restrictions and suggestions as one string:
 # comma-separated entries, each a value or ``value:label``. A backslash makes the next ``\``, ``,``, ``:``
-# or whitespace character literal; other backslashes are kept as typed.
+# or whitespace character literal; other backslashes are kept as typed. A lone ``:`` is the empty value.
 _OPTION_STRING_ESCAPABLE = "\\,:"
 _EMPTY_OPTION_FORM_STR = ":"
 STATIC_OPTIONS_FORM_HELP = (
@@ -267,6 +267,7 @@ STATIC_OPTIONS_FORM_HELP = (
     "Type \\, \\: or \\\\ for a literal comma, colon or backslash."
 )
 OptionChars = list[tuple[str, bool]]
+StaticParameterOption = Union[str, dict[str, str]]
 
 
 def parameter_options_to_form_str(options: list[Any]) -> str:
@@ -274,9 +275,9 @@ def parameter_options_to_form_str(options: list[Any]) -> str:
     return ",".join(_option_to_form_str(option) for option in options)
 
 
-def form_str_to_parameter_options(form_str: str) -> list[str | dict[str, str]]:
+def form_str_to_parameter_options(form_str: str) -> list[StaticParameterOption]:
     """Parse the editor's static options string; an entry with nothing in it (a stray comma) is dropped."""
-    options: list[str | dict[str, str]] = []
+    options: list[StaticParameterOption] = []
     for entry in _split_option_chars(_option_chars(form_str), ","):
         value_and_label = _split_option_chars(entry, ":", maxsplit=1)
         value = _strip_option_chars(value_and_label[0])
@@ -295,24 +296,44 @@ def form_str_to_parameter_options(form_str: str) -> list[str | dict[str, str]]:
 
 def _option_to_form_str(option: Any) -> str:
     if isinstance(option, dict):
-        value = str(option["value"])
+        value = _option_text(option["value"])
         label = option.get("label")
         if label is not None:
-            return f"{_escape_option_part(value)}:{_escape_option_part(str(label))}"
+            return f"{_escape_option_part(value)}:{_escape_option_part(_option_text(label))}"
         option = value
-    value = str(option)
+    value = _option_text(option)
     if value == "":
         return _EMPTY_OPTION_FORM_STR
     return _escape_option_part(value)
 
 
+def _option_text(value: Any) -> str:
+    # Non-text entries never loaded before (joining them raised), so load them as their text.
+    return "" if value is None else str(value)
+
+
 def _escape_option_part(text: str) -> str:
-    escaped = "".join(f"\\{char}" if char in _OPTION_STRING_ESCAPABLE else char for char in text)
+    escaped = []
+    for i, char in enumerate(text):
+        next_char = text[i + 1] if i + 1 < len(text) else None
+        # Only escape a backslash that parsing would otherwise read as an escape (or that ends the part),
+        # so typed backslashes like ``C\data`` read back unchanged.
+        if char in ",:" or (
+            char == "\\" and (next_char is None or next_char in _OPTION_STRING_ESCAPABLE or next_char.isspace())
+        ):
+            escaped.append(f"\\{char}")
+        else:
+            escaped.append(char)
     # Parsing strips unescaped whitespace from each end, so escape whitespace there.
-    start = len(escaped) - len(escaped.lstrip())
-    end = max(len(escaped.rstrip()), start)
-    leading, core, trailing = escaped[:start], escaped[start:end], escaped[end:]
-    return "".join(f"\\{char}" for char in leading) + core + "".join(f"\\{char}" for char in trailing)
+    start = 0
+    while start < len(escaped) and escaped[start].isspace():
+        escaped[start] = f"\\{escaped[start]}"
+        start += 1
+    end = len(escaped)
+    while end > start and escaped[end - 1].isspace():
+        escaped[end - 1] = f"\\{escaped[end - 1]}"
+        end -= 1
+    return "".join(escaped)
 
 
 def _option_chars(form_str: str) -> OptionChars:
