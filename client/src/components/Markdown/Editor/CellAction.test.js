@@ -12,6 +12,14 @@ vi.mock("@/composables/confirmDialog", () => ({
 
 let container;
 
+// Dispatch a full key press and return the keydown event, to check whether its default was prevented.
+function pressKey(element, key) {
+    const keydown = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+    element.dispatchEvent(keydown);
+    element.dispatchEvent(new KeyboardEvent("keyup", { key, bubbles: true, cancelable: true }));
+    return keydown;
+}
+
 function mountTarget(props = {}) {
     return mount(CellAction, {
         props: { cellIndex: 1, cellTotal: 3, name: "markdown", ...props },
@@ -84,7 +92,10 @@ describe("CellAction.vue", () => {
         expect(menu.isVisible()).toBe(false);
 
         ({ menu } = await openMenu(wrapper));
-        await findOption(wrapper, "Move Down").trigger("keydown", { key: " " });
+        const moveDown = findOption(wrapper, "Move Down");
+        await moveDown.trigger("keydown", { key: " " });
+        expect(menu.isVisible()).toBe(true);
+        await moveDown.trigger("keyup", { key: " " });
         expect(wrapper.emitted("move")).toEqual([["up"], ["down"]]);
         expect(menu.isVisible()).toBe(false);
         wrapper.unmount();
@@ -102,10 +113,9 @@ describe("CellAction.vue", () => {
             const option = findOption(wrapper, title);
             option.element.focus();
             expect(document.activeElement).toBe(option.element);
-            const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
-            option.element.dispatchEvent(event);
+            const event = pressKey(option.element, key);
             await wrapper.vm.$nextTick();
-            // A default Enter would re-activate the trigger button that now has focus.
+            // Unprevented, Space scrolls the page and Enter activates the trigger that now has focus.
             expect(event.defaultPrevented).toBe(true);
             expect(menu.isVisible()).toBe(false);
             expect(document.activeElement).toBe(button.element);
