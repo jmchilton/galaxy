@@ -50,6 +50,7 @@ from galaxy.model.dataset_collections.adapters import (
     TransientCollectionAdapterDatasetInstanceElement,
     validate_collection_adapter_src_dict,
 )
+from galaxy.model.dataset_collections.type_description import COLLECTION_TYPE_DESCRIPTION_FACTORY
 from galaxy.model.dataset_collections.types.sample_sheet_util import column_definitions_compatible
 from galaxy.schema.fetch_data import FilesPayload
 from galaxy.tool_util.parameters.factory import get_color_value
@@ -3068,6 +3069,12 @@ class DataCollectionToolParameter(BaseDataToolParameter):
                 assert trans.history is not None
                 return raw_to_galaxy(trans.app, trans.history, self.default_object)
             return None
+        # An unexpanded batch value (e.g. tool form state) names the collection
+        # being mapped over rather than the value bound to this parameter; the
+        # type of each bound value is checked once the batch is expanded.
+        is_unexpanded_batch = isinstance(value, MutableMapping) and (
+            value.get("batch") is True or value.get("__class__") == "Batch"
+        )
         if isinstance(value, MutableMapping) and "values" in value:
             value = self.to_python(value, trans.app)
         if isinstance(value, str) and value.find(",") > 0:
@@ -3117,7 +3124,37 @@ class DataCollectionToolParameter(BaseDataToolParameter):
                     raise ParameterValueError(
                         "the previously selected dataset collection has elements that are deleted.", self.name
                     )
+            if not is_unexpanded_batch:
+                self._check_collection_type(rval)
         return rval
+
+    def _check_collection_type(self, value: ItemFromSrcCollection) -> None:
+        """Reject a collection whose type this parameter does not accept directly.
+
+        Mapping over a collection binds its sub-collection elements (or
+        adapters) to the parameter, so those arrive here instead of the
+        collection being mapped over.
+        """
+        collection_types = self.collection_types
+        if not collection_types:
+            return
+        if isinstance(value, HistoryDatasetCollectionAssociation):
+            collection_type = value.collection.collection_type
+        elif isinstance(value, DatasetCollectionElement):
+            child_collection = value.child_collection
+            if child_collection is None:
+                return
+            collection_type = child_collection.collection_type
+        else:
+            collection_type = value.collection_type
+        for accepted_type in collection_types:
+            if COLLECTION_TYPE_DESCRIPTION_FACTORY.for_collection_type(accepted_type).accepts(collection_type):
+                return
+        accepted = ", ".join(f"'{t}'" for t in collection_types)
+        raise ParameterValueError(
+            f"a dataset collection of type '{collection_type}' was supplied, but this parameter accepts only {accepted}",
+            self.name,
+        )
 
     def to_text(self, value):
         try:

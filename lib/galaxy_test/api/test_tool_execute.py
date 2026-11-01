@@ -679,6 +679,48 @@ def test_paired_or_unpaired_not_consumed_by_paired_when_mapping(
     ).assert_fails.with_error_containing("Cannot split collection")
 
 
+PAIRED_REJECTS_LIST = "dataset collection of type 'list' was supplied, but this parameter accepts only 'paired'"
+
+
+@requires_tool_id("collection_paired_test")
+def test_paired_input_rejects_list(
+    target_history: TargetHistory, required_tool: RequiredTool, tool_input_format: DescribeToolInputs
+):
+    hdca = target_history.with_list()
+    execute = required_tool.execute().with_inputs(tool_input_format.when.any({"f1": hdca.src_dict}))
+    execute.assert_fails.with_error_containing(PAIRED_REJECTS_LIST)
+
+
+@requires_tool_id("collection_paired_test")
+def test_paired_input_rejects_list_element(
+    target_history: TargetHistory,
+    required_tool: RequiredTool,
+    tool_input_format: DescribeToolInputs,
+    dataset_populator: DatasetPopulator,
+    history_id: str,
+):
+    hdca = target_history.with_example_list_of_lists()
+    collection_details = dataset_populator.get_history_collection_details(history_id, content_id=hdca.id)
+    dce_val = {"src": "dce", "id": collection_details["elements"][0]["id"]}
+    execute = required_tool.execute().with_inputs(tool_input_format.when.any({"f1": dce_val}))
+    execute.assert_fails.with_error_containing(PAIRED_REJECTS_LIST)
+
+
+@requires_tool_id("collection_paired_test")
+def test_paired_input_rejects_mapping_list_of_lists_over_lists(
+    target_history: TargetHistory, required_tool: RequiredTool, tool_input_format: DescribeToolInputs
+):
+    # The requested map-over type must split the collection into values the input accepts.
+    hdca = target_history.with_example_list_of_lists()
+    batch_val = {"map_over_type": "list", **hdca.src_dict}
+    inputs = (
+        tool_input_format.when.flat({"f1": {"batch": True, "values": [batch_val]}})
+        .when.nested({"f1": {"batch": True, "values": [batch_val]}})
+        .when.request({"f1": {"__class__": "Batch", "values": [batch_val]}})
+    )
+    required_tool.execute().with_inputs(inputs).assert_fails.with_error_containing(PAIRED_REJECTS_LIST)
+
+
 @requires_tool_id("collection_paired_test")
 def test_simple_subcollection_mapping(
     target_history: TargetHistory, required_tool: RequiredTool, tool_input_format: DescribeToolInputs
