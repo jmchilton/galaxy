@@ -60,10 +60,7 @@ from galaxy.util import (
 )
 from galaxy.util.unittest_utils import skip_if_github_down
 from galaxy.util.unittest_utils.test_http_server import TestHttpServer
-from galaxy.util.wait import (
-    TimeoutAssertionError,
-    wait_on,
-)
+from galaxy.util.wait import TimeoutAssertionError
 from galaxy_test.base import populators
 from galaxy_test.base.api import (
     UsesApiTestCaseMixin,
@@ -578,20 +575,17 @@ class TestWithSeleniumMixin(GalaxyTestSeleniumContext, UsesApiTestCaseMixin, Use
             os.remove(download_path)
         trigger()
 
-        def _downloaded() -> str | None:
-            # Chrome writes to "<name>.crdownload" and renames it when the download completes.
-            if os.path.exists(download_path) and not os.path.exists(f"{download_path}.crdownload"):
-                return download_path
-            return None
+        def _downloaded() -> bool:
+            # Chrome streams into "<name>.crdownload" and Firefox into "<name>.part" (after
+            # creating an empty placeholder under the final name); both rename on completion.
+            return (
+                os.path.exists(download_path)
+                and os.path.getsize(download_path) > 0
+                and not any(os.path.exists(f"{download_path}{suffix}") for suffix in (".crdownload", ".part"))
+            )
 
-        return cast(
-            str,
-            wait_on(
-                _downloaded,
-                f"download of [{expected_filename}]",
-                timeout=self.wait_length(self.wait_types.DATABASE_OPERATION),
-            ),
-        )
+        self._wait_on(_downloaded, f"download of [{expected_filename}]", wait_type=self.wait_types.DATABASE_OPERATION)
+        return download_path
 
     @property
     def anonymous_galaxy_interactor(self):
