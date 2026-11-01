@@ -118,25 +118,47 @@ class TestPages(SeleniumTestCase, UsesUploadActivity):
         slug = self._get_random_name(prefix="cellmenus")
         page = self.dataset_populator.new_page(slug=slug, content_format="markdown", content="# Starter")
         self.navigate_to_page_editor(page["id"])
-        cell_editor = self.components.markdown_cell_editor
-        cell_editor.editor_mode_button.wait_for_and_click()
-        cell_editor.button(title="Edit Cell").wait_for_and_click()
+        self.components.markdown_cell_editor.editor_mode_button.wait_for_and_click()
+        # Clone and Insert Cell Below add cells after this one, so index 0 stays this cell.
+        cell = self.components.markdown_cell_editor.cell(index=0)
+        cell.toggle_button.wait_for_and_click()
 
         for key in (Key.ENTER, Key.SPACE):
-            cell_editor.button(title="Actions").wait_for_and_click()
-            self.press(key, element=cell_editor.actions_option(title="Clone").wait_for_visible())
-            self._assert_menu_closed_and_focus_on(cell_editor.actions_menu, "Actions")
+            # Both keys show the same menus; screenshot them once.
+            screenshot = key is Key.ENTER
+            self._markdown_cell_menu_select_with_key(
+                cell.actions_button,
+                cell.actions_option(title="Clone"),
+                cell.actions_menu,
+                key,
+                "pages_cell_editor_actions_menu" if screenshot else None,
+            )
+            self._markdown_cell_menu_select_with_key(
+                cell.insert_button,
+                cell.insert_option(title="Heading 1"),
+                cell.insert_menu,
+                key,
+                "pages_cell_editor_insert_menu" if screenshot else None,
+            )
 
-            cell_editor.button(title="Insert").wait_for_and_click()
-            self.press(key, element=cell_editor.add_option.wait_for_visible())
-            self._assert_menu_closed_and_focus_on(cell_editor.add_menu, "Insert")
-
-    def _assert_menu_closed_and_focus_on(self, menu: SmartTarget, button_title: str) -> None:
+    def _markdown_cell_menu_select_with_key(
+        self,
+        button: SmartTarget,
+        option: SmartTarget,
+        menu: SmartTarget,
+        key: Key,
+        screenshot_name: str | None,
+    ) -> None:
+        button.wait_for_and_click()
+        option_element = option.wait_for_visible()
+        self.screenshot_if(screenshot_name)
+        self.press(key, element=option_element)
         menu.wait_for_absent_or_hidden()
-        # The key press must not also activate the refocused button and reopen the menu.
+        # Deliberate sleep: the menu must stay closed, and no element appears to wait on.
+        # A key press that also activated the refocused button would reopen the menu in this window.
         self.sleep_for(self.wait_types.UX_RENDER)
         menu.assert_absent_or_hidden()
-        assert self.active_element().get_attribute("data-title") == button_title
+        assert self.execute_script("return document.activeElement === arguments[0];", button.wait_for_visible())
 
     @selenium_test
     @managed_history

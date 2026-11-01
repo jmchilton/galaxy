@@ -8,7 +8,8 @@
             tooltip
             tooltip-placement="right"
             :title="title"
-            :pressed="popperRef?.visible">
+            :pressed="popperRef?.visible"
+            data-description="markdown cell insert button">
             <FontAwesomeIcon :icon="faPlus" fixed-width />
             <slot></slot>
         </GButton>
@@ -20,7 +21,7 @@
             placement="right"
             mode="light">
             <DelayedInput class="p-1" :delay="100" placeholder="Search" @change="query = $event" />
-            <div class="cell-dropdown overflow-auto">
+            <div class="cell-dropdown overflow-auto" data-description="markdown cell insert menu">
                 <div v-if="Object.keys(filteredTemplates).length > 0">
                     <div
                         v-for="(templates, categoryName) of filteredTemplates"

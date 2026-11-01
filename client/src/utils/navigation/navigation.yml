@@ -864,17 +864,20 @@ pages:
 
 markdown_cell_editor:
   selectors:
+    # BootstrapVue button-style radios hide their <input>; click the visible label.
     editor_mode_button:
       type: xpath
-      selector: '//label[contains(@class, "btn")][.//input[@type="radio"][@value="editor"]]'
-    # Icon buttons carry their title as data-title; the first match is the topmost one.
-    button: '[data-title="${title}"]'
-    add_menu: '.cell-add-options'
-    add_option: '.cell-add-options .cell-option'
-    actions_menu: 'nav[aria-label="cell actions"]'
-    actions_option:
-      type: xpath
-      selector: '//nav[@aria-label="cell actions"]//*[contains(@class, "cell-option")][.//div[normalize-space()="${title}"]]'
+      selector: '//*[@data-description="markdown editor mode"]//label[.//input[@value="editor"]]'
+  cell:
+    selectors:
+      _: '[data-description="markdown cell"][data-cell-index="${index}"]'
+      toggle_button: '${_} [data-description="markdown cell toggle button"]'
+      actions_button: '${_} [data-description="markdown cell actions button"]'
+      actions_menu: '${_} [data-description="markdown cell actions menu"]'
+      actions_option: '${_} [data-description="markdown cell actions menu"] [data-option-title="${title}"]'
+      insert_button: '${_} [data-description="markdown cell insert button"]'
+      insert_menu: '${_} [data-description="markdown cell insert menu"]'
+      insert_option: '${_} [data-description="markdown cell insert menu"] [data-option-title="${title}"]'
 
 login:
   selectors:

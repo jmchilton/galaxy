@@ -12,6 +12,7 @@
                             v-if="!hasLabels"
                             v-model="editor"
                             v-g-tooltip.hover.bottom
+                            data-description="markdown editor mode"
                             button-variant="outline-primary"
                             buttons
                             size="sm"

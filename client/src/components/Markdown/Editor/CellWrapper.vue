@@ -1,5 +1,11 @@
 <template>
-    <div tabindex="0" role="presentation" @mouseenter="hover = true" @mouseleave="hover = false">
+    <div
+        tabindex="0"
+        role="presentation"
+        data-description="markdown cell"
+        :data-cell-index="cellIndex"
+        @mouseenter="hover = true"
+        @mouseleave="hover = false">
         <div class="d-flex">
             <div class="d-flex flex-column justify-content-end px-1" :class="{ 'cell-wrapper-hover': hover }">
                 <GButtonGroup vertical class="py-1">
@@ -11,6 +17,7 @@
                         tooltip
                         tooltip-placement="right"
                         :title="toggle ? 'Collapse Editor' : 'Edit Cell'"
+                        data-description="markdown cell toggle button"
                         @click="$emit('toggle')">
                         <FontAwesomeIcon :icon="toggle ? faAngleDoubleUp : faEdit" fixed-width />
                     </GButton>

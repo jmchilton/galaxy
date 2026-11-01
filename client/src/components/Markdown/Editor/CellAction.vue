@@ -8,7 +8,8 @@
             icon-only
             tooltip
             tooltip-placement="right"
-            title="Actions">
+            title="Actions"
+            data-description="markdown cell actions button">
             <FontAwesomeIcon :icon="faEllipsisV" fixed-width />
         </GButton>
         <Popper
@@ -21,6 +22,7 @@
             <nav
                 role="menu"
                 aria-label="cell actions"
+                data-description="markdown cell actions menu"
                 tabindex="0"
                 @click="popperRef.close()"
                 @keydown.enter.prevent="popperRef.close()"
