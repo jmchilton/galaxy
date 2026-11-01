@@ -1201,7 +1201,7 @@ class PulsarComputeEnvironment(ComputeEnvironment):
         remote_path = self.path_mapper.remote_output_path_rewrite(local_output_path)
         return remote_path
 
-    def input_extra_files_rewrite(self, dataset):
+    def input_extra_files_rewrite(self, dataset) -> str:
         input_path_rewrite = self.input_path_rewrite(dataset)
         if input_path_rewrite is None:
             # Not staged or rewritten (e.g. a ``none`` file action): the job reads
@@ -1211,7 +1211,7 @@ class PulsarComputeEnvironment(ComputeEnvironment):
         self.path_rewrites_input_extra[dataset.extra_files_path] = remote_extra_files_path_rewrite
         return remote_extra_files_path_rewrite
 
-    def output_extra_files_rewrite(self, dataset):
+    def output_extra_files_rewrite(self, dataset) -> str:
         output_path_rewrite = self.output_path_rewrite(dataset)
         if output_path_rewrite is None:
             return dataset.extra_files_path
