@@ -6,10 +6,7 @@ from typing import (
 
 import pytest
 
-from galaxy.jobs.runners import (
-    BaseJobRunner,
-    ContainerNotAllowedError,
-)
+from galaxy.jobs.runners import BaseJobRunner
 from galaxy.tool_util.deps.image_references import ContainerAllowlist
 from galaxy.tool_util.deps.requirements import ContainerDescription
 
@@ -20,9 +17,9 @@ if TYPE_CHECKING:
 RESOLVED = object()
 
 
-def _job_wrapper(identifier: str, tool_type: str = "user_defined"):
+def _job_wrapper(identifier: str):
     tool = SimpleNamespace(
-        tool_type=tool_type,
+        tool_type="user_defined",
         containers=[ContainerDescription(identifier)],
         requirements=[],
         requires_galaxy_python_environment=False,
@@ -64,14 +61,5 @@ def no_disk_paths(monkeypatch):
     monkeypatch.setattr("galaxy.jobs.runners.get_disk_paths", lambda object_store: set())
 
 
-def test_user_defined_tool_with_disallowed_container_fails():
-    with pytest.raises(ContainerNotAllowedError, match="Container 'busybox' is not allowed"):
-        _runner()._find_container(_job_wrapper("busybox"))
-
-
-def test_user_defined_tool_with_allowed_container_proceeds():
+def test_allowed_declared_container_passes_whatever_the_resolver_returns():
     assert _runner()._find_container(_job_wrapper("quay.io/biocontainers/samtools:1.17")) is RESOLVED
-
-
-def test_other_tools_are_not_checked():
-    assert _runner()._find_container(_job_wrapper("busybox", tool_type="default")) is RESOLVED

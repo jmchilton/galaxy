@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from galaxy.tools import Tool
 from galaxy_test.api.test_tools import TestsTools
 from galaxy_test.base.populators import (
     DatasetPopulator,
@@ -14,6 +15,7 @@ BIOCONTAINERS_TOOL = {**TOOL_WITH_SHELL_COMMAND, "container": "quay.io/biocontai
 
 class TestUserDefinedToolContainerAllowlist(integration_util.IntegrationTestCase, TestsTools):
     dataset_populator: DatasetPopulator
+    framework_tool_and_types = True
 
     @classmethod
     def handle_galaxy_config_kwds(cls, config):
@@ -57,6 +59,31 @@ class TestUserDefinedToolContainerAllowlist(integration_util.IntegrationTestCase
                 history_id, dataset_id=response["outputs"][0]["id"], assert_ok=False
             )
             assert "Container 'busybox' is not allowed for user defined tools" in output["misc_info"]
+
+    def test_job_of_tool_with_allowed_container_runs(self):
+        with (
+            self.dataset_populator.test_history() as history_id,
+            self.dataset_populator.user_tool_execute_permissions(),
+        ):
+            uuid = self.dataset_populator.create_unprivileged_tool(BIOCONTAINERS_TOOL)["uuid"]
+            dataset = self.dataset_populator.new_dataset(history_id=history_id, content="abc", wait=True)
+            response = self._run(
+                history_id=history_id,
+                tool_uuid=uuid,
+                inputs={"input": {"src": "hda", "id": dataset["id"]}},
+                wait_for_job=True,
+                assert_ok=True,
+            )
+            job = self.dataset_populator.get_job_details(response["jobs"][0]["id"]).json()
+            assert job["state"] == "ok"
+
+    def test_admin_tool_with_unlisted_container_is_not_checked(self):
+        tool = self._app.toolbox.get_tool("job_environment_default_legacy")
+        assert isinstance(tool, Tool)
+        assert tool.containers[0].identifier == "busybox:1.36.1-glibc"
+        with self.dataset_populator.test_history() as history_id:
+            response = self.dataset_populator.run_tool("job_environment_default_legacy", {}, history_id)
+            self.dataset_populator.wait_for_job(response["jobs"][0]["id"], assert_ok=True)
 
     def _store_tool_row(self, representation: dict[str, Any]) -> str:
         user_id = self._app.security.decode_id(self.dataset_populator.user_id())
