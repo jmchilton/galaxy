@@ -732,8 +732,15 @@ class WorkflowModule:
 
             def update_value(input, context, prefixed_name, **kwargs):
                 if prefixed_name in step_updates:
+                    # Like a connected collection, a runtime collection is mapped
+                    # over the input when it does not match it directly.
                     value, error = check_param(
-                        trans, input, step_updates.get(prefixed_name), context, simple_errors=False
+                        trans,
+                        input,
+                        step_updates.get(prefixed_name),
+                        context,
+                        simple_errors=False,
+                        allow_collection_map_over=True,
                     )
                     if error is not None:
                         step_errors[prefixed_name] = error

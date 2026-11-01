@@ -3055,7 +3055,13 @@ class DataCollectionToolParameter(BaseDataToolParameter):
         dataset_collection_type_descriptions = trans.app.dataset_collection_manager.collection_type_descriptions
         return query.HistoryQuery.from_parameter(self, dataset_collection_type_descriptions)
 
-    def from_json(self, value, trans: "ProvidesHistoryContext", other_values=None):
+    def from_json(self, value, trans: "ProvidesHistoryContext", other_values=None, allow_map_over: bool = False):
+        """Resolve ``value`` to the collection bound to this parameter.
+
+        ``allow_map_over`` also accepts a collection this parameter can be
+        mapped over, for callers (workflow runtime values) that map over it
+        later instead of binding it directly.
+        """
         session = trans.sa_session
 
         other_values = other_values or {}
@@ -3073,7 +3079,7 @@ class DataCollectionToolParameter(BaseDataToolParameter):
         # being mapped over rather than the value bound to this parameter; the
         # type of each bound value is checked once the batch is expanded.
         is_unexpanded_batch = isinstance(value, MutableMapping) and (
-            value.get("batch") is True or value.get("__class__") == "Batch"
+            bool(value.get("batch")) or value.get("__class__") == "Batch"
         )
         if isinstance(value, MutableMapping) and "values" in value:
             value = self.to_python(value, trans.app)
@@ -3125,11 +3131,11 @@ class DataCollectionToolParameter(BaseDataToolParameter):
                         "the previously selected dataset collection has elements that are deleted.", self.name
                     )
             if not is_unexpanded_batch:
-                self._check_collection_type(rval)
+                self._check_collection_type(rval, allow_map_over=allow_map_over)
         return rval
 
-    def _check_collection_type(self, value: ItemFromSrcCollection) -> None:
-        """Reject a collection whose type this parameter does not accept directly.
+    def _check_collection_type(self, value: ItemFromSrcCollection, allow_map_over: bool = False) -> None:
+        """Reject a collection whose type this parameter does not accept.
 
         Mapping over a collection binds its sub-collection elements (or
         adapters) to the parameter, so those arrive here instead of the
@@ -3147,8 +3153,11 @@ class DataCollectionToolParameter(BaseDataToolParameter):
             collection_type = child_collection.collection_type
         else:
             collection_type = value.collection_type
+        supplied = COLLECTION_TYPE_DESCRIPTION_FACTORY.for_collection_type(collection_type)
         for accepted_type in collection_types:
             if COLLECTION_TYPE_DESCRIPTION_FACTORY.for_collection_type(accepted_type).accepts(collection_type):
+                return
+            if allow_map_over and supplied.can_map_over(accepted_type):
                 return
         accepted = ", ".join(f"'{t}'" for t in collection_types)
         raise ParameterValueError(
