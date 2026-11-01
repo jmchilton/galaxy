@@ -44,3 +44,13 @@ describe("canMapOver over compound :paired_or_unpaired inputs", () => {
         expect(ct("list:paired_or_unpaired").canMapOver(ct("list:paired_or_unpaired"))).toBe(false);
     });
 });
+
+describe("append over sample_sheet", () => {
+    it("keeps the sample_sheet outer level when the result is a valid sample_sheet type", () => {
+        expect(ct("sample_sheet").append(ct("paired")).collectionType).toBe("sample_sheet:paired");
+        expect(ct("sample_sheet").append(ct("record")).collectionType).toBe("sample_sheet:record");
+        expect(ct("sample_sheet").append(ct("paired_or_unpaired")).collectionType).toBe(
+            "sample_sheet:paired_or_unpaired",
+        );
+    });
+});
