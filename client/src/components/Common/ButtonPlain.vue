@@ -1,12 +1,31 @@
+<script setup lang="ts">
+import { ref } from "vue";
+
+const emit = defineEmits<{
+    (e: "click"): void;
+}>();
+
+// Like a native button, Space activates on keyup, and only if the press started here.
+// A handler that moves focus then cannot also activate the newly focused control.
+const spacePressed = ref(false);
+
+function onSpaceUp() {
+    if (spacePressed.value) {
+        spacePressed.value = false;
+        emit("click");
+    }
+}
+</script>
+
 <template>
-    <!-- Space activates on keyup, like a native button, so a handler that moves focus cannot also activate the newly focused control. -->
     <div
         role="button"
         tabindex="0"
-        @click="$emit('click')"
-        @keydown.enter.prevent="$emit('click')"
-        @keydown.space.prevent
-        @keyup.space="$emit('click')">
+        @blur="spacePressed = false"
+        @click="emit('click')"
+        @keydown.enter.prevent="emit('click')"
+        @keydown.space.prevent="spacePressed = true"
+        @keyup.space="onSpaceUp">
         <slot />
     </div>
 </template>

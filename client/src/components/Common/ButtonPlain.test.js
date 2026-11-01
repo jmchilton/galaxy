@@ -57,4 +57,15 @@ describe("ButtonPlain.vue", () => {
         dispatchKey(wrapper.element, "keyup", " ");
         expect(onClick).toHaveBeenCalledTimes(1);
     });
+
+    it("ignores a Space release whose press started elsewhere or was abandoned by leaving", async () => {
+        const { wrapper, onClick } = mountTarget();
+        dispatchKey(wrapper.element, "keyup", " ");
+        expect(onClick).not.toHaveBeenCalled();
+
+        dispatchKey(wrapper.element, "keydown", " ");
+        await wrapper.trigger("blur");
+        dispatchKey(wrapper.element, "keyup", " ");
+        expect(onClick).not.toHaveBeenCalled();
+    });
 });
