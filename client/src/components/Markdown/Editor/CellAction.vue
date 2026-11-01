@@ -3,6 +3,7 @@
         <GButton
             v-show="show"
             ref="buttonRef"
+            class="cell-actions-button"
             transparent
             color="blue"
             icon-only

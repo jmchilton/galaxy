@@ -53,4 +53,24 @@ describe("CellEditor.vue", () => {
         expect(updates[0][0].indexOf("```python")).toBeLessThan(updates[0][0].indexOf("First"));
         wrapper.unmount();
     });
+
+    it("moves focus with the cell when its neighbour is collapsed", async () => {
+        const wrapper = mountTarget();
+        await wrapper.vm.$nextTick();
+        await chooseAction(wrapper, 0, "Move Down");
+        // The collapsed cell swapped into position 0 has no actions button to keep focus.
+        expect(cell(wrapper, 0).find(".cell-actions-button").exists()).toBe(false);
+        expect(document.activeElement).toBe(cell(wrapper, 1).get(".cell-actions-button").element);
+        wrapper.unmount();
+    });
+
+    it("moves focus with the cell when its neighbour is expanded", async () => {
+        const wrapper = mountTarget();
+        await wrapper.vm.$nextTick();
+        await cell(wrapper, 2).get('[data-description="markdown cell toggle button"]').trigger("click");
+        await chooseAction(wrapper, 1, "Move Down");
+        expect(cell(wrapper, 1).find(".cell-actions-button").exists()).toBe(true);
+        expect(document.activeElement).toBe(cell(wrapper, 2).get(".cell-actions-button").element);
+        wrapper.unmount();
+    });
 });

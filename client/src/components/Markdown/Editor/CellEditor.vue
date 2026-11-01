@@ -1,5 +1,5 @@
 <template>
-    <div class="h-100 px-4 mx-auto">
+    <div ref="editorRef" class="h-100 px-4 mx-auto">
         <CellAdd class="p-1" @click="onAdd(0, $event)">
             <i class="pr-1">{{ cells.length === 0 ? "Insert a new cell" : "Insert Cell Above" }}</i>
         </CellAdd>
@@ -43,6 +43,7 @@ const props = defineProps<{
 const emit = defineEmits(["update"]);
 
 const cells = ref<Array<CellType>>(parseCells());
+const editorRef = ref<HTMLElement>();
 const cellRefs = ref<Array<HTMLElement>>([]);
 
 // Add new cell
@@ -103,6 +104,7 @@ function onMove(cellIndex: number, direction: "up" | "down") {
                 cells.value = newCells;
                 onUpdate();
                 scrollToCell(swapIndex);
+                focusCellActions(swapIndex);
             }
         }
     }
@@ -133,6 +135,16 @@ function onToggle(cellIndex: number) {
 // Parse cells
 function parseCells(configure: boolean = false, toggle: boolean = false) {
     return parseMarkdown(props.markdownText).map((cell) => ({ ...cell, configure, toggle }));
+}
+
+// Cells are keyed by index, so the menu that moved a cell returned focus to the
+// actions button at its old position. Follow the cell to its new position.
+function focusCellActions(cellIndex: number) {
+    nextTick(() => {
+        editorRef.value
+            ?.querySelector<HTMLElement>(`[data-cell-index="${cellIndex}"] .cell-actions-button`)
+            ?.focus();
+    });
 }
 
 // Scroll a specific cell into view
