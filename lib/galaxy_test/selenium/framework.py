@@ -7,6 +7,7 @@ import logging
 import os
 import traceback
 import unittest
+from collections.abc import Callable
 from functools import (
     partial,
     wraps,
@@ -59,7 +60,10 @@ from galaxy.util import (
 )
 from galaxy.util.unittest_utils import skip_if_github_down
 from galaxy.util.unittest_utils.test_http_server import TestHttpServer
-from galaxy.util.wait import TimeoutAssertionError
+from galaxy.util.wait import (
+    TimeoutAssertionError,
+    wait_on,
+)
 from galaxy_test.base import populators
 from galaxy_test.base.api import (
     UsesApiTestCaseMixin,
@@ -550,6 +554,44 @@ class TestWithSeleniumMixin(GalaxyTestSeleniumContext, UsesApiTestCaseMixin, Use
     def get_download_path(self):
         """Returns default download path"""
         return DEFAULT_DOWNLOAD_PATH
+
+    def download_file_from(self, trigger: Callable[[], None], expected_filename: str) -> str:
+        """Run ``trigger`` (e.g. a button click) and return the local path of the file it downloads.
+
+        The browser must name the download ``expected_filename``. Playwright hands the
+        download over directly; Selenium writes it to :meth:`get_download_path`, so any
+        stale copy is removed first and the file is polled for until it is complete.
+        """
+        if self.backend_type == "playwright":
+            with self.page.expect_download(timeout=self.wait_length(self.wait_types.DATABASE_OPERATION) * 1000) as info:
+                trigger()
+            download = info.value
+            assert (
+                download.suggested_filename == expected_filename
+            ), f"Expected download [{expected_filename}], got [{download.suggested_filename}]"
+            return str(download.path())
+
+        if asbool(GALAXY_TEST_SELENIUM_REMOTE):
+            raise unittest.SkipTest("Downloads land on the remote Selenium host and cannot be checked locally")
+        download_path = os.path.join(self.get_download_path(), expected_filename)
+        if os.path.exists(download_path):
+            os.remove(download_path)
+        trigger()
+
+        def _downloaded() -> str | None:
+            # Chrome writes to "<name>.crdownload" and renames it when the download completes.
+            if os.path.exists(download_path) and not os.path.exists(f"{download_path}.crdownload"):
+                return download_path
+            return None
+
+        return cast(
+            str,
+            wait_on(
+                _downloaded,
+                f"download of [{expected_filename}]",
+                timeout=self.wait_length(self.wait_types.DATABASE_OPERATION),
+            ),
+        )
 
     @property
     def anonymous_galaxy_interactor(self):

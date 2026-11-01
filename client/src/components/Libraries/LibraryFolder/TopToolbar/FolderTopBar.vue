@@ -384,7 +384,7 @@ function onAddDatasetsDirectory(selectedDatasets: Record<string, string | boolea
                         v-if="datasetManipulation"
                         title="Download items as archive"
                         class="dropdown dataset-manipulation mr-1">
-                        <GButton id="download--btn" type="button" class="primary-button" @click="downloadData('zip')">
+                        <GButton id="download-btn" type="button" class="primary-button" @click="downloadData('zip')">
                             <FontAwesomeIcon :icon="faDownload" />
                             Download
                         </GButton>

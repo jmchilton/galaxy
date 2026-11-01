@@ -1,4 +1,4 @@
-import os
+import zipfile
 
 from selenium.webdriver.common.by import By
 
@@ -94,16 +94,21 @@ class TestLibraryContents(SeleniumTestCase, UsesLibraryAssertions, UsesUploadAct
     @selenium_test
     @requires_admin
     @requires_new_library
-    def download_dataset_from_library(self):
+    def test_download_dataset_from_library(self):
         self.test_import_dataset_from_history()
 
         self.components.libraries.folder.select_one.wait_for_and_click()
-        self.components.libraries.folder.download_button.wait_for_and_click()
-        self.sleep_for(self.wait_types.UX_RENDER)
-        folder_files = os.listdir(self.get_download_path())
-
-        expected_filename = "selected_dataset_files.zip"
-        assert expected_filename in folder_files
+        zip_path = self.download_file_from(
+            self.components.libraries.folder.download_button.wait_for_and_click,
+            "selected_library_files.zip",
+        )
+        with zipfile.ZipFile(zip_path) as archive:
+            names = archive.namelist()
+            # Entries are "<library name>/<dataset name>.<extension>".
+            assert len(names) == 1 and names[0].startswith(f"{self.name}/1.txt."), names
+            contents = archive.read(names[0])
+        with open(self.get_filename("1.txt"), "rb") as fh:
+            assert contents == fh.read()
 
     @selenium_test
     @requires_admin
