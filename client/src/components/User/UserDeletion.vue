@@ -6,6 +6,7 @@ import { storeToRefs } from "pinia";
 import { computed, ref } from "vue";
 
 import { GalaxyApi, isRegisteredUser } from "@/api";
+import { CONFIG_DOES_NOT_ALLOW } from "@/api/errorCodes";
 import { useUserStore } from "@/stores/userStore";
 import { userLogoutClient } from "@/utils/logout";
 
@@ -44,8 +45,9 @@ async function handleSubmit() {
         });
 
         if (error) {
-            if (error.err_code === 403) {
-                ("User deletion must be configured on this instance in order to allow user self-deletion.  Please contact an administrator for assistance.");
+            if (error.err_code === CONFIG_DOES_NOT_ALLOW) {
+                deleteError.value =
+                    "User deletion must be configured on this instance in order to allow user self-deletion.  Please contact an administrator for assistance.";
             } else {
                 deleteError.value = "An error occurred while deleting the user.";
             }
