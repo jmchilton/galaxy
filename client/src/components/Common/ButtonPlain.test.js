@@ -43,4 +43,18 @@ describe("ButtonPlain.vue", () => {
         const { wrapper } = mountTarget();
         expect(dispatchKey(wrapper.element, "keydown", " ").defaultPrevented).toBe(true);
     });
+
+    // A handler that moves focus must not leave the key's default action or keyup to activate the newly focused control.
+    it("prevents Enter's default action", () => {
+        const { wrapper } = mountTarget();
+        expect(dispatchKey(wrapper.element, "keydown", "Enter").defaultPrevented).toBe(true);
+    });
+
+    it("activates on Space keyup, not keydown, like a native button", () => {
+        const { wrapper, onClick } = mountTarget();
+        dispatchKey(wrapper.element, "keydown", " ");
+        expect(onClick).not.toHaveBeenCalled();
+        dispatchKey(wrapper.element, "keyup", " ");
+        expect(onClick).toHaveBeenCalledTimes(1);
+    });
 });
