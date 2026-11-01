@@ -862,6 +862,20 @@ pages:
         type: data-description
         selector: 'revision no changes'
 
+markdown_cell_editor:
+  selectors:
+    editor_mode_button:
+      type: xpath
+      selector: '//label[contains(@class, "btn")][.//input[@type="radio"][@value="editor"]]'
+    # Icon buttons carry their title as data-title; the first match is the topmost one.
+    button: '[data-title="${title}"]'
+    add_menu: '.cell-add-options'
+    add_option: '.cell-add-options .cell-option'
+    actions_menu: 'nav[aria-label="cell actions"]'
+    actions_option:
+      type: xpath
+      selector: '//nav[@aria-label="cell actions"]//*[contains(@class, "cell-option")][.//div[normalize-space()="${title}"]]'
+
 login:
   selectors:
     form: 'form#login'
