@@ -8,6 +8,7 @@ from galaxy import model
 from galaxy.model.dataset_collections.adapters import PromoteCollectionElementToCollectionAdapter
 from galaxy.tools.parameters.basic import (
     DataCollectionToolParameter,
+    ParameterValueError,
     workflow_building_modes,
 )
 from galaxy.util import parse_xml_string
@@ -87,3 +88,32 @@ def test_from_json_accepts_promoted_element_adapter():
     # Mapping a flat list over a paired_or_unpaired input binds adapters.
     adapter = PromoteCollectionElementToCollectionAdapter(_collection("list").elements[0])
     assert _param("paired_or_unpaired").from_json(adapter, _trans()) is adapter
+
+
+@pytest.mark.parametrize(
+    "accepts,supplied",
+    [
+        ("list", "paired"),
+        ("paired", "list"),
+        ("list", "list:list"),
+        ("list,list:paired", "paired"),
+        ("sample_sheet", "list"),
+        ("paired_or_unpaired", "list"),
+    ],
+)
+def test_from_json_rejects_incompatible_hdca(accepts, supplied):
+    with pytest.raises(ParameterValueError, match=f"collection of type '{supplied}' was supplied"):
+        _param(accepts).from_json(_hdca(supplied), _trans())
+
+
+def test_from_json_rejects_incompatible_subcollection_dce():
+    # e.g. a map-over that splits a list:list into lists for a paired input.
+    dce = _collection("list:list").elements[0]
+    with pytest.raises(ParameterValueError, match="accepts only 'paired'"):
+        _param("paired").from_json(dce, _trans())
+
+
+def test_from_json_rejects_incompatible_adapter():
+    adapter = PromoteCollectionElementToCollectionAdapter(_collection("list").elements[0])
+    with pytest.raises(ParameterValueError, match="collection of type 'paired_or_unpaired' was supplied"):
+        _param("list").from_json(adapter, _trans())

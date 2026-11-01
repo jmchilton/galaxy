@@ -3418,6 +3418,51 @@ class TestToolsApi(ApiTestCase, TestsTools):
             build = response.json()
             assert not build.get("errors"), build["errors"]
 
+    @skip_without_tool("collection_paired_test")
+    def test_run_rejects_incompatible_direct_collection(self):
+        with self.dataset_populator.test_history() as history_id:
+            list_id = self.dataset_collection_populator.create_list_in_history(
+                history_id, contents=["a", "b"], wait=True
+            ).json()["outputs"][0]["id"]
+            response = self._run("collection_paired_test", history_id, {"f1": {"src": "hdca", "id": list_id}})
+            self._assert_status_code_is(response, 400)
+            assert "dataset collection of type 'list' was supplied" in response.text, response.text
+            assert "accepts only 'paired'" in response.text, response.text
+            assert not self.dataset_populator.history_jobs_for_tool(history_id, "collection_paired_test")
+
+    @skip_without_tool("collection_paired_test")
+    def test_run_rejects_incompatible_collection_element(self):
+        with self.dataset_populator.test_history() as history_id:
+            list_list = self.dataset_collection_populator.create_list_of_list_in_history(history_id, wait=True).json()
+            dce_id = list_list["elements"][0]["id"]
+            response = self._run("collection_paired_test", history_id, {"f1": {"src": "dce", "id": dce_id}})
+            self._assert_status_code_is(response, 400)
+            assert "dataset collection of type 'list' was supplied" in response.text, response.text
+
+    @skip_without_tool("collection_paired_test")
+    def test_run_rejects_incompatible_map_over_type(self):
+        # The requested map-over type must split the collection into values the input accepts.
+        with self.dataset_populator.test_history() as history_id:
+            list_list = self.dataset_collection_populator.create_list_of_list_in_history(history_id, wait=True).json()
+            value = {"src": "hdca", "id": list_list["id"], "map_over_type": "list"}
+            response = self._run("collection_paired_test", history_id, {"f1": {"batch": True, "values": [value]}})
+            self._assert_status_code_is(response, 400)
+            assert "dataset collection of type 'list' was supplied" in response.text, response.text
+
+    @skip_without_tool("collection_paired_test")
+    def test_tool_request_rejects_incompatible_direct_collection(self):
+        with self.dataset_populator.test_history() as history_id:
+            list_id = self.dataset_collection_populator.create_list_in_history(
+                history_id, contents=["a", "b"], wait=True
+            ).json()["outputs"][0]["id"]
+            inputs = {"f1": {"src": "hdca", "id": list_id}}
+            response = self.dataset_populator.tool_request_raw("collection_paired_test", inputs, history_id)
+            self._assert_status_code_is(response, 200)
+            tool_request_id = response.json()["tool_request_id"]
+            assert not self.dataset_populator.wait_on_tool_request(tool_request_id)
+            tool_request = self.dataset_populator.get_tool_request(tool_request_id)
+            assert "dataset collection of type 'list' was supplied" in str(tool_request), tool_request
+
     @skip_without_tool("identifier_source")
     def test_default_identifier_source_map_over(self):
         with self.dataset_populator.test_history() as history_id:
