@@ -471,6 +471,39 @@ def test_has_line_matching_n_failure():
     assert len(a) == 1
 
 
+LINE_MATCHING_GFF = "I\tsrc\tgene\t1\t10\nI\tsrc\tgene\t20\t30\nII\tsrc\tgene\t1\t5\n"
+
+
+@pytest.mark.parametrize(
+    "expression,expected_count",
+    [
+        # the expression must match a whole line, so a bare prefix matches nothing ...
+        ("I\t", 0),
+        ("^I\t", 0),
+        # ... and needs a trailing .* (explicit anchors are redundant)
+        ("I\t.*", 2),
+        ("^I\t.*$", 2),
+        # grouped alternatives stay anchored at both ends
+        ("(?:I|II)\tsrc\tgene\t1\t.*", 2),
+    ],
+)
+def test_has_line_matching_anchors_expression_to_whole_line(expression, expected_count):
+    asserts.text.assert_has_line_matching(LINE_MATCHING_GFF, expression=expression, n=expected_count)
+
+
+@pytest.mark.parametrize(
+    "expression,expected_count",
+    [
+        # unanchored search, so "I\t" is also found inside "II\t"
+        ("I\t", 3),
+        # without multiline, ^ anchors to the start of the whole output
+        ("^I\t", 1),
+    ],
+)
+def test_has_text_matching_searches_whole_output(expression, expected_count):
+    asserts.text.assert_has_text_matching(LINE_MATCHING_GFF, expression=expression, n=expected_count)
+
+
 SIZE_HAS_SIZE_ASSERTION = """
     <assert_contents>
         <has_size {size_attrib}="{value}"/>
