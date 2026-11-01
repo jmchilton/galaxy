@@ -1,3 +1,5 @@
+from galaxy.selenium.keys import Key
+from galaxy.selenium.smart_components import SmartTarget
 from galaxy_test.base.workflow_fixtures import (
     WORKFLOW_WITH_BAD_COLUMN_PARAMETER,
     WORKFLOW_WITH_OLD_TOOL_VERSION,
@@ -109,6 +111,32 @@ class TestPages(SeleniumTestCase, UsesUploadActivity):
 
         assert "Full Round Trip" in editor.wait_for_value()
         self.screenshot("standalone_page_round_trip")
+
+    @selenium_test
+    def test_cell_editor_menus_return_focus_after_keyboard_selection(self):
+        """Choosing a cell menu option by keyboard closes the menu and refocuses the button that opened it."""
+        slug = self._get_random_name(prefix="cellmenus")
+        page = self.dataset_populator.new_page(slug=slug, content_format="markdown", content="# Starter")
+        self.navigate_to_page_editor(page["id"])
+        cell_editor = self.components.markdown_cell_editor
+        cell_editor.editor_mode_button.wait_for_and_click()
+        cell_editor.button(title="Edit Cell").wait_for_and_click()
+
+        for key in (Key.ENTER, Key.SPACE):
+            cell_editor.button(title="Actions").wait_for_and_click()
+            self.press(key, element=cell_editor.actions_option(title="Clone").wait_for_visible())
+            self._assert_menu_closed_and_focus_on(cell_editor.actions_menu, "Actions")
+
+            cell_editor.button(title="Insert").wait_for_and_click()
+            self.press(key, element=cell_editor.add_option.wait_for_visible())
+            self._assert_menu_closed_and_focus_on(cell_editor.add_menu, "Insert")
+
+    def _assert_menu_closed_and_focus_on(self, menu: SmartTarget, button_title: str) -> None:
+        menu.wait_for_absent_or_hidden()
+        # The key press must not also activate the refocused button and reopen the menu.
+        self.sleep_for(self.wait_types.UX_RENDER)
+        menu.assert_absent_or_hidden()
+        assert self.active_element().get_attribute("data-title") == button_title
 
     @selenium_test
     @managed_history
