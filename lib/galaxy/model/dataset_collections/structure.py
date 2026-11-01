@@ -212,7 +212,6 @@ def _demote_sample_sheets(structure):
     return Tree(
         [(identifier, _demote_sample_sheets(child)) for identifier, child in structure.children],
         demoted_description,
-        when_values=structure.when_values,
     )
 
 

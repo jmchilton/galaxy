@@ -77,10 +77,11 @@ function normalizeCollectionType(collectionType: string): string {
 }
 
 /**
- * Replace every sample_sheet rank with list. sample_sheet is only valid as the
- * outermost rank, followed by at most a single paired, record or paired_or_unpaired
- * rank - composing collection types (e.g. mapping a list output over a sample sheet)
- * can violate that. Mirrors demote_sample_sheet_ranks on the server.
+ * Replace every sample_sheet rank with list - for use on an invalid composed type.
+ * sample_sheet is only valid as the outermost rank, followed by at most a single
+ * paired, record or paired_or_unpaired rank - composing collection types (e.g.
+ * mapping a list output over a sample sheet) can violate that. Mirrors
+ * demote_sample_sheet_ranks on the server.
  */
 function demoteSampleSheetRanks(collectionType: string): string {
     return collectionType

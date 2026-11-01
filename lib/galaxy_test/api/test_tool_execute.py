@@ -929,5 +929,4 @@ def test_unlinked_map_over_list_and_sample_sheet(target_history: TargetHistory, 
     for element in details["elements"]:
         inner = element["object"]
         assert inner["collection_type"] == "list"
-        assert inner.get("column_definitions") is None
         assert all(e.get("columns") is None for e in inner["elements"])

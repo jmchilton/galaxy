@@ -217,7 +217,7 @@ def map_over_collection_type(mapped_over_collection_type, target_collection_type
 
 
 def demote_sample_sheet_ranks(collection_type: str) -> str:
-    """Replace every ``sample_sheet`` rank with ``list``.
+    """Replace every ``sample_sheet`` rank with ``list`` - for use on an invalid composed type.
 
     ``sample_sheet`` is only valid as the outermost rank, followed by at most a single
     ``paired``, ``record`` or ``paired_or_unpaired`` rank. Composing collection types

@@ -147,3 +147,12 @@ def test_multiply_by_unlinked_sample_sheet_demotes_inner_sample_sheets(outer_typ
         assert child.column_definitions is None
         assert child.columns_metadata == {}
         assert child.children[0][1].collection_type_description.collection_type == "paired"
+
+
+def test_multiply_by_sample_sheet_output_demotes_uninitialized_structure():
+    outer = Tree([("a", leaf), ("b", leaf)], factory.for_collection_type("list"))
+    mapped = outer.multiply(_uninitialized("sample_sheet"))
+    assert mapped.collection_type_description.collection_type == "list:list"
+    for _, child in mapped.children:
+        assert not child.children_known
+        assert child.collection_type_description.collection_type == "list"
