@@ -95,8 +95,8 @@ export class CollectionTypeDescription implements CollectionTypeDescriptor {
         }
         let collectionType = `${this.collectionType}:${other.collectionType}`;
         if (collectionType.startsWith("sample_sheet") && !isValidCollectionTypeStr(collectionType)) {
-            // sample_sheet can only be followed by a single paired, record or
-            // paired_or_unpaired level - otherwise the outer level becomes a plain list.
+            // A sample_sheet outer level can only be followed by a single paired, record
+            // or paired_or_unpaired level - otherwise demote it to a plain list.
             collectionType = normalizeCollectionType(collectionType);
         }
         return new CollectionTypeDescription(collectionType);

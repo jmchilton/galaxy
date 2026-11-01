@@ -513,6 +513,9 @@ def _construct_steps_for_map_over() -> list[MapOverTestCase]:
         ("sample_sheet", "dataset", "dataset", "sample_sheet"),
         ("sample_sheet", "dataset", "paired", "sample_sheet:paired"),
         ("sample_sheet:paired", "dataset", "dataset", "sample_sheet:paired"),
+        # sample_sheet:list is not a valid collection type, the outer level becomes a plain list
+        ("sample_sheet", "dataset", "list", "list:list"),
+        ("sample_sheet:paired", "dataset", "list", "list:paired:list"),
     ]
     test_cases = []
     for data_input, step_input_def, step_output_def, expected_collection_type in test_case_args:

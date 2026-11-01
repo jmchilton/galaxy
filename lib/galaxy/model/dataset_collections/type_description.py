@@ -212,8 +212,8 @@ def map_over_collection_type(mapped_over_collection_type, target_collection_type
 
         collection_type = f"{mapped_over_collection_type}:{target_collection_type}"
         if collection_type.startswith("sample_sheet") and COLLECTION_TYPE_REGEX.match(collection_type) is None:
-            # sample_sheet can only be followed by a single paired, record or
-            # paired_or_unpaired level - otherwise the outer level becomes a plain list.
+            # A sample_sheet outer level can only be followed by a single paired, record
+            # or paired_or_unpaired level - otherwise demote it to a plain list.
             collection_type = _normalize_collection_type(collection_type)
         return collection_type
 

@@ -896,6 +896,8 @@ def test_map_list_output_over_sample_sheet(target_history: TargetHistory, requir
     output_collection.assert_collection_type_is("list:list")
     details = output_collection.details
     assert details["populated_state"] == "ok"
+    assert details.get("column_definitions") is None
+    assert all(e.get("columns") is None for e in details["elements"])
     assert [e["element_identifier"] for e in details["elements"]] == ["sample1", "sample2"]
     inner = details["elements"][0]["object"]
     assert inner["collection_type"] == "list"

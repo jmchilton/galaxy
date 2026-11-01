@@ -72,6 +72,7 @@ from galaxy.model import (
     WorkflowInvocationToSubworkflowInvocationAssociation,
 )
 from galaxy.model.base import ensure_object_added_to_session
+from galaxy.model.dataset_collections.type_description import map_over_collection_type
 from galaxy.model.index_filter_util import (
     raw_text_column_filter,
     tag_exists_filter,
@@ -1478,7 +1479,7 @@ class WorkflowContentsManager(UsesAnnotations):
                         collection_type = map_over
                         step_data_output["collection"] = True
                         if step_data_output.get("collection_type"):
-                            collection_type = f"{map_over}:{step_data_output['collection_type']}"
+                            collection_type = map_over_collection_type(map_over, step_data_output["collection_type"])
                         step_data_output["collection_type"] = collection_type
         return steps
 
