@@ -30,14 +30,14 @@
                         <span class="d-flex justify-content-between">
                             <small class="my-1 mx-3 text-info">{{ categoryName }}</small>
                         </span>
-                        <div v-if="templates.length > 0" class="cell-add-options popper-close">
+                        <div v-if="templates.length > 0" class="cell-add-options">
                             <CellOption
                                 v-for="(option, optionIndex) of templates"
                                 :key="optionIndex"
                                 :title="option.title"
                                 :description="option.description"
                                 :logo="option.logo"
-                                @click="$emit('click', { configure: false, toggle: true, ...option.cell })" />
+                                @click="onSelect(option)" />
                         </div>
                     </div>
                 </div>
@@ -71,7 +71,7 @@ withDefaults(
     },
 );
 
-defineEmits<{
+const emit = defineEmits<{
     (e: "click", cell: CellType): void;
 }>();
 
@@ -101,6 +101,11 @@ const filteredTemplates = computed(() => {
     });
     return filteredCategories;
 });
+
+function onSelect(option: TemplateEntry) {
+    emit("click", { configure: false, toggle: true, ...option.cell });
+    popperRef.value?.close();
+}
 
 onMounted(async () => {
     visualizations.value = await getVisualizations();

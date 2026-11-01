@@ -90,6 +90,58 @@ describe("CellAction.vue", () => {
         wrapper.unmount();
     });
 
+    it("returns focus to the actions button when an option is chosen with Enter or Space", async () => {
+        const wrapper = mountTarget();
+        await wrapper.vm.$nextTick();
+
+        for (const [key, title] of [
+            ["Enter", "Clone"],
+            [" ", "Move Down"],
+        ]) {
+            const { button, menu } = await openMenu(wrapper);
+            const option = findOption(wrapper, title);
+            option.element.focus();
+            expect(document.activeElement).toBe(option.element);
+            const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+            option.element.dispatchEvent(event);
+            await wrapper.vm.$nextTick();
+            // A default Enter would re-activate the trigger button that now has focus.
+            expect(event.defaultPrevented).toBe(true);
+            expect(menu.isVisible()).toBe(false);
+            expect(document.activeElement).toBe(button.element);
+        }
+        expect(wrapper.emitted("clone")).toHaveLength(1);
+        expect(wrapper.emitted("move")).toEqual([["down"]]);
+        wrapper.unmount();
+    });
+
+    it("returns focus to the actions button when a focused option is clicked", async () => {
+        const wrapper = mountTarget();
+        await wrapper.vm.$nextTick();
+        const { button, menu } = await openMenu(wrapper);
+        const option = findOption(wrapper, "Clone");
+        option.element.focus();
+        await option.trigger("click");
+        expect(menu.isVisible()).toBe(false);
+        expect(document.activeElement).toBe(button.element);
+        wrapper.unmount();
+    });
+
+    it("returns focus to the actions button when Enter is pressed on the focused menu", async () => {
+        const wrapper = mountTarget();
+        await wrapper.vm.$nextTick();
+        const { button, menu } = await openMenu(wrapper);
+        const nav = wrapper.get("nav");
+        nav.element.focus();
+        const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+        nav.element.dispatchEvent(event);
+        await wrapper.vm.$nextTick();
+        expect(event.defaultPrevented).toBe(true);
+        expect(menu.isVisible()).toBe(false);
+        expect(document.activeElement).toBe(button.element);
+        wrapper.unmount();
+    });
+
     it("asks for confirmation before deleting", async () => {
         const wrapper = mountTarget();
         await wrapper.vm.$nextTick();
