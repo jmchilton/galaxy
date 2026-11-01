@@ -309,10 +309,63 @@ def test_text_input_regex_validator_negate_from_tool_form(form_value, negate):
 STATIC_OPTION_ROUND_TRIP_CASES = [
     ["a", "b"],
     [{"value": "a", "label": "Alpha"}, "b"],
+    # Separators, backslashes and edge whitespace in values and labels (#24375).
+    ["a:b", "1,2", "c"],
+    [{"value": "chr1:100-200", "label": "Region 1, forward"}, {"value": "x,y", "label": "a:b"}],
+    ["C:\\data", "trailing\\", "\\,", "\\\\"],
+    [" padded ", "\ttab", {"value": " v ", "label": " l "}, "   "],
     # Empty values, as in IWC workflows' ["", "--cis-only", "--trans-only"].
     ["", "--cis-only", "--trans-only"],
     [{"value": "", "label": "None"}, {"value": "a", "label": ""}],
 ]
+
+
+@pytest.mark.parametrize(
+    "options,expected",
+    [
+        # A label-less dict loads as a plain value, and non-text entries as text, rather than raising.
+        ([{"value": "a"}, "b"], ["a", "b"]),
+        ([1, 2.5, {"value": 3, "label": 4}], ["1", "2.5", {"value": "3", "label": "4"}]),
+        ([{"value": "", "label": ""}], [""]),
+    ],
+)
+def test_text_input_static_options_normalized_round_trip(options, expected):
+    module = __text_options_module(restrictions=options)
+    assert module.get_export_state()["restrictions"] == expected
+
+
+@pytest.mark.parametrize(
+    "form_value,expected",
+    [
+        # Stray, trailing and doubled commas don't add empty options.
+        ("a,b,", ["a", "b"]),
+        (",a,,b", ["a", "b"]),
+        ("a, ,b", ["a", "b"]),
+        ("", []),
+        # A lone colon is the empty value.
+        ("a,:,b", ["a", "", "b"]),
+        (" : ", [""]),
+        # Escapes.
+        ("a\\:b,1\\,2", ["a:b", "1,2"]),
+        ("x\\:y:Label\\, with comma", [{"value": "x:y", "label": "Label, with comma"}]),
+        ("\\ a\\ ", [" a "]),
+        # A backslash before any other character is kept, so existing strings like Windows paths survive.
+        ("C\\data,\\n", ["C\\data", "\\n"]),
+        ("end\\", ["end\\"]),
+        # Only the first unescaped colon splits value from label.
+        ("a:b:c", [{"value": "a", "label": "b:c"}]),
+        # Unescaped whitespace around values and labels is trimmed.
+        (" a : Alpha , b ", [{"value": "a", "label": "Alpha"}, "b"]),
+    ],
+)
+def test_text_input_static_options_form_parsing(form_value, expected):
+    step = __text_options_step_from_tool_form("restrictions", form_value)
+    assert step.tool_inputs["restrictions"] == expected
+
+
+def test_text_input_static_options_editor_string_escapes():
+    module = __text_options_module(restrictions=["a:b", {"value": "1,2", "label": " x\\"}, ""])
+    assert __static_options_form_value(module, "restrictions") == "a\\:b,1\\,2:\\ x\\\\,:"
 
 
 @pytest.mark.parametrize("how", ["restrictions", "suggestions"])
