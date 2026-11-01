@@ -8,7 +8,7 @@
       filetype: fasta
     fastq_inputs:
       class: Collection
-      collection_type: list
+      collection_type: paired
       name: the_dataset_pair
       elements:
         - identifier: forward
