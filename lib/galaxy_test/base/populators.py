@@ -1776,7 +1776,7 @@ class BaseDatasetPopulator(BasePopulator):
         assert group_response.status_code == 200
         group = group_response.json()[0]
         try:
-            yield
+            yield group
         finally:
             self._delete(f"groups/{group['id']}", admin=True).raise_for_status()
             self._post(f"groups/{group['id']}/purge", admin=True).raise_for_status()
