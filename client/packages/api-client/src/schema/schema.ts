@@ -31565,13 +31565,14 @@ export interface components {
          *     Number of columns can optionally also be specified with ``delta``. Alternatively the
          *     range of expected occurrences can be specified by ``min`` and/or ``max``.
          *
-         *     Optionally a column separator (``sep``, default is ``       ``) `and comment character(s)
+         *     Optionally a column separator (``sep``, default is ``       ``) and comment character(s)
          *     can be specified (``comment``, default is empty string). The first non-comment
          *     line is used for determining the number of columns.
          *
          *     If a header line has a different number of fields than the data rows (e.g. a
          *     table written by R's ``write.table`` with row names, where the header has one
-         *     field less), the header is what is counted.
+         *     field fewer), the header is what is counted unless it starts with a ``comment``
+         *     character.
          */
         has_n_columns_model: {
             /**
