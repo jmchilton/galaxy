@@ -1053,7 +1053,11 @@ class has_n_columns_model(base_has_n_columns_model):
 
     Optionally a column separator (``sep``, default is ``       ``) `and comment character(s)
     can be specified (``comment``, default is empty string). The first non-comment
-    line is used for determining the number of columns."""
+    line is used for determining the number of columns.
+
+    If a header line has a different number of fields than the data rows (e.g. a
+    table written by R's ``write.table`` with row names, where the header has one
+    field less), the header is what is counted."""
 
     model_config = ConfigDict(extra="forbid", title="Assert Has N Columns")
     that: Literal["has_n_columns"] = Field("has_n_columns", title="That")
@@ -1076,7 +1080,11 @@ class has_n_columns_model_relaxed(base_has_n_columns_model_relaxed):
 
     Optionally a column separator (``sep``, default is ``       ``) `and comment character(s)
     can be specified (``comment``, default is empty string). The first non-comment
-    line is used for determining the number of columns."""
+    line is used for determining the number of columns.
+
+    If a header line has a different number of fields than the data rows (e.g. a
+    table written by R's ``write.table`` with row names, where the header has one
+    field less), the header is what is counted."""
 
     model_config = ConfigDict(extra="forbid", title="Assert Has N Columns (Relaxed)")
     that: Literal["has_n_columns"] = Field("has_n_columns", title="That")
@@ -1198,9 +1206,7 @@ attribute_matches_path_description = """The Python xpath-like expression to find
 
 attribute_matches_attribute_description = """The XML attribute name to test against from the target XML element."""
 
-attribute_matches_expression_description = (
-    """The regular expressions to apply against the named attribute on the target XML element."""
-)
+attribute_matches_expression_description = """The regular expression to search for in the value of the named attribute on the target XML element. It is not anchored (as in ``has_text_matching``), so use ``^`` and ``$`` to match the whole value."""
 
 attribute_matches_negate_description = """A boolean that can be set to true to negate the outcome of the assertion."""
 
@@ -1518,7 +1524,7 @@ class element_text_is_model_relaxed(base_element_text_is_model_relaxed):
 
 element_text_matches_path_description = """The Python xpath-like expression to find the target element."""
 
-element_text_matches_expression_description = """The regular expressions to apply against the target element."""
+element_text_matches_expression_description = """The regular expression to search for in the text of the target element. It is not anchored (as in ``has_text_matching``), so use ``^`` and ``$`` to match the whole text."""
 
 element_text_matches_negate_description = (
     """A boolean that can be set to true to negate the outcome of the assertion."""

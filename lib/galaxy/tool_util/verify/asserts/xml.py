@@ -29,12 +29,17 @@ from ._util import _assert_presence_number
 Path = Annotated[str, AssertionParameter("The Python xpath-like expression to find the target element.")]
 ElementExpression = Annotated[
     XmlRegex,
-    AssertionParameter("The regular expressions to apply against the target element.", validators=["check_regex"]),
+    AssertionParameter(
+        "The regular expression to search for in the text of the target element. "
+        "It is not anchored (as in ``has_text_matching``), so use ``^`` and ``$`` to match the whole text.",
+        validators=["check_regex"],
+    ),
 ]
 AttributeExpression = Annotated[
     XmlRegex,
     AssertionParameter(
-        "The regular expressions to apply against the named attribute on the target XML element.",
+        "The regular expression to search for in the value of the named attribute on the target XML element. "
+        "It is not anchored (as in ``has_text_matching``), so use ``^`` and ``$`` to match the whole value.",
         validators=["check_regex"],
     ),
 ]

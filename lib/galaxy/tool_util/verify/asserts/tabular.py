@@ -56,6 +56,10 @@ def assert_has_n_columns(
     Optionally a column separator (``sep``, default is ``\t``) `and comment character(s)
     can be specified (``comment``, default is empty string). The first non-comment
     line is used for determining the number of columns.
+
+    If a header line has a different number of fields than the data rows (e.g. a
+    table written by R's ``write.table`` with row names, where the header has one
+    field less), the header is what is counted.
     """
     first_line = get_first_line(output, comment)
     n_columns = len(first_line.split(sep))

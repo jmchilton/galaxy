@@ -29269,7 +29269,7 @@ export interface components {
             attribute: string;
             /**
              * Expression
-             * @description The regular expressions to apply against the named attribute on the target XML element.
+             * @description The regular expression to search for in the value of the named attribute on the target XML element. It is not anchored (as in ``has_text_matching``), so use ``^`` and ``$`` to match the whole value.
              */
             expression: string;
             /**
@@ -29336,7 +29336,7 @@ export interface components {
             attribute: string;
             /**
              * Expression
-             * @description The regular expressions to apply against the named attribute on the target XML element.
+             * @description The regular expression to search for in the value of the named attribute on the target XML element. It is not anchored (as in ``has_text_matching``), so use ``^`` and ``$`` to match the whole value.
              */
             expression: string;
             /**
@@ -29380,7 +29380,7 @@ export interface components {
         base_element_text_matches_model: {
             /**
              * Expression
-             * @description The regular expressions to apply against the target element.
+             * @description The regular expression to search for in the text of the target element. It is not anchored (as in ``has_text_matching``), so use ``^`` and ``$`` to match the whole text.
              */
             expression: string;
             /**
@@ -30450,7 +30450,7 @@ export interface components {
         element_text_matches_model: {
             /**
              * Expression
-             * @description The regular expressions to apply against the target element.
+             * @description The regular expression to search for in the text of the target element. It is not anchored (as in ``has_text_matching``), so use ``^`` and ``$`` to match the whole text.
              */
             expression: string;
             /**
@@ -31568,6 +31568,10 @@ export interface components {
          *     Optionally a column separator (``sep``, default is ``       ``) `and comment character(s)
          *     can be specified (``comment``, default is empty string). The first non-comment
          *     line is used for determining the number of columns.
+         *
+         *     If a header line has a different number of fields than the data rows (e.g. a
+         *     table written by R's ``write.table`` with row names, where the header has one
+         *     field less), the header is what is counted.
          */
         has_n_columns_model: {
             /**
