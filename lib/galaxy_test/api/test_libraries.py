@@ -87,11 +87,9 @@ class TestLibrariesApi(ApiTestCase):
         assert ldda["parent_library_id"] == library["id"]
 
     def _fetch_pasted_to_new_library(self, test_name: str, content: str) -> tuple[dict[str, Any], dict[str, Any]]:
-        history_id, library, destination = self._setup_fetch_to_folder(test_name)
+        library = self.library_populator.new_private_library(test_name)
         items = [{"src": "pasted", "paste_content": content, "name": "fetched.txt", "ext": "txt"}]
-        self.dataset_populator.fetch(
-            {"history_id": history_id, "targets": [{"destination": destination, "items": items}]}
-        )
+        self.library_populator.fetch_to_folder(library["root_folder_id"], items)
         ld = self.library_populator.get_library_contents_with_path(library["id"], "/fetched.txt")
         return library, ld
 
