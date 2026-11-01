@@ -20,15 +20,7 @@
             trigger="click"
             placement="right"
             mode="light">
-            <nav
-                role="menu"
-                aria-label="cell actions"
-                data-description="markdown cell actions menu"
-                tabindex="0"
-                @click="popperRef.close()"
-                @keydown.enter.prevent="popperRef.close()"
-                @keydown.space.prevent
-                @keyup.space="popperRef.close()">
+            <nav role="menu" aria-label="cell actions" data-description="markdown cell actions menu" tabindex="0">
                 <span class="d-flex justify-content-between">
                     <small class="my-1 mx-3 text-info">{{ title }}</small>
                 </span>
@@ -37,27 +29,27 @@
                     title="Clone"
                     description="Create a copy of this cell"
                     :icon="faClone"
-                    @click="$emit('clone')" />
+                    @click="onSelect(() => emit('clone'))" />
                 <CellOption
                     role="menuitem"
                     title="Delete"
                     description="Delete this cell"
                     :icon="faTrash"
-                    @click="onDeleteCell" />
+                    @click="onSelect(onDeleteCell)" />
                 <CellOption
                     v-if="cellIndex > 0"
                     role="menuitem"
                     title="Move Up"
                     description="Move this cell upwards"
                     :icon="faArrowUp"
-                    @click="$emit('move', 'up')" />
+                    @click="onSelect(() => emit('move', 'up'))" />
                 <CellOption
                     v-if="cellTotal - cellIndex > 1"
                     role="menuitem"
                     title="Move Down"
                     description="Move this cell downwards"
                     :icon="faArrowDown"
-                    @click="$emit('move', 'down')" />
+                    @click="onSelect(() => emit('move', 'down'))" />
             </nav>
         </Popper>
     </div>
@@ -102,9 +94,15 @@ const emit = defineEmits<{
 const { confirm } = useConfirmDialog();
 
 const buttonRef = ref();
-const popperRef = ref();
+const popperRef = ref<InstanceType<typeof Popper>>();
 
 const title = computed(() => `${props.name.charAt(0).toUpperCase()}${props.name.slice(1)}`);
+
+// Close after the action, so close() returns focus to this cell's button only once the action has run.
+function onSelect(action: () => void) {
+    action();
+    popperRef.value?.close();
+}
 
 async function onDeleteCell() {
     const confirmed = await confirm("Are you sure you want to delete this cell?", "Delete Cell");

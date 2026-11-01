@@ -137,18 +137,15 @@ describe("CellAction.vue", () => {
         wrapper.unmount();
     });
 
-    it("returns focus to the actions button when Enter is pressed on the focused menu", async () => {
+    it("keeps the menu open when a Space press started on another option is released", async () => {
         const wrapper = mountTarget();
         await wrapper.vm.$nextTick();
-        const { button, menu } = await openMenu(wrapper);
-        const nav = wrapper.get("nav");
-        nav.element.focus();
-        const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
-        nav.element.dispatchEvent(event);
-        await wrapper.vm.$nextTick();
-        expect(event.defaultPrevented).toBe(true);
-        expect(menu.isVisible()).toBe(false);
-        expect(document.activeElement).toBe(button.element);
+        const { menu } = await openMenu(wrapper);
+        await findOption(wrapper, "Clone").trigger("keydown", { key: " " });
+        await findOption(wrapper, "Delete").trigger("keyup", { key: " " });
+        expect(wrapper.emitted("clone")).toBeFalsy();
+        expect(confirm).not.toHaveBeenCalled();
+        expect(menu.isVisible()).toBe(true);
         wrapper.unmount();
     });
 

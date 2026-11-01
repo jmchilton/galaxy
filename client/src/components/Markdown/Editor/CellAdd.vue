@@ -77,7 +77,7 @@ const emit = defineEmits<{
 }>();
 
 const buttonRef = ref();
-const popperRef = ref();
+const popperRef = ref<InstanceType<typeof Popper>>();
 const query = ref("");
 const visualizations: Ref<Array<TemplateEntry>> = ref([]);
 
