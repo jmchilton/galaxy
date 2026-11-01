@@ -866,6 +866,11 @@ def _assert_sample_sheet_metadata_preserved(details: dict) -> None:
     assert columns == SAMPLE_SHEET_ROWS
 
 
+def _assert_no_sample_sheet_metadata(details: dict) -> None:
+    assert details.get("column_definitions") is None
+    assert all(e.get("columns") is None for e in details["elements"])
+
+
 @requires_tool_id("collection_creates_pair")
 def test_map_paired_output_over_sample_sheet(target_history: TargetHistory, required_tool: RequiredTool):
     hdca = target_history.with_sample_sheet(
@@ -896,8 +901,7 @@ def test_map_list_output_over_sample_sheet(target_history: TargetHistory, requir
     output_collection.assert_collection_type_is("list:list")
     details = output_collection.details
     assert details["populated_state"] == "ok"
-    assert details.get("column_definitions") is None
-    assert all(e.get("columns") is None for e in details["elements"])
+    _assert_no_sample_sheet_metadata(details)
     assert [e["element_identifier"] for e in details["elements"]] == ["sample1", "sample2"]
     inner = details["elements"][0]["object"]
     assert inner["collection_type"] == "list"
@@ -925,8 +929,8 @@ def test_unlinked_map_over_list_and_sample_sheet(target_history: TargetHistory, 
     output_collection = execute.assert_creates_implicit_collection(0)
     output_collection.assert_collection_type_is("list:list")
     details = output_collection.details
-    assert details.get("column_definitions") is None
+    _assert_no_sample_sheet_metadata(details)
     for element in details["elements"]:
         inner = element["object"]
         assert inner["collection_type"] == "list"
-        assert all(e.get("columns") is None for e in inner["elements"])
+        _assert_no_sample_sheet_metadata(inner)

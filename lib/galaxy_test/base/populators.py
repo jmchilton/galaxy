@@ -4358,7 +4358,10 @@ class DescribeToolExecutionOutputCollection:
         return self.with_dataset_element(index)
 
     def assert_collection_type_is(self, collection_type: str):
-        assert self.details["collection_type"] == collection_type
+        actual_collection_type = self.details["collection_type"]
+        assert (
+            actual_collection_type == collection_type
+        ), f"Expected collection type {collection_type} but found {actual_collection_type}"
 
 
 class DescribeJob:
