@@ -1,4 +1,12 @@
-from galaxy.model.dataset_collections.structure import get_structure
+import pytest
+
+from galaxy.managers.collections import DatasetCollectionManager
+from galaxy.model.dataset_collections.structure import (
+    get_structure,
+    leaf,
+    Tree,
+    UninitializedTree,
+)
 from galaxy.model.dataset_collections.type_description import CollectionTypeDescriptionFactory
 from .test_matching import (
     list_of_lists_instance,
@@ -72,3 +80,54 @@ def test_get_structure_list_of_lists_over_single_datasests():
     assert len(tree.children) == 2
     assert tree.children[0][0] == "outer1"
     assert not tree.children[0][1].is_leaf
+
+
+COLUMN_DEFINITIONS = [{"name": "condition", "type": "string", "optional": False}]
+
+
+def _sample_sheet_tree(collection_type="sample_sheet"):
+    child = leaf
+    if collection_type == "sample_sheet:paired":
+        child = Tree([("forward", leaf), ("reverse", leaf)], factory.for_collection_type("paired"))
+    return Tree(
+        [("sample1", child), ("sample2", child)],
+        factory.for_collection_type(collection_type),
+        columns_metadata={"sample1": ["treated"], "sample2": ["control"]},
+        column_definitions=COLUMN_DEFINITIONS,
+    )
+
+
+def _precreate(structure):
+    # precreate_dataset_collection needs no app or session for an unpersisted structure.
+    manager = object.__new__(DatasetCollectionManager)
+    return manager.precreate_dataset_collection(structure)
+
+
+def test_multiply_sample_sheet_by_dataset_output():
+    mapped = _sample_sheet_tree().multiply(leaf)
+    assert mapped.collection_type_description.collection_type == "sample_sheet"
+    mapped.collection_type_description.validate()
+    collection = _precreate(mapped)
+    assert collection.collection_type == "sample_sheet"
+    assert collection.column_definitions == COLUMN_DEFINITIONS
+    assert [e.columns for e in collection.elements] == [["treated"], ["control"]]
+
+
+@pytest.mark.parametrize("output_type", ["paired", "record", "paired_or_unpaired"])
+def test_multiply_sample_sheet_by_valid_sample_sheet_suffix_output(output_type):
+    mapped = _sample_sheet_tree().multiply(UninitializedTree(factory.for_collection_type(output_type)))
+    expected_type = f"sample_sheet:{output_type}"
+    assert mapped.collection_type_description.collection_type == expected_type
+    mapped.collection_type_description.validate()
+    collection = _precreate(mapped)
+    assert collection.collection_type == expected_type
+    assert collection.column_definitions == COLUMN_DEFINITIONS
+    assert [e.columns for e in collection.elements] == [["treated"], ["control"]]
+
+
+def test_multiply_sample_sheet_paired_by_dataset_output():
+    mapped = _sample_sheet_tree("sample_sheet:paired").multiply(leaf)
+    assert mapped.collection_type_description.collection_type == "sample_sheet:paired"
+    collection = _precreate(mapped)
+    assert collection.column_definitions == COLUMN_DEFINITIONS
+    assert [e.columns for e in collection.elements] == [["treated"], ["control"]]

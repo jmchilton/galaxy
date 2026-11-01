@@ -4834,11 +4834,19 @@ class TargetHistory:
             )
         )
 
-    def with_sample_sheet(self, contents: Optional[ListContentsDescription] = None) -> "HasSrcDict":
+    def with_sample_sheet(
+        self,
+        contents: Optional[ListContentsDescription] = None,
+        column_definitions: Optional[list[dict[str, Any]]] = None,
+        rows: Optional[dict[str, list[Any]]] = None,
+    ) -> "HasSrcDict":
         if contents is None:
             contents = [("foo", "text for foo element")]
         create_response = self._dataset_collection_populator.create_sample_sheet(
-            self._history_id, contents=contents, column_definitions=[], rows={c[0]: [] for c in contents}
+            self._history_id,
+            contents=contents,
+            column_definitions=column_definitions or [],
+            rows=rows if rows is not None else {c[0]: [] for c in contents},
         )
         api_asserts.assert_status_code_is_ok(create_response)
         return HasSrcDict("hdca", create_response.json())

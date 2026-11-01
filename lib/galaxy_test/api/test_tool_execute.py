@@ -854,3 +854,27 @@ def test_deferred_multi_input(required_tool: RequiredTool, target_history: Targe
     output = required_tool.execute().with_inputs(inputs).assert_has_single_job.with_single_output
     output.assert_contains("chr1	147962192	147962580	CCDS989.1_cds_0_0_chr1_147962193_r	0	-")
     output.assert_contains("chr1    4225    19670")
+
+
+SAMPLE_SHEET_COLUMN_DEFINITIONS = [{"type": "string", "name": "condition", "optional": False}]
+SAMPLE_SHEET_ROWS = {"sample1": ["treated"], "sample2": ["control"]}
+
+
+def _assert_sample_sheet_metadata_preserved(details: dict) -> None:
+    assert details["column_definitions"] == SAMPLE_SHEET_COLUMN_DEFINITIONS
+    columns = {e["element_identifier"]: e["columns"] for e in details["elements"]}
+    assert columns == SAMPLE_SHEET_ROWS
+
+
+@requires_tool_id("collection_creates_pair")
+def test_map_paired_output_over_sample_sheet(target_history: TargetHistory, required_tool: RequiredTool):
+    hdca = target_history.with_sample_sheet(
+        [("sample1", "a\nb\nc\nd\n"), ("sample2", "e\nf\ng\nh\n")],
+        column_definitions=SAMPLE_SHEET_COLUMN_DEFINITIONS,
+        rows=SAMPLE_SHEET_ROWS,
+    )
+    execute = required_tool.execute().with_inputs({"input1": {"batch": True, "values": [hdca.src_dict]}})
+    execute.assert_has_n_jobs(2).assert_creates_n_implicit_collections(1)
+    output_collection = execute.assert_creates_implicit_collection(0)
+    output_collection.assert_collection_type_is("sample_sheet:paired")
+    _assert_sample_sheet_metadata_preserved(output_collection.details)
