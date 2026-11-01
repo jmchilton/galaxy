@@ -507,6 +507,8 @@ def test_import_export_library(tmp_path):
 
     assert len(new_root.folders) == 1
     assert len(new_root.datasets) == 1
+    new_ld = new_root.datasets[0]
+    assert new_ld.library_dataset_dataset_association.library_dataset is new_ld
 
 
 def test_import_export_invocation():
