@@ -678,7 +678,7 @@ class LibraryDatasetsController(BaseGalaxyAPIController, UsesVisualizationMixin,
                 ldda = ld.library_dataset_dataset_association
                 is_composite = ldda.datatype.composite_type
                 path = ""
-                parent_folder = ldda.library_dataset.folder
+                parent_folder = ld.folder
                 while parent_folder is not None:
                     # Exclude the now-hidden "root folder"
                     if parent_folder.parent is None:
