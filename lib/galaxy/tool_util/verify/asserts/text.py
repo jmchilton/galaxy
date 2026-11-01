@@ -19,7 +19,21 @@ from ._util import (
 
 Text = Annotated[str, AssertionParameter("The text to search for in the output.")]
 Line = Annotated[str, AssertionParameter("The full line of text to search for in the output.")]
-Expression = Annotated[str, AssertionParameter("The regular expressions to attempt match in the output.")]
+Expression = Annotated[
+    str,
+    AssertionParameter(
+        "The regular expression to search for anywhere in the output. "
+        "It is not anchored, and ``^``/``$`` refer to the start and end of the whole output."
+    ),
+]
+LineExpression = Annotated[
+    str,
+    AssertionParameter(
+        "The regular expression that must match an entire line of the output. "
+        "It is anchored as ``^expression$`` on each line, so end a prefix with ``.*`` "
+        "(``foo.*`` rather than ``foo``) and group alternatives (``(?:a|b)``)."
+    ),
+]
 
 
 def assert_has_text(
@@ -125,6 +139,11 @@ def assert_has_text_matching(
     regular expression specified by the argument expression.
     If n is given the assertion checks for exactly n (nonoverlapping)
     occurrences.
+
+    The expression is searched for anywhere in the output, as with
+    Python's ``re.search``. It is not applied line by line, so ``^``
+    and ``$`` match only at the start and end of the whole output. Use
+    ``has_line_matching`` to match complete lines.
     """
     _assert_presence_number(
         output,
@@ -144,7 +163,7 @@ def assert_has_text_matching(
 
 def assert_has_line_matching(
     output: Output,
-    expression: Expression,
+    expression: LineExpression,
     n: N = None,
     delta: Delta = 0,
     min: Min = None,
@@ -153,7 +172,19 @@ def assert_has_line_matching(
 ) -> None:
     """Asserts the specified output contains a line matching the
     regular expression specified by the argument expression. If n is given
-    the assertion checks for exactly n occurrences."""
+    the assertion checks for exactly n occurrences.
+
+    The expression must match an entire line: it is checked as
+    ``^expression$`` against each line of the output. To count lines
+    starting with ``chr1``, use ``chr1.*``; the expressions ``chr1`` and
+    ``^chr1`` only match a line that is exactly ``chr1``. The wrapping
+    does not group the expression, so put alternatives in a group, e.g.
+    ``(?:chr1|chr2) .*`` rather than ``chr1|chr2 .*``.
+
+    ```xml
+    <has_line_matching expression="chr1.*" n="2"/>
+    ```
+    """
     _assert_presence_number(
         output,
         expression,

@@ -218,7 +218,7 @@ class has_line_model_relaxed(base_has_line_model_relaxed):
     that: Literal["has_line"] = Field("has_line", title="That")
 
 
-has_line_matching_expression_description = """The regular expressions to attempt match in the output."""
+has_line_matching_expression_description = """The regular expression that must match an entire line of the output. It is anchored as ``^expression$`` on each line, so end a prefix with ``.*`` (``foo.*`` rather than ``foo``) and group alternatives (``(?:a|b)``)."""
 
 has_line_matching_n_description = """Desired number, can be suffixed by ``(k|M|G|T|P|E)i?``"""
 
@@ -348,7 +348,18 @@ class base_has_line_matching_model_relaxed(AssertionModel):
 class has_line_matching_model(base_has_line_matching_model):
     r"""Asserts the specified output contains a line matching the
     regular expression specified by the argument expression. If n is given
-    the assertion checks for exactly n occurrences."""
+    the assertion checks for exactly n occurrences.
+
+    The expression must match an entire line: it is checked as
+    ``^expression$`` against each line of the output. To count lines
+    starting with ``chr1``, use ``chr1.*``; the expressions ``chr1`` and
+    ``^chr1`` only match a line that is exactly ``chr1``. The wrapping
+    does not group the expression, so put alternatives in a group, e.g.
+    ``(?:chr1|chr2) .*`` rather than ``chr1|chr2 .*``.
+
+    ```xml
+    <has_line_matching expression="chr1.*" n="2"/>
+    ```"""
 
     model_config = ConfigDict(extra="forbid", title="Assert Has Line Matching")
     that: Literal["has_line_matching"] = Field("has_line_matching", title="That")
@@ -364,7 +375,18 @@ class has_line_matching_model_nested(AssertionModel):
 class has_line_matching_model_relaxed(base_has_line_matching_model_relaxed):
     r"""Asserts the specified output contains a line matching the
     regular expression specified by the argument expression. If n is given
-    the assertion checks for exactly n occurrences."""
+    the assertion checks for exactly n occurrences.
+
+    The expression must match an entire line: it is checked as
+    ``^expression$`` against each line of the output. To count lines
+    starting with ``chr1``, use ``chr1.*``; the expressions ``chr1`` and
+    ``^chr1`` only match a line that is exactly ``chr1``. The wrapping
+    does not group the expression, so put alternatives in a group, e.g.
+    ``(?:chr1|chr2) .*`` rather than ``chr1|chr2 .*``.
+
+    ```xml
+    <has_line_matching expression="chr1.*" n="2"/>
+    ```"""
 
     model_config = ConfigDict(extra="forbid", title="Assert Has Line Matching (Relaxed)")
     that: Literal["has_line_matching"] = Field("has_line_matching", title="That")
@@ -660,7 +682,7 @@ class has_text_model_relaxed(base_has_text_model_relaxed):
     that: Literal["has_text"] = Field("has_text", title="That")
 
 
-has_text_matching_expression_description = """The regular expressions to attempt match in the output."""
+has_text_matching_expression_description = """The regular expression to search for anywhere in the output. It is not anchored, and ``^``/``$`` refer to the start and end of the whole output."""
 
 has_text_matching_n_description = """Desired number, can be suffixed by ``(k|M|G|T|P|E)i?``"""
 
@@ -791,7 +813,12 @@ class has_text_matching_model(base_has_text_matching_model):
     r"""Asserts the specified output contains text matching the
     regular expression specified by the argument expression.
     If n is given the assertion checks for exactly n (nonoverlapping)
-    occurrences."""
+    occurrences.
+
+    The expression is searched for anywhere in the output, as with
+    Python's ``re.search``. It is not applied line by line, so ``^``
+    and ``$`` match only at the start and end of the whole output. Use
+    ``has_line_matching`` to match complete lines."""
 
     model_config = ConfigDict(extra="forbid", title="Assert Has Text Matching")
     that: Literal["has_text_matching"] = Field("has_text_matching", title="That")
@@ -808,7 +835,12 @@ class has_text_matching_model_relaxed(base_has_text_matching_model_relaxed):
     r"""Asserts the specified output contains text matching the
     regular expression specified by the argument expression.
     If n is given the assertion checks for exactly n (nonoverlapping)
-    occurrences."""
+    occurrences.
+
+    The expression is searched for anywhere in the output, as with
+    Python's ``re.search``. It is not applied line by line, so ``^``
+    and ``$`` match only at the start and end of the whole output. Use
+    ``has_line_matching`` to match complete lines."""
 
     model_config = ConfigDict(extra="forbid", title="Assert Has Text Matching (Relaxed)")
     that: Literal["has_text_matching"] = Field("has_text_matching", title="That")
