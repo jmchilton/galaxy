@@ -152,8 +152,12 @@ class TestUserDefinedToolLoading(BaseToolBoxTestCase):
 
     def test_create_reports_malformed_container_as_invalid(self):
         with pytest.raises(exceptions.RequestParameterInvalidException, match="Invalid container") as exc_info:
-            self._create(self._executor(), container="quay.io/biocontainers/coreutils:9.5 ")
+            self._create(self._executor(), container="oras://quay.io/biocontainers/coreutils:9.5")
         assert "is not allowed" not in str(exc_info.value)
+
+    def test_create_rejects_container_with_whitespace_at_lint(self):
+        with pytest.raises(exceptions.RequestParameterInvalidException, match="Tool failed lint checks"):
+            self._create(self._executor(), container="quay.io/biocontainers/coreutils:9.5 ")
 
     def test_create_uses_configured_allowlist(self):
         self.app.config.user_defined_tool_allowed_containers = ["docker.io/library/busybox"]
