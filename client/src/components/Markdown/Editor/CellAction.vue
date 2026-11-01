@@ -24,7 +24,8 @@
                 tabindex="0"
                 @click="popperRef.close()"
                 @keydown.enter.prevent="popperRef.close()"
-                @keydown.space.prevent="popperRef.close()">
+                @keydown.space.prevent
+                @keyup.space="popperRef.close()">
                 <span class="d-flex justify-content-between">
                     <small class="my-1 mx-3 text-info">{{ title }}</small>
                 </span>

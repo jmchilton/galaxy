@@ -29,6 +29,14 @@ const createContainer = (tag = "div") => {
     return container;
 };
 
+// Dispatch a full key press and return the keydown event, to check whether its default was prevented.
+function pressKey(element, key) {
+    const keydown = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+    element.dispatchEvent(keydown);
+    element.dispatchEvent(new KeyboardEvent("keyup", { key, bubbles: true, cancelable: true }));
+    return keydown;
+}
+
 const mountTarget = () => {
     server.use(http.get("/api/plugins", ({ response }) => response(200).json([])));
     return mount(CellAdd, {
@@ -123,10 +131,9 @@ describe("CellAdd.vue", () => {
             const option = wrapper.findComponent(CellOption);
             option.element.focus();
             expect(document.activeElement).toBe(option.element);
-            const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
-            option.element.dispatchEvent(event);
+            const event = pressKey(option.element, key);
             await wrapper.vm.$nextTick();
-            // A default Enter would re-activate the trigger button that now has focus.
+            // Unprevented, Space scrolls the page and Enter activates the trigger that now has focus.
             expect(event.defaultPrevented).toBe(true);
             expect(menu.isVisible()).toBe(false);
             expect(document.activeElement).toBe(button.element);
