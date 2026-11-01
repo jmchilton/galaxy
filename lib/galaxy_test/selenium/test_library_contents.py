@@ -6,6 +6,7 @@ from galaxy_test.base.decorators import (
     requires_admin,
     requires_new_library,
 )
+from galaxy_test.base.populators import LibraryPopulator
 from .framework import (
     retry_during_transitions,
     selenium_test,
@@ -95,20 +96,29 @@ class TestLibraryContents(SeleniumTestCase, UsesLibraryAssertions, UsesUploadAct
     @requires_admin
     @requires_new_library
     def test_download_dataset_from_library(self):
-        self.test_import_dataset_from_history()
+        self.admin_login()
+        library_name = self._get_random_name(prefix="download_library")
+        library_populator = LibraryPopulator(self.api_interactor_for_logged_in_user())
+        library = library_populator.new_library(library_name)
+        test_data_path = self.get_filename("1.txt")
+        with open(test_data_path, "rb") as fh:
+            contents = fh.read()
+            fh.seek(0)
+            # The uploaded file's basename becomes the library dataset's name.
+            payload, files = library_populator.create_dataset_request(library, file=fh, file_type="txt")
+            [dataset] = library_populator.raw_library_contents_create(library["id"], payload, files=files).json()
+        library_populator.wait_on_library_dataset(library["id"], dataset["id"])
+        self.libraries_open_with_name(library_name)
+        self.libraries_folder_select_datasets(["1.txt"])
 
-        self.components.libraries.folder.select_one.wait_for_and_click()
         zip_path = self.download_file_from(
             self.components.libraries.folder.download_button.wait_for_and_click,
             "selected_library_files.zip",
         )
         with zipfile.ZipFile(zip_path) as archive:
-            [entry] = archive.namelist()
-            # Entries are "<library name>/<dataset name>.<extension>"; the extension is the sniffed datatype's.
-            assert entry.startswith(f"{self.name}/1.txt."), entry
-            contents = archive.read(entry)
-        with open(self.get_filename("1.txt"), "rb") as fh:
-            assert contents == fh.read()
+            # Entries are "<library name>/<dataset name>.<extension>".
+            assert archive.namelist() == [f"{library_name}/1.txt.txt"]
+            assert archive.read(f"{library_name}/1.txt.txt") == contents
 
     @selenium_test
     @requires_admin
