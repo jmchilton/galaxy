@@ -485,8 +485,11 @@ LINE_MATCHING_GFF = "I\tsrc\tgene\t1\t10\nI\tsrc\tgene\t20\t30\nII\tsrc\tgene\t1
         ("^I\t.*$", 2),
         # grouped alternatives stay anchored at both ends
         ("(?:I|II)\tsrc\tgene\t1\t.*", 2),
-        # ungrouped, ^ binds only to the first alternative and $ only to the last
+        # ungrouped, ^ binds only to the first alternative and $ only to the last:
+        # "^I\t" matches the start of the two I lines ...
         ("I\t|II\t", 2),
+        # ... and "\t5$" matches the end of the II line, which "(?:I\t|\t5)" would not
+        ("I\t|\t5", 3),
     ],
 )
 def test_has_line_matching_anchors_expression_to_whole_line(expression, expected_count):
