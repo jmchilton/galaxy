@@ -874,7 +874,9 @@
                  'galaxy_url' attribute on the runner plugin above. -->
             <!-- <param id="default_file_action">none</param> -->
             <!-- The above option is just the default, the transfer behavior
-                 none|copy|http can be configured on a per path basis via the
+                 none|transfer|copy|rewrite|remote_copy|remote_transfer|
+                 remote_transfer_tus|remote_object_store_copy|remote_rsync_transfer|
+                 remote_scp_transfer can be configured on a per path basis via the
                  following file. See Pulsar documentation for more details and
                  examples.
             -->

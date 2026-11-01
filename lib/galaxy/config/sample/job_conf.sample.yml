@@ -248,7 +248,7 @@ runners:
     amqp_url: amqp://guest:guest@localhost:5672//
     # URL remote Pulsar apps should transfer files to this Galaxy
     # instance to/from. This can be unspecified/empty if
-    # `galaxy_infrastructure_url1 is set in galaxy.yml.
+    # `galaxy_infrastructure_url` is set in galaxy.yml.
     galaxy_url: http://localhost:8080
 
     # AMQP does not guarantee that a published message is received by
@@ -875,12 +875,14 @@ execution:
        # 'remote_copy' to cause Pulsar to initiate file system copies.
        # If setting this to 'remote_transfer' be sure to specify a
        # 'galaxy_url' attribute on the runner plugin above.
-       default_file_action: none
+       #default_file_action: none
 
        # The above option is just the default, the transfer behavior
-       # none|copy|http|remote_transfer|remote_copy can be configured on a per
-       # path basis via the following file or dictionary. See Pulsar documentation
-       # for more details and examples.
+       # none|transfer|copy|rewrite|remote_copy|remote_transfer|
+       # remote_transfer_tus|remote_object_store_copy|remote_rsync_transfer|
+       # remote_scp_transfer can be configured on a per path basis via the
+       # following file or dictionary. See Pulsar documentation for more
+       # details and examples.
        #file_action_config: file_actions.yaml
        #file_actions: {}
 
