@@ -93,7 +93,13 @@ export class CollectionTypeDescription implements CollectionTypeDescriptor {
         if (other === ANY_COLLECTION_TYPE_DESCRIPTION) {
             return other;
         }
-        return new CollectionTypeDescription(`${this.collectionType}:${other.collectionType}`);
+        let collectionType = `${this.collectionType}:${other.collectionType}`;
+        if (collectionType.startsWith("sample_sheet") && !isValidCollectionTypeStr(collectionType)) {
+            // sample_sheet can only be followed by a single paired, record or
+            // paired_or_unpaired level - otherwise the outer level becomes a plain list.
+            collectionType = normalizeCollectionType(collectionType);
+        }
+        return new CollectionTypeDescription(collectionType);
     }
     canMatch(other: CollectionTypeDescriptor) {
         const otherCollectionType = other.collectionType;

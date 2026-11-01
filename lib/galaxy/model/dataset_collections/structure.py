@@ -168,12 +168,19 @@ class Tree(BaseTree):
         for identifier, structure in self.children:
             new_children.append((identifier, structure.multiply(other_structure)))
 
-        # Preserve columns_metadata and column_definitions when multiplying
+        # Preserve sample sheet columns when multiplying, unless the outer level
+        # was demoted to a plain list (e.g. sample_sheet x list -> list:list).
+        if new_collection_type.collection_type.startswith("sample_sheet"):
+            columns_metadata = self.columns_metadata.copy()
+            column_definitions = self.column_definitions
+        else:
+            columns_metadata = None
+            column_definitions = None
         return Tree(
             new_children,
             new_collection_type,
-            columns_metadata=self.columns_metadata.copy(),
-            column_definitions=self.column_definitions,
+            columns_metadata=columns_metadata,
+            column_definitions=column_definitions,
         )
 
     def clone(self):

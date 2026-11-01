@@ -53,4 +53,11 @@ describe("append over sample_sheet", () => {
             "sample_sheet:paired_or_unpaired",
         );
     });
+
+    it("demotes the sample_sheet outer level to list when the result is not a valid sample_sheet type", () => {
+        expect(ct("sample_sheet").append(ct("list")).collectionType).toBe("list:list");
+        expect(ct("sample_sheet").append(ct("list:paired")).collectionType).toBe("list:list:paired");
+        expect(ct("sample_sheet:paired").append(ct("list")).collectionType).toBe("list:paired:list");
+        expect(ct("sample_sheet:paired").append(ct("paired")).collectionType).toBe("list:paired:paired");
+    });
 });

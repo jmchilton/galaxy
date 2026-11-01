@@ -195,3 +195,23 @@ def test_validate():
 
     with pytest.raises(RequestParameterInvalidException):
         c_t("list:list:paired_or").validate()
+
+
+@pytest.mark.parametrize(
+    "mapped_over,target,expected",
+    [
+        ("sample_sheet", "paired", "sample_sheet:paired"),
+        ("sample_sheet", "record", "sample_sheet:record"),
+        ("sample_sheet", "paired_or_unpaired", "sample_sheet:paired_or_unpaired"),
+        ("sample_sheet", "list", "list:list"),
+        ("sample_sheet", "list:paired", "list:list:paired"),
+        ("sample_sheet", "paired:paired", "list:paired:paired"),
+        ("sample_sheet:paired", "list", "list:paired:list"),
+        ("sample_sheet:paired", "paired", "list:paired:paired"),
+        ("list", "list", "list:list"),
+    ],
+)
+def test_multiply_sample_sheet_produces_valid_type(mapped_over, target, expected):
+    multiplied = c_t(mapped_over).multiply(c_t(target))
+    assert multiplied.collection_type == expected
+    multiplied.validate()

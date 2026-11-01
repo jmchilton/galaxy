@@ -131,3 +131,31 @@ def test_multiply_sample_sheet_paired_by_dataset_output():
     collection = _precreate(mapped)
     assert collection.column_definitions == COLUMN_DEFINITIONS
     assert [e.columns for e in collection.elements] == [["treated"], ["control"]]
+
+
+@pytest.mark.parametrize(
+    "mapping_type,output_type,expected_type",
+    [
+        ("sample_sheet", "list", "list:list"),
+        ("sample_sheet", "list:paired", "list:list:paired"),
+        ("sample_sheet:paired", "list", "list:paired:list"),
+    ],
+)
+def test_multiply_sample_sheet_by_nested_collection_output_demotes_to_list(mapping_type, output_type, expected_type):
+    mapped = _sample_sheet_tree(mapping_type).multiply(UninitializedTree(factory.for_collection_type(output_type)))
+    assert mapped.collection_type_description.collection_type == expected_type
+    mapped.collection_type_description.validate()
+    collection = _precreate(mapped)
+    assert collection.collection_type == expected_type
+    # a plain list cannot carry sample sheet columns
+    assert collection.column_definitions is None
+    assert [e.element_identifier for e in collection.elements] == ["sample1", "sample2"]
+    assert [e.columns for e in collection.elements] == [None, None]
+
+
+def test_multiply_sample_sheet_by_unlinked_list_structure_demotes_to_list():
+    list_tree = Tree([("a", leaf), ("b", leaf)], factory.for_collection_type("list"))
+    mapped = _sample_sheet_tree().multiply(list_tree)
+    assert mapped.collection_type_description.collection_type == "list:list"
+    assert mapped.column_definitions is None
+    assert mapped.columns_metadata == {}

@@ -878,3 +878,25 @@ def test_map_paired_output_over_sample_sheet(target_history: TargetHistory, requ
     output_collection = execute.assert_creates_implicit_collection(0)
     output_collection.assert_collection_type_is("sample_sheet:paired")
     _assert_sample_sheet_metadata_preserved(output_collection.details)
+
+
+@requires_tool_id("collection_split_on_column")
+def test_map_list_output_over_sample_sheet(target_history: TargetHistory, required_tool: RequiredTool):
+    # sample_sheet:list is not a valid collection type, so the outer level becomes a plain list
+    hdca = target_history.with_sample_sheet(
+        [("sample1", "a\t1\nb\t2\n"), ("sample2", "a\t3\n")],
+        column_definitions=SAMPLE_SHEET_COLUMN_DEFINITIONS,
+        rows=SAMPLE_SHEET_ROWS,
+    )
+    execute = required_tool.execute().with_inputs({"input1": {"batch": True, "values": [hdca.src_dict]}})
+    execute.assert_has_n_jobs(2).assert_creates_n_implicit_collections(1)
+    for job_index in range(2):
+        execute.assert_has_job(job_index).with_final_state("ok")
+    output_collection = execute.assert_creates_implicit_collection(0)
+    output_collection.assert_collection_type_is("list:list")
+    details = output_collection.details
+    assert details["populated_state"] == "ok"
+    assert [e["element_identifier"] for e in details["elements"]] == ["sample1", "sample2"]
+    inner = details["elements"][0]["object"]
+    assert inner["collection_type"] == "list"
+    assert sorted(e["element_identifier"] for e in inner["elements"]) == ["a", "b"]
