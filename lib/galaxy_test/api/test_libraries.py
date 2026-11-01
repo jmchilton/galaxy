@@ -1,6 +1,7 @@
 import unittest
 import zipfile
 from io import BytesIO
+from typing import Any
 
 from galaxy.model.unittest_utils.store_fixtures import (
     one_ld_library_model_store_dict,
@@ -67,6 +68,7 @@ class TestLibrariesApi(ApiTestCase):
 
     @requires_new_library
     def test_download_fetched_dataset(self):
+        """Datasets fetched into a library download as a zip with their folder path."""
         library, ld = self._fetch_pasted_to_new_library("download_fetched", "fetched content\n")
 
         response = self.library_populator.download_library_datasets_raw(ld["id"])
@@ -78,13 +80,13 @@ class TestLibrariesApi(ApiTestCase):
 
     @requires_new_library
     def test_show_fetched_ldda(self):
+        """A fetched LDDA links back to its library dataset, which its serialization reads."""
         library, ld = self._fetch_pasted_to_new_library("show_fetched", "fetched content\n")
-        ldda_id = self.library_populator.show_ld(library["id"], ld["id"])["ldda_id"]
 
-        ldda = self.library_populator.show_ldda(ldda_id)
-        assert ldda["name"] == "fetched.txt"
+        ldda = self.library_populator.show_ldda(ld["ldda_id"])
+        assert ldda["parent_library_id"] == library["id"]
 
-    def _fetch_pasted_to_new_library(self, test_name: str, content: str):
+    def _fetch_pasted_to_new_library(self, test_name: str, content: str) -> tuple[dict[str, Any], dict[str, Any]]:
         history_id, library, destination = self._setup_fetch_to_folder(test_name)
         items = [{"src": "pasted", "paste_content": content, "name": "fetched.txt", "ext": "txt"}]
         self.dataset_populator.fetch(

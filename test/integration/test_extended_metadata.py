@@ -142,6 +142,8 @@ class TestExtendedMetadataIntegration(integration_util.IntegrationTestCase):
         assert dataset["misc_info"] == "my cool bed", dataset
         assert dataset["file_ext"] == "bed", dataset
         assert dataset["created_from_basename"] == "4.bed"
+        ldda = self.library_populator.show_ldda(dataset["ldda_id"])
+        assert ldda["parent_library_id"] == library["id"]
 
     def test_no_duplicate_elements_in_dynamic_list_output(self, history_id):
         """Run a tool with dynamic collection output and verify no duplicate elements."""
