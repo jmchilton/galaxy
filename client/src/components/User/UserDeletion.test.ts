@@ -102,4 +102,32 @@ describe("UserDeletion.vue", () => {
 
         expect(userLogoutClientMock).toHaveBeenCalled();
     });
+
+    it("shows a generic error and stays logged in when another 403 refuses the deletion", async () => {
+        mockDelete403({
+            err_code: 403005,
+            err_msg: "You are not allowed to delete this user.",
+        });
+
+        const wrapper = await submitDeletion();
+
+        expect(wrapper.find(".alert-danger").text()).toBe("An error occurred while deleting the user.");
+        expect(userLogoutClientMock).not.toHaveBeenCalled();
+    });
 });
+
+function mockDelete403(body: { err_code: number; err_msg: string }) {
+    server.use(
+        http.delete("/api/users/{user_id}", ({ response }) => {
+            return response("4XX").json(body, { status: 403 });
+        }),
+    );
+}
+
+async function submitDeletion() {
+    const wrapper = await mountComponent();
+    await wrapper.find("#name-input").setValue(TEST_EMAIL);
+    await wrapper.find(".btn-danger").trigger("click");
+    await flushPromises();
+    return wrapper;
+}
