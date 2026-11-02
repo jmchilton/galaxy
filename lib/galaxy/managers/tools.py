@@ -100,6 +100,11 @@ class DynamicToolManager(ModelManager[DynamicTool]):
         ):
             raise exceptions.InsufficientPermissionsException("User is not allowed to run unprivileged tools")
 
+    def ensure_job_owner_can_run(self, job: model.Job) -> None:
+        """Raise if the job uses a user-defined tool its owner may no longer run."""
+        if (dynamic_tool := job.dynamic_tool) is not None and not dynamic_tool.public:
+            self.ensure_can_use_unprivileged_tool(job.user)
+
     def ensure_beta_tool_formats_enabled(self) -> None:
         if not self.app.config.enable_beta_tool_formats:
             raise exceptions.ConfigDoesNotAllowException(

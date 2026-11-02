@@ -30,6 +30,7 @@ from sqlalchemy.sql.expression import (
 
 from galaxy import model
 from galaxy.exceptions import (
+    InsufficientPermissionsException,
     ObjectNotFound,
     ToolMissingException,
 )
@@ -246,12 +247,16 @@ def _tool_unavailable_reason(app: MinimalManagerApp, job: model.Job) -> str | No
     """Return why the job's tool can no longer be run, or None if it can."""
     tool_uuid = job.dynamic_tool.uuid if job.dynamic_tool else None
     try:
+        app.dynamic_tool_manager.ensure_job_owner_can_run(job)
+    except InsufficientPermissionsException as e:
+        return f"(uuid {tool_uuid}) not usable by the job's owner: {e}"
+    try:
         if not app.toolbox.has_tool(
             tool_id=job.tool_id, tool_version=job.tool_version, tool_uuid=tool_uuid, exact=True, user=job.user
         ):
             return "removed from tool config"
     except (ObjectNotFound, ToolMissingException) as e:
-        # A uuid lookup raises instead of returning False, e.g. owner lost the execution role.
+        # A uuid lookup raises instead of returning False, e.g. a deactivated dynamic tool.
         return f"(uuid {tool_uuid}) unavailable: {e}"
     return None
 

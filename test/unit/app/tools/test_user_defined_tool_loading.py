@@ -1,5 +1,9 @@
+import logging
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import (
+    Mock,
+    patch,
+)
 from uuid import uuid4
 
 import pytest
@@ -9,6 +13,7 @@ from galaxy import (
     model,
 )
 from galaxy.app_unittest_utils.toolbox_support import BaseToolBoxTestCase
+from galaxy.jobs.handler import JobHandlerQueue
 from galaxy.managers.tools import DynamicToolManager
 from galaxy.tool_util.unittest_utils import mock_trans
 from galaxy.tool_util_models import UserToolSource
@@ -26,6 +31,7 @@ REPRESENTATION: dict[str, Any] = {
     "inputs": [{"type": "data", "name": "input", "format": "txt"}],
     "outputs": [{"type": "data", "name": "output", "from_work_dir": "output.txt"}],
 }
+STARTUP_DISABLED_MESSAGE = "This tool was disabled before the job completed.  Please contact your Galaxy administrator."
 
 
 class TestUserDefinedToolLoading(BaseToolBoxTestCase):
@@ -71,6 +77,45 @@ class TestUserDefinedToolLoading(BaseToolBoxTestCase):
         session.add(model.UserDynamicToolAssociation(user_id=owner.id, dynamic_tool_id=dynamic_tool.id))
         session.commit()
         return dynamic_tool
+
+    def _check_job_at_startup(self, job: model.Job) -> Mock:
+        queue = Mock(spec=JobHandlerQueue)
+        queue.app = self.app
+        queue.dispatcher = Mock()
+        JobHandlerQueue._check_job_at_startup(queue, job)
+        return queue
+
+    def _dispatched_job(self, user: model.User, dynamic_tool: model.DynamicTool) -> model.Job:
+        job = self._job(user, dynamic_tool)
+        job.id = 1
+        job.job_runner_name = "local:///"
+        job.job_runner_external_id = "42"
+        job.destination_id = "local"
+        return job
+
+    def test_startup_fails_job_whose_owner_lost_execute_role(self, caplog):
+        user = self._executor()
+        dynamic_tool = self._create(user)
+        job = self._dispatched_job(user, dynamic_tool)
+        queue = self._check_job_at_startup(job)
+        queue.job_wrapper.return_value.fail.assert_not_called()
+        queue.dispatcher.recover.assert_called_once()
+        for role in user.all_roles():
+            if role.type == model.Role.types.USER_TOOL_EXECUTE:
+                role.deleted = True
+        self.app.model.context.commit()
+
+        caplog.clear()
+        with caplog.at_level(logging.WARNING, logger="galaxy.jobs.handler"):
+            queue = self._check_job_at_startup(job)
+
+        queue.job_wrapper.return_value.fail.assert_called_once_with(STARTUP_DISABLED_MESSAGE)
+        queue.dispatcher.recover.assert_not_called()
+        expected = (
+            f"(1) Tool 'cat_user_tool' (uuid {dynamic_tool.uuid}) not usable by the job's owner: "
+            "User is not allowed to run unprivileged tools, unable to recover job"
+        )
+        assert [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING] == [expected]
 
     def test_stored_tool_loads_without_fields_the_schema_no_longer_accepts(self):
         owner = self._executor()
