@@ -201,7 +201,8 @@ describe("ToolSuccess", () => {
         });
 
         it("shows a pagination control for each job", () => {
-            expect(wrapper.findAll(SELECTORS.PAGINATION_ITEM).length).toBeGreaterThan(0);
+            expect(wrapper.findAll(SELECTORS.PAGINATION_ITEM).map((page) => page.text())).toEqual(["1", "2"]);
+            expect(wrapper.find(SELECTORS.PAGINATION_CURRENT).text()).toBe("1");
         });
 
         it("shows JobState and RerunJobButton for the currently viewed job", () => {
