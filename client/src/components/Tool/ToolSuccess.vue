@@ -79,7 +79,7 @@ const toolSuccessOutputsCollapsed = useUserLocalStorage("tool-success-outputs-co
                         first-number
                         last-number
                         hide-goto-end-buttons
-                        class="job-pagination unselectable" />
+                        class="mb-0 unselectable" />
                 </template>
             </JobHeader>
 
@@ -119,9 +119,3 @@ const toolSuccessOutputsCollapsed = useUserLocalStorage("tool-success-outputs-co
         </div>
     </div>
 </template>
-
-<style scoped>
-.job-pagination {
-    margin-bottom: 0;
-}
-</style>
