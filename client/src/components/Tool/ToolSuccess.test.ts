@@ -244,6 +244,27 @@ describe("ToolSuccess", () => {
             expect(wrapper.find(SELECTORS.PAGINATION_CURRENT).text()).toBe("1");
             expect(wrapper.findComponent(JobState).props("jobId")).toEqual(jobInformationResponse.id);
         });
+
+        it("goes back to the first job when a new response has as many jobs", async () => {
+            await wrapper
+                .findAll(SELECTORS.PAGINATION_ITEM)
+                .find((link) => link.text() === "2")!
+                .trigger("click");
+            expect(wrapper.findComponent(JobState).props("jobId")).toEqual(SECOND_JOB.id);
+
+            const newJobs = [
+                { ...jobInformationResponse, id: "new_id_1" },
+                { ...jobInformationResponse, id: "new_id_2" },
+            ];
+            useJobStore().saveLatestResponse({
+                jobDef: TEST_JOB_DEF,
+                jobResponse: { ...TEST_JOB_RESPONSE, jobs: newJobs as unknown as JobResponse["jobs"] },
+            });
+            await flushPromises();
+
+            expect(wrapper.find(SELECTORS.PAGINATION_CURRENT).text()).toBe("1");
+            expect(wrapper.findComponent(JobState).props("jobId")).toEqual("new_id_1");
+        });
     });
 });
 
