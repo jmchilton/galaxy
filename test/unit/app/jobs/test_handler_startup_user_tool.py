@@ -1,4 +1,5 @@
 from unittest.mock import Mock
+from uuid import uuid4
 
 import pytest
 
@@ -20,11 +21,12 @@ from galaxy.jobs.handler import (
         ObjectNotFound("Failed to find a tool with uuid"),
     ],
 )
-def test_job_with_unavailable_user_tool_fails_at_startup(error):
+def test_job_with_unavailable_user_tool_fails_at_startup(error, caplog):
     job = model.Job()
     job.id = 1
     job.tool_id = "user_tool"
-    job.dynamic_tool = model.DynamicTool(tool_format="GalaxyUserTool", public=False, active=True)
+    tool_uuid = uuid4()
+    job.dynamic_tool = model.DynamicTool(tool_format="GalaxyUserTool", uuid=tool_uuid, public=False, active=True)
     queue = Mock(spec=JobHandlerQueue)
     queue.app = Mock()
     queue.dispatcher = Mock()
@@ -37,6 +39,8 @@ def test_job_with_unavailable_user_tool_fails_at_startup(error):
         "This tool was disabled before the job completed.  Please contact your Galaxy administrator."
     )
     queue.dispatcher.recover.assert_not_called()
+    assert f"(uuid {tool_uuid}) unavailable: {error}" in caplog.text
+    assert "removed from tool config" not in caplog.text
 
 
 @pytest.mark.parametrize("has_tool, reason", [(True, None), (False, "removed from tool config")])
