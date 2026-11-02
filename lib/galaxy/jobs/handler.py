@@ -78,6 +78,7 @@ log = get_logger(__name__)
     "user_over_total_walltime",
 )
 DEFAULT_JOB_RUNNER_FAILURE_MESSAGE = "Unable to run job due to a misconfiguration of the Galaxy job running system.  Please contact a site administrator."
+TOOL_DISABLED_MESSAGE = "This tool was disabled before the job completed.  Please contact your Galaxy administrator."
 
 ReadyJobPartition = tuple[int | None, int | None]
 
@@ -241,6 +242,20 @@ class StopSignalException(Exception):
     """Exception raised when queue returns a stop signal."""
 
 
+def _tool_unavailable_reason(app: MinimalManagerApp, job: model.Job) -> str | None:
+    """Return why the job's tool can no longer be run, or None if it can."""
+    tool_uuid = job.dynamic_tool.uuid if job.dynamic_tool else None
+    try:
+        if not app.toolbox.has_tool(
+            tool_id=job.tool_id, tool_version=job.tool_version, tool_uuid=tool_uuid, exact=True, user=job.user
+        ):
+            return "removed from tool config"
+    except (ObjectNotFound, ToolMissingException):
+        # A uuid lookup raises instead of returning False, e.g. owner lost the execution role.
+        return "removed from tool config"
+    return None
+
+
 class BaseJobHandlerQueue(JobQueueI, Monitors):
     STOP_SIGNAL = object()
 
@@ -328,22 +343,9 @@ class JobHandlerQueue(BaseJobHandlerQueue):
 
     def _check_job_at_startup(self, job: model.Job):
         assert job.tool_id or job.dynamic_tool_id
-        tool_uuid = None
-        if job.dynamic_tool and (uuid := job.dynamic_tool.uuid):
-            tool_uuid = uuid
-        try:
-            tool_available = self.app.toolbox.has_tool(
-                tool_id=job.tool_id, tool_version=job.tool_version, tool_uuid=tool_uuid, exact=True, user=job.user
-            )
-        except (ObjectNotFound, ToolMissingException):
-            # A tool looked up by uuid raises instead of returning False, e.g. a user-defined
-            # tool whose owner lost the execution role or whose definition no longer loads.
-            tool_available = False
-        if not tool_available:
-            log.warning(f"({job.id}) Tool '{job.tool_id}' removed from tool config, unable to recover job")
-            self.job_wrapper(job).fail(
-                "This tool was disabled before the job completed.  Please contact your Galaxy administrator."
-            )
+        if unavailable_reason := _tool_unavailable_reason(self.app, job):
+            log.warning(f"({job.id}) Tool '{job.tool_id}' {unavailable_reason}, unable to recover job")
+            self.job_wrapper(job).fail(TOOL_DISABLED_MESSAGE)
         elif job.copied_from_job_id:
             self.queue.put((job.id, job.tool_id))
         elif job.job_runner_name is not None and job.job_runner_external_id is None:
@@ -838,9 +840,7 @@ class JobHandlerQueue(BaseJobHandlerQueue):
         """
         job_destination = None
         try:
-            assert (
-                job_wrapper.tool is not None
-            ), "This tool was disabled before the job completed.  Please contact your Galaxy administrator."
+            assert job_wrapper.tool is not None, TOOL_DISABLED_MESSAGE
             # Cause the job_destination to be set and cached by the mapper
             job_destination = job_wrapper.job_destination
         except AssertionError as e:
