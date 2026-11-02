@@ -79,6 +79,7 @@ const toolSuccessOutputsCollapsed = useUserLocalStorage("tool-success-outputs-co
                         first-number
                         last-number
                         hide-goto-end-buttons
+                        aria-label="Jobs"
                         class="mb-0 unselectable" />
                 </template>
             </JobHeader>

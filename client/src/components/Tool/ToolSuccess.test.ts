@@ -77,8 +77,8 @@ const TEST_JOB_RESPONSE = {
 
 // Selectors
 const SELECTORS = {
-    PAGINATION_ITEM: "nav[aria-label='Pagination'] button[data-page]",
-    PAGINATION_CURRENT: "nav[aria-label='Pagination'] button[aria-current='page']",
+    PAGINATION_ITEM: "nav[aria-label='Jobs'] button[data-page]",
+    PAGINATION_CURRENT: "nav[aria-label='Jobs'] button[aria-current='page']",
 };
 
 async function mountToolSuccess(latestResponse: ResponseVal | null, currentUser: unknown = null) {
