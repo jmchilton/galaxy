@@ -250,9 +250,9 @@ def _tool_unavailable_reason(app: MinimalManagerApp, job: model.Job) -> str | No
             tool_id=job.tool_id, tool_version=job.tool_version, tool_uuid=tool_uuid, exact=True, user=job.user
         ):
             return "removed from tool config"
-    except (ObjectNotFound, ToolMissingException):
+    except (ObjectNotFound, ToolMissingException) as e:
         # A uuid lookup raises instead of returning False, e.g. owner lost the execution role.
-        return "removed from tool config"
+        return f"(uuid {tool_uuid}) unavailable: {e}"
     return None
 
 
