@@ -53,6 +53,8 @@ if TYPE_CHECKING:
     from sqlalchemy.sql._typing import _ColumnsClauseArgument
     from sqlalchemy.sql.expression import ColumnExpressionArgument
 
+    from galaxy.tools import ToolBox
+
 log = get_logger(__name__)
 
 # States for running a job. These are NOT the same as data states
@@ -241,6 +243,20 @@ class StopSignalException(Exception):
     """Exception raised when queue returns a stop signal."""
 
 
+def _tool_unavailable_reason(toolbox: "ToolBox", job: model.Job) -> str | None:
+    """Return why the job's tool can no longer be loaded, or None if it can."""
+    tool_uuid = job.dynamic_tool.uuid if job.dynamic_tool else None
+    try:
+        if not toolbox.has_tool(
+            tool_id=job.tool_id, tool_version=job.tool_version, tool_uuid=tool_uuid, exact=True, user=job.user
+        ):
+            return "removed from tool config"
+    except (ObjectNotFound, ToolMissingException):
+        # A uuid lookup raises instead of returning False, e.g. owner lost the execution role.
+        return "removed from tool config"
+    return None
+
+
 class BaseJobHandlerQueue(JobQueueI, Monitors):
     STOP_SIGNAL = object()
 
@@ -328,19 +344,8 @@ class JobHandlerQueue(BaseJobHandlerQueue):
 
     def _check_job_at_startup(self, job: model.Job):
         assert job.tool_id or job.dynamic_tool_id
-        tool_uuid = None
-        if job.dynamic_tool and (uuid := job.dynamic_tool.uuid):
-            tool_uuid = uuid
-        try:
-            tool_available = self.app.toolbox.has_tool(
-                tool_id=job.tool_id, tool_version=job.tool_version, tool_uuid=tool_uuid, exact=True, user=job.user
-            )
-        except (ObjectNotFound, ToolMissingException):
-            # A tool looked up by uuid raises instead of returning False, e.g. a user-defined
-            # tool whose owner lost the execution role or whose definition no longer loads.
-            tool_available = False
-        if not tool_available:
-            log.warning(f"({job.id}) Tool '{job.tool_id}' removed from tool config, unable to recover job")
+        if unavailable_reason := _tool_unavailable_reason(self.app.toolbox, job):
+            log.warning(f"({job.id}) Tool '{job.tool_id}' {unavailable_reason}, unable to recover job")
             self.job_wrapper(job).fail(
                 "This tool was disabled before the job completed.  Please contact your Galaxy administrator."
             )

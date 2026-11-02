@@ -7,7 +7,10 @@ from galaxy.exceptions import (
     ObjectNotFound,
     ToolMissingException,
 )
-from galaxy.jobs.handler import JobHandlerQueue
+from galaxy.jobs.handler import (
+    _tool_unavailable_reason,
+    JobHandlerQueue,
+)
 
 
 @pytest.mark.parametrize(
@@ -34,3 +37,12 @@ def test_job_with_unavailable_user_tool_fails_at_startup(error):
         "This tool was disabled before the job completed.  Please contact your Galaxy administrator."
     )
     queue.dispatcher.recover.assert_not_called()
+
+
+@pytest.mark.parametrize("has_tool, reason", [(True, None), (False, "removed from tool config")])
+def test_tool_unavailable_reason_from_has_tool(has_tool, reason):
+    job = model.Job()
+    job.tool_id = "cat1"
+    toolbox = Mock()
+    toolbox.has_tool.return_value = has_tool
+    assert _tool_unavailable_reason(toolbox, job) == reason
