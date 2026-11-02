@@ -1,7 +1,4 @@
-from unittest.mock import (
-    MagicMock,
-    Mock,
-)
+from unittest.mock import Mock
 
 import pytest
 
@@ -25,7 +22,9 @@ def test_job_with_unavailable_user_tool_fails_at_startup(error):
     job.id = 1
     job.tool_id = "user_tool"
     job.dynamic_tool = model.DynamicTool(tool_format="GalaxyUserTool", public=False, active=True)
-    queue = MagicMock()
+    queue = Mock(spec=JobHandlerQueue)
+    queue.app = Mock()
+    queue.dispatcher = Mock()
     queue.app.toolbox.has_tool = Mock(side_effect=error)
 
     JobHandlerQueue._check_job_at_startup(queue, job)
