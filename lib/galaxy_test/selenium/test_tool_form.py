@@ -324,6 +324,42 @@ class TestToolForm(SeleniumTestCase, UsesHistoryItemAssertions, UsesUploadActivi
         self.screenshot("tool_form_map_over_paired_collection_hint")
 
     @selenium_test
+    def test_tool_success_job_pagination(self):
+        history_id = self.current_history_id()
+        self.dataset_populator.new_dataset(history_id, content="a", name="pager_input_a", wait=True)
+        self.dataset_populator.new_dataset(history_id, content="b", name="pager_input_b", wait=True)
+        self.home()
+        self.tool_open("cat1")
+        self.components.tool_form.parameter_data_input_multiple(parameter="input1").wait_for_and_click()
+        # the default dataset carries over as a tag; re-selecting it would deselect it
+        for tag_close in self.components.tool_form.parameter_multiselect_tag_close(parameter="input1").all():
+            tag_close.click()
+        self.tool_set_value("input1", "1: pager_input_a", expected_type="data", multiple=True)
+        self.tool_set_value("input1", "2: pager_input_b", expected_type="data", multiple=True)
+        self.tool_form_execute()
+
+        tool_success = self.components.tool_success
+        tool_success.pagination.wait_for_visible()
+        pages = [button.get_attribute("data-page") for button in tool_success.pagination_pages.all()]
+        assert pages == ["1", "2"]
+        assert tool_success.pagination_current.wait_for_text() == "1"
+        first_job_id = tool_success.job_id.wait_for_text()
+
+        tool_success.pagination_page(page="2").wait_for_and_click()
+
+        @retry_assertion_during_transitions
+        def assert_second_job_shown():
+            assert tool_success.pagination_current.wait_for_text() == "2"
+            second_job_id = tool_success.job_id.wait_for_text()
+            assert second_job_id and second_job_id != first_job_id
+
+        assert_second_job_shown()
+        jobs = self.dataset_populator.history_jobs(history_id)
+        job_ids = {job["id"][-8:] for job in jobs if job["tool_id"] == "cat1"}
+        assert {first_job_id, tool_success.job_id.wait_for_text()} == job_ids
+        self.screenshot("tool_success_job_pagination")
+
+    @selenium_test
     @flakey
     def test_run_data(self):
         test_path = self.get_filename("1.fasta")

@@ -80,6 +80,7 @@ const toolSuccessOutputsCollapsed = useUserLocalStorage("tool-success-outputs-co
                         last-number
                         hide-goto-end-buttons
                         aria-label="Jobs"
+                        data-description="tool success job pagination"
                         class="mb-0 unselectable" />
                 </template>
             </JobHeader>

@@ -841,6 +841,7 @@ tool_form:
     parameter_input: 'div.ui-form-element[id="form-element-${parameter}"] .ui-input'
     parameter_textarea: 'div.ui-form-element[id="form-element-${parameter}"] textarea'
     parameter_data_input_single: 'div.ui-form-element[id="form-element-${parameter}"] button[title="Single dataset"]'
+    parameter_data_input_multiple: 'div.ui-form-element[id="form-element-${parameter}"] button[title="Multiple datasets"]'
     parameter_data_input_collection: 'div.ui-form-element[id="form-element-${parameter}"] button[title="Dataset collection"]'
     parameter_data_label: 'div.ui-form-element[id="form-element-${parameter}"] [data-description="form data label"]'
     parameter_data_select: 'div.ui-form-element[id="form-element-${parameter}"] .multiselect'
@@ -876,6 +877,14 @@ tool_form:
 
   labels:
     generate_tour: 'Generate Tour'
+
+tool_success:
+  selectors:
+    pagination: '[data-description="tool success job pagination"]'
+    pagination_pages: '[data-description="tool success job pagination"] button[data-page]'
+    pagination_page: '[data-description="tool success job pagination"] button[data-page="${page}"]'
+    pagination_current: '[data-description="tool success job pagination"] button[aria-current="page"]'
+    job_id: '#encoded-job-id .job-id-chip-value'
 
 workflows:
   selectors:
