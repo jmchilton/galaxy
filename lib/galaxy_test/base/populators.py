@@ -1830,16 +1830,11 @@ class BaseDatasetPopulator(BasePopulator):
     def user_tool_execute_permissions_via_group(self):
         # Grant USER_TOOL_EXECUTE indirectly: role has no direct user, group binds user to role.
         role = self.create_role([], role_type="user_tool_execute")
-        group_payload = {
-            "name": self.get_random_name(prefix="testpop-utx-group"),
-            "user_ids": [self.user_id()],
-            "role_ids": [role["id"]],
-        }
-        group_response = self._post("groups", data=group_payload, admin=True, json=True)
-        assert group_response.status_code == 200
-        group = group_response.json()[0]
+        group = self.create_group(
+            name=self.get_random_name(prefix="testpop-utx-group"), user_ids=[self.user_id()], role_ids=[role["id"]]
+        )
         try:
-            yield
+            yield group
         finally:
             self._delete(f"groups/{group['id']}", admin=True).raise_for_status()
             self._post(f"groups/{group['id']}/purge", admin=True).raise_for_status()
