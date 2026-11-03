@@ -205,7 +205,7 @@ class SlurmJobRunner(DRMAAJobRunner):
         return super()._complete_terminal_job(ajs, drmaa_state=drmaa_state)
 
 
-def check_memory_limit(efile_path: str) -> str | bool:
+def check_memory_limit(efile_path: str) -> str | None:
     """Return the user message for a memory kill reported in the last 2K of a cancelled job's stderr."""
     try:
         log.debug("Checking %s for exceeded memory message from SLURM", efile_path)
@@ -216,12 +216,12 @@ def check_memory_limit(efile_path: str) -> str | bool:
             tail = unicodify(f.read())
     except FileNotFoundError:
         # Entirely expected, as check_memory_limit is only called if the job state is CANCELLED
-        return False
+        return None
     except Exception:
         log.exception("Error reading end of %s:", efile_path)
-        return False
+        return None
     if oom_kill_job_messages(tail):
         return OUT_OF_MEMORY_MSG
     if any(warning in tail for warning in SLURM_MEMORY_LIMIT_EXCEEDED_PARTIAL_WARNINGS):
         return PROBABLY_OUT_OF_MEMORY_MSG
-    return False
+    return None

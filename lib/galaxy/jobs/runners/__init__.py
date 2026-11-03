@@ -92,6 +92,14 @@ log = get_logger(__name__)
 
 STOP_SIGNAL = object()
 
+NOT_RESUBMITTABLE_JOB_STATES = (
+    model.Job.states.STOPPING,
+    model.Job.states.STOPPED,
+    model.Job.states.DELETING,
+    model.Job.states.DELETED,
+    model.Job.states.ERROR,
+)
+
 
 JOB_RUNNER_PARAMETER_UNKNOWN_MESSAGE = "Invalid job runner parameter for this plugin: %s"
 JOB_RUNNER_PARAMETER_MAP_PROBLEM_MESSAGE = (
@@ -717,9 +725,14 @@ class BaseJobRunner:
                 )
             return container
 
-    def _handle_detected_failure(self, job_state: "JobState", check_output_detected_state: str) -> bool:
+    def _handle_detected_failure(
+        self, job_state: "JobState", check_output_detected_state: DETECTED_JOB_STATE | str
+    ) -> bool:
         """Run the failure handlers for a failed output check; True when one (e.g. resubmission) took the job."""
         if check_output_detected_state == DETECTED_JOB_STATE.OK:
+            return False
+        # Stopped, deleted or already failed jobs are finished as they are, never resubmitted.
+        if job_state.job_wrapper.get_job().state in NOT_RESUBMITTABLE_JOB_STATES:
             return False
         if check_output_detected_state == DETECTED_JOB_STATE.OUT_OF_MEMORY_ERROR:
             job_state.runner_state = JobState.runner_states.MEMORY_LIMIT_REACHED

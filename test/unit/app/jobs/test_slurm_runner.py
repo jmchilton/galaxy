@@ -23,7 +23,7 @@ from galaxy.jobs.runners.slurm import (
             "slurmstepd: error: Detected 1 oom-kill event(s) in StepId=1.batch.\n",
             OUT_OF_MEMORY_MSG,
         ),
-        ("slurmstepd: error: *** JOB 1 ON node CANCELLED AT 2026-10-28T16:37:20 ***\n", False),
+        ("slurmstepd: error: *** JOB 1 ON node CANCELLED AT 2026-10-28T16:37:20 ***\n", None),
     ],
 )
 def test_check_memory_limit(tmp_path, stderr, expected):
@@ -35,10 +35,10 @@ def test_check_memory_limit(tmp_path, stderr, expected):
 def test_check_memory_limit_reads_only_the_tail(tmp_path):
     error_file = tmp_path / "galaxy_1.e"
     error_file.write_text("slurmstepd: error: Exceeded job memory limit\n" + "x" * 4096 + "\n")
-    assert check_memory_limit(str(error_file)) is False
+    assert check_memory_limit(str(error_file)) is None
     error_file.write_text("x" * 4096 + "\nslurmstepd: error: Exceeded job memory limit\n")
     assert check_memory_limit(str(error_file)) == OUT_OF_MEMORY_MSG
 
 
 def test_check_memory_limit_missing_file(tmp_path):
-    assert check_memory_limit(str(tmp_path / "galaxy_1.e")) is False
+    assert check_memory_limit(str(tmp_path / "galaxy_1.e")) is None

@@ -256,6 +256,19 @@ def test_job_stderr_oom_kill_fails_job_without_resubmission(finishing_job, tmp_p
     assert finish_kwargs["check_output_detected_state"] == DETECTED_JOB_STATE.OUT_OF_MEMORY_ERROR
 
 
+@pytest.mark.parametrize("job_state_value", [model.Job.states.STOPPED, model.Job.states.ERROR])
+def test_stopped_or_errored_job_is_not_resubmitted(finishing_job, tmp_path, job_state_value):
+    runner, state, job = finishing_job
+    job.state = job_state_value
+    for stream in ("stdout", "stderr"):
+        (tmp_path / f"tool_{stream}").touch()
+
+    finish(runner, state, job_stderr=SLURM_OOM_KILL)
+
+    runner.runner_state_handlers["failure"][0].assert_not_called()
+    state.job_wrapper.finish.assert_called_once()
+
+
 def test_job_stderr_memory_warning_alone_finishes_successfully(finishing_job, tmp_path):
     runner, state, job = finishing_job
     for stream in ("stdout", "stderr"):

@@ -40,7 +40,6 @@ from galaxy.job_metrics.instrumenters.pulsar import PulsarPlugin
 from galaxy.jobs import JobWrapper
 from galaxy.jobs.runners import (
     AsynchronousJobState,
-    JobState,
     pulsar as pulsar_runner,
 )
 from galaxy.jobs.runners.pulsar import (  # type: ignore[attr-defined]
@@ -82,19 +81,18 @@ def _staged_job(tmp_path, job_stderr):
     return runner, job_state, result
 
 
-def test_staged_job_oom_kill_is_resubmitted(tmp_path):
+@pytest.mark.parametrize(
+    "job_state_value",
+    [model.Job.states.STOPPED, model.Job.states.DELETING, model.Job.states.DELETED, model.Job.states.ERROR],
+)
+def test_staged_job_stopped_or_deleted_is_not_resubmitted(tmp_path, job_state_value):
     runner, job_state, result = _staged_job(tmp_path, SLURM_OOM_KILL)
-    handled = []
+    job_state.job_wrapper.get_job.return_value.state = job_state_value
 
-    def resubmit(app, runner, job_state):
-        handled.append(job_state.runner_state)
-        job_state.runner_state_handled = True
-
-    runner.runner_state_handlers["failure"] = [resubmit]
     runner._complete_staged_job(job_state, result, handle_metadata_externally=False)
 
-    assert handled == [JobState.runner_states.MEMORY_LIMIT_REACHED]
-    job_state.job_wrapper.finish.assert_not_called()
+    runner.runner_state_handlers["failure"][0].assert_not_called()
+    job_state.job_wrapper.finish.assert_called_once()
 
 
 def test_staged_job_oom_kill_fails_without_resubmission(tmp_path):

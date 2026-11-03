@@ -794,7 +794,8 @@ execution:
     # applies) when the kernel OOM-killed any of its processes, even if the job then
     # exited 0, e.g. because the killed process was not the last in a pipeline. The job
     # script compares its memory cgroup's oom_kill counter (cgroup v2 memory.events,
-    # v1 memory.oom_control) before and after the tool runs. Only enable this where the
+    # v1 memory.oom_control, which has the counter from Linux 4.13) before and after the
+    # tool runs; Singularity/Apptainer containers stay in that cgroup. Only enable this where the
     # resource manager gives each job its own cgroup (e.g. Slurm with the cgroup task
     # plugin); kills elsewhere in a shared cgroup would be blamed on the job. Docker
     # containers run in the Docker daemon's cgroup, so their kills are not seen. Pulsar
