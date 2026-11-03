@@ -1200,6 +1200,7 @@ workflow_editor:
       connector_destroy_callout: "${_} [input-name='${name}'] + .delete-terminal-button"
       workflow_output_toggle: "${_} [data-output-name='${name}'] .callout-terminal "
       workflow_output_toggle_active: "${_} [data-output-name='${name}'] .mark-terminal-active"
+      preferred_output_toggle: "${_} [data-output-name='${name}'] [data-description='toggle preferred output']"
   changes:
     selectors:
       action_insert_data_input: ".action[data-type='step-insert'][data-step-type='data_input']"

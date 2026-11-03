@@ -2145,6 +2145,47 @@ steps:
         editor.duplicate_label_error(output="out_file1").wait_for_absent()
 
     @selenium_test
+    def test_star_preferred_output(self):
+        name = self.open_in_workflow_editor(
+            """
+class: GalaxyWorkflow
+inputs: []
+steps:
+  first:
+    tool_id: create_2
+""",
+            auto_layout=False,
+        )
+        node = self.components.workflow_editor.node._(label="first")
+        star = node.preferred_output_toggle(name="out_file2")
+        assert star.wait_for_visible().get_attribute("aria-pressed") == "false"
+        star.wait_for_and_click()
+        assert star.wait_for_visible().get_attribute("aria-pressed") == "true"
+        # starring an output doesn't make it a workflow output
+        node.workflow_output_toggle_active(name="out_file2").assert_absent()
+        # move off the star and wait out its hover fade, so the screenshot shows the starred state, not the hovered one
+        self.clear_tooltips()
+        self._wait_on(
+            lambda: self.execute_script(
+                "return document.getAnimations().every((animation) => !(animation instanceof CSSTransition));"
+            ),
+            "transitions to finish",
+            wait_type=self.wait_types.UX_TRANSITION,
+        )
+        self.screenshot("workflow_editor_preferred_output_starred")
+        self.assert_workflow_has_changes_and_save()
+
+        workflow_id = self.workflow_populator.index_ids(search=name)[0]
+        (step,) = self.workflow_populator.download_workflow(workflow_id)["steps"].values()
+        assert step["preferred_output"] == "out_file2"
+        assert not step["workflow_outputs"]
+        # reopened, the editor shows the output starred
+        self.workflow_editor_open_with_name(name)
+        assert star.wait_for_visible().get_attribute("aria-pressed") == "true"
+        other_star = node.preferred_output_toggle(name="out_file1")
+        assert other_star.wait_for_visible().get_attribute("aria-pressed") == "false"
+
+    @selenium_test
     def test_map_over_output_indicator(self):
         self.open_in_workflow_editor("""
 class: GalaxyWorkflow

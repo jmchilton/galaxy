@@ -118,6 +118,8 @@ export interface NewStep {
     type: "tool" | "data_input" | "data_collection_input" | "subworkflow" | "parameter_input" | "pause" | "pick_value";
     uuid?: string;
     when?: string | null;
+    /** Step output the step is displayed as in invocation graphs */
+    preferred_output?: string | null;
     workflow_id?: string;
     workflow_outputs?: WorkflowOutput[];
 }

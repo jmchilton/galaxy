@@ -106,4 +106,38 @@ describe("NodeOutput", () => {
         await nextTick();
         expect(wrapper.find(".mapped-over").exists()).toBe(false);
     });
+
+    it("stars the output as the step's preferred output, undoably", async () => {
+        const simpleDataStep = stepForLabel("simple data", stepStore.steps);
+        const wrapper = shallowMount(NodeOutput as any, {
+            props: { ...propsForStep(simpleDataStep), readonly: false },
+            global: { ...localVue, provide: { transform, workflowId: "mock-workflow" } },
+            pinia,
+        });
+        const star = () => wrapper.find("[data-description='toggle preferred output']");
+        expect(star().attributes("aria-pressed")).toBe("false");
+        expect(star().attributes("title")).toMatch(/^Display this step as this output/);
+
+        await star().trigger("click");
+        expect(stepStore.getStep(simpleDataStep.id)!.preferred_output).toBe("out_file1");
+        expect(star().attributes("aria-pressed")).toBe("true");
+        expect(star().attributes("title")).toMatch(/^Stop displaying this step as this output/);
+
+        await star().trigger("click");
+        expect(stepStore.getStep(simpleDataStep.id)!.preferred_output).toBeNull();
+
+        undoRedoStore.undo();
+        expect(stepStore.getStep(simpleDataStep.id)!.preferred_output).toBe("out_file1");
+    });
+
+    it("doesn't change the preferred output when read-only", async () => {
+        const simpleDataStep = stepForLabel("simple data", stepStore.steps);
+        const wrapper = shallowMount(NodeOutput as any, {
+            props: propsForStep(simpleDataStep),
+            global: { ...localVue, provide: { transform, workflowId: "mock-workflow" } },
+            pinia,
+        });
+        await wrapper.find("[data-description='toggle preferred output']").trigger("click");
+        expect(stepStore.getStep(simpleDataStep.id)!.preferred_output).toBeUndefined();
+    });
 });
