@@ -164,13 +164,16 @@ class TestWorkflowInvocationGraph(SeleniumTestCase):
         invocations.graph_search_result.wait_for_and_click()
         self._assert_step_card_title("right_cat")
 
-    def _open_two_branches_invocation(self):
-        self.workflow_populator.run_workflow(WORKFLOW_TWO_BRANCHES, history_id=self.current_history_id())
+    def _open_invocation(self, workflow: str, labels: list[str]):
+        self.workflow_populator.run_workflow(workflow, history_id=self.current_history_id())
         self.invocation_open_latest()
         timeout = self.wait_length(self.wait_types.JOB_COMPLETION)
-        for label in TWO_BRANCHES_LABELS:
+        for label in labels:
             self.components.invocations.graph_node_state(label=label, state="ok").wait_for_present(timeout=timeout)
         self._wait_for_polling_to_stop()
+
+    def _open_two_branches_invocation(self):
+        self._open_invocation(WORKFLOW_TWO_BRANCHES, TWO_BRANCHES_LABELS)
 
     def _wait_for_polling_to_stop(self):
         # The graph keeps re-rendering until job polling ends; settle it before clicking or screenshotting.
