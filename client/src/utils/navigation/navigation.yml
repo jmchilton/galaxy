@@ -1466,6 +1466,15 @@ invocations:
     # Closed popovers keep their previews, hidden, so these match only the open one.
     graph_step_outputs: '[data-description="invocation step outputs"][data-open="true"]'
     graph_step_outputs_loading: '[data-description="invocation step outputs"][data-open="true"] [data-description="loading message"]'
+    graph_embed_outputs_toggle: '[data-description="toggle embedded outputs button"]'
+    graph_embedded_outputs: '[data-description="invocation embedded output"]'
+    graph_embedded_outputs_loading: '[data-description="invocation embedded output"] [data-description="loading message"]'
+    graph_embedded_output_connector: '[data-description="invocation embedded output connector"][data-output-label="${label}"]'
+    # Anything in the embedded outputs that would take keyboard focus if the cards weren't static.
+    graph_embedded_output_controls: '[data-description="invocation embedded output"] :is(button, a[href], input, select, [tabindex])'
+    # The graph's panned and zoomed layer, holding the steps and embedded outputs.
+    graph_node_area: '.invocation-graph .node-area'
+    graph_zoom_reset: '.invocation-graph .zoom-reset'
     step_card: '.invocation-step-card'
     step_card_title: '.invocation-step-card .invocation-step-header .step-title'
     step_card_icon: '.invocation-step-card .invocation-step-header .portlet-title-icon[data-icon="${icon}"]'
@@ -1496,6 +1505,16 @@ invocations:
       text: '${_} pre'
       image: '${_} img'
       collection_element_name: '${_} [data-description="collection element name"]'
+  graph_embedded_output:
+    selectors:
+      _: '[data-description="invocation embedded output"][data-output-label="${label}"]'
+      table: '${_} table.g-table'
+      table_row: '${_} table.g-table tbody tr'
+      table_pagination: '${_} .pagination'
+      text: '${_} pre'
+      image: '${_} img'
+      # a collection card summarizes the collection and lists its first few elements
+      collection_element_name: '${_} [data-description="invocation embedded collection element"]'
 
 tour:
   popover:

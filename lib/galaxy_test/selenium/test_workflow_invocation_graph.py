@@ -1,3 +1,7 @@
+from typing import NamedTuple
+
+from galaxy.selenium.smart_components import SmartComponent
+from galaxy.selenium.web_element_protocol import WebElementProtocol
 from galaxy_test.base.workflow_fixtures import (
     WORKFLOW_KEEP_SUCCESSFUL_DATASETS,
     WORKFLOW_KEEP_SUCCESSFUL_DATASETS_TEST_DATA,
@@ -136,6 +140,32 @@ OUTPUT_KINDS_LABELS = [
     "numbers",
     "final",
 ]
+
+# Each workflow output of WORKFLOW_OUTPUT_KINDS and the step producing it
+EMBEDDED_OUTPUT_SOURCES = {
+    "top_rows": "head_table",
+    "summary": "head_cat",
+    "plot": "copy_image",
+    "lines": "split_text",
+    "numbers_b": "numbers",
+    "final_table": "final",
+}
+# The layout puts each card 20 workflow pixels right of its step, so at a zoom of at most 1 it's closer than this.
+MAX_CARD_GAP = 30
+# Allowance for subpixel rounding when comparing on-screen edges.
+EDGE_TOLERANCE = 2
+
+
+class ClientRect(NamedTuple):
+    left: float
+    top: float
+    right: float
+    bottom: float
+
+    def clear_of(self, other: "ClientRect") -> bool:
+        return (
+            self.right <= other.left or other.right <= self.left or self.bottom <= other.top or other.bottom <= self.top
+        )
 
 
 class TestWorkflowInvocationGraph(SeleniumTestCase):
@@ -302,6 +332,133 @@ class TestWorkflowInvocationGraph(SeleniumTestCase):
         assert output_b.text.wait_for_text().strip() == "4"
         self.screenshot("invocation_graph_output_preview_multiple_outputs")
 
+    @selenium_test
+    def test_embed_workflow_outputs(self):
+        self._open_output_kinds_invocation()
+        invocations = self.components.invocations
+        toggle = invocations.graph_embed_outputs_toggle
+        assert toggle.wait_for_visible().get_attribute("aria-pressed") == "false"
+        authored = self._node_positions()
+        self.screenshot("invocation_graph_before_embedding")
+
+        transform = self._graph_transform()
+        toggle.wait_for_and_click()
+        invocations.graph_embedded_outputs.wait_for_present()
+        assert toggle.wait_for_visible().get_attribute("aria-pressed") == "true"
+        labels = [card.get_attribute("data-output-label") for card in invocations.graph_embedded_outputs.all()]
+        assert sorted(labels) == sorted(EMBEDDED_OUTPUT_SOURCES)
+        invocations.graph_embedded_outputs_loading.wait_for_absent()
+
+        # each card previews its output's content; wait for presence, as a card may clip a long table
+        embedded_output = invocations.graph_embedded_output
+        top_rows = embedded_output._(label="top_rows")
+        top_rows.table.wait_for_present()
+        assert len(top_rows.table_row.all()) == 5  # head -n 5
+        summary = embedded_output._(label="summary")
+        summary.table.wait_for_present()
+        assert len(summary.table_row.all()) == 8  # head -n 8
+        # a static card can't page through a table, so it hides the table's pagination
+        top_rows.table_pagination.wait_for_present()
+        top_rows.table_pagination.assert_absent_or_hidden()
+        lines = embedded_output._(label="lines")
+        lines.collection_element_name.wait_for_present()
+        assert [element.text for element in lines.collection_element_name.all()] == ["1", "2"]
+        assert "a list with 2" in lines.wait_for_visible().text
+        assert embedded_output._(label="numbers_b").text.wait_for_text().strip() == "4"
+        self._wait_for_image_loaded(embedded_output._(label="plot").image.wait_for_visible())
+        self._assert_cards_beside_their_steps()
+        # steps only move right, and the inputs and first column of tools stay put
+        embedded = self._node_positions()
+        for label in OUTPUT_KINDS_LABELS:
+            assert embedded[label][0] >= authored[label][0] and embedded[label][1] == authored[label][1], label
+        for label in ["table", "image", "text", "head_table", "cat_table", "copy_image", "split_text"]:
+            assert embedded[label] == authored[label], label
+        # the graph zooms out to fit the cards a moment after they're laid out
+        self._wait_on(
+            lambda: self._graph_transform() != transform, "graph to refit", wait_type=self.wait_types.UX_RENDER
+        )
+        self._assert_embedded_outputs_static()
+        self._settle_for_screenshot()
+        self.screenshot("invocation_graph_embedded_outputs")
+
+        # up close at 100%: the table, image and collection cards beside their steps
+        self._zoom_in_around(
+            embedded_output._(label="top_rows"),
+            embedded_output._(label="lines"),
+            self.components.workflow_editor.node._(label="head_cat"),
+        )
+        self._settle_for_screenshot()
+        self.screenshot("invocation_graph_embedded_outputs_zoomed")
+
+        toggle.wait_for_and_click()
+        invocations.graph_embedded_outputs.wait_for_absent()
+        assert toggle.wait_for_visible().get_attribute("aria-pressed") == "false"
+        assert self._node_positions() == authored
+
+    def _graph_transform(self) -> str:
+        return str(self.components.invocations.graph_node_area.wait_for_present().value_of_css_property("transform"))
+
+    def _node_positions(self) -> dict[str, tuple[float, float]]:
+        """Each step's position on the graph canvas, in workflow coordinates"""
+        positions = {}
+        for label in OUTPUT_KINDS_LABELS:
+            element = self.components.workflow_editor.node._(label=label).wait_for_present()
+            left, top = (float(element.value_of_css_property(side).removesuffix("px")) for side in ("left", "top"))
+            positions[label] = (left, top)
+        return positions
+
+    def _assert_embedded_outputs_static(self) -> None:
+        """The cards are snapshots: pointer events go through them to the graph, and nothing in them takes focus"""
+        invocations = self.components.invocations
+        for card in invocations.graph_embedded_outputs.all():
+            hit = self.execute_script(
+                "const r = arguments[0].getBoundingClientRect();"
+                "const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);"
+                "return hit === null ? null : arguments[0].contains(hit);",
+                card,
+            )
+            assert hit is False, f"{card.get_attribute('data-output-label')} takes the pointer (or is out of view)"
+        controls = invocations.graph_embedded_output_controls.all()
+        assert controls, "expected the previews to render controls"
+        for control in controls:
+            focused = self.execute_script(
+                "arguments[0].focus(); return document.activeElement === arguments[0];", control
+            )
+            assert not focused, f"{control.text!r} in an embedded output takes focus"
+
+    @retry_assertion_during_transitions
+    def _assert_cards_beside_their_steps(self) -> None:
+        """Each embedded output sits just right of the step that produced it, level with it, clear of every step,
+        and a connector joins the step's right edge to the card"""
+        invocations = self.components.invocations
+        node = self.components.workflow_editor.node
+        steps = {label: self._client_rect(node._(label=label).wait_for_present()) for label in OUTPUT_KINDS_LABELS}
+        for output_label, step_label in EMBEDDED_OUTPUT_SOURCES.items():
+            card = self._client_rect(invocations.graph_embedded_output._(label=output_label).wait_for_present())
+            step = steps[step_label]
+            just_right = step.right < card.left < step.right + MAX_CARD_GAP
+            assert just_right, f"{output_label} is not just right of {step_label}"
+            assert abs(card.top - step.top) < EDGE_TOLERANCE, f"{output_label} is not level with {step_label}"
+            connector = self._client_rect(
+                invocations.graph_embedded_output_connector(label=output_label).wait_for_present()
+            )
+            joins = (
+                abs(connector.left - step.right) < EDGE_TOLERANCE
+                and abs(connector.right - card.left) < EDGE_TOLERANCE
+                and step.top < connector.top < step.bottom
+            )
+            assert joins, f"{output_label}'s connector doesn't join {step_label}"
+            for other_label, other in steps.items():
+                assert card.clear_of(other), f"{output_label} overlaps {other_label}"
+
+    def _client_rect(self, element: WebElementProtocol) -> ClientRect:
+        """The element's on-screen bounding box"""
+        return ClientRect(
+            *self.execute_script(
+                "const r = arguments[0].getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom];", element
+            )
+        )
+
     def _open_output_kinds_invocation(self) -> None:
         self._open_invocation(WORKFLOW_OUTPUT_KINDS, OUTPUT_KINDS_LABELS)
         # the pointer is still on the activity that closed the invocations panel; move it off that tooltip
@@ -312,6 +469,37 @@ class TestWorkflowInvocationGraph(SeleniumTestCase):
 
     def _drop_focus(self) -> None:
         self.execute_script("document.activeElement.blur();")
+
+    def _settle_for_screenshot(self) -> None:
+        """Keep tooltips and focus rings out of the next screenshot, waiting out the transitions that fade them"""
+        self.clear_tooltips()
+        self._drop_focus()
+        self._wait_on(
+            lambda: self.execute_script(
+                "return document.getAnimations().every((animation) => !(animation instanceof CSSTransition));"
+            ),
+            "transitions to finish",
+            wait_type=self.wait_types.UX_TRANSITION,
+        )
+
+    def _zoom_in_around(self, *targets: SmartComponent) -> None:
+        """Pan the graph to center these targets, then reset the zoom to 100%, which scales about the center"""
+        boxes = [self._client_rect(target.wait_for_present()) for target in targets]
+        canvas_body = self.components.workflow_editor.canvas_body.wait_for_visible()
+        canvas = self._client_rect(canvas_body)
+        left, right = min(box.left for box in boxes), max(box.right for box in boxes)
+        top, bottom = min(box.top for box in boxes), max(box.bottom for box in boxes)
+        offset = (
+            round((canvas.left + canvas.right - left - right) / 2),
+            round((canvas.top + canvas.bottom - top - bottom) / 2),
+        )
+        # the drag starts mid-canvas, on background in this layout, so it pans the graph instead of grabbing a step
+        self.mouse_drag(from_element=canvas_body, to_offset=offset)
+        transform = self._graph_transform()
+        self.components.invocations.graph_zoom_reset.wait_for_and_click()
+        self._wait_on(
+            lambda: self._graph_transform() != transform, "graph to zoom", wait_type=self.wait_types.UX_RENDER
+        )
 
     def _hover_outputs(self, label: str, output_name: str):
         """Hover the step's output terminals, wait for its output previews to load and return the named one"""
