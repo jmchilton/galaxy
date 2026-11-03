@@ -39,7 +39,7 @@ ERROR_PEEK_SIZE = 2000
 OOM_KILL_JOB_STDERR_PATTERNS = (
     # Slurm's cgroup task plugin, src/plugins/task/cgroup/task_cgroup_memory.c in SchedMD/slurm.
     re.compile(r"^slurmstepd: error: Detected \d+ oom-kill event\(s\).*$", re.MULTILINE),
-    # Slurm's own memory enforcement, src/slurmd/slurmd/req.c in SchedMD/slurm.
+    # Slurm's own memory enforcement, src/common/slurm_jobacct_gather.c and src/slurmd/slurmd/req.c in SchedMD/slurm.
     re.compile(r"^slurmstepd: error: Exceeded job memory limit$", re.MULTILINE),
     # The job script's cgroup check, enabled by the check_cgroup_oom_kills destination parameter.
     re.compile(r"^galaxy: Detected \d+ oom-kill event\(s\).*$", re.MULTILINE),

@@ -10,6 +10,7 @@ from typing import (
 
 from galaxy import model
 from galaxy.jobs.runners.drmaa import DRMAAJobRunner
+from galaxy.tool_util.output_checker import oom_kill_job_messages
 from galaxy.util import (
     commands,
     unicodify,
@@ -23,10 +24,6 @@ log = get_logger(__name__)
 
 __all__ = ("SlurmJobRunner",)
 
-# Error message printed to job stderr when SLURM itself kills a job.
-# See src/common/slurm_jobacct_gather.c and src/slurmd/slurmd/req.c in
-# https://github.com/SchedMD/slurm/
-SLURM_MEMORY_LIMIT_EXCEEDED_MSG = "slurmstepd: error: Exceeded job memory limit"
 # Warning messages which may be printed to job stderr by SLURM after termination
 # of a job step when using the cgroup task plugin. The exceeded memory is not
 # always the cause of the step termination, which can be successful.
@@ -160,7 +157,7 @@ class SlurmJobRunner(DRMAAJobRunner):
                         # User requested to stop job, this isn't an error, just finish as normal
                         return super()._complete_terminal_job(ajs, drmaa_state=drmaa_state)
                     # Check to see if the job was killed for exceeding memory consumption
-                    check_memory_limit_msg = self.__check_memory_limit(ajs.error_file)
+                    check_memory_limit_msg = check_memory_limit(ajs.error_file)
                     if check_memory_limit_msg:
                         log.info(
                             "(%s/%s) Job hit memory limit (SLURM state: CANCELLED)",
@@ -207,27 +204,24 @@ class SlurmJobRunner(DRMAAJobRunner):
         # by default, finish the job with the state from drmaa
         return super()._complete_terminal_job(ajs, drmaa_state=drmaa_state)
 
-    def __check_memory_limit(self, efile_path):
-        """
-        A very poor implementation of tail, but it doesn't need to be fancy
-        since we are only searching the last 2K
-        """
-        try:
-            log.debug("Checking %s for exceeded memory message from SLURM", efile_path)
-            with open(efile_path, "rb") as f:
-                if os.path.getsize(efile_path) > 2048:
-                    f.seek(-2048, os.SEEK_END)
-                    f.readline()
-                for line in f.readlines():
-                    stripped_line = unicodify(line.strip())
-                    if stripped_line == SLURM_MEMORY_LIMIT_EXCEEDED_MSG:
-                        return OUT_OF_MEMORY_MSG
-                    elif any(_ in stripped_line for _ in SLURM_MEMORY_LIMIT_EXCEEDED_PARTIAL_WARNINGS):
-                        return PROBABLY_OUT_OF_MEMORY_MSG
-        except FileNotFoundError:
-            # Entirely expected, as __check_memory_limit is only called if the job state is CANCELLED
-            return False
-        except Exception:
-            log.exception("Error reading end of %s:", efile_path)
 
+def check_memory_limit(efile_path: str) -> str | bool:
+    """Return the user message for a memory kill reported in the last 2K of a cancelled job's stderr."""
+    try:
+        log.debug("Checking %s for exceeded memory message from SLURM", efile_path)
+        with open(efile_path, "rb") as f:
+            if os.path.getsize(efile_path) > 2048:
+                f.seek(-2048, os.SEEK_END)
+                f.readline()
+            tail = unicodify(f.read())
+    except FileNotFoundError:
+        # Entirely expected, as check_memory_limit is only called if the job state is CANCELLED
         return False
+    except Exception:
+        log.exception("Error reading end of %s:", efile_path)
+        return False
+    if oom_kill_job_messages(tail):
+        return OUT_OF_MEMORY_MSG
+    if any(warning in tail for warning in SLURM_MEMORY_LIMIT_EXCEEDED_PARTIAL_WARNINGS):
+        return PROBABLY_OUT_OF_MEMORY_MSG
+    return False
