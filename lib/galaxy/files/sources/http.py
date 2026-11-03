@@ -2,7 +2,9 @@ import logging
 import re
 import urllib.request
 from typing import Union
+from urllib.parse import urlparse
 
+from galaxy.exceptions import RequestParameterInvalidException
 from galaxy.files.models import (
     BaseFileSourceConfiguration,
     BaseFileSourceTemplateConfiguration,
@@ -44,6 +46,8 @@ class ValidatingRedirectHandler(urllib.request.HTTPRedirectHandler):
         self._allowlist = allowlist
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if urlparse(newurl).scheme.lower() not in ("http", "https"):
+            raise RequestParameterInvalidException(f"Refusing to follow redirect to non-HTTP URL '{newurl}'.")
         validate_non_local(newurl, self._allowlist)
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
@@ -76,6 +80,7 @@ class HTTPFilesSource(BaseFilesSource[HTTPFileSourceTemplateConfiguration, HTTPF
     ):
         config = context.config
         allowlist = self._allowlist or config.fetch_url_allowlist
+        validate_non_local(source_path, allowlist)
         req = urllib.request.Request(source_path, headers=config.http_headers)
         opener = urllib.request.build_opener(ValidatingRedirectHandler(allowlist))
 

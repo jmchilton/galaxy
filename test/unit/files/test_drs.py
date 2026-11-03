@@ -3,6 +3,7 @@ import json
 import os
 from typing import Any
 
+import pytest
 import responses
 
 from ._util import (
@@ -17,6 +18,7 @@ SCRIPT_DIRECTORY = os.path.abspath(os.path.dirname(__file__))
 FILE_SOURCES_CONF = os.path.join(SCRIPT_DIRECTORY, "drs_file_sources_conf.yml")
 
 
+@pytest.mark.usefixtures("fake_public_dns")
 @responses.activate
 def test_file_source_drs_http():
     def drs_repo_handler(request):
