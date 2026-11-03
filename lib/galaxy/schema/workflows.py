@@ -53,6 +53,24 @@ ReplacementParametersField = Field(
     title="Replacement Parameters",
     description="Class of parameters mostly used for string replacement in PJAs. In best practice workflows, these should be replaced with input parameters",
 )
+STEP_PARAMETER_OVERRIDES_TITLE = "Step Parameter Overrides"
+STEP_PARAMETER_OVERRIDES_DESCRIPTION = (
+    "Tool parameter values that replace a step's saved values for this run, keyed by step index (order_index). "
+    "A tool step takes nested tool state: objects for sections and conditionals, and lists for repeats, which "
+    "merge with the saved instances by position (an empty object leaves an instance unchanged). "
+    "A subworkflow step takes the inner workflow's overrides in the same shape, to any depth. "
+    'For example {"2": {"cond": {"threshold": 0.05}}, "3": {"1": {"queries": [{}, {"column": "c3"}]}}}. '
+    "Parameters not listed keep the workflow's saved values. To switch a conditional's case, include its test "
+    "parameter; parameters of the new case that aren't set take their defaults, and the overrides recorded with "
+    "the invocation include them. An unknown step or parameter, a parameter outside the active conditional case, "
+    "a repeat instance the step doesn't have, data or collection parameters (set them in 'inputs'), batch values and post-job "
+    "actions are rejected with a 400 error. Applied on top of 'parameters' if both are set."
+)
+StepParameterOverridesField = Field(
+    None,
+    title=STEP_PARAMETER_OVERRIDES_TITLE,
+    description=STEP_PARAMETER_OVERRIDES_DESCRIPTION,
+)
 UseCachedJobField = Field(
     False,
     title="Use cached job",
@@ -172,6 +190,7 @@ class InvokeWorkflowPayload(GetTargetHistoryPayload):
 
     @field_validator(
         "parameters",
+        "step_parameter_overrides",
         "inputs",
         "ds_map",
         "resource_params",
@@ -190,6 +209,7 @@ class InvokeWorkflowPayload(GetTargetHistoryPayload):
         title=STEP_PARAMETERS_TITLE,
         description=STEP_PARAMETERS_DESCRIPTION,
     )
+    step_parameter_overrides: dict[str, dict[str, Any]] | None = StepParameterOverridesField
     inputs: dict[str, Any] | None = Field(
         None,
         title="Inputs",
