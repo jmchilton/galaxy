@@ -33,41 +33,11 @@ JOB_RESUBMISSION_UNMAPPABLE_JOB_CONFIG_FILE = os.path.join(SCRIPT_DIRECTORY, "re
 
 class _BaseResubmissionIntegrationTestCase(integration_util.IntegrationTestCase):
     framework_tool_and_types = True
-
-    def _assert_job_passes(self, tool_id="exit_code_oom", resource_parameters=None, history_id=None):
-        resource_parameters = resource_parameters or {}
-        self._run_tool_test(tool_id, resource_parameters=resource_parameters, test_history=history_id)
-
-    def _assert_job_fails(self, tool_id="exit_code_oom", resource_parameters=None, history_id=None):
-        resource_parameters = resource_parameters or {}
-        exception_thrown = False
-        try:
-            self._run_tool_test(tool_id, resource_parameters=resource_parameters, test_history=history_id)
-        except Exception:
-            exception_thrown = True
-
-        assert exception_thrown
-
-
-class TestJobResubmissionIntegration(_BaseResubmissionIntegrationTestCase):
-    framework_tool_and_types = True
     dataset_populator: DatasetPopulator
 
     def setUp(self):
         super().setUp()
         self.dataset_populator = DatasetPopulator(self.galaxy_interactor)
-
-    @classmethod
-    def handle_galaxy_config_kwds(cls, config):
-        super().handle_galaxy_config_kwds(config)
-        config["job_config_file"] = JOB_RESUBMISSION_JOB_CONFIG_FILE
-        config["job_resource_params_file"] = JOB_RESUBMISSION_JOB_RESOURCES_CONFIG_FILE
-        config["job_runner_monitor_sleep"] = 1
-        config["job_handler_monitor_sleep"] = 1
-        # Deliberately just the default: resubmission_count rides along with core.
-        config["job_metrics"] = [{"type": "core"}]
-        # Can't set job_metrics_config_file to None as default location will be used otherwise
-        config["job_metrics_config_file"] = "xxx.xml"
 
     def _job_metrics(self, history_id):
         jobs = self.dataset_populator.history_jobs(history_id=history_id)
@@ -90,6 +60,36 @@ class TestJobResubmissionIntegration(_BaseResubmissionIntegrationTestCase):
         """A count of zero is recorded, but the formatter keeps it out of what the API returns."""
         job_metrics = self._job_metrics(history_id)
         assert not [metric for metric in job_metrics if metric["name"] == "resubmission_count"]
+
+    def _assert_job_passes(self, tool_id="exit_code_oom", resource_parameters=None, history_id=None):
+        resource_parameters = resource_parameters or {}
+        self._run_tool_test(tool_id, resource_parameters=resource_parameters, test_history=history_id)
+
+    def _assert_job_fails(self, tool_id="exit_code_oom", resource_parameters=None, history_id=None):
+        resource_parameters = resource_parameters or {}
+        exception_thrown = False
+        try:
+            self._run_tool_test(tool_id, resource_parameters=resource_parameters, test_history=history_id)
+        except Exception:
+            exception_thrown = True
+
+        assert exception_thrown
+
+
+class TestJobResubmissionIntegration(_BaseResubmissionIntegrationTestCase):
+    framework_tool_and_types = True
+
+    @classmethod
+    def handle_galaxy_config_kwds(cls, config):
+        super().handle_galaxy_config_kwds(config)
+        config["job_config_file"] = JOB_RESUBMISSION_JOB_CONFIG_FILE
+        config["job_resource_params_file"] = JOB_RESUBMISSION_JOB_RESOURCES_CONFIG_FILE
+        config["job_runner_monitor_sleep"] = 1
+        config["job_handler_monitor_sleep"] = 1
+        # Deliberately just the default: resubmission_count rides along with core.
+        config["job_metrics"] = [{"type": "core"}]
+        # Can't set job_metrics_config_file to None as default location will be used otherwise
+        config["job_metrics_config_file"] = "xxx.xml"
 
     def test_retry_tools_have_resource_params(self):
         tool_show = self._get("tools/simple_constructs", data=dict(io_details=True)).json()
@@ -358,6 +358,58 @@ class TestJobResubmissionPulsarIntegration(_BaseResubmissionIntegrationTestCase)
 
     def test_resubmit_on_invalid_pulsar_url(self):
         self._assert_job_passes()
+
+
+SLURM_OOM_KILL = (
+    "slurmstepd: error: Detected 1 oom-kill event(s) in StepId=1.batch. "
+    "Some of your processes may have been killed by the cgroup out-of-memory handler."
+)
+
+
+class TestJobResubmissionJobStderrOomKillIntegration(_BaseResubmissionIntegrationTestCase):
+    """An exit-0 job whose job stderr reports an OOM kill is resubmitted as memory_limit_reached."""
+
+    oom_killed_runner = "local"
+
+    @classmethod
+    def handle_galaxy_config_kwds(cls, config):
+        super().handle_galaxy_config_kwds(config)
+        config["job_config"] = {
+            "runners": {
+                "local": {"load": "galaxy.jobs.runners.local:LocalJobRunner", "workers": 1},
+                "pulsar_embed": {
+                    "load": "galaxy.jobs.runners.pulsar:PulsarEmbeddedJobRunner",
+                    "pulsar_app_config": {
+                        "tool_dependency_dir": "none",
+                        "conda_auto_init": False,
+                        "conda_auto_install": False,
+                    },
+                },
+            },
+            "execution": {
+                "default": "oom_killed",
+                "environments": {
+                    "oom_killed": {
+                        "runner": cls.oom_killed_runner,
+                        # Stands in for slurmstepd writing to the job script's stderr.
+                        "env": [{"execute": f"(>&2 echo '{SLURM_OOM_KILL}')"}],
+                        "resubmit": [{"condition": "memory_limit_reached", "environment": "local"}],
+                    },
+                    "local": {"runner": "local"},
+                },
+            },
+        }
+        config["job_metrics"] = [{"type": "core"}]
+        config["job_metrics_config_file"] = "xxx.xml"
+
+    def test_oom_kill_resubmits(self):
+        with self.dataset_populator.test_history() as history_id:
+            self._assert_job_passes(history_id=history_id)
+            self._assert_resubmission_count(history_id, 1)
+
+
+class TestJobResubmissionPulsarJobStderrOomKillIntegration(TestJobResubmissionJobStderrOomKillIntegration):
+    oom_killed_runner = "pulsar_embed"
 
 
 class TestJobResubmissionUnmappableIntegration(_BaseResubmissionIntegrationTestCase):
