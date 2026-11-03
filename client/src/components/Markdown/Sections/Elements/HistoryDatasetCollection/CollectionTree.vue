@@ -1,6 +1,6 @@
 <template>
     <div>
-        <span v-if="!skipHead" class="label"
+        <span v-if="!skipHead" class="label" data-description="collection element name"
             ><b>{{ name }}</b></span
         >
         <GAlert v-if="!!error" variant="danger" show>Error: {{ error }}</GAlert>

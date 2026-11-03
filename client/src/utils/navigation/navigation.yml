@@ -1416,6 +1416,7 @@ workflow_extract:
 invocations:
   selectors:
     activity: "#activity-invocation"
+    activity_tooltip: '.activity-item-popper:has(#activity-invocation) .popper-element'
     activity_expand: ".activity-panel-footer"
     invocations_table: '#invocations-grid .grid-table'
     invocations_table_rows: '#invocations-grid .grid-table [data-description="grid item"]'
@@ -1461,6 +1462,10 @@ invocations:
     graph_search_toggle: '[data-description="invocation graph search toggle"]'
     graph_search_input: '.search-container input[placeholder="search workflow"]'
     graph_search_result: '.workflow-invocation-search-results .result-button'
+    # The open popover hovering a graph step's output terminals shows; graph_step_output is one output in it.
+    # Closed popovers keep their previews, hidden, so these match only the open one.
+    graph_step_outputs: '[data-description="invocation step outputs"][data-open="true"]'
+    graph_step_outputs_loading: '[data-description="invocation step outputs"][data-open="true"] [data-description="loading message"]'
     step_card: '.invocation-step-card'
     step_card_title: '.invocation-step-card .invocation-step-header .step-title'
     step_card_icon: '.invocation-step-card .invocation-step-header .portlet-title-icon[data-icon="${icon}"]'
@@ -1482,6 +1487,15 @@ invocations:
     wizard_next_button: '.wizard-actions .go-next-btn'
     wizard_export_button: '.wizard-actions .go-next-btn.btn-primary'
     export_download_link: '.download-link'
+  graph_step_output:
+    selectors:
+      _: '[data-description="invocation step outputs"][data-open="true"] [data-output-name="${name}"]'
+      label: '${_} [data-description="invocation step output label"]'
+      table: '${_} table.g-table'
+      table_row: '${_} table.g-table tbody tr'
+      text: '${_} pre'
+      image: '${_} img'
+      collection_element_name: '${_} [data-description="collection element name"]'
 
 tour:
   popover:

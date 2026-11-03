@@ -38,6 +38,105 @@ test_data:
 """
 TWO_BRANCHES_LABELS = ["left_input", "right_input", "left_cat", "right_cat"]
 
+# A table branch, an image copy, a text split into a collection and a two-output step; six workflow outputs.
+WORKFLOW_OUTPUT_KINDS = """
+class: GalaxyWorkflow
+name: Output previews
+inputs:
+  table:
+    type: data
+    position: {left: 0, top: 0}
+  image:
+    type: data
+    position: {left: 0, top: 220}
+  text:
+    type: data
+    position: {left: 0, top: 420}
+outputs:
+  top_rows:
+    outputSource: head_table/out_file1
+  summary:
+    outputSource: head_cat/out_file1
+  plot:
+    outputSource: copy_image/out_file1
+  lines:
+    outputSource: split_text/output
+  numbers_b:
+    outputSource: numbers/output_b
+  final_table:
+    outputSource: final/out_file1
+steps:
+  head_table:
+    tool_id: head
+    position: {left: 260, top: 0}
+    in:
+      input: table
+    state:
+      lineNum: 5
+  cat_table:
+    tool_id: cat
+    position: {left: 260, top: 110}
+    in:
+      input1: table
+  head_cat:
+    tool_id: head
+    position: {left: 520, top: 110}
+    in:
+      input: cat_table/out_file1
+    state:
+      lineNum: 8
+  copy_image:
+    tool_id: cat
+    position: {left: 260, top: 230}
+    in:
+      input1: image
+  split_text:
+    tool_id: split
+    position: {left: 260, top: 420}
+    in:
+      input1: text
+  numbers:
+    tool_id: output_order
+    position: {left: 520, top: 420}
+    state:
+      pa: 3
+      pb: 4
+  final:
+    tool_id: cat
+    position: {left: 780, top: 50}
+    in:
+      input1: head_cat/out_file1
+      queries_0|input2: head_table/out_file1
+test_data:
+  table:
+    value: 2.tabular
+    name: measurements
+    type: File
+    file_type: tabular
+  image:
+    value: 454Score.png
+    name: quality plot
+    type: File
+    file_type: png
+  text:
+    value: simple_line_x2.txt
+    name: two lines
+    type: File
+    file_type: txt
+"""
+OUTPUT_KINDS_LABELS = [
+    "table",
+    "image",
+    "text",
+    "head_table",
+    "cat_table",
+    "head_cat",
+    "copy_image",
+    "split_text",
+    "numbers",
+    "final",
+]
+
 
 class TestWorkflowInvocationGraph(SeleniumTestCase):
     ensure_registered = True
@@ -163,6 +262,72 @@ class TestWorkflowInvocationGraph(SeleniumTestCase):
         self.screenshot("invocation_graph_search")
         invocations.graph_search_result.wait_for_and_click()
         self._assert_step_card_title("right_cat")
+
+    @selenium_test
+    def test_hover_previews_step_outputs(self):
+        self._open_invocation(WORKFLOW_OUTPUT_KINDS, OUTPUT_KINDS_LABELS)
+        # the pointer is still on the activity that closed the invocations panel; move it off that tooltip
+        self.clear_tooltips()
+        self.components.invocations.activity_tooltip.wait_for_absent_or_hidden()
+        # and drop the focus that click left there, so the Escape presses below don't draw a focus ring on it
+        self.execute_script("document.activeElement.blur();")
+        self.screenshot("invocation_graph_output_kinds")
+
+        # a workflow output, listed with its label
+        output = self._hover_outputs("head_table", "out_file1")
+        assert output.label.wait_for_text() == "top_rows"
+        output.table.wait_for_visible()
+        rows = output.table_row.all()
+        assert len(rows) == 5  # head -n 5
+        assert rows[0].text.split() == ["1", "68", "4.1"]  # 2.tabular's first row
+        self.screenshot("invocation_graph_output_preview_table")
+
+        # not a workflow output: the step's details are fetched on hover, and it's listed by output name
+        output = self._hover_outputs("cat_table", "out_file1")
+        assert output.label.wait_for_text() == "out_file1"
+        output.table.wait_for_visible()
+        assert len(output.table_row.all()) == 10  # all of 2.tabular
+
+        output = self._hover_outputs("copy_image", "out_file1")
+        self._wait_for_image_loaded(output.image.wait_for_visible())
+        self.screenshot("invocation_graph_output_preview_image")
+
+        # a collection, previewed with its elements
+        output = self._hover_outputs("split_text", "output")
+        assert output.label.wait_for_text() == "lines"
+        output.collection_element_name.wait_for_visible()
+        assert [element.text for element in output.collection_element_name.all()] == ["1", "2"]  # one per line
+        self.screenshot("invocation_graph_output_preview_collection")
+
+        # every output of a multi-output step
+        output_a = self._hover_outputs("numbers", "output_a")
+        output_b = self.components.invocations.graph_step_output._(name="output_b")
+        assert output_a.text.wait_for_text().strip() == "3"
+        assert output_b.label.wait_for_text() == "numbers_b"
+        assert output_b.text.wait_for_text().strip() == "4"
+        self.screenshot("invocation_graph_output_preview_multiple_outputs")
+
+    def _hover_outputs(self, label: str, output_name: str):
+        """Hover the step's output terminals, wait for its output previews to load and return the named one"""
+        invocations = self.components.invocations
+        # moving away could land on the open popover, which keeps it open; Escape dismisses it
+        self.send_escape()
+        invocations.graph_step_outputs.wait_for_absent_or_hidden()
+        terminal = self.components.workflow_editor.node._(label=label).output_terminal(name=output_name)
+        self.hover(terminal.wait_for_present())
+        output = invocations.graph_step_output._(name=output_name)
+        output.wait_for_visible()
+        # covers both the popover's own loading message and each preview's dataset or collection loading
+        invocations.graph_step_outputs_loading.wait_for_absent()
+        return output
+
+    def _wait_for_image_loaded(self, image):
+        # a visible <img> may still be decoding; wait so the screenshot shows the picture at its final size
+        self._wait_on(
+            lambda: self.execute_script("return arguments[0].complete && arguments[0].naturalWidth > 0;", image),
+            "output preview image to load",
+            wait_type=self.wait_types.UX_TRANSITION,
+        )
 
     def _open_invocation(self, workflow: str, labels: list[str]):
         self.workflow_populator.run_workflow(workflow, history_id=self.current_history_id())
