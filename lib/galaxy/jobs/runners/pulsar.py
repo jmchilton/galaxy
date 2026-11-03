@@ -875,6 +875,11 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
                 os.path.join(job_wrapper.working_directory, f"galaxy_{job_wrapper.job_id}.ec"), "w"
             ) as exit_code_file:
                 exit_code_file.write(str(result.exit_code))
+            # Recovery from an interrupted metadata step needs these for the output check.
+            for name, stream in (("job_stdout", result.job_stdout), ("job_stderr", result.job_stderr)):
+                if stream is not None:
+                    with open(self.__job_stream_path(job_wrapper, name), "w") as stream_file:
+                        stream_file.write(stream)
             self._handle_metadata_externally(job_wrapper, resolve_requirements=True)
         self._finish_pulsar_job(job_state, result)
 
@@ -933,8 +938,8 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
             tool_stdout=tool_stdout,
             tool_stderr=tool_stderr,
             exit_code=exit_code,
-            job_stdout=None,
-            job_stderr=None,
+            job_stdout=self.__read_job_stream(job_wrapper, "job_stdout"),
+            job_stderr=self.__read_job_stream(job_wrapper, "job_stderr"),
             remote_metadata_directory=None,
             job_metrics_directory=os.path.join(working_directory, "metadata"),
         )
@@ -947,6 +952,18 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
                 return unicodify(stream.read(), strip_null=True)
         except Exception:
             return ""
+
+    @staticmethod
+    def __job_stream_path(job_wrapper, name):
+        return os.path.join(job_wrapper.working_directory, f"galaxy_{job_wrapper.job_id}.{name}")
+
+    def __read_job_stream(self, job_wrapper, name):
+        """Return a job stream saved before the metadata step, or None if none was saved."""
+        try:
+            with open(self.__job_stream_path(job_wrapper, name)) as stream:
+                return unicodify(stream.read(), strip_null=True)
+        except FileNotFoundError:
+            return None
 
     def check_pid(self, pid):
         try:

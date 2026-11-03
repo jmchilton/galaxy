@@ -105,6 +105,22 @@ def test_staged_job_oom_kill_fails_without_resubmission(tmp_path):
     assert finish_kwargs["check_output_detected_state"] == DETECTED_JOB_STATE.OUT_OF_MEMORY_ERROR
 
 
+def test_staged_job_recovered_during_metadata_keeps_oom_kill(tmp_path):
+    runner, job_state, result = _staged_job(tmp_path, SLURM_OOM_KILL)
+    job_state.job_wrapper.job_id = 1
+    runner._handle_metadata_externally = Mock(side_effect=RuntimeError("handler restarted"))
+    with pytest.raises(RuntimeError):
+        runner._complete_staged_job(job_state, result)
+
+    runner._handle_metadata_externally = Mock()
+    runner._finish_staged_job(job_state)
+
+    runner.runner_state_handlers["failure"][0].assert_called_once_with(runner.app, runner, job_state)
+    finish_kwargs = job_state.job_wrapper.finish.call_args.kwargs
+    assert finish_kwargs["check_output_detected_state"] == DETECTED_JOB_STATE.OUT_OF_MEMORY_ERROR
+    assert finish_kwargs["job_stderr"] == SLURM_OOM_KILL
+
+
 def test_staged_job_success_skips_failure_handlers(tmp_path):
     runner, job_state, result = _staged_job(tmp_path, "")
 
