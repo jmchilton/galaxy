@@ -4775,6 +4775,20 @@ outer_input:
             content = self.dataset_populator.get_history_dataset_content(history_id)
             assert len([x for x in content.split("\n") if x]) == 2
 
+    @skip_without_tool("random_lines1")
+    def test_run_subworkflow_runtime_parameters_invalid_value(self, history_id):
+        workflow_id = self.workflow_populator.upload_yaml_workflow(WORKFLOW_NESTED_RUNTIME_PARAMETER)
+        response = self.workflow_populator.invoke_workflow_raw(
+            workflow_id,
+            {"history_id": history_id, "parameters": {"1": {"1|num_lines": "many"}}, "parameters_normalized": True},
+        )
+        self._assert_status_code_is(response, 400)
+        assert_error_message_contains(response, "Error computing workflow step runtime state")
+        # The inner step's errors are keyed by its own index - the same as the subworkflow step's here.
+        err_data = response.json()["err_data"]
+        assert list(err_data) == ["1"], err_data
+        assert list(err_data["1"]) == ["num_lines"], err_data
+
     @skip_without_tool("cat")
     def test_run_subworkflow_replacement_parameters(self):
         with self.dataset_populator.test_history() as history_id:
