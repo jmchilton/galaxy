@@ -5,10 +5,11 @@ import {
     faArrowDown,
     faExpand,
     faEye,
+    faTable,
     faTimes,
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
-import { until } from "@vueuse/core";
+import { until, watchDebounced } from "@vueuse/core";
 import { BCard, BCardBody, BCardHeader } from "bootstrap-vue";
 import { storeToRefs } from "pinia";
 import { computed, nextTick, onMounted, ref, watch } from "vue";
@@ -19,6 +20,9 @@ import { useDatatypesMapper } from "@/composables/datatypesMapper";
 import { useInvocationGraph } from "@/composables/useInvocationGraph";
 import { useUid } from "@/composables/utils/uid";
 import { useWorkflowStateStore } from "@/stores/workflowEditorStateStore";
+import type { Rectangle } from "@/utils/geometry";
+
+import { useEmbeddedOutputs } from "./useEmbeddedOutputs";
 
 import GAlert from "@/components/BaseComponents/GAlert.vue";
 import GButton from "@/components/BaseComponents/GButton.vue";
@@ -26,6 +30,7 @@ import GButtonGroup from "@/components/BaseComponents/GButtonGroup.vue";
 import GModal from "@/components/BaseComponents/GModal.vue";
 import LoadingSpan from "@/components/LoadingSpan.vue";
 import WorkflowGraph from "@/components/Workflow/Editor/WorkflowGraph.vue";
+import InvocationEmbeddedOutputs from "@/components/Workflow/Invocation/Graph/InvocationEmbeddedOutputs.vue";
 import WorkflowInvocationStep from "@/components/WorkflowInvocationState/WorkflowInvocationStep.vue";
 import WorkflowInvocationStepHeader from "@/components/WorkflowInvocationState/WorkflowInvocationStepHeader.vue";
 
@@ -86,10 +91,14 @@ const { steps, storeId, loadInvocationGraph, loading } = useInvocationGraph(
 onMounted(async () => {
     await until(loading).toBe(false);
     await nextTick();
-
-    // @ts-ignore: TS2339 component method not exposed in template ref type
-    workflowGraph.value?.fitWorkflow(0.25, 1.0, 20.0);
+    fitGraph();
 });
+
+/** Fit the workflow, and anything drawn beside its steps, into view */
+function fitGraph(extraRectangles: Rectangle[] = []) {
+    // @ts-ignore: TS2339 component method not exposed in template ref type
+    workflowGraph.value?.fitWorkflow(0.25, 1.0, 20.0, extraRectangles);
+}
 
 // Equivalent to onMounted; this is where the graph is initialized. The graph then follows the
 // `invocation` and `stepsJobsSummary` props, polled by the parent.
@@ -114,6 +123,23 @@ watch(
 );
 
 const stateStore = useWorkflowStateStore(storeId.value);
+
+const embedOutputs = ref(false);
+const { embedded, hasEmbeddableOutputs } = useEmbeddedOutputs(storeId.value, steps, embedOutputs);
+
+// refit once the layout has settled after toggling, so the embedded outputs are in view
+const fitPending = ref(false);
+watch(embedOutputs, () => (fitPending.value = true));
+watchDebounced(
+    embedded,
+    () => {
+        if (fitPending.value) {
+            fitPending.value = false;
+            fitGraph(embedded.value.map((output) => output.rect));
+        }
+    },
+    { debounce: 300 },
+);
 const { activeNodeId } = storeToRefs(stateStore);
 
 // Close the expanded-step modal when the active step changes
@@ -218,6 +244,7 @@ function toggleDetailedView() {
                         <WorkflowGraph
                             ref="workflowGraph"
                             class="invocation-graph"
+                            :class="{ 'embed-outputs': embedOutputs }"
                             :steps="steps"
                             :datatypes-mapper="datatypesMapper"
                             :initial-position="initialPosition"
@@ -228,12 +255,31 @@ function toggleDetailedView() {
                             :fixed-height="props.fitToPage ? undefined : 60"
                             is-invocation
                             readonly
-                            @stepClicked="stepClicked" />
+                            @stepClicked="stepClicked">
+                            <template v-slot:node-area>
+                                <InvocationEmbeddedOutputs v-if="embedOutputs" :embedded="embedded" />
+                            </template>
+                        </WorkflowGraph>
                         <div
                             v-if="activeNodeId !== null && showSideOverlay"
                             class="graph-scroll-overlay overlay-right" />
                     </BCard>
 
+                    <GButton
+                        class="embed-outputs-button"
+                        tooltip
+                        title="Show workflow outputs inside the graph"
+                        disabled-title="No workflow outputs to show yet"
+                        data-description="toggle embedded outputs button"
+                        size="small"
+                        color="blue"
+                        outline
+                        :disabled="!embedOutputs && !hasEmbeddableOutputs"
+                        :pressed="embedOutputs"
+                        @click="embedOutputs = !embedOutputs">
+                        <FontAwesomeIcon :icon="faTable" fixed-width />
+                        Embed Outputs
+                    </GButton>
                     <GButton
                         v-if="activeNodeId !== null"
                         class="detailed-view-button"
@@ -375,6 +421,11 @@ function toggleDetailedView() {
 }
 
 .invocation-graph {
+    &.embed-outputs:deep(.workflow-node) {
+        width: 9rem;
+        font-size: 0.75rem;
+    }
+
     &:deep(.workflow-overview),
     &:deep(.zoom-control) {
         z-index: 100;
@@ -415,6 +466,14 @@ function toggleDetailedView() {
             overflow-x: hidden;
         }
     }
+}
+
+.embed-outputs-button {
+    // beside the zoom controls, clear of the top-left of the workflow
+    position: absolute;
+    bottom: 1rem;
+    left: 11rem;
+    z-index: 150;
 }
 
 .detailed-view-button {
