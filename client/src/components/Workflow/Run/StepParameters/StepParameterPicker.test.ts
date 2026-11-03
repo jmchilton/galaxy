@@ -21,7 +21,14 @@ const ROW = '[data-description="step parameter row"]';
 
 function mountPicker(show: boolean, rowUpdates = { count: 0 }) {
     return mount(StepParameterPicker as any, {
-        props: { show, tree: buildStepParameterTree({ steps: STEPS }), selectedKeys: [] },
+        props: {
+            show,
+            view: "list",
+            tree: buildStepParameterTree({ steps: STEPS }),
+            selectedKeys: [],
+            workflowId: "workflow",
+            version: 0,
+        },
         attachTo: document.body,
         global: {
             ...localVue,

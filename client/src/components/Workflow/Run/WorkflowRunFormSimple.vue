@@ -747,6 +747,8 @@ onBeforeMount(() => {
                     </GOverlay>
                     <WorkflowRunStepParameters
                         :steps="model.steps"
+                        :workflow-id="model.workflowId"
+                        :version="model.runData.version"
                         :rerun-overrides="rerunRequest?.step_parameter_overrides"
                         :link-overrides="stepParameterOverridesArg"
                         :is-rerun="isRerun"

@@ -59,6 +59,9 @@ export interface StepParameterLeaf extends StepParameterRow {
 
 export type StepParameterNode = StepParameterGroup | StepParameterConditional | StepParameterLeaf;
 
+/** The picker's list of steps, or its workflow graph; both pick from the same tree. */
+export type StepParameterPickerView = "list" | "workflow";
+
 export const CONDITIONAL_LOCKED_REASON =
     "Changing this would change which parameters below apply. Set it in the expanded form.";
 
