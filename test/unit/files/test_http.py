@@ -1,6 +1,10 @@
+import email
+import email.message
 import io
 import ipaddress
 import os
+import urllib.request
+import urllib.response
 from typing import Any
 from unittest import mock
 
@@ -160,6 +164,36 @@ def test_file_source_http_follows_allowlisted_redirect(httpserver):
     allowlist = [ipaddress.ip_network("127.0.0.0/8"), ipaddress.ip_address("::1")]
     file_sources = configured_file_sources(FILE_SOURCES_CONF, FileSourcePluginsConfig(fetch_url_allowlist=allowlist))
     assert_realizes_as(file_sources, httpserver.url_for("/start"), "redirected")
+
+
+@pytest.mark.usefixtures("fake_public_dns")
+def test_file_source_http_validates_redirect_target(tmp_path):
+    test_url = "https://www.elsewhere.org/myfile.txt"
+    redirect_url = "http://127.0.0.1/myfile.txt"
+    requested = []
+
+    def fake_open(handler, req):
+        requested.append(req.full_url)
+        if req.full_url == test_url:
+            response = urllib.response.addinfourl(
+                io.BytesIO(b""), email.message_from_string(f"Location: {redirect_url}\n\n"), req.full_url, 302
+            )
+        else:
+            response = urllib.response.addinfourl(io.BytesIO(b"redirected"), email.message.Message(), req.full_url, 200)
+        response.msg = "Found" if response.code == 302 else "OK"
+        return response
+
+    file_sources = configured_file_sources(FILE_SOURCES_CONF)
+    file_source_pair = file_sources.get_file_source_path(test_url)
+    with (
+        mock.patch.object(urllib.request.HTTPSHandler, "https_open", new=fake_open),
+        mock.patch.object(urllib.request.HTTPHandler, "http_open", new=fake_open),
+    ):
+        with pytest.raises(exceptions.ConfigDoesNotAllowException):
+            file_source_pair.file_source.realize_to(
+                file_source_pair.path, str(tmp_path / "realized"), user_context=user_context_fixture()
+            )
+    assert requested == [test_url]
 
 
 def test_file_source_http_without_stock_generic():

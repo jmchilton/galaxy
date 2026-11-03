@@ -37,6 +37,17 @@ class HTTPFileSourceConfiguration(BaseFileSourceConfiguration):
     fetch_url_allowlist: list[IpAllowedListEntryT] = []
 
 
+class ValidatingRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Check each redirect target against the allowlist before following it."""
+
+    def __init__(self, allowlist: list[IpAllowedListEntryT]):
+        self._allowlist = allowlist
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        validate_non_local(newurl, self._allowlist)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 class HTTPFilesSource(BaseFilesSource[HTTPFileSourceTemplateConfiguration, HTTPFileSourceConfiguration]):
     plugin_type = "http"
     plugin_kind = PluginKind.stock
@@ -64,11 +75,13 @@ class HTTPFilesSource(BaseFilesSource[HTTPFileSourceTemplateConfiguration, HTTPF
         self, source_path: str, native_path: str, context: FilesSourceRuntimeContext[HTTPFileSourceConfiguration]
     ):
         config = context.config
+        allowlist = self._allowlist or config.fetch_url_allowlist
         req = urllib.request.Request(source_path, headers=config.http_headers)
+        opener = urllib.request.build_opener(ValidatingRedirectHandler(allowlist))
 
-        with urllib.request.urlopen(req, timeout=DEFAULT_SOCKET_TIMEOUT) as page:
+        with opener.open(req, timeout=DEFAULT_SOCKET_TIMEOUT) as page:
             # Verify url post-redirects is still allowlisted
-            validate_non_local(page.geturl(), self._allowlist or config.fetch_url_allowlist)
+            validate_non_local(page.geturl(), allowlist)
             return stream_to_path(page, native_path, source_encoding=get_charset_from_http_headers(page.headers))
 
     def _write_from(
