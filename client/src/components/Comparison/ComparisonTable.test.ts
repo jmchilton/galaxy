@@ -231,6 +231,9 @@ describe("ComparisonTable", () => {
             (TABLE.rows[1]!.cells["output:out_file1"] as DatasetCell).name,
         );
         expect(wrapper.findAll(".comparison-expand")).toHaveLength(0);
+        expect(wrapper.findAll("thead .comparison-head-version").map((b) => b.text())).toEqual(
+            TABLE.rows.map((row) => `v${row.version! + 1}`),
+        );
     });
 
     it("hides columns that are not visible and forwards the chooser's events", async () => {

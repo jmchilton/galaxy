@@ -15,6 +15,7 @@ import {
     META_FIELD_SPECS,
     META_FIELDS,
     type MetaField,
+    runVersionLabel,
     visibleFields,
 } from "./comparisonUtils";
 import { MAX_SELECTED, useRunSelection } from "./useRunSelection";
@@ -335,6 +336,8 @@ const tableKey = computed(() => `${props.transpose}:${props.table.rows.map((row)
                         aria-label="Select to compare"
                         title="Select to compare"
                         @update:model-value="setSelected(row.run.id, $event)" />
+                    <!-- Runs of one version are otherwise told apart only by their times. -->
+                    <b v-if="runVersionLabel(row)" class="comparison-head-version mr-1">{{ runVersionLabel(row) }}</b>
                     <ComparisonMetaCell
                         :field="anchorField"
                         :row="row"
