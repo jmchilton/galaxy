@@ -1,8 +1,11 @@
 from unittest.mock import Mock
 
+import pytest
+
 from galaxy.tool_util.output_checker import (
     check_output,
     DETECTED_JOB_STATE,
+    oom_kill_job_messages,
     output_discovery_job_message,
 )
 from galaxy.tool_util.parser.stdio import (
@@ -10,6 +13,46 @@ from galaxy.tool_util.parser.stdio import (
     ToolStdioRegex,
 )
 from galaxy.util.unittest import TestCase
+
+SLURM_OOM_KILL = (
+    "slurmstepd: error: Detected 1 oom-kill event(s) in StepId=5726054.batch. "
+    "Some of your processes may have been killed by the cgroup out-of-memory handler."
+)
+
+
+@pytest.mark.parametrize(
+    "job_stderr",
+    [
+        SLURM_OOM_KILL,
+        f"some job script noise\n{SLURM_OOM_KILL}\n",
+        "slurmstepd: error: Detected 2 oom-kill event(s) in step 7.batch cgroup.",
+        "slurmstepd: error: Exceeded job memory limit",
+        "galaxy: Detected 3 oom-kill event(s) in the job's memory cgroup.",
+    ],
+)
+def test_oom_kill_job_messages_detects_kills(job_stderr):
+    (message,) = oom_kill_job_messages(job_stderr)
+    assert message["type"] == "regex"
+    assert message["stream"] == "job_stderr"
+    assert message["error_level"] == StdioErrorLevel.FATAL_OOM
+    assert message["match"] and message["match"] in job_stderr
+    assert message["desc"] == f"Out of memory error: {message['match']}"
+
+
+@pytest.mark.parametrize(
+    "job_stderr",
+    [
+        None,
+        "",
+        # Slurm can print these without killing anything (galaxy#1426, galaxy#2309).
+        "slurmstepd: error: Exceeded job memory limit at some point.",
+        "slurmstepd: error: Exceeded step memory limit at some point.",
+        # Only the resource manager's own line, not text quoted elsewhere on the line.
+        f"tool said: {SLURM_OOM_KILL}",
+    ],
+)
+def test_oom_kill_job_messages_ignores_non_kills(job_stderr):
+    assert oom_kill_job_messages(job_stderr) == []
 
 
 class TestOutputChecker(TestCase):

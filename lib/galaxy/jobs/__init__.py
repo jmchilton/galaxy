@@ -118,6 +118,7 @@ from galaxy.tool_util.output_checker import (
     check_output,
     DETECTED_JOB_STATE,
     MaxDiscoveredFilesJobMessage,
+    oom_kill_job_messages,
     output_discovery_job_message,
     OutputCollectionSecurityJobMessage,
     runtime_environment_job_messages,
@@ -2645,6 +2646,10 @@ class MinimalJobWrapper(HasResourceParameters):
         state, tool_stdout, tool_stderr, job_messages = check_output(
             self.tool.stdio_regexes, self.tool.stdio_exit_codes, tool_stdout, tool_stderr, tool_exit_code
         )
+        # A kill can leave the tool's own streams and exit code looking successful.
+        if oom_kill_messages := oom_kill_job_messages(job_stderr):
+            state = DETECTED_JOB_STATE.OUT_OF_MEMORY_ERROR
+            job_messages.extend(oom_kill_messages)
 
         job_messages.extend(
             runtime_environment_job_messages(

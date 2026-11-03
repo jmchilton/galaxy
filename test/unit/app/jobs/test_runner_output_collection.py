@@ -14,7 +14,10 @@ from galaxy.jobs.runners import (
     BaseJobRunner,
     JobState,
 )
-from galaxy.tool_util.output_checker import AnyJobMessage
+from galaxy.tool_util.output_checker import (
+    AnyJobMessage,
+    DETECTED_JOB_STATE,
+)
 from galaxy.tool_util.parser.stdio import StdioErrorLevel
 from galaxy.tool_util_models.runtime_environment import RuntimeEnvironmentVariable
 
@@ -61,8 +64,8 @@ def finishing_job(tmp_path, request):
     return runner, state, job
 
 
-def finish(runner, state):
-    runner._finish_or_resubmit_job(state, job_stdout="runner stdout", job_stderr="runner stderr")
+def finish(runner, state, job_stderr="runner stderr"):
+    runner._finish_or_resubmit_job(state, job_stdout="runner stdout", job_stderr=job_stderr)
 
 
 def write_metadata_export_file(tmp_path, name, content):
@@ -211,6 +214,59 @@ def test_missing_stream_preserves_oom_resubmission(finishing_job, tmp_path):
     state.job_wrapper.fail.assert_not_called()
     state.job_wrapper.finish.assert_not_called()
     assert state.cleanup_calls == 0
+
+
+SLURM_OOM_KILL = (
+    "slurmstepd: error: Detected 1 oom-kill event(s) in StepId=5726054.batch. "
+    "Some of your processes may have been killed by the cgroup out-of-memory handler."
+)
+
+
+@pytest.mark.parametrize("tool_stderr", ["", "tool complained"])
+def test_job_stderr_oom_kill_resubmits_as_memory_limit(finishing_job, tmp_path, tool_stderr):
+    runner, state, job = finishing_job
+    (tmp_path / "tool_stdout").touch()
+    (tmp_path / "tool_stderr").write_text(tool_stderr)
+    handled = []
+
+    def resubmit(app, runner, job_state):
+        handled.append(job_state.runner_state)
+        job_state.runner_state_handled = True
+
+    runner.runner_state_handlers["failure"] = [resubmit]
+    finish(runner, state, job_stderr=f"{SLURM_OOM_KILL}\n")
+
+    assert handled == [JobState.runner_states.MEMORY_LIMIT_REACHED]
+    (message,) = (message for message in job.job_messages if message["stream"] == "job_stderr")
+    assert message["error_level"] == StdioErrorLevel.FATAL_OOM
+    assert TypeAdapter(list[AnyJobMessage]).validate_python(job.job_messages) == job.job_messages
+    state.job_wrapper.finish.assert_not_called()
+
+
+def test_job_stderr_oom_kill_fails_job_without_resubmission(finishing_job, tmp_path):
+    runner, state, job = finishing_job
+    for stream in ("stdout", "stderr"):
+        (tmp_path / f"tool_{stream}").touch()
+
+    finish(runner, state, job_stderr=SLURM_OOM_KILL)
+
+    runner.runner_state_handlers["failure"][0].assert_called_once_with(runner.app, runner, state)
+    assert state.runner_state == JobState.runner_states.MEMORY_LIMIT_REACHED
+    finish_kwargs = state.job_wrapper.finish.call_args.kwargs
+    assert finish_kwargs["check_output_detected_state"] == DETECTED_JOB_STATE.OUT_OF_MEMORY_ERROR
+
+
+def test_job_stderr_memory_warning_alone_finishes_successfully(finishing_job, tmp_path):
+    runner, state, job = finishing_job
+    for stream in ("stdout", "stderr"):
+        (tmp_path / f"tool_{stream}").touch()
+
+    finish(runner, state, job_stderr="slurmstepd: error: Exceeded job memory limit at some point.\n")
+
+    assert not job.job_messages
+    runner.runner_state_handlers["failure"][0].assert_not_called()
+    finish_kwargs = state.job_wrapper.finish.call_args.kwargs
+    assert finish_kwargs["check_output_detected_state"] == DETECTED_JOB_STATE.OK
 
 
 @pytest.mark.parametrize("finishing_job", [model.Job], indirect=True)

@@ -35,6 +35,16 @@ class DETECTED_JOB_STATE(str, Enum):
 
 ERROR_PEEK_SIZE = 2000
 
+# Lines written to a job's own stderr when one of its processes was killed for using too much memory.
+OOM_KILL_JOB_STDERR_PATTERNS = (
+    # Slurm's cgroup task plugin, src/plugins/task/cgroup/task_cgroup_memory.c in SchedMD/slurm.
+    re.compile(r"^slurmstepd: error: Detected \d+ oom-kill event\(s\).*$", re.MULTILINE),
+    # Slurm's own memory enforcement, src/slurmd/slurmd/req.c in SchedMD/slurm.
+    re.compile(r"^slurmstepd: error: Exceeded job memory limit$", re.MULTILINE),
+    # The job script's cgroup check, enabled by the check_cgroup_oom_kills destination parameter.
+    re.compile(r"^galaxy: Detected \d+ oom-kill event\(s\).*$", re.MULTILINE),
+)
+
 
 JobMessageTypeLiteral = Literal[
     "regex",
@@ -296,6 +306,27 @@ def __regex_err_msg(match: re.Match, stream: str, regex: "ToolStdioRegex") -> Re
         "match": match_str,
         "error_level": regex.error_level,
     }
+
+
+def oom_kill_job_messages(job_stderr: str | None) -> list[RegexJobMessage]:
+    """Describe an out-of-memory kill reported on the job's own stderr, not the tool's."""
+    if not job_stderr:
+        return []
+    for pattern in OOM_KILL_JOB_STDERR_PATTERNS:
+        if match := pattern.search(job_stderr):
+            line = match.group(0).strip()
+            log.info("Job processes were killed for exceeding memory: %s", line)
+            return [
+                RegexJobMessage(
+                    type="regex",
+                    stream="job_stderr",
+                    desc=f"{StdioErrorLevel.desc(StdioErrorLevel.FATAL_OOM)}: {line}",
+                    code_desc=None,
+                    match=line,
+                    error_level=StdioErrorLevel.FATAL_OOM,
+                )
+            ]
+    return []
 
 
 # The warning file holds only variable names; anything larger is not ours.
