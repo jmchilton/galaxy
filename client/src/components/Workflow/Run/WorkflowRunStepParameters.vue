@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { faListUl, faTimes } from "@fortawesome/free-solid-svg-icons";
+import { faListUl, faSitemap, faTimes } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { computed, markRaw, ref, watch } from "vue";
 
@@ -14,6 +14,7 @@ import {
     type StepParameterLeaf,
     type StepParameterOverrides,
     stepParameterOverrideValues,
+    type StepParameterPickerView,
     type ToolInput,
     typedParameterValue,
 } from "./stepParameterTree";
@@ -28,6 +29,9 @@ const props = withDefaults(
     defineProps<{
         /** Steps of the ``WorkflowRunModel`` of the workflow being run */
         steps: RunStep[];
+        /** Stored workflow id and version, for the picker's workflow view */
+        workflowId: string;
+        version: number;
         /** Overrides the invocation being rerun recorded, shown with their recorded values */
         rerunOverrides?: Record<string, unknown> | null;
         /** URL-encoded JSON ``step_parameter_overrides`` route argument; ``null`` leaves show without a preset */
@@ -52,6 +56,7 @@ interface StepParameterCard {
 
 const tree = computed(() => buildStepParameterTree({ steps: props.steps }));
 const showPicker = ref(false);
+const pickerView = ref<StepParameterPickerView>("list");
 const cards = ref<StepParameterCard[]>([]);
 const dropped = ref<DroppedStepParameter[]>([]);
 const linkError = ref<string>();
@@ -83,6 +88,11 @@ function showStepParameters(wanted: string[]) {
     dropped.value = [...dropped.value, ...resolved.dropped];
     const shown = new Map(cards.value.map((card) => [card.leaf.id, card]));
     cards.value = resolved.leaves.map((leaf) => shown.get(leaf.id) ?? newCard(leaf));
+}
+
+function openPicker(view: StepParameterPickerView) {
+    pickerView.value = view;
+    showPicker.value = true;
 }
 
 function removeStepParameter(card: StepParameterCard) {
@@ -178,9 +188,29 @@ watch(overrides, (value) => emit("update:overrides", value), { immediate: true }
                 <FormDisplay :inputs="card.inputs" @on-change="onCardChange(card, $event)" />
             </div>
         </div>
-        <GButton outline size="small" color="blue" data-description="choose step parameters" @click="showPicker = true">
+        <GButton
+            outline
+            size="small"
+            color="blue"
+            data-description="choose step parameters"
+            @click="openPicker('list')">
             <FontAwesomeIcon :icon="faListUl" fixed-width /> Choose step parameters
         </GButton>
-        <StepParameterPicker v-model:show="showPicker" :tree="tree" :selected-keys="keys" @apply="showStepParameters" />
+        <GButton
+            outline
+            size="small"
+            color="blue"
+            data-description="choose step parameters in workflow view"
+            @click="openPicker('workflow')">
+            <FontAwesomeIcon :icon="faSitemap" fixed-width /> Open workflow view
+        </GButton>
+        <StepParameterPicker
+            v-model:show="showPicker"
+            v-model:view="pickerView"
+            :tree="tree"
+            :selected-keys="keys"
+            :workflow-id="workflowId"
+            :version="version"
+            @apply="showStepParameters" />
     </div>
 </template>

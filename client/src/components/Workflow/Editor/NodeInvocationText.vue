@@ -53,6 +53,9 @@ function toJobState(key: string | number): JobState {
                 v-sanitize-html="textHtml(props.invocationStep.nodeText)" />
             <span v-else>This is an input</span>
         </div>
+        <div
+            v-else-if="typeof props.invocationStep.nodeText === 'string'"
+            v-sanitize-html="textHtml(props.invocationStep.nodeText)" />
         <div v-else-if="props.invocationStep.type === 'subworkflow'">This is a subworkflow.</div>
         <div v-else>This step has no jobs as of yet.</div>
     </div>

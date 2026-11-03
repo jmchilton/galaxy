@@ -4,8 +4,8 @@ import { computed, type Ref, ref } from "vue";
 import { type DataUri, isDataUri, isDataUriCollection } from "@/components/Form/Elements/FormData/types";
 import { isWorkflowInput } from "@/components/Workflow/constants";
 import { fromSimple } from "@/components/Workflow/Editor/modules/model";
-import { getWorkflowFull } from "@/components/Workflow/workflows.services";
 import type { Step } from "@/stores/workflowStepStore";
+import { useWorkflowStore } from "@/stores/workflowStore";
 import { rethrowSimple } from "@/utils/simple-error";
 
 import { getHeaderClass } from "./useInvocationGraph";
@@ -75,9 +75,9 @@ export function useWorkflowRunGraph(
                 throw new Error("Workflow Version is not defined");
             }
 
-            // initialize the original full workflow ref
+            // initialize the original full workflow ref - cached, the run form's step parameter picker shows it too
             if (!loadedWorkflow.value) {
-                loadedWorkflow.value = await getWorkflowFull(workflowId, workflowVersion);
+                loadedWorkflow.value = await useWorkflowStore().getFullWorkflowCached(workflowId, workflowVersion);
             }
 
             await fromSimple(workflowId, loadedWorkflow.value);
