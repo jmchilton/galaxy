@@ -2642,7 +2642,9 @@ class MinimalJobWrapper(HasResourceParameters):
             metadata_tmp_files_dir=job_metadata_directory(self.working_directory),
         )
 
-    def check_tool_output(self, tool_stdout, tool_stderr, tool_exit_code, job, job_stdout=None, job_stderr=None):
+    def check_tool_output(
+        self, tool_stdout, tool_stderr, tool_exit_code, job, job_stdout=None, job_stderr=None
+    ) -> DETECTED_JOB_STATE:
         state, tool_stdout, tool_stderr, job_messages = check_output(
             self.tool.stdio_regexes, self.tool.stdio_exit_codes, tool_stdout, tool_stderr, tool_exit_code
         )

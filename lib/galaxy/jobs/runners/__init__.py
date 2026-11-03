@@ -725,9 +725,7 @@ class BaseJobRunner:
                 )
             return container
 
-    def _handle_detected_failure(
-        self, job_state: "JobState", check_output_detected_state: DETECTED_JOB_STATE | str
-    ) -> bool:
+    def _handle_detected_failure(self, job_state: "JobState", check_output_detected_state: DETECTED_JOB_STATE) -> bool:
         """Run the failure handlers for a failed output check; True when one (e.g. resubmission) took the job."""
         if check_output_detected_state == DETECTED_JOB_STATE.OK:
             return False

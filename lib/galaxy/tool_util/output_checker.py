@@ -164,7 +164,7 @@ def check_output(
     stdout: str,
     stderr: str,
     tool_exit_code: int,
-) -> tuple[str, str, str, list[AnyJobMessage]]:
+) -> tuple[DETECTED_JOB_STATE, str, str, list[AnyJobMessage]]:
     """
     Check the output of a tool - given the stdout, stderr, and the tool's
     exit code, return DETECTED_JOB_STATE.OK if the tool exited successfully or
