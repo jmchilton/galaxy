@@ -41,7 +41,25 @@ function buildModel() {
     return new WorkflowRunModel(JSON.parse(JSON.stringify(sampleRunData1)));
 }
 
-function mountForm(canMutateCurrentHistory = true, rerunRequest?: Record<string, unknown>, model = buildModel()) {
+/** ``buildModel()`` with repeat caches as lists, as the server sends them - ``run1.json`` keys them by index. */
+function buildModelWithListRepeatCaches() {
+    const model = buildModel();
+    for (const step of model.steps) {
+        for (const input of step.inputs ?? []) {
+            if (input.type === "repeat" && input.cache && !Array.isArray(input.cache)) {
+                input.cache = Object.values(input.cache);
+            }
+        }
+    }
+    return model;
+}
+
+function mountForm(
+    canMutateCurrentHistory = true,
+    rerunRequest?: Record<string, unknown>,
+    model = buildModel(),
+    stepParameterOverridesArg?: string,
+) {
     const pinia = createTestingPinia({
         createSpy: vi.fn,
         initialState: {
@@ -57,6 +75,7 @@ function mountForm(canMutateCurrentHistory = true, rerunRequest?: Record<string,
             model,
             canMutateCurrentHistory,
             rerunRequest,
+            stepParameterOverridesArg,
         },
         global: {
             ...globalConfig,
@@ -200,6 +219,29 @@ describe("WorkflowRunForm", () => {
         await run(wrapper);
         expect(findStep(wrapper, "3").props("validationScrollTo")).toEqual(["num_lines", "Invalid value"]);
         expect(wrapper.emitted("submissionError")).toBeUndefined();
+    });
+
+    it("lists the step parameters a link asks to change, which it can't preset", () => {
+        const arg = JSON.stringify({ 3: { num_lines: null, seed_source: { seed: "7" } } });
+        const wrapper = mountForm(true, undefined, buildModelWithListRepeatCaches(), arg);
+        const alert = wrapper.find("[data-description='workflow run linked step parameters']");
+        expect(alert.findAll("li").map((item) => item.attributes("data-parameter-key"))).toEqual([
+            "3/num_lines",
+            "3/seed_source/seed",
+        ]);
+        expect(alert.find("li").text()).toMatch(/^Step 4: Select random lines › /);
+    });
+
+    it("reports a step parameter link that doesn't parse", () => {
+        const wrapper = mountForm(true, undefined, buildModel(), "{not json");
+        const alert = wrapper.find("[data-description='workflow run linked step parameters']");
+        expect(alert.text()).toContain("step_parameter_overrides is not valid JSON");
+        expect(alert.findAll("li")).toHaveLength(0);
+    });
+
+    it("shows no step parameter link alert without a link", () => {
+        const wrapper = mountForm();
+        expect(wrapper.find("[data-description='workflow run linked step parameters']").exists()).toBe(false);
     });
 
     it("reports other submission errors", async () => {

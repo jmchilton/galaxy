@@ -1,13 +1,15 @@
 import type { WorkflowInvocationRequest } from "@/api/invocations";
 
 import { rerunHasStepParameters, type WorkflowRunModel } from "./model";
+import { buildStepParameterTree, resolveStepParameterKeys, stepParameterOverrideValues } from "./stepParameterTree";
 
 /** Why the simple run form can't run a workflow; ``WorkflowRunForm`` explains each one. */
 export type SimpleFormDisabledReason =
     | "hasWorkflowResourceParameters"
     | "hasDisconnectedInputs"
     | "hasReplacementParameters"
-    | "rerunHasStepParameters";
+    | "rerunHasStepParameters"
+    | "rerunHasUnshownStepParameterOverrides";
 
 /** Why the simple form can't run this workflow, if it can't. The first reason found is the one shown. */
 export function simpleFormDisabledReason(
@@ -37,5 +39,17 @@ export function simpleFormDisabledReason(
     if (rerunHasStepParameters(rerunRequest)) {
         return "rerunHasStepParameters";
     }
+    // The simple form re-shows recorded overrides as step parameters - only those it can show.
+    if (rerunHasUnshownStepParameterOverrides(model, rerunRequest)) {
+        return "rerunHasUnshownStepParameterOverrides";
+    }
     return undefined;
+}
+
+function rerunHasUnshownStepParameterOverrides(model: WorkflowRunModel, rerunRequest?: WorkflowInvocationRequest) {
+    const recorded = [...stepParameterOverrideValues(rerunRequest?.step_parameter_overrides).keys()];
+    if (!recorded.length) {
+        return false;
+    }
+    return resolveStepParameterKeys(buildStepParameterTree(model), recorded).dropped.length > 0;
 }

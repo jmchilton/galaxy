@@ -875,6 +875,7 @@ export function getRouter(Galaxy) {
                             preferSimpleForm: Galaxy.config.simplified_workflow_run_ui === "prefer",
                             simpleFormTargetHistory: Galaxy.config.simplified_workflow_run_ui_target_history,
                             simpleFormUseJobCache: Galaxy.config.simplified_workflow_run_ui_job_cache === "on",
+                            stepParameterOverridesArg: route.query.step_parameter_overrides,
                         }),
                     },
                     {
@@ -883,6 +884,7 @@ export function getRouter(Galaxy) {
                         redirect: redirectAnon(),
                         props: (route) => ({
                             invocationId: route.query.invocation_id,
+                            stepParameterOverridesArg: route.query.step_parameter_overrides,
                         }),
                     },
                     {
