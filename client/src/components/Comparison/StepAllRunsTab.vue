@@ -38,7 +38,7 @@ const unavailableReason = computed(() => {
 
 <template>
     <!-- Lazy, so step cards don't fetch runs until the tab is opened. -->
-    <!-- Always enabled: when runs can't be listed, the tab says why instead of hiding it in a tooltip. -->
+    <!-- Always enabled: when runs can't be listed, the tab says why. -->
     <GTab lazy title-item-class="invocation-step-all-runs-tab" title="All runs">
         <GAlert v-if="unavailableReason" class="invocation-step-all-runs-unavailable mb-0" variant="info" show>
             {{ unavailableReason }}
