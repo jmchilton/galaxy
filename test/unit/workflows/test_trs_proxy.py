@@ -137,6 +137,18 @@ def test_match_url_rejects_file_uri(url):
 
 @responses.activate
 @pytest.mark.usefixtures("fake_public_dns")
+def test_server_from_url_refuses_redirect_to_private_address():
+    responses.get(
+        "https://trs.example/ga4gh/trs/v2/tools/x", status=302, headers={"Location": "http://127.0.0.1/tools/x"}
+    )
+    redirect_target = responses.get("http://127.0.0.1/tools/x", json={"id": "x"})
+    with pytest.raises(ConfigDoesNotAllowException):
+        get_trs_proxy().server_from_url("https://trs.example").get_tool("x")
+    assert redirect_target.call_count == 0
+
+
+@responses.activate
+@pytest.mark.usefixtures("fake_public_dns")
 def test_server_from_url_follows_redirect_to_public_host():
     responses.get(
         "https://trs.example/ga4gh/trs/v2/tools/x", status=302, headers={"Location": "https://other.example/tools/x"}

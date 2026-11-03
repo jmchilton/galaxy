@@ -190,3 +190,15 @@ def validate_non_local(uri: str, ip_allowlist: list[IpAllowedListEntryT]) -> str
                 # Otherwise, we deny access.
                 raise ConfigDoesNotAllowException("Access to this address in not permitted by server configuration")
     return url
+
+
+class ValidatingSession(requests.Session):
+    """A requests session that runs validate_non_local on each URL before sending it, redirect hops included."""
+
+    def __init__(self, ip_allowlist: list[IpAllowedListEntryT]):
+        super().__init__()
+        self.ip_allowlist = ip_allowlist
+
+    def send(self, request, **kwargs):
+        validate_non_local(request.url or "", self.ip_allowlist)
+        return super().send(request, **kwargs)
