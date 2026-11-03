@@ -2,8 +2,10 @@ import logging
 import os
 import re
 import urllib.parse
+from typing import Callable
 
 import yaml
+from requests import Session as RequestsSession
 
 from galaxy.config import Configuration
 from galaxy.exceptions import (
@@ -14,10 +16,10 @@ from galaxy.files.uris import validate_non_local
 from galaxy.util import (
     asbool,
     DEFAULT_SOCKET_TIMEOUT,
-    requests,
 )
 from galaxy.util.config_parsers import IpAllowedListEntryT
 from galaxy.util.search import parse_filters
+from galaxy.util.user_agent import get_default_headers
 
 log = logging.getLogger(__name__)
 
@@ -108,8 +110,9 @@ class TrsProxy:
 
 
 class TrsServer:
-    def __init__(self, trs_url):
+    def __init__(self, trs_url, session_factory: Callable[[], RequestsSession] = RequestsSession):
         self._trs_url = trs_url
+        self._session_factory = session_factory
 
     def get_tools(self, **kwd):
         query_kwd = {}
@@ -151,7 +154,8 @@ class TrsServer:
         return tool_id
 
     def _get(self, url, params=None):
-        response = requests.get(url, params=params, timeout=DEFAULT_SOCKET_TIMEOUT)
+        with self._session_factory() as session:
+            response = session.get(url, params=params, timeout=DEFAULT_SOCKET_TIMEOUT, headers=get_default_headers())
         if response.ok:
             return response.json()
         else:
