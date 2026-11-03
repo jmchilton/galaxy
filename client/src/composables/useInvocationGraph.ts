@@ -11,7 +11,7 @@ import {
     faStopCircle,
     faTrash,
 } from "@fortawesome/free-solid-svg-icons";
-import { computed, type Ref, ref, watch } from "vue";
+import { computed, type Ref, ref, toRaw, watch } from "vue";
 
 import { fetchCollectionSummary } from "@/api/datasetCollections";
 import { fetchDatasetDetails } from "@/api/datasets";
@@ -46,6 +46,15 @@ export interface GraphStep extends Step {
     headerIcon?: IconDefinition;
     headerIconSpin?: boolean;
     nodeText?: string | boolean;
+    /** The dataset or collection the invocation lists for each step output, keyed by output name */
+    outputItems?: Record<string, InvocationOutputItem>;
+    /** Id of the invocation step, once the step has been scheduled */
+    invocationStepId?: string;
+}
+/** A dataset or collection produced for a step output */
+export interface InvocationOutputItem {
+    src: "hda" | "hdca";
+    id: string;
 }
 interface InvocationGraph extends Omit<StoredWorkflowDetailed, "steps"> {
     steps: { [index: number]: GraphStep };
@@ -233,6 +242,10 @@ export function useInvocationGraph(
                 }
             }
 
+            if (invocationStep) {
+                updateOutputItems(graphStepFromWfStep, invocationStep);
+            }
+
             // add the graph step to the steps object if it doesn't exist yet
             if (!steps.value[i]) {
                 steps.value[i] = graphStepFromWfStep;
@@ -348,6 +361,19 @@ export function useInvocationGraph(
         return undefined;
     }
 
+    /** Store the invocation step's id and the output items the invocation lists for it, if they changed */
+    function updateOutputItems(graphStep: GraphStep, invocationStep: InvocationStep) {
+        // This runs for every step on every poll, so read the raw objects rather than through their reactive proxies
+        const rawStep = toRaw(graphStep);
+        const outputItems = invocationOutputItems(toRaw(invocation.value), rawStep, toRaw(invocationStep));
+        if (JSON.stringify(rawStep.outputItems) !== JSON.stringify(outputItems)) {
+            graphStep.outputItems = outputItems;
+        }
+        if (graphStep.invocationStepId !== invocationStep.id) {
+            graphStep.invocationStepId = invocationStep.id;
+        }
+    }
+
     function setHeaderClass(graphStep: GraphStep) {
         /** Setting the header class for the graph step */
         graphStep.headerClass = getHeaderClass(graphStep.state);
@@ -424,6 +450,38 @@ export function stepJobSummaryLookup(stepsJobsSummary: StepJobSummary[]) {
         (invocationStep.implicit_collection_jobs_id &&
             implicitCollectionJobsSummaries.get(invocationStep.implicit_collection_jobs_id)) ||
         (invocationStep.job_id ? jobSummaries.get(invocationStep.job_id) : undefined);
+}
+
+/** The items an invocation lists for one of its steps: the dataset or collection of a workflow input, and the step's
+ * workflow outputs. The invocation's payload leaves `steps[].outputs` empty, so other step outputs need the step's
+ * details (see `useStepOutputItems`).
+ * @param invocation - The invocation
+ * @param step - The workflow step
+ * @param invocationStep - The invocation step for the workflow step
+ * @returns The item produced for each output, keyed by output name
+ */
+function invocationOutputItems(
+    invocation: WorkflowInvocationElementView,
+    step: Step,
+    invocationStep: InvocationStep,
+): Record<string, InvocationOutputItem> {
+    const items: Record<string, InvocationOutputItem> = {};
+
+    const input = invocation.inputs[step.id];
+    const inputOutputName = step.outputs?.[0]?.name;
+    if (isWorkflowInput(step.type) && input?.id && inputOutputName) {
+        items[inputOutputName] = { src: input.src, id: input.id };
+    }
+
+    for (const workflowOutput of step.workflow_outputs ?? []) {
+        // the invocation keys an unlabeled workflow output by its output name and step number
+        const key = workflowOutput.label || `${workflowOutput.output_name} (Step ${step.id + 1})`;
+        const output = invocation.outputs?.[key] ?? invocation.output_collections?.[key];
+        if (output?.id && output.workflow_step_id === invocationStep.workflow_step_id) {
+            items[workflowOutput.output_name] = { src: output.src, id: output.id };
+        }
+    }
+    return items;
 }
 
 export function getHeaderClass(state: GraphStepState | undefined) {

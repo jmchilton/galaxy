@@ -424,3 +424,85 @@ describe("useInvocationGraph — parameter input text", () => {
         expect(await loadParameterInput("text", "#ff0000")).toBe("<b>#ff0000</b>");
     });
 });
+
+describe("useInvocationGraph — output items", () => {
+    const dataOutput = (name: string) => ({ name, extensions: ["input"], optional: false });
+
+    it("lists a workflow input's dataset under its output", async () => {
+        workflowSteps.value = {
+            0: { id: 0, type: "data_input", position: { left: 0, top: 0 }, outputs: [dataOutput("output")] },
+        };
+        server.use(
+            http.get("/api/datasets/{dataset_id}", ({ response }) => response.untyped(HttpResponse.json(inputDataset))),
+        );
+        const { steps, load } = setupComposable({ id: "is0", workflow_step_id: "ws0" }, [], false, {
+            inputs: { 0: { id: "d1", src: "hda", workflow_step_id: "ws0" } },
+        });
+        await load();
+        expect(steps.value[0]?.outputItems).toEqual({ output: { src: "hda", id: "d1" } });
+        expect(steps.value[0]?.invocationStepId).toBe("is0");
+    });
+
+    it("lists the step's own workflow outputs, matched by label and workflow step", async () => {
+        workflowSteps.value = {
+            0: {
+                ...toolStep,
+                outputs: [dataOutput("out_file1"), dataOutput("list_output"), dataOutput("out_file2")],
+                workflow_outputs: [
+                    { output_name: "out_file1", label: "table" },
+                    { output_name: "list_output", label: "lines" },
+                    { output_name: "out_file2", label: "summary" },
+                ],
+            },
+        };
+        const { steps, load } = setupComposable({ id: "is0", workflow_step_id: "ws0", job_id: "j1" }, [], false, {
+            outputs: {
+                table: { id: "d1", src: "hda", workflow_step_id: "ws0" },
+                // listed for another workflow step, so not this step's
+                summary: { id: "d2", src: "hda", workflow_step_id: "ws1" },
+            },
+            output_collections: { lines: { id: "c1", src: "hdca", workflow_step_id: "ws0" } },
+        });
+        await load();
+        expect(steps.value[0]?.outputItems).toEqual({
+            out_file1: { src: "hda", id: "d1" },
+            list_output: { src: "hdca", id: "c1" },
+        });
+    });
+
+    it("lists an unlabeled workflow output, which the invocation keys by output name and step number", async () => {
+        workflowSteps.value = {
+            0: { ...toolStep, outputs: [dataOutput("out_file1")], workflow_outputs: [{ output_name: "out_file1" }] },
+        };
+        const { steps, load } = setupComposable({ id: "is0", workflow_step_id: "ws0", job_id: "j1" }, [], false, {
+            outputs: { "out_file1 (Step 1)": { id: "d1", src: "hda", workflow_step_id: "ws0" } },
+        });
+        await load();
+        expect(steps.value[0]?.outputItems).toEqual({ out_file1: { src: "hda", id: "d1" } });
+    });
+
+    it("adds a workflow output once the invocation lists it", async () => {
+        workflowSteps.value = {
+            0: {
+                ...toolStep,
+                outputs: [dataOutput("out_file1")],
+                workflow_outputs: [{ output_name: "out_file1", label: "table" }],
+            },
+        };
+        const { steps, invocation, load } = setupComposable(
+            { id: "is0", workflow_step_id: "ws0", job_id: "j1" },
+            [],
+            false,
+            { outputs: {} },
+        );
+        await load();
+        expect(steps.value[0]?.outputItems).toEqual({});
+
+        invocation.value = {
+            ...invocation.value,
+            outputs: { table: { id: "d1", src: "hda", workflow_step_id: "ws0" } },
+        } as unknown as WorkflowInvocationElementView;
+        await flushPromises();
+        expect(steps.value[0]?.outputItems).toEqual({ out_file1: { src: "hda", id: "d1" } });
+    });
+});
