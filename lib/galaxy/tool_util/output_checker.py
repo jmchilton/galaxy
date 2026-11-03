@@ -308,25 +308,31 @@ def __regex_err_msg(match: re.Match, stream: str, regex: "ToolStdioRegex") -> Re
     }
 
 
+def oom_kill_line(job_stderr: str | None) -> str | None:
+    """Return the line of a job's own stderr reporting an out-of-memory kill, if any."""
+    if job_stderr:
+        for pattern in OOM_KILL_JOB_STDERR_PATTERNS:
+            if match := pattern.search(job_stderr):
+                return match.group(0).strip()
+    return None
+
+
 def oom_kill_job_messages(job_stderr: str | None) -> list[RegexJobMessage]:
     """Describe an out-of-memory kill reported on the job's own stderr, not the tool's."""
-    if not job_stderr:
+    line = oom_kill_line(job_stderr)
+    if line is None:
         return []
-    for pattern in OOM_KILL_JOB_STDERR_PATTERNS:
-        if match := pattern.search(job_stderr):
-            line = match.group(0).strip()
-            log.info("Job processes were killed for exceeding memory: %s", line)
-            return [
-                RegexJobMessage(
-                    type="regex",
-                    stream="job_stderr",
-                    desc=f"{StdioErrorLevel.desc(StdioErrorLevel.FATAL_OOM)}: {line}",
-                    code_desc=None,
-                    match=line,
-                    error_level=StdioErrorLevel.FATAL_OOM,
-                )
-            ]
-    return []
+    log.info("Job processes were killed for exceeding memory: %s", line)
+    return [
+        RegexJobMessage(
+            type="regex",
+            stream="job_stderr",
+            desc=f"{StdioErrorLevel.desc(StdioErrorLevel.FATAL_OOM)}: {line}",
+            code_desc=None,
+            match=line,
+            error_level=StdioErrorLevel.FATAL_OOM,
+        )
+    ]
 
 
 # The warning file holds only variable names; anything larger is not ours.

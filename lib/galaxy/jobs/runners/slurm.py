@@ -10,7 +10,7 @@ from typing import (
 
 from galaxy import model
 from galaxy.jobs.runners.drmaa import DRMAAJobRunner
-from galaxy.tool_util.output_checker import oom_kill_job_messages
+from galaxy.tool_util.output_checker import oom_kill_line
 from galaxy.util import (
     commands,
     unicodify,
@@ -220,7 +220,7 @@ def check_memory_limit(efile_path: str) -> str | None:
     except Exception:
         log.exception("Error reading end of %s:", efile_path)
         return None
-    if oom_kill_job_messages(tail):
+    if oom_kill_line(tail):
         return OUT_OF_MEMORY_MSG
     if any(warning in tail for warning in SLURM_MEMORY_LIMIT_EXCEEDED_PARTIAL_WARNINGS):
         return PROBABLY_OUT_OF_MEMORY_MSG
