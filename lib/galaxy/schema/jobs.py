@@ -255,6 +255,14 @@ class JobParameter(Model):
         default=None, title="Value", description="The values of the job parameter", union_mode="left_to_right"
     )
     notes: str | None = Field(default=None, title="Notes", description="Notes associated with the job parameter.")
+    path: list[str | int] | None = Field(
+        default=None,
+        title="Path",
+        description=(
+            "Path of the parameter in nested tool state - names, and instance indexes for repeats, e.g. "
+            "['queries', 1, 'column']. Set only on parameters a workflow run can expose as step parameter overrides."
+        ),
+    )
 
 
 class JobDisplayParametersSummary(Model):

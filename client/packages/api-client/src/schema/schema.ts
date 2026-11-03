@@ -19148,6 +19148,11 @@ export interface components {
              */
             notes?: string | null;
             /**
+             * Path
+             * @description Path of the parameter in nested tool state - names, and instance indexes for repeats, e.g. ['queries', 1, 'column']. Set only on parameters a workflow run can expose as step parameter overrides.
+             */
+            path?: (string | number)[] | null;
+            /**
              * Text
              * @description Text associated with the job parameter.
              */
