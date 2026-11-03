@@ -880,11 +880,13 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
 
     def _finish_pulsar_job(self, job_state: AsynchronousJobState, result: PulsarFinishJobResult):
         job_wrapper = job_state.job_wrapper
+        tool_stdout = result.tool_stdout or ""
+        tool_stderr = result.tool_stderr or ""
         try:
             job = job_wrapper.get_job()
             check_output_detected_state = job_wrapper.check_tool_output(
-                result.tool_stdout,
-                result.tool_stderr,
+                tool_stdout,
+                tool_stderr,
                 tool_exit_code=result.exit_code,
                 job=job,
                 job_stdout=result.job_stdout,
@@ -897,8 +899,8 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
                 if self._handle_detected_failure(job_state, check_output_detected_state):
                     return
             job_wrapper.finish(
-                result.tool_stdout,
-                result.tool_stderr,
+                tool_stdout,
+                tool_stderr,
                 result.exit_code,
                 check_output_detected_state=check_output_detected_state,
                 job_stdout=result.job_stdout,
