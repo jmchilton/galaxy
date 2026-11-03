@@ -9414,7 +9414,7 @@ class WorkflowStep(Base, RepresentById, UsesCreateAndUpdateTime):
     tool_inputs: Mapped[dict[str, Any] | None] = mapped_column(JSONType)
     tool_errors: Mapped[bytes | None] = mapped_column(JSONType)
     position: Mapped[bytes | None] = mapped_column(MutableJSONType)
-    config: Mapped[bytes | None] = mapped_column(JSONType)
+    config: Mapped[dict[str, Any] | None] = mapped_column(JSONType)
     order_index: Mapped[int]
     when_expression: Mapped[bytes | None] = mapped_column(JSONType)
     uuid: Mapped[UUID | str | None] = mapped_column(UUIDType)
@@ -9476,6 +9476,21 @@ class WorkflowStep(Base, RepresentById, UsesCreateAndUpdateTime):
     @property
     def tool_uuid(self):
         return self.dynamic_tool and self.dynamic_tool.uuid
+
+    @property
+    def preferred_output(self) -> str | None:
+        # not always a dict: steps saved before Nov 2016 with a missing tool hold the step's JSON as a string
+        config = self.config
+        return config.get("preferred_output") if isinstance(config, dict) else None
+
+    @preferred_output.setter
+    def preferred_output(self, value: str | None) -> None:
+        config = dict(self.config) if isinstance(self.config, dict) else {}
+        if value:
+            config["preferred_output"] = value
+        else:
+            config.pop("preferred_output", None)
+        self.config = config or None
 
     @property
     def user_defined_tool(self) -> Optional["DynamicTool"]:

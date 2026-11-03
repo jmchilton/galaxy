@@ -1,3 +1,4 @@
+import json
 from uuid import (
     UUID,
     uuid4,
@@ -126,3 +127,10 @@ def test_annotation_columns_are_not_indexed():
     assert len(tables) == len(ANNOTATION_MODELS)  # every annotated table carries the length validator
     for table in tables:
         assert not any(list(index.columns.keys()) == ["annotation"] for index in table.indexes)
+
+
+def test_workflow_step_preferred_output_with_legacy_config():
+    # steps saved before Nov 2016 with a missing tool hold the step's JSON as a string; exporting them must not fail
+    step = model.WorkflowStep()
+    step.config = json.dumps({"tool_id": "missing_tool", "preferred_output": "out_file1"})  # type: ignore[assignment]
+    assert step.preferred_output is None

@@ -1773,6 +1773,59 @@ steps:
         assert updated["annotation"] == annotation
         assert annotation in {step["annotation"] for step in updated["steps"].values()}
 
+    def test_preferred_output_round_trip(self):
+        workflow_id = self._upload_yaml_workflow(WORKFLOW_SIMPLE)
+        assert self._tool_step_preferred_outputs(workflow_id) == [None]
+        self._set_tool_step_preferred_output(workflow_id, "out_file1")
+        assert self._tool_step_preferred_outputs(workflow_id) == ["out_file1"]
+
+        exported = self._download_workflow(workflow_id)
+        # only steps that name a preferred output carry the key in .ga exports
+        assert [step.get("preferred_output", "absent") for step in exported["steps"].values()] == [
+            "absent",
+            "out_file1",
+        ]
+        # a .ga import keeps it
+        reimported_id = self.workflow_populator.create_workflow(exported)
+        assert self._tool_step_preferred_outputs(reimported_id) == ["out_file1"]
+
+        # and the editor clears it
+        self._set_tool_step_preferred_output(workflow_id, None)
+        exported = self._download_workflow(workflow_id)
+        assert all("preferred_output" not in step for step in exported["steps"].values())
+
+    def test_preferred_output_kept_by_new_versions(self):
+        workflow_id = self._upload_yaml_workflow(WORKFLOW_SIMPLE)
+        self._set_tool_step_preferred_output(workflow_id, "out_file1")
+        # a rename copies the latest version to a new one
+        self._assert_status_code_is(self._update_workflow(workflow_id, {"name": "renamed"}), 200)
+        # a refactor rebuilds the workflow from its .ga export
+        actions = [{"action_type": "update_step_label", "step": {"label": "first_cat"}, "label": "relabeled"}]
+        self.workflow_populator.refactor_workflow(workflow_id, actions).raise_for_status()
+        assert self._tool_step_preferred_outputs(workflow_id) == ["out_file1"]
+
+        # clearing it makes a new version too; the earlier ones, which their invocations' graphs show, keep it
+        self._set_tool_step_preferred_output(workflow_id, None)
+        by_version = [self._tool_step_preferred_outputs(workflow_id, version=version) for version in range(5)]
+        assert by_version == [[None], ["out_file1"], ["out_file1"], ["out_file1"], [None]]
+
+    @pytest.mark.parametrize(
+        "step_type,preferred_output",
+        [("tool", 5), ("tool", {"name": "out_file1"}), ("tool", []), ("tool", 0), ("data_input", "output")],
+    )
+    @pytest.mark.parametrize("operation", ["import", "update"])
+    def test_preferred_output_invalid(self, step_type, preferred_output, operation):
+        workflow_id = self._upload_yaml_workflow(WORKFLOW_SIMPLE)
+        editable = self._download_workflow(workflow_id, style="editor")
+        step = next(step for step in editable["steps"].values() if step["type"] == step_type)
+        step["preferred_output"] = preferred_output
+        if operation == "import":
+            response = self._post("workflows", data={"workflow": json.dumps(editable)})
+        else:
+            response = self._update_workflow(workflow_id, editable)
+        self._assert_status_code_is(response, 400)
+        assert_error_message_contains(response, "preferred output")
+
     @pytest.mark.parametrize("target", ["workflow", "step"])
     @pytest.mark.parametrize("operation", ["import", "update"])
     def test_annotation_size_limit(self, target, operation):
@@ -12595,6 +12648,17 @@ outer_input:
 
     def _update_workflow(self, workflow_id: str, workflow_object: dict) -> Response:
         return self.workflow_populator.update_workflow(workflow_id, workflow_object)
+
+    def _tool_step_preferred_outputs(self, workflow_id: str, version: int | None = None) -> list[str | None]:
+        editable = self.workflow_populator.download_workflow(workflow_id, style="editor", version=version)
+        return [step["preferred_output"] for step in editable["steps"].values() if step["type"] == "tool"]
+
+    def _set_tool_step_preferred_output(self, workflow_id: str, preferred_output: str | None) -> None:
+        """Set the preferred output of the workflow's one tool step, as the editor saves it"""
+        editable = self._download_workflow(workflow_id, style="editor")
+        (tool_step,) = (step for step in editable["steps"].values() if step["type"] == "tool")
+        tool_step["preferred_output"] = preferred_output
+        self._assert_status_code_is(self._update_workflow(workflow_id, editable), 200)
 
     def _invocation_step_details(self, workflow_id, invocation_id, step_id):
         invocation_step_response = self._get(f"workflows/{workflow_id}/usage/{invocation_id}/steps/{step_id}")
