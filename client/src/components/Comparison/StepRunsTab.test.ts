@@ -163,6 +163,14 @@ describe("StepRunsTab", () => {
         );
     });
 
+    it("says the filters, not the step, left the table empty", async () => {
+        const tab = await mountTab();
+        expect(tab.findComponent(ComparisonTable).props("emptyMessage")).toBe("This step has no runs yet.");
+        await tab.find(".comparison-filter-versions input[value='1']").setValue(true);
+        await flushPromises();
+        expect(tab.findComponent(ComparisonTable).props("emptyMessage")).toBe("No runs match these filters.");
+    });
+
     it("offers no version filter for a step in one version", async () => {
         versionsAvailable = [1];
         const tab = await mountTab();

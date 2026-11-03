@@ -78,6 +78,10 @@ watch(
     { flush: "sync" },
 );
 
+const emptyMessage = computed(() =>
+    states.value.length || versions.value.length ? "No runs match these filters." : "This step has no runs yet.",
+);
+
 // The echoed stored workflow id, so the page needs no `instance`.
 const pageLink = computed(() => {
     const query = table.value?.query;
@@ -118,7 +122,7 @@ const pageLink = computed(() => {
                     :visible-columns="visibleColumns"
                     :current-run-id="currentInvocationId"
                     :loading="loading"
-                    empty-message="This step has no runs yet."
+                    :empty-message="emptyMessage"
                     @toggle-column="toggleColumn"
                     @reset-columns="resetColumns">
                     <template v-slot:toolbar>
