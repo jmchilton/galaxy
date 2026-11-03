@@ -1,4 +1,5 @@
 import io
+import ipaddress
 import os
 import urllib
 from typing import Any
@@ -7,6 +8,7 @@ from unittest import mock
 import pytest
 
 from galaxy import exceptions
+from galaxy.files.models import FileSourcePluginsConfig
 from ._util import (
     assert_realizes_as,
     assert_realizes_contains,
@@ -147,6 +149,17 @@ def test_file_source_ftp_url():
             "This is ftp.gnu.org, the FTP server of the the GNU project.",
             user_context=user_context,
         )
+
+
+def test_file_source_http_follows_allowlisted_redirect(httpserver):
+    httpserver.expect_request("/start").respond_with_data(
+        status=302, headers={"Location": httpserver.url_for("/final")}
+    )
+    httpserver.expect_request("/final").respond_with_data("redirected")
+    # localhost may resolve to either loopback address.
+    allowlist = [ipaddress.ip_network("127.0.0.0/8"), ipaddress.ip_address("::1")]
+    file_sources = configured_file_sources(FILE_SOURCES_CONF, FileSourcePluginsConfig(fetch_url_allowlist=allowlist))
+    assert_realizes_as(file_sources, httpserver.url_for("/start"), "redirected")
 
 
 def test_file_source_http_without_stock_generic():
