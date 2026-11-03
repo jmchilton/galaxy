@@ -71,6 +71,24 @@ def test_holder_keeps_the_lease_past_its_ttl_while_populating(store):
     assert taken_over == [False]
 
 
+def test_holder_whose_lease_was_taken_over_cannot_renew_or_record_a_populate(store):
+    lease = _lease(store)
+    assert lease.try_acquire("stalled", ttl=timedelta(seconds=-1))
+    assert lease.try_acquire("waiter", ttl=timedelta(minutes=1))
+    assert not lease.renew("stalled", ttl=timedelta(minutes=1))
+    lease.release("stalled", populated=True)
+    assert lease.last_populated_at() is None
+    assert not lease.try_acquire("other", ttl=timedelta(minutes=1))
+
+
+def test_read_only_store_has_no_lease(tmp_path, store):
+    read_only = SqlAlchemyToolSourceStore(url=f"sqlite:///{tmp_path / 'store.sqlite'}", read_only=True)
+    try:
+        assert read_only.populate_lease() is None
+    finally:
+        read_only.dispose()
+
+
 class _FlakyLease(PopulateLease):
     """Delegates to a real lease, failing the operations named in ``fail``.
 

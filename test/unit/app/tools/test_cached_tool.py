@@ -1389,7 +1389,8 @@ def test_toolbox_refuses_to_build_without_read_only_store_index(monkeypatch, rea
     default.load_index.assert_not_called()
 
 
-def test_toolbox_waits_for_a_peer_populating_the_store(tmp_path, monkeypatch):
+def _boot_while_peer_holds_lease(tmp_path, monkeypatch):
+    """Start booting a toolbox in a thread; return once it waits on the peer's lease."""
     store = SqlAlchemyToolSourceStore(url=f"sqlite:///{tmp_path / 'store.sqlite'}", freshness_probe=lambda: "current")
     peer_lease = store.populate_lease()
     assert peer_lease is not None
@@ -1418,6 +1419,11 @@ def test_toolbox_waits_for_a_peer_populating_the_store(tmp_path, monkeypatch):
     boot = threading.Thread(target=box._init_tools_from_configs, args=([],))
     boot.start()
     assert waiting.wait(10)
+    return store, peer_lease, box, boot, populated, needs_population
+
+
+def test_toolbox_waits_for_a_peer_populating_the_store(tmp_path, monkeypatch):
+    store, peer_lease, box, boot, populated, needs_population = _boot_while_peer_holds_lease(tmp_path, monkeypatch)
     # The peer finishes its populate while this process waits for the lease.
     store.store(StoredToolSource(hash="abc", tool_source_class="XmlToolSource", raw_source="<tool/>"))
     store.store_index(ToolIndex(entries={"bowtie2": _entry()}, freshness_token="current"))
@@ -1430,3 +1436,13 @@ def test_toolbox_waits_for_a_peer_populating_the_store(tmp_path, monkeypatch):
     assert needs_population.call_count == 1
     assert box._tool_index is not None
     assert "bowtie2" in box._tool_index.entries
+
+
+def test_toolbox_populates_when_the_peer_index_does_not_load(tmp_path, monkeypatch):
+    _store, peer_lease, _box, boot, populated, _needs_population = _boot_while_peer_holds_lease(tmp_path, monkeypatch)
+    # No loadable index, as when another Galaxy version wrote it.
+    peer_lease.release("peer", populated=True)
+    boot.join(10)
+
+    assert not boot.is_alive()
+    populated.assert_called_once()
