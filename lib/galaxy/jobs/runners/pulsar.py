@@ -871,14 +871,12 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
         job_wrapper = job_state.job_wrapper
         if handle_metadata_externally:
             # we need an actual exit code file in the job working directory to detect job errors in the metadata script
-            with open(
-                os.path.join(job_wrapper.working_directory, f"galaxy_{job_wrapper.job_id}.ec"), "w"
-            ) as exit_code_file:
+            with open(self.__job_file_path(job_wrapper, "ec"), "w") as exit_code_file:
                 exit_code_file.write(str(result.exit_code))
             # Recovery from an interrupted metadata step needs these for the output check.
             for name, stream in (("job_stdout", result.job_stdout), ("job_stderr", result.job_stderr)):
                 if stream is not None:
-                    with open(self.__job_stream_path(job_wrapper, name), "w") as stream_file:
+                    with open(self.__job_file_path(job_wrapper, name), "w") as stream_file:
                         stream_file.write(stream)
             self._handle_metadata_externally(job_wrapper, resolve_requirements=True)
         self._finish_pulsar_job(job_state, result)
@@ -921,7 +919,7 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
         """Redo the tail of ``finish_job`` for a job interrupted during external metadata."""
         job_wrapper = job_state.job_wrapper
         working_directory = job_wrapper.working_directory
-        exit_code_path = os.path.join(working_directory, f"galaxy_{job_wrapper.job_id}.ec")
+        exit_code_path = self.__job_file_path(job_wrapper, "ec")
         try:
             with open(exit_code_path) as exit_code_file:
                 exit_code = int(exit_code_file.read().strip())
@@ -954,13 +952,13 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
             return ""
 
     @staticmethod
-    def __job_stream_path(job_wrapper, name):
-        return os.path.join(job_wrapper.working_directory, f"galaxy_{job_wrapper.job_id}.{name}")
+    def __job_file_path(job_wrapper, extension):
+        return os.path.join(job_wrapper.working_directory, f"galaxy_{job_wrapper.job_id}.{extension}")
 
     def __read_job_stream(self, job_wrapper, name):
         """Return a job stream saved before the metadata step, or None if none was saved."""
         try:
-            with open(self.__job_stream_path(job_wrapper, name)) as stream:
+            with open(self.__job_file_path(job_wrapper, name)) as stream:
                 return unicodify(stream.read(), strip_null=True)
         except FileNotFoundError:
             return None
