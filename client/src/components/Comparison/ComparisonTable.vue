@@ -15,7 +15,6 @@ import {
     META_FIELD_SPECS,
     META_FIELDS,
     type MetaField,
-    rowJob,
     visibleFields,
 } from "./comparisonUtils";
 import { MAX_SELECTED, useRunSelection } from "./useRunSelection";
@@ -97,11 +96,8 @@ function isCurrent(row: ComparisonRow) {
     return Boolean(props.currentRunId) && row.run.id === props.currentRunId;
 }
 
-/** The viewed run's job, which expanded rows diff their parameters against; only when it is on the page. */
-const currentJobId = computed(() => {
-    const current = props.table.rows.find(isCurrent);
-    return current ? rowJob(current)?.jobId : undefined;
-});
+/** The viewed run, which expanded rows diff their parameters against; only when it is on the page. */
+const currentRow = computed(() => props.table.rows.find(isCurrent));
 
 const displays = computed(() =>
     Object.fromEntries(
@@ -316,7 +312,7 @@ const tableKey = computed(() => `${props.transpose}:${props.table.rows.map((row)
                             :row="item.row"
                             :columns="table.columns"
                             :query="table.query"
-                            :current-job-id="currentJobId" />
+                            :current-row="currentRow" />
                     </div>
                 </template>
             </GTable>

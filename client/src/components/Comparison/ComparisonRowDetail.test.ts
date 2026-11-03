@@ -104,33 +104,41 @@ describe("ComparisonRowDetail", () => {
 });
 
 describe("ComparisonRowDetail parameters against the run being viewed", () => {
-    const CURRENT_JOB = TABLE.rows[1]!.step_job!.id;
+    const CURRENT = TABLE.rows[1]!;
+    const CURRENT_JOB = CURRENT.step_job!.id;
 
     it("diffs this run's job against the viewed run's, every parameter shown", () => {
         const row = TABLE.rows[3]!;
-        const params = mountDetail(row, TABLE.query, { currentJobId: CURRENT_JOB }).findComponent(
-            JOB_PARAMETERS_DIFF_STUB,
-        );
+        const params = mountDetail(row, TABLE.query, { currentRow: CURRENT }).findComponent(JOB_PARAMETERS_DIFF_STUB);
         expect(params.props("jobIdA")).toBe(row.step_job!.id);
         expect(params.props("jobIdB")).toBe(CURRENT_JOB);
         expect(params.props("onlyDifferences")).toBe(false);
     });
 
+    it("heads the two sides with their versions, the viewed run marked like its badge", () => {
+        const row = { ...TABLE.rows[3]!, version: 0 };
+        const params = mountDetail(row, TABLE.query, { currentRow: { ...CURRENT, version: 2 } }).findComponent(
+            JOB_PARAMETERS_DIFF_STUB,
+        );
+        expect(params.props("labelA")).toBe("This row (v1)");
+        expect(params.props("labelB")).toBe("★ Viewed run (v3)");
+    });
+
     it("diffs a batch by its first job, and says so", () => {
-        const wrapper = mountDetail(TABLE.rows[4]!, TABLE.query, { currentJobId: CURRENT_JOB });
+        const wrapper = mountDetail(TABLE.rows[4]!, TABLE.query, { currentRow: CURRENT });
         expect(wrapper.findComponent(JOB_PARAMETERS_DIFF_STUB).props("jobIdA")).toBe("cb227cec8ca83994");
         expect(wrapper.find(".comparison-row-detail-parameters").text()).toContain("job 1 of the batch");
     });
 
     it("has nothing to diff for the viewed run, without a viewed run, or for a run without a job", () => {
         expect(
-            mountDetail(TABLE.rows[1]!, TABLE.query, { currentJobId: CURRENT_JOB })
+            mountDetail(TABLE.rows[1]!, TABLE.query, { currentRow: CURRENT })
                 .find(".comparison-row-detail-parameters")
                 .exists(),
         ).toBe(false);
         expect(mountDetail(TABLE.rows[3]!).findComponent(JOB_PARAMETERS_DIFF_STUB).exists()).toBe(false);
         expect(
-            mountDetail(TABLE.rows[0]!, TABLE.query, { currentJobId: CURRENT_JOB })
+            mountDetail(TABLE.rows[0]!, TABLE.query, { currentRow: CURRENT })
                 .findComponent(JOB_PARAMETERS_DIFF_STUB)
                 .exists(),
         ).toBe(false);

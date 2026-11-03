@@ -16,7 +16,7 @@ const TABLE = STEP_RUNS_TABLE;
 const ALL_COLUMNS = ["version", "state", "reused", "history", ...TABLE.columns.map((c) => c.key)];
 const DETAIL_STUB = {
     name: "ComparisonRowDetail",
-    props: ["row", "columns", "query", "currentJobId"],
+    props: ["row", "columns", "query", "currentRow"],
     template: "<div />",
 };
 const DIFF_STUB = {
@@ -195,14 +195,14 @@ describe("ComparisonTable", () => {
         expect(wrapper.findAllComponents(DETAIL_STUB)).toHaveLength(0);
     });
 
-    it("gives an expanded row the job of the run being viewed, when it is on the page", async () => {
+    it("gives an expanded row the run being viewed, when it is on the page", async () => {
         const current = TABLE.rows[1]!;
         const wrapper = mountTable({ currentRunId: current.run.id });
         await wrapper.findAll(".comparison-expand")[3]!.trigger("click");
-        expect(wrapper.findComponent(DETAIL_STUB).props("currentJobId")).toBe(current.step_job!.id);
+        expect(wrapper.findComponent(DETAIL_STUB).props("currentRow")).toEqual(current);
         await wrapper.setProps({ table: { ...TABLE, rows: TABLE.rows.slice(2) } } as object);
         await wrapper.findAll(".comparison-expand")[1]!.trigger("click");
-        expect(wrapper.findComponent(DETAIL_STUB).props("currentJobId")).toBeUndefined();
+        expect(wrapper.findComponent(DETAIL_STUB).props("currentRow")).toBeUndefined();
     });
 
     it("collapses expanded rows when the page changes", async () => {

@@ -14,6 +14,7 @@ import {
     requestedMetadata,
     rowJob,
     runLink,
+    runVersionLabel,
     stateFilterOptions,
     versionLabel,
 } from "./comparisonUtils";
@@ -96,6 +97,12 @@ describe("missingText", () => {
         expect(versionLabel(0)).toBe("v1");
         expect(versionLabel(null)).toBe("");
         expect(versionLabel(Number("x"))).toBe("");
+    });
+
+    it("labels a run by its workflow version, else its tool version", () => {
+        expect(runVersionLabel({ version: 2, tool_version: "1.0.0" })).toBe("v3");
+        expect(runVersionLabel({ version: null, tool_version: "1.0.0" })).toBe("1.0.0");
+        expect(runVersionLabel({ version: null, tool_version: null })).toBe("");
     });
 });
 

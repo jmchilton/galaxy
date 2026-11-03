@@ -99,6 +99,11 @@ export function versionLabel(version: number | null | undefined): string {
     return Number.isFinite(version) ? `v${version! + 1}` : "";
 }
 
+/** A run's version as shown: the workflow version, else the tool version. */
+export function runVersionLabel(row: Pick<ComparisonRow, "version" | "tool_version">): string {
+    return versionLabel(row.version) || row.tool_version || "";
+}
+
 /** GTable slot names are `cell(${key})`, so map arbitrary column keys to safe field keys. */
 export function fieldKeys(columns: ComparisonColumn[]): Record<string, string> {
     return Object.fromEntries(columns.map((column, index) => [column.key, `c${index}`]));

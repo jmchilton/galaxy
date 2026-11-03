@@ -3,7 +3,7 @@ import { computed } from "vue";
 
 import type { ComparisonColumn, ComparisonQuery, ComparisonRow } from "@/api/comparisons";
 
-import { noJobReason, rowJob, runLink } from "./comparisonUtils";
+import { noJobReason, rowJob, runLink, runVersionLabel } from "./comparisonUtils";
 
 import ValueCell from "./cells/ValueCell.vue";
 import GAlert from "@/components/BaseComponents/GAlert.vue";
@@ -19,8 +19,8 @@ const props = defineProps<{
     row: ComparisonRow;
     columns: ComparisonColumn[];
     query: ComparisonQuery;
-    /** The viewed run's job, to diff this run's parameters against. */
-    currentJobId?: string;
+    /** The run being viewed (the ★ row), to diff this row's parameters against. */
+    currentRow?: ComparisonRow;
 }>();
 
 const outputs = computed(() =>
@@ -35,10 +35,19 @@ const isInvocationRow = computed(() => props.query.kind === "output_runs");
 const link = computed(() => runLink(props.row, props.query));
 const openLabel = computed(() => (props.row.run.model === "WorkflowInvocation" ? "Open invocation" : "Open job"));
 const noJobMessage = computed(() => noJobReason(props.row));
+const currentJobId = computed(() => (props.currentRow ? rowJob(props.currentRow)?.jobId : undefined));
 const diffJobId = computed(() => {
     const jobId = isInvocationRow.value ? undefined : job.value?.jobId;
-    return jobId && props.currentJobId && jobId !== props.currentJobId ? jobId : undefined;
+    return jobId && currentJobId.value && jobId !== currentJobId.value ? jobId : undefined;
 });
+
+/** Heads a diff column with the run's version, so the two sides read against the table, not against "this run". */
+function diffHeading(name: string, row: ComparisonRow) {
+    const version = runVersionLabel(row);
+    return version ? `${name} (${version})` : name;
+}
+const rowHeading = computed(() => diffHeading("This row", props.row));
+const currentHeading = computed(() => (props.currentRow ? `★ ${diffHeading("Viewed run", props.currentRow)}` : ""));
 </script>
 
 <template>
@@ -60,8 +69,8 @@ const diffJobId = computed(() => {
                 <JobParametersDiff
                     :job-id-a="diffJobId"
                     :job-id-b="currentJobId"
-                    label-a="This run"
-                    label-b="Run you are viewing"
+                    :label-a="rowHeading"
+                    :label-b="currentHeading"
                     :only-differences="false" />
             </div>
         </div>
