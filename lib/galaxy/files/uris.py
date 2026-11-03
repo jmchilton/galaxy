@@ -6,6 +6,8 @@ import tempfile
 from typing import Optional
 from urllib.parse import urlparse
 
+import requests
+
 from galaxy.exceptions import (
     AdminRequiredException,
     ConfigDoesNotAllowException,
@@ -92,6 +94,17 @@ def split_port(parsed_url: str, url: str) -> tuple[str, int]:
         raise RequestParameterInvalidException(f"Could not verify url '{url}'.")
 
 
+def _host_matches_requests(host: str, url: str) -> bool:
+    """Check DNS lookup of ``host`` names the host requests would connect to for ``url``."""
+    try:
+        prepared = requests.PreparedRequest()
+        prepared.prepare_url(url.strip(), None)
+        # getaddrinfo encodes str hosts with Python's idna (IDNA 2003) codec.
+        return host.encode("idna").decode("ascii").lower() == urlparse(prepared.url).hostname
+    except ValueError:
+        return False
+
+
 def validate_non_local(uri: str, ip_allowlist: list[IpAllowedListEntryT]) -> str:
     # If it doesn't look like a URL, ignore it.
     if not uri.lstrip().lower().startswith(("http://", "https://")):
@@ -100,7 +113,10 @@ def validate_non_local(uri: str, ip_allowlist: list[IpAllowedListEntryT]) -> str
     # Strip leading whitespace before passing url to urlparse()
     url = uri.lstrip()
     # Extract hostname component
-    parsed_url = urlparse(url).netloc
+    try:
+        parsed_url = urlparse(url).netloc
+    except ValueError:
+        raise RequestParameterInvalidException(f"Could not verify url '{url}'.")
     # If credentials are in this URL, we need to strip those.
     if parsed_url.count("@") > 0:
         # credentials.
@@ -128,6 +144,10 @@ def validate_non_local(uri: str, ip_allowlist: list[IpAllowedListEntryT]) -> str
             # This should finally be ipv4 with port. It cannot be IPv6 as that
             # was caught by earlier cases, and it cannot be due to credentials.
             parsed_url, port = split_port(parsed_url=parsed_url, url=url)
+
+    # urllib reads hosts like urlparse; requests may read some URLs differently.
+    if not _host_matches_requests(parsed_url, url):
+        raise RequestParameterInvalidException(f"Could not verify url '{url}'.")
 
     # safe to log out, no credentials/request path, just an IP + port
     log.debug("parsed url %s, port:  %s", parsed_url, port)
