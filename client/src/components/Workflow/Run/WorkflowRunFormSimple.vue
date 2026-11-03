@@ -29,10 +29,14 @@ import { errorMessageAsString } from "@/utils/simple-error";
 
 import { rerunInputValue, withRerunValues } from "./model";
 import { invokeWorkflow, searchHistoryContents } from "./services";
+import { stepParameterSubmissionErrors } from "./StepParameters/stepParameterErrors";
+import { type StepParameterOverrides, stepParameterOverrideValues } from "./StepParameters/stepParameterOverrides";
+import { buildStepParameterTree } from "./StepParameters/stepParameterTree";
 
 import WorkflowAnnotation from "../WorkflowAnnotation.vue";
 import WorkflowNavigationTitle from "../WorkflowNavigationTitle.vue";
 import ExportOnCompleteWizard from "./ExportOnCompleteWizard.vue";
+import WorkflowRunStepParameters from "./StepParameters/WorkflowRunStepParameters.vue";
 import WorkflowHelpDisplay from "./WorkflowHelpDisplay.vue";
 import WorkflowRunGraph from "./WorkflowRunGraph.vue";
 import WorkflowStorageConfiguration from "./WorkflowStorageConfiguration.vue";
@@ -58,6 +62,8 @@ interface Props {
     rerunRequest?: WorkflowInvocationRequest;
     isRerun?: boolean;
     landingUuid?: string;
+    /** URL-encoded JSON ``step_parameter_overrides`` to show as step parameters on load */
+    stepParameterOverridesArg?: string;
 }
 
 type PaginatedDataOption = Pick<DataOption, "id" | "src" | "name" | "hid" | "keep" | "tags">;
@@ -69,6 +75,7 @@ const props = withDefaults(defineProps<Props>(), {
     rerunRequest: undefined,
     isRerun: false,
     landingUuid: undefined,
+    stepParameterOverridesArg: undefined,
 });
 
 const emit = defineEmits<{
@@ -112,6 +119,8 @@ const sendNotificationOnComplete = ref(false);
 const showExportWizard = ref(false);
 const exportCheckboxKey = ref(0);
 const exportOnCompleteConfig = ref<WriteStoreToPayload | null>(null);
+const stepParameterOverrides = ref<StepParameterOverrides | null>(null);
+const stepParameterCardErrors = ref<Record<string, string>>({});
 
 const { hasWritable: hasWritableFileSources } = useFileSources({ exclude: ["rdm"] });
 
@@ -420,8 +429,21 @@ const exportEnabled = computed({
     },
 });
 
+/** Show the errors a rejected submission gave for step parameters on their cards, and the rest in its alert. */
+function onSubmissionError(error: any) {
+    const { cards, message } = stepParameterSubmissionErrors(
+        buildStepParameterTree({ steps: props.model.steps }),
+        stepParameterOverrideValues(stepParameterOverrides.value).keys(),
+        error?.response?.data?.err_data,
+        errorMessageAsString(error),
+    );
+    stepParameterCardErrors.value = cards;
+    emit("submissionError", message);
+}
+
 async function onExecute() {
     waitingForRequest.value = true;
+    stepParameterCardErrors.value = {};
 
     const replacementParams: Record<string, any> = {};
     const inputs: Record<string, any> = {};
@@ -463,6 +485,9 @@ async function onExecute() {
     if (props.landingUuid) {
         data.landing_uuid = props.landingUuid;
     }
+    if (stepParameterOverrides.value) {
+        data.step_parameter_overrides = stepParameterOverrides.value;
+    }
     if (sendToNewHistory.value) {
         data.new_history_name = newHistoryName.value;
     } else {
@@ -485,7 +510,7 @@ async function onExecute() {
         const invocations = await invokeWorkflow(props.model.workflowId, data);
         emit("submissionSuccess", invocations);
     } catch (error) {
-        emit("submissionError", errorMessageAsString(error));
+        onSubmissionError(error);
     } finally {
         waitingForRequest.value = false;
     }
@@ -720,6 +745,13 @@ onBeforeMount(() => {
                             @stop-flagging="checkInputMatching = false"
                             @update:active-node-id="updateActiveNodeId" />
                     </GOverlay>
+                    <WorkflowRunStepParameters
+                        :steps="model.steps"
+                        :rerun-overrides="rerunRequest?.step_parameter_overrides"
+                        :link-overrides="stepParameterOverridesArg"
+                        :is-rerun="isRerun"
+                        :errors="stepParameterCardErrors"
+                        @update:overrides="stepParameterOverrides = $event" />
                 </div>
                 <div v-if="showRightPanel" class="h-100 w-50 d-flex flex-shrink-0">
                     <WorkflowRunGraph

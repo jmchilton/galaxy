@@ -43,6 +43,8 @@ interface Props {
     instance?: boolean;
     isRerun?: boolean;
     landingUuid?: string;
+    /** URL-encoded JSON ``step_parameter_overrides`` the simple form shows as step parameters, the expanded form lists */
+    stepParameterOverridesArg?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -56,6 +58,7 @@ const props = withDefaults(defineProps<Props>(), {
     instance: false,
     isRerun: false,
     landingUuid: undefined,
+    stepParameterOverridesArg: undefined,
 });
 
 const loading = ref(true);
@@ -277,6 +280,7 @@ defineExpose({
                         :rerun-request="rerunRequest"
                         :is-rerun="props.isRerun"
                         :landing-uuid="props.landingUuid"
+                        :step-parameter-overrides-arg="props.stepParameterOverridesArg"
                         @submissionSuccess="handleInvocations"
                         @submissionError="handleSubmissionError"
                         @showAdvanced="showAdvanced" />
@@ -287,6 +291,7 @@ defineExpose({
                         :disable-simple-form="disableSimpleForm"
                         :disable-simple-form-reason="disableSimpleFormReason"
                         :rerun-request="rerunRequest"
+                        :step-parameter-overrides-arg="props.stepParameterOverridesArg"
                         @submissionSuccess="handleInvocations"
                         @submissionError="handleSubmissionError"
                         @showSimple="advancedForm = false" />

@@ -48,9 +48,32 @@
                 workflows with resource options.
             </span>
             <span v-else-if="disableSimpleFormReason === 'rerunHasStepParameters'">
-                The original run set tool step parameters. The simplified form does not support these, so they would be
-                lost.
+                The original run didn't record which tool step parameters were chosen, so the full form is shown.
             </span>
+            <span v-else-if="disableSimpleFormReason === 'rerunHasUnshownStepParameterOverrides'">
+                The original run changed tool step parameters the simplified form can't show, such as a conditional's
+                selected case, so they would be lost.
+            </span>
+        </GAlert>
+
+        <GAlert
+            v-if="linkedStepParameters.length || linkedStepParametersError"
+            show
+            variant="warning"
+            data-description="workflow run linked step parameters">
+            <span v-if="linkedStepParametersError">{{ linkedStepParametersError }}</span>
+            <template v-else>
+                This form can't preset the step parameters the link asks to change. Set them in their steps below:
+                <ul class="mb-0">
+                    <li
+                        v-for="item in linkedStepParameters"
+                        :key="item.key"
+                        data-description="workflow run linked step parameter"
+                        :data-parameter-key="item.key">
+                        {{ item.label }}
+                    </li>
+                </ul>
+            </template>
         </GAlert>
 
         <WorkflowCredentials v-if="credentialTools.length" :tool-identifiers="credentialTools" />
@@ -116,6 +139,8 @@ import { useUserStore } from "@/stores/userStore";
 import { getReplacements, rerunInputValue, withRerunValues } from "./model";
 import { invokeWorkflow } from "./services";
 import type { SimpleFormDisabledReason } from "./simpleFormDisabledReason";
+import { parseStepParameterOverridesArg, stepParameterOverrideValues } from "./StepParameters/stepParameterOverrides";
+import { buildStepParameterTree, stepParameterKeyLabel } from "./StepParameters/stepParameterTree";
 
 import WorkflowRunDefaultStep from "./WorkflowRunDefaultStep.vue";
 import WorkflowRunInputStep from "./WorkflowRunInputStep.vue";
@@ -162,12 +187,19 @@ interface Props {
      * @default undefined
      */
     rerunRequest?: WorkflowInvocationRequest;
+    /**
+     * URL-encoded JSON ``step_parameter_overrides`` route argument - only the simple form applies it, so this
+     * form lists the parameters it names
+     * @default undefined
+     */
+    stepParameterOverridesArg?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
     disableSimpleForm: false,
     disableSimpleFormReason: undefined,
     rerunRequest: undefined,
+    stepParameterOverridesArg: undefined,
 });
 
 const emit = defineEmits<{
@@ -190,6 +222,17 @@ const stepData: Record<string, FormData> = {};
 const stepValidations: Record<string, [string, string] | null> = {};
 const inputs: Record<string, unknown> = {};
 let resourceData: FormData | undefined;
+
+const linkedStepParametersArg = computed(() => parseStepParameterOverridesArg(props.stepParameterOverridesArg));
+const linkedStepParametersError = computed(() => linkedStepParametersArg.value.error);
+const linkedStepParameters = computed(() => {
+    const keys = [...stepParameterOverrideValues(linkedStepParametersArg.value.overrides).keys()];
+    if (!keys.length) {
+        return [];
+    }
+    const tree = buildStepParameterTree({ steps: props.model.steps });
+    return keys.map((key) => ({ key, label: stepParameterKeyLabel(tree, key) }));
+});
 
 const historyInputs = [
     {

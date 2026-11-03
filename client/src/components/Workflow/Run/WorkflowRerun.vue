@@ -11,6 +11,8 @@ import GAlert from "@/components/BaseComponents/GAlert.vue";
 
 const props = defineProps<{
     invocationId: string;
+    /** URL-encoded JSON ``step_parameter_overrides`` shown on top of those the invocation recorded */
+    stepParameterOverridesArg?: string;
 }>();
 
 const historyStore = useHistoryStore();
@@ -52,5 +54,6 @@ watch(
         :rerun-invocation-id="invocationId"
         prefer-simple-form
         is-rerun
-        :simple-form-use-job-cache="requestData.use_cached_job" />
+        :simple-form-use-job-cache="requestData.use_cached_job"
+        :step-parameter-overrides-arg="props.stepParameterOverridesArg" />
 </template>

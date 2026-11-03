@@ -197,7 +197,7 @@ class TestWorkflowRun(SeleniumTestCase, UsesHistoryItemAssertions, RunsWorkflows
         # Seeding fills num_lines, so only the recorded step parameters keep this out of the simplified form.
         workflow_run.expanded_form.wait_for_visible()
         reason = workflow_run.simple_form_disabled_reason.wait_for_visible()
-        assert "The original run set tool step parameters" in reason.text, reason.text
+        assert "didn't record which tool step parameters were chosen" in reason.text, reason.text
         workflow_run.simple_form_link.assert_absent()
         assert not workflow_run.job_reuse_checkbox.wait_for_present().is_selected()
         self.workflow_run_expand_step("random")
