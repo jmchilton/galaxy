@@ -265,12 +265,7 @@ class TestWorkflowInvocationGraph(SeleniumTestCase):
 
     @selenium_test
     def test_hover_previews_step_outputs(self):
-        self._open_invocation(WORKFLOW_OUTPUT_KINDS, OUTPUT_KINDS_LABELS)
-        # the pointer is still on the activity that closed the invocations panel; move it off that tooltip
-        self.clear_tooltips()
-        self.components.invocations.activity_tooltip.wait_for_absent_or_hidden()
-        # and drop the focus that click left there, so the Escape presses below don't draw a focus ring on it
-        self.execute_script("document.activeElement.blur();")
+        self._open_output_kinds_invocation()
         self.screenshot("invocation_graph_output_kinds")
 
         # a workflow output, listed with its label
@@ -306,6 +301,17 @@ class TestWorkflowInvocationGraph(SeleniumTestCase):
         assert output_b.label.wait_for_text() == "numbers_b"
         assert output_b.text.wait_for_text().strip() == "4"
         self.screenshot("invocation_graph_output_preview_multiple_outputs")
+
+    def _open_output_kinds_invocation(self) -> None:
+        self._open_invocation(WORKFLOW_OUTPUT_KINDS, OUTPUT_KINDS_LABELS)
+        # the pointer is still on the activity that closed the invocations panel; move it off that tooltip
+        self.clear_tooltips()
+        self.components.invocations.activity_tooltip.wait_for_absent_or_hidden()
+        # and drop the focus that click left there, so screenshots and Escape presses don't draw a focus ring on it
+        self._drop_focus()
+
+    def _drop_focus(self) -> None:
+        self.execute_script("document.activeElement.blur();")
 
     def _hover_outputs(self, label: str, output_name: str):
         """Hover the step's output terminals, wait for its output previews to load and return the named one"""
