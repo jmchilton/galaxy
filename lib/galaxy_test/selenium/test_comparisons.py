@@ -160,7 +160,7 @@ class TestComparisons(SeleniumTestCase):
         self._assert_rows(newest_id, *older_ids)
 
     @selenium_test
-    def test_subworkflow_step_all_runs_disabled(self):
+    def test_subworkflow_step_all_runs_unavailable(self):
         summary = self.workflow_populator.run_workflow(
             WORKFLOW_NESTED_SIMPLE,
             test_data={"outer_input": {"value": "1.bed", "type": "File"}},
@@ -172,11 +172,12 @@ class TestComparisons(SeleniumTestCase):
         self.invocation_graph_wait_for_polling_to_stop()
         self.invocation_graph_click_node("random_lines")
         self.assert_invocation_step_card_title("random_lines")
-        self._assert_all_runs_tab_disabled()
-        self.components.invocations.step_job_information_tool_id(order_index="1").wait_for_visible()
-        self._screenshot_settled(
-            "comparisons_subworkflow_all_runs_disabled", self.components.comparisons.step_all_runs_tab
-        )
+        comparisons = self.components.comparisons
+        comparisons.step_all_runs_tab.wait_for_and_click()
+        message = comparisons.step_all_runs_unavailable.wait_for_visible()
+        assert "inside a subworkflow" in message.text, message.text
+        comparisons.rows.assert_absent()
+        self._screenshot_settled("comparisons_subworkflow_all_runs_unavailable", comparisons.step_all_runs_unavailable)
 
     @selenium_test
     def test_mapped_step_reused_job(self):
@@ -258,12 +259,6 @@ class TestComparisons(SeleniumTestCase):
     def _assert_invocation_grid_rows(self, count: int):
         rows = self.components.invocations.workflow_invocations_table_rows.all()
         assert len(rows) == count, f"Expected {count} invocation rows, found {len(rows)}"
-
-    @retry_assertion_during_transitions
-    def _assert_all_runs_tab_disabled(self):
-        tab = self.components.comparisons.step_all_runs_tab.wait_for_visible()
-        assert tab.get_attribute("aria-disabled") == "true", tab.get_attribute("aria-disabled")
-        assert "subworkflow" in tab.get_attribute("data-tab-title"), tab.get_attribute("data-tab-title")
 
     @retry_assertion_during_transitions
     def _assert_table_overflows(self, times: int):

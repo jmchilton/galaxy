@@ -48,29 +48,18 @@ function mountInTabs(props: { graphLabel?: string | null; invocationLabel?: stri
 }
 
 describe("StepAllRunsTab", () => {
-    it("is disabled with an explanation for an unlabelled step", async () => {
-        const wrapper = mountInTabs({ graphLabel: null, invocationLabel: null });
+    it.each([
+        ["an unlabelled step", { graphLabel: null, invocationLabel: null }, "Label this step in the workflow editor"],
+        ["a subworkflow's own run", { graphLabel: "count_reads", hidden: true }, "inside a subworkflow"],
+    ])("opens on an explanation, not runs, for %s", async (_name, props, reason) => {
+        const wrapper = mountInTabs(props);
         await wrapper.vm.$nextTick();
         const link = wrapper.find(".invocation-step-all-runs-tab .nav-link");
         expect(link.text()).toBe("All runs");
-        expect(wrapper.find(".invocation-step-all-runs-tab").attributes("title")).toBe(
-            "Label this step to compare its runs",
-        );
-        expect(link.attributes("aria-disabled")).toBe("true");
+        expect(link.attributes("aria-disabled")).not.toBe("true");
+        expect(wrapper.find(".invocation-step-all-runs-unavailable").exists()).toBe(false);
         await link.trigger("click");
-        expect(wrapper.findComponent(RUNS_STUB).exists()).toBe(false);
-    });
-
-    it("is disabled with an explanation on a subworkflow's own run", async () => {
-        const wrapper = mountInTabs({ graphLabel: "count_reads", hidden: true });
-        await wrapper.vm.$nextTick();
-        const link = wrapper.find(".invocation-step-all-runs-tab .nav-link");
-        expect(link.text()).toBe("All runs");
-        expect(wrapper.find(".invocation-step-all-runs-tab").attributes("title")).toBe(
-            "Steps inside a subworkflow can't be compared across runs yet",
-        );
-        expect(link.attributes("aria-disabled")).toBe("true");
-        await link.trigger("click");
+        expect(wrapper.find(".invocation-step-all-runs-unavailable").text()).toContain(reason);
         expect(wrapper.findComponent(RUNS_STUB).exists()).toBe(false);
     });
 

@@ -1984,6 +1984,7 @@ comparisons:
   selectors:
     _: '.comparison-view'
     step_all_runs_tab: '.invocation-step-card .invocation-step-all-runs-tab > a.nav-link'
+    step_all_runs_unavailable: '.invocation-step-card .invocation-step-all-runs-unavailable'
     view_all_link: '.step-runs-tab a.comparison-view-all'
     table: '.comparison-table'
     table_scroller: '.comparison-table-scroll'

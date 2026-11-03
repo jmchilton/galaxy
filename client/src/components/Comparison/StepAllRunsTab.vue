@@ -7,6 +7,7 @@ import type { GraphStep } from "@/composables/useInvocationGraph";
 import { useWorkflowStore } from "@/stores/workflowStore";
 
 import StepRunsTab from "./StepRunsTab.vue";
+import GAlert from "@/components/BaseComponents/GAlert.vue";
 import GTab from "@/components/BaseComponents/GTab.vue";
 
 const props = defineProps<{
@@ -26,25 +27,24 @@ const inSubworkflow = computed(() => Boolean(storedWorkflow.value?.hidden));
 const stepLabel = computed(
     () => props.graphStep?.label || props.invocation.steps[props.workflowStep.id]?.workflow_step_label || undefined,
 );
-/** Why the tab is disabled; undefined when it is enabled. */
-const disabledReason = computed(() => {
+/** Why this step's runs can't be listed; undefined when they can. */
+const unavailableReason = computed(() => {
     if (inSubworkflow.value) {
-        return "Steps inside a subworkflow can't be compared across runs yet";
+        return "Steps inside a subworkflow can't be compared across runs yet. Open the parent run to compare its steps.";
     }
-    return stepLabel.value ? undefined : "Label this step to compare its runs";
+    return stepLabel.value ? undefined : "Label this step in the workflow editor to compare its runs.";
 });
 </script>
 
 <template>
     <!-- Lazy, so step cards don't fetch runs until the tab is opened. -->
-    <!-- The title prop is the tab's tooltip; the label stays short so a disabled tab doesn't wrap. -->
-    <GTab
-        lazy
-        title-item-class="invocation-step-all-runs-tab"
-        :disabled="Boolean(disabledReason)"
-        :title="disabledReason ?? 'All runs'">
-        <template v-slot:title>All runs</template>
+    <!-- Always enabled: when runs can't be listed, the tab says why instead of hiding it in a tooltip. -->
+    <GTab lazy title-item-class="invocation-step-all-runs-tab" title="All runs">
+        <GAlert v-if="unavailableReason" class="invocation-step-all-runs-unavailable mb-0" variant="info" show>
+            {{ unavailableReason }}
+        </GAlert>
         <StepRunsTab
+            v-else
             :workflow-id="invocation.workflow_id"
             instance
             :stored-workflow-id="storedWorkflowId"

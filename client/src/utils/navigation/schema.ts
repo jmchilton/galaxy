@@ -791,6 +791,7 @@ interface Rootjob_details extends Component {
 interface Rootcomparisons extends Component {
     _: SelectorTemplate;
     step_all_runs_tab: SelectorTemplate;
+    step_all_runs_unavailable: SelectorTemplate;
     view_all_link: SelectorTemplate;
     table: SelectorTemplate;
     table_scroller: SelectorTemplate;
