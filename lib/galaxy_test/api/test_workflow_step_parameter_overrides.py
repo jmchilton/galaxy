@@ -293,3 +293,17 @@ class TestWorkflowStepParameterOverridesApi(BaseWorkflowsApiTestCase):
         assert list(err_data["1"]) == ["1"], err_data
         assert set(err_data["1"]["1"]["1"]) == {"threshold", "cond|min"}, err_data
 
+    @skip_without_tool("echo_step_parameters")
+    def test_run_form_lists_subworkflow_tool_steps(self, history_id):
+        workflow_id = self.workflow_populator.upload_yaml_workflow(WORKFLOW_STEP_PARAMETER_OVERRIDES_DOUBLY_NESTED)
+        run_form = self.workflow_populator.download_workflow(workflow_id, style="run", history_id=history_id)
+        outer = run_form["steps"][1]
+        assert outer["step_type"] == "subworkflow"
+        assert "subworkflow_steps" in outer, outer
+        (nested,) = outer["subworkflow_steps"]
+        assert (nested["step_type"], nested["step_index"]) == ("subworkflow", 1)
+        (echo,) = nested["subworkflow_steps"]
+        assert (echo["step_type"], echo["step_index"], echo["step_name"]) == ("tool", 1, "Echo step parameters")
+        inputs = {input["name"]: input for input in echo["inputs"]}
+        assert inputs["threshold"]["value"] == "0.5"
+        assert inputs["cond"]["test_param"]["value"] == "min"

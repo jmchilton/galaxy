@@ -1328,6 +1328,8 @@ class WorkflowContentsManager(UsesAnnotations):
         for step in workflow.steps:
             step_order_indices[step.id] = step.order_index
         request_input_labels = workflow.request_input_labels()
+        # A subworkflow used by several steps, at any depth, is listed once per step but built once.
+        subworkflow_run_steps: dict[int, list[dict[str, Any]]] = {}
         step_models = []
         for step in workflow.steps:
             assert step.module is not None
@@ -1359,6 +1361,11 @@ class WorkflowContentsManager(UsesAnnotations):
                 if step.type == "subworkflow" and (recorded := step_parameters.get(step.id)):
                     self._seed_subworkflow_run_inputs(recorded, input_dicts)
                 step_model = {"inputs": input_dicts}
+                if step.type == "subworkflow":
+                    assert step.subworkflow
+                    step_model["subworkflow_steps"] = self._subworkflow_run_steps(
+                        trans, step.subworkflow, history, subworkflow_run_steps
+                    )
             step_model["when"] = step.when_expression
             step_model["replacement_parameters"] = step.module.get_informal_replacement_parameters(step)
             step_model["step_type"] = step.type
@@ -1593,6 +1600,35 @@ class WorkflowContentsManager(UsesAnnotations):
         return tool.to_json(
             trans, incoming, workflow_building_mode=workflow_building_modes.USE_HISTORY, history=history
         )
+
+    def _subworkflow_run_steps(
+        self,
+        trans: ProvidesHistoryContext,
+        subworkflow: Workflow,
+        history: History | None,
+        built: dict[int, list[dict[str, Any]]],
+    ) -> list[dict[str, Any]]:
+        """Tool and subworkflow steps of ``subworkflow`` with their saved tool inputs, for picking
+        step parameter overrides. ``built`` holds the steps of subworkflows already built, by workflow id."""
+        if (cached := built.get(subworkflow.id)) is not None:
+            return cached
+        step_models: list[dict[str, Any]] = []
+        for step in subworkflow.steps:
+            assert step.module is not None
+            if step.type == "tool":
+                step_model = {"inputs": self._tool_step_run_model(trans, step, history)["inputs"]}
+            elif step.type == "subworkflow":
+                assert step.subworkflow
+                step_model = {"subworkflow_steps": self._subworkflow_run_steps(trans, step.subworkflow, history, built)}
+            else:
+                continue
+            step_model["step_type"] = step.type
+            step_model["step_index"] = step.order_index
+            step_model["step_label"] = step.label
+            step_model["step_name"] = step.module.get_name()
+            step_models.append(step_model)
+        built[subworkflow.id] = step_models
+        return step_models
 
     def _workflow_resource_parameters(self, trans: ProvidesUserContext, stored, workflow):
         """Get workflow scheduling resource parameters for this user and workflow or None if not configured."""
