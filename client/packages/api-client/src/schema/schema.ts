@@ -18681,6 +18681,15 @@ export interface components {
              */
             scheduler?: string | null;
             /**
+             * Step Parameter Overrides
+             * @description Tool parameter values that replace a step's saved values for this run, keyed by step index (order_index). A tool step takes nested tool state: objects for sections and conditionals, and lists for repeats, which merge with the saved instances by position (an empty object leaves an instance unchanged). A subworkflow step takes the inner workflow's overrides in the same shape, to any depth. For example {"2": {"cond": {"threshold": 0.05}}, "3": {"1": {"queries": [{}, {"column": "c3"}]}}}. Parameters not listed keep the workflow's saved values. To switch a conditional's case, include its test parameter; parameters of the new case that aren't set take their defaults, and the overrides recorded with the invocation include them. An unknown step or parameter, a parameter outside the active conditional case, a repeat instance the step doesn't have, data or collection parameters (set them in 'inputs'), batch values and post-job actions are rejected with a 400 error. Applied on top of 'parameters' if both are set.
+             */
+            step_parameter_overrides?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            } | null;
+            /**
              * Use cached job
              * @description Indicated whether to use a cached job for workflow invocation.
              * @default false
@@ -29095,6 +29104,15 @@ export interface components {
              */
             resource_params?: {
                 [key: string]: unknown;
+            } | null;
+            /**
+             * Step Parameter Overrides
+             * @description Tool parameter values that replace a step's saved values for this run, keyed by step index (order_index). A tool step takes nested tool state: objects for sections and conditionals, and lists for repeats, which merge with the saved instances by position (an empty object leaves an instance unchanged). A subworkflow step takes the inner workflow's overrides in the same shape, to any depth. For example {"2": {"cond": {"threshold": 0.05}}, "3": {"1": {"queries": [{}, {"column": "c3"}]}}}. Parameters not listed keep the workflow's saved values. To switch a conditional's case, include its test parameter; parameters of the new case that aren't set take their defaults, and the overrides recorded with the invocation include them. An unknown step or parameter, a parameter outside the active conditional case, a repeat instance the step doesn't have, data or collection parameters (set them in 'inputs'), batch values and post-job actions are rejected with a 400 error. Applied on top of 'parameters' if both are set.
+             */
+            step_parameter_overrides?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
             } | null;
             /**
              * Use cached job

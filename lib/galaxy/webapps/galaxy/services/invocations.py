@@ -67,6 +67,10 @@ from galaxy.webapps.galaxy.services.base import (
     ServiceBase,
 )
 from galaxy.work.context import SessionRequestContext
+from galaxy.workflow.step_parameter_overrides import (
+    recorded_step_parameter_overrides,
+    request_parameters_without_step_parameter_overrides,
+)
 
 log = logging.getLogger(__name__)
 
@@ -349,7 +353,9 @@ class InvocationsService(ServiceBase, ConsumesModelStores):
         preferred_intermediate_object_store_id = None
         preferred_outputs_object_store_id = None
         step_param_map: dict[str, dict] = {}
-        for parameter in invocation.input_parameters:
+        step_parameter_overrides = recorded_step_parameter_overrides(invocation)
+        # Overrides were recorded as step parameters too, for scheduling - report them once.
+        for parameter in request_parameters_without_step_parameter_overrides(invocation, step_parameter_overrides):
             parameter_type = parameter.type
 
             if parameter_type == param_types.REPLACEMENT_PARAMETERS:
@@ -369,12 +375,9 @@ class InvocationsService(ServiceBase, ConsumesModelStores):
                 resource_params[parameter.name] = parameter.value
             elif parameter_type == param_types.STEP_PARAMETERS:
                 # TODO: test subworkflows and ensure this works
-                step_id: int
-                try:
-                    step_id = int(parameter.name)
-                except TypeError:
+                if parameter.name is None or parameter.value is None:
                     raise InconsistentDatabase("saved workflow step parameters not in the format expected")
-                step_param_map[str(steps_by_id[step_id].order_index)] = json.loads(parameter.value)
+                step_param_map[str(steps_by_id[int(parameter.name)].order_index)] = json.loads(parameter.value)
 
         return WorkflowInvocationRequestModel(
             history_id=history_id,
@@ -390,4 +393,5 @@ class InvocationsService(ServiceBase, ConsumesModelStores):
             preferred_outputs_object_store_id=preferred_outputs_object_store_id,
             parameters_normalized=True,
             parameters=None if not step_param_map else step_param_map,
+            step_parameter_overrides=step_parameter_overrides,
         )

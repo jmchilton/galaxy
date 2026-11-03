@@ -3678,12 +3678,18 @@ class WorkflowModuleInjector:
 
             subworkflow = step.subworkflow
             assert subworkflow
-            populate_module_and_state(
-                self.trans,
-                subworkflow,
-                param_map=unjsonified_subworkflow_param_map,
-                allow_tool_state_corrections=allow_tool_state_corrections,
-            )
+            try:
+                populate_module_and_state(
+                    self.trans,
+                    subworkflow,
+                    param_map=unjsonified_subworkflow_param_map,
+                    allow_tool_state_corrections=allow_tool_state_corrections,
+                )
+            except exceptions.MessageException as e:
+                # Inner steps key their errors by inner step index - nest them under this step's.
+                if (err_data := e.extra_error_info.get("err_data")) is not None:
+                    e.extra_error_info["err_data"] = {step.order_index: err_data}
+                raise
 
     def inject_all(self, workflow: Workflow, param_map=None, ignore_tool_missing_exception=False, **kwargs):
         param_map = param_map or {}

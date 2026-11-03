@@ -47,6 +47,11 @@ from galaxy.tools.parameters.meta import expand_workflow_inputs
 from galaxy.tools.parameters.workflow_utils import NO_REPLACEMENT
 from galaxy.workflow.modules import WorkflowModuleInjector
 from galaxy.workflow.resources import get_resource_mapper_function
+from galaxy.workflow.step_parameter_overrides import (
+    apply_step_parameter_overrides,
+    STEP_PARAMETER_OVERRIDES_PARAMETER,
+    StepParameterOverrides,
+)
 
 if TYPE_CHECKING:
     from galaxy.managers.context import ProvidesHistoryContext
@@ -109,6 +114,7 @@ class WorkflowRunConfig:
         preferred_intermediate_object_store_id: str | None = None,
         effective_outputs: list[EffectiveOutput] | None = None,
         on_complete: list[dict[str, Any]] | None = None,
+        step_parameter_overrides: StepParameterOverrides | None = None,
     ) -> None:
         self.target_history = target_history
         self.replacement_dict = replacement_dict or {}
@@ -124,6 +130,7 @@ class WorkflowRunConfig:
         self.preferred_intermediate_object_store_id = preferred_intermediate_object_store_id
         self.effective_outputs = effective_outputs
         self.on_complete = on_complete
+        self.step_parameter_overrides = step_parameter_overrides
 
 
 def _normalize_inputs(
@@ -389,6 +396,11 @@ def build_workflow_run_configs(
     unexpanded_param_map = _normalize_step_parameters(
         workflow.steps, raw_parameters, legacy=legacy, already_normalized=already_normalized
     )
+    step_parameter_overrides = payload.get("step_parameter_overrides")
+    if step_parameter_overrides:
+        step_parameter_overrides = apply_step_parameter_overrides(
+            trans, workflow.steps, step_parameter_overrides, unexpanded_param_map
+        )
     unexpanded_inputs = payload.get("inputs", None)
     inputs_by = payload.get("inputs_by", None)
     # New default is to reference steps by index of workflow step
@@ -571,6 +583,7 @@ def build_workflow_run_configs(
                 preferred_outputs_object_store_id=preferred_outputs_object_store_id,
                 preferred_intermediate_object_store_id=preferred_intermediate_object_store_id,
                 on_complete=payload.get("on_complete"),
+                step_parameter_overrides=step_parameter_overrides or None,
             )
         )
 
@@ -630,13 +643,14 @@ def workflow_run_config_to_request(
                 copy_inputs_to_history=False,
                 use_cached_job=run_config.use_cached_job,
                 inputs={},
-                param_map=run_config.param_map.get(step.order_index),
+                param_map=run_config.param_map.get(step.id),
                 allow_tool_state_corrections=run_config.allow_tool_state_corrections,
                 resource_params=run_config.resource_params,
                 preferred_object_store_id=run_config.preferred_object_store_id,
                 preferred_intermediate_object_store_id=run_config.preferred_intermediate_object_store_id,
                 preferred_outputs_object_store_id=run_config.preferred_outputs_object_store_id,
                 effective_outputs=effective_outputs,
+                step_parameter_overrides=(run_config.step_parameter_overrides or {}).get(str(step.order_index)),
             )
             subworkflow_invocation = workflow_run_config_to_request(
                 trans,
@@ -684,6 +698,12 @@ def workflow_run_config_to_request(
         value = getattr(run_config, param)
         if value:
             add_parameter(param, value, param_types.META_PARAMETERS)
+    if run_config.step_parameter_overrides:
+        add_parameter(
+            STEP_PARAMETER_OVERRIDES_PARAMETER,
+            json.dumps(run_config.step_parameter_overrides),
+            param_types.META_PARAMETERS,
+        )
     if run_config.effective_outputs is not None:
         # empty list needs to come through here...
         add_parameter("effective_outputs", json.dumps(run_config.effective_outputs), param_types.META_PARAMETERS)
