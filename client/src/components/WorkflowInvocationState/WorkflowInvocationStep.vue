@@ -282,7 +282,8 @@ onUnmounted(() => {
                                                 v-if="stepDetails.jobs?.length"
                                                 class="mt-1"
                                                 :jobs="stepDetails.jobs"
-                                                :invocation-id="props.invocation.id" />
+                                                :invocation-id="props.invocation.id"
+                                                :step-index="props.workflowStep.id" />
                                             <GAlert v-else v-localize variant="info" show>This step has no jobs</GAlert>
                                         </div>
                                     </GTab>

@@ -2,6 +2,7 @@
 import { BPagination } from "bootstrap-vue";
 import { computed, ref, watch } from "vue";
 
+import { isTopLevelInvocation } from "@/api/invocations";
 import type { JobBaseModel, JobState } from "@/api/jobs";
 import { statePlaceholders } from "@/composables/useInvocationGraph";
 
@@ -16,6 +17,8 @@ const PER_PAGE = 10;
 const props = defineProps<{
     jobs: JobBaseModel[];
     invocationId: string;
+    /** Step ``order_index``, offers rerunning the invocation with one of the job's parameters changed */
+    stepIndex?: number;
 }>();
 
 const firstJob = computed(() => props.jobs[0]);
@@ -45,6 +48,29 @@ const currentStateJobs = computed(() => {
     });
 });
 
+/** Step index to offer "rerun with this changed" for - not for steps inside subworkflow invocations,
+ * whose parameters belong to the parent invocation's request. */
+const rerunStepIndex = ref<number>();
+watch(
+    // Separate sources, compared one by one: polling replaces ``jobs`` every few seconds while a step runs.
+    [() => firstJob.value?.id, () => props.invocationId, () => props.stepIndex, jobCount],
+    async ([jobId, invocationId, stepIndex, count], _previous, onCleanup) => {
+        let stale = false;
+        onCleanup(() => (stale = true));
+        rerunStepIndex.value = undefined;
+        if (jobId && stepIndex !== undefined && count === 1) {
+            try {
+                if ((await isTopLevelInvocation(invocationId, jobId)) && !stale) {
+                    rerunStepIndex.value = stepIndex;
+                }
+            } catch (e) {
+                console.warn("Couldn't check whether the job ran in a subworkflow invocation", e);
+            }
+        }
+    },
+    { immediate: true },
+);
+
 /** Currently selected/filtered job state */
 const currentState = ref<JobState | null>(firstJob.value?.state || null);
 
@@ -72,7 +98,10 @@ watch(
 <template>
     <GAlert v-if="!jobCount" variant="info" show> No jobs found for this step. </GAlert>
     <div v-else-if="jobCount === 1 && firstJob">
-        <JobDetailsDisplayed :job-id="firstJob.id" :invocation-id="props.invocationId" />
+        <JobDetailsDisplayed
+            :job-id="firstJob.id"
+            :invocation-id="props.invocationId"
+            :rerun-step-index="rerunStepIndex" />
     </div>
     <div v-else>
         <div class="mb-2 p-2 d-flex justify-content-between align-items-center flex-wrap">
