@@ -60,6 +60,7 @@ from galaxy.jobs.runners import (
 from galaxy.model.base import check_database_connection
 from galaxy.model.store.discover import safe_path_from_directory
 from galaxy.tool_util.deps import dependencies
+from galaxy.tool_util.output_checker import DETECTED_JOB_STATE
 from galaxy.tool_util.parser.output_collection_def import FilePatternDatasetCollectionDescription
 from galaxy.tool_util.parser.output_objects import ToolOutput
 from galaxy.tool_util.runtime_environment import RUNTIME_ENVIRONMENT_WARNING_FILE
@@ -855,18 +856,19 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
             job_metrics_directory=_job_metrics_directory(job_wrapper),
         )
         self._complete_staged_job(
-            job_wrapper,
+            job_state,
             result,
             handle_metadata_externally=not PulsarJobRunner.__remote_metadata(client),
         )
 
     def _complete_staged_job(
         self,
-        job_wrapper,
+        job_state: AsynchronousJobState,
         result: PulsarFinishJobResult,
         handle_metadata_externally=True,
     ):
         """Set metadata and finish the job, once outputs are already staged back."""
+        job_wrapper = job_state.job_wrapper
         if handle_metadata_externally:
             # we need an actual exit code file in the job working directory to detect job errors in the metadata script
             with open(
@@ -874,14 +876,31 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
             ) as exit_code_file:
                 exit_code_file.write(str(result.exit_code))
             self._handle_metadata_externally(job_wrapper, resolve_requirements=True)
-        self._finish_pulsar_job(job_wrapper, result)
+        self._finish_pulsar_job(job_state, result)
 
-    def _finish_pulsar_job(self, job_wrapper, result: PulsarFinishJobResult):
+    def _finish_pulsar_job(self, job_state: AsynchronousJobState, result: PulsarFinishJobResult):
+        job_wrapper = job_state.job_wrapper
         try:
+            job = job_wrapper.get_job()
+            check_output_detected_state = job_wrapper.check_tool_output(
+                result.tool_stdout,
+                result.tool_stderr,
+                tool_exit_code=result.exit_code,
+                job=job,
+                job_stdout=result.job_stdout,
+                job_stderr=result.job_stderr,
+            )
+            if check_output_detected_state != DETECTED_JOB_STATE.OK:
+                # Flush the streams and job messages before a handler takes the job.
+                self.sa_session.add(job)
+                self.sa_session.commit()
+                if self._handle_detected_failure(job_state, check_output_detected_state):
+                    return
             job_wrapper.finish(
                 result.tool_stdout,
                 result.tool_stderr,
                 result.exit_code,
+                check_output_detected_state=check_output_detected_state,
                 job_stdout=result.job_stdout,
                 job_stderr=result.job_stderr,
                 remote_metadata_directory=result.remote_metadata_directory,
@@ -917,7 +936,7 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
             remote_metadata_directory=None,
             job_metrics_directory=os.path.join(working_directory, "metadata"),
         )
-        self._complete_staged_job(job_wrapper, result)
+        self._complete_staged_job(job_state, result)
 
     @staticmethod
     def __read_staged_stream(working_directory, name):

@@ -1,10 +1,14 @@
 """Unit tests for Pulsar job runner utility methods and client construction."""
 
-from types import SimpleNamespace
+from types import (
+    MethodType,
+    SimpleNamespace,
+)
 from typing import (
     Any,
     cast,
 )
+from unittest.mock import Mock
 
 import pytest
 from packaging.version import Version
@@ -33,14 +37,84 @@ from pulsar.client.tes import (
 from galaxy import model
 from galaxy.exceptions import ConfigurationError
 from galaxy.job_metrics.instrumenters.pulsar import PulsarPlugin
+from galaxy.jobs import JobWrapper
 from galaxy.jobs.runners import (
     AsynchronousJobState,
+    JobState,
     pulsar as pulsar_runner,
 )
 from galaxy.jobs.runners.pulsar import (  # type: ignore[attr-defined]
     build_client_manager,
+    PulsarFinishJobResult,
     PulsarJobRunner,
 )
+from galaxy.tool_util.output_checker import DETECTED_JOB_STATE
+
+SLURM_OOM_KILL = "slurmstepd: error: Detected 1 oom-kill event(s) in StepId=5726054.batch."
+
+
+def _staged_job(tmp_path, job_stderr):
+    job = model.Job()
+    job.id = 1
+    wrapper = Mock()
+    wrapper.get_job.return_value = job
+    wrapper.working_directory = str(tmp_path)
+    wrapper.tool.stdio_regexes = []
+    wrapper.tool.stdio_exit_codes = []
+    wrapper.tool.runtime_environment_variables = []
+    wrapper.check_tool_output = MethodType(JobWrapper.check_tool_output, wrapper)
+    job_state = cast(Any, object.__new__(AsynchronousJobState))
+    job_state.job_wrapper = wrapper
+    job_state.runner_state_handled = False
+    runner = cast(Any, object.__new__(PulsarJobRunner))
+    runner.app = Mock()
+    runner.sa_session = wrapper.sa_session
+    runner.runner_state_handlers = {"failure": [Mock()]}
+    result = PulsarFinishJobResult(
+        tool_stdout="",
+        tool_stderr="",
+        exit_code=0,
+        job_stdout="",
+        job_stderr=job_stderr,
+        remote_metadata_directory=None,
+        job_metrics_directory=str(tmp_path / "metadata"),
+    )
+    return runner, job_state, result
+
+
+def test_staged_job_oom_kill_is_resubmitted(tmp_path):
+    runner, job_state, result = _staged_job(tmp_path, SLURM_OOM_KILL)
+    handled = []
+
+    def resubmit(app, runner, job_state):
+        handled.append(job_state.runner_state)
+        job_state.runner_state_handled = True
+
+    runner.runner_state_handlers["failure"] = [resubmit]
+    runner._complete_staged_job(job_state, result, handle_metadata_externally=False)
+
+    assert handled == [JobState.runner_states.MEMORY_LIMIT_REACHED]
+    job_state.job_wrapper.finish.assert_not_called()
+
+
+def test_staged_job_oom_kill_fails_without_resubmission(tmp_path):
+    runner, job_state, result = _staged_job(tmp_path, SLURM_OOM_KILL)
+
+    runner._complete_staged_job(job_state, result, handle_metadata_externally=False)
+
+    runner.runner_state_handlers["failure"][0].assert_called_once_with(runner.app, runner, job_state)
+    finish_kwargs = job_state.job_wrapper.finish.call_args.kwargs
+    assert finish_kwargs["check_output_detected_state"] == DETECTED_JOB_STATE.OUT_OF_MEMORY_ERROR
+
+
+def test_staged_job_success_skips_failure_handlers(tmp_path):
+    runner, job_state, result = _staged_job(tmp_path, "")
+
+    runner._complete_staged_job(job_state, result, handle_metadata_externally=False)
+
+    runner.runner_state_handlers["failure"][0].assert_not_called()
+    finish_kwargs = job_state.job_wrapper.finish.call_args.kwargs
+    assert finish_kwargs["check_output_detected_state"] == DETECTED_JOB_STATE.OK
 
 
 def _container(container_id, image_identifier_is_path=True):

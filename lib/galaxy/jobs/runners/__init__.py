@@ -716,6 +716,17 @@ class BaseJobRunner:
                 )
             return container
 
+    def _handle_detected_failure(self, job_state: "JobState", check_output_detected_state: str) -> bool:
+        """Run the failure handlers for a failed output check; True when one (e.g. resubmission) took the job."""
+        if check_output_detected_state == DETECTED_JOB_STATE.OK:
+            return False
+        if check_output_detected_state == DETECTED_JOB_STATE.OUT_OF_MEMORY_ERROR:
+            job_state.runner_state = JobState.runner_states.MEMORY_LIMIT_REACHED
+        else:
+            job_state.runner_state = JobState.runner_states.TOOL_DETECT_ERROR
+        self._handle_runner_state("failure", job_state)
+        return job_state.runner_state_handled
+
     def _handle_runner_state(self, runner_state, job_state: "JobState"):
         try:
             for handler in self.runner_state_handlers.get(runner_state, []):
@@ -848,15 +859,8 @@ class BaseJobRunner:
             self.sa_session.add(job)
             self.sa_session.commit()
 
-            if not job_ok:
-                job_runner_state = JobState.runner_states.TOOL_DETECT_ERROR
-                if check_output_detected_state == DETECTED_JOB_STATE.OUT_OF_MEMORY_ERROR:
-                    job_runner_state = JobState.runner_states.MEMORY_LIMIT_REACHED
-                job_state.runner_state = job_runner_state
-                self._handle_runner_state("failure", job_state)
-                # Was resubmitted or something - I think we are done with it.
-                if job_state.runner_state_handled:
-                    return
+            if self._handle_detected_failure(job_state, check_output_detected_state):
+                return
 
             if stdio_errors:
                 # Finishing may require metadata that was never produced. Fail with the
