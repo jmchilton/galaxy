@@ -49,6 +49,12 @@ describe("parseComparisonQuery", () => {
         });
     });
 
+    it("ignores the page layout keys any Galaxy URL may carry", () => {
+        expect(
+            parseComparisonQuery({ kind: "tool_runs", tool_id: "cat1", hide_panels: "true", hide_masthead: "true" }),
+        ).toEqual({ kind: "tool_runs", params: { tool_id: "cat1" } });
+    });
+
     it("passes malformed numbers and booleans through for the server to reject", () => {
         expect(parseComparisonQuery({ kind: "tool_runs", tool_id: "cat1", limit: "1.5", sort_desc: "yes" })).toEqual({
             kind: "tool_runs",

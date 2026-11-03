@@ -96,8 +96,12 @@ function parseValue(paramKind: ParamKind, value: LocationQueryValue | LocationQu
     return single;
 }
 
+/** Keys any Galaxy page takes to change its layout (the window manager adds the first two); not comparison parameters. */
+const APP_QUERY_KEYS = ["hide_panels", "hide_masthead", "embed"];
+
 /** Turns `/comparisons` URL query into the matching endpoint's parameters; rejects keys the endpoint doesn't take. */
-export function parseComparisonQuery(query: LocationQuery): ParsedComparison {
+export function parseComparisonQuery(urlQuery: LocationQuery): ParsedComparison {
+    const query = Object.fromEntries(Object.entries(urlQuery).filter(([key]) => !APP_QUERY_KEYS.includes(key)));
     const kind = first(query.kind);
     if (!isKind(kind)) {
         return { error: kind ? `Unknown comparison kind "${kind}".` : "No comparison kind given." };
