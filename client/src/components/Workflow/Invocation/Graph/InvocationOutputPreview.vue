@@ -6,6 +6,7 @@ import type { GraphStep, GraphStepState, InvocationOutputItem } from "@/composab
 import { useDatasetStore } from "@/stores/datasetStore";
 import { useDatasetTextContentStore } from "@/stores/datasetTextContentStore";
 
+import InvocationEmbeddedCollection from "./InvocationEmbeddedCollection.vue";
 import CollectionDisplay from "@/components/Markdown/Sections/Elements/HistoryDatasetCollection/CollectionDisplay.vue";
 import HistoryDatasetDisplay from "@/components/Markdown/Sections/Elements/HistoryDatasetDisplay.vue";
 
@@ -13,6 +14,8 @@ const props = defineProps<{
     item: InvocationOutputItem;
     /** The step that produces the item; the preview reloads when its state changes */
     step: GraphStep;
+    /** Show a collection as a summary and its first elements, rather than loading every element */
+    summarizeCollection?: boolean;
 }>();
 
 /** The step's jobs haven't finished, so the item has no content to show yet. A subworkflow step's state is its
@@ -49,9 +52,15 @@ const loadedUnderState = new Map<string, GraphStepState>();
 
 <template>
     <div class="invocation-output-preview" data-description="invocation output preview">
-        <div v-if="notReady" class="text-muted">This output isn't ready yet: the step is {{ props.step.state }}.</div>
+        <div v-if="notReady" class="invocation-output-not-ready text-muted">
+            This output isn't ready yet: the step is {{ props.step.state }}.
+        </div>
         <HistoryDatasetDisplay v-else-if="props.item.src === 'hda'" :dataset-id="props.item.id" embedded />
-        <!-- CollectionDisplay fetches when it mounts -->
+        <!-- the collection displays fetch when they mount -->
+        <InvocationEmbeddedCollection
+            v-else-if="props.summarizeCollection"
+            :key="props.step.state"
+            :collection-id="props.item.id" />
         <CollectionDisplay v-else :key="props.step.state" :collection-id="props.item.id" />
     </div>
 </template>

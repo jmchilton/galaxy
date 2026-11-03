@@ -35,6 +35,10 @@ beforeEach(() => {
             count(`collection ${params.hdca_id}`);
             return response.untyped(HttpResponse.json({ id: params.hdca_id, name: "lines", elements: [] }));
         }),
+        http.get("/api/dataset_collections/{hdca_id}/contents/{parent_id}", ({ params, response }) => {
+            count(`elements ${params.hdca_id}`);
+            return response.untyped(HttpResponse.json([]));
+        }),
     );
 });
 
@@ -45,11 +49,16 @@ function producedBy(state: GraphStepState, type: GraphStep["type"] = "tool") {
 
 /** Mount a preview. The dataset display is stubbed, so the requests counted for a dataset are only the preview's
  * own reloads; the collection display is real, and loads its collection when it mounts. */
-async function mountPreview(item: InvocationOutputItem, stepState: GraphStepState, stepType?: GraphStep["type"]) {
+async function mountPreview(
+    item: InvocationOutputItem,
+    stepState: GraphStepState,
+    stepType?: GraphStep["type"],
+    summarizeCollection = false,
+) {
     const wrapper = shallowMount(InvocationOutputPreview, {
-        propsData: { item, step: producedBy(stepState, stepType) },
+        propsData: { item, step: producedBy(stepState, stepType), summarizeCollection },
         localVue,
-        stubs: { CollectionDisplay: false },
+        stubs: { CollectionDisplay: false, InvocationEmbeddedCollection: false },
     });
     await flushPromises();
     return wrapper;
@@ -110,5 +119,20 @@ describe("InvocationOutputPreview", () => {
         await wrapper.setProps({ step: producedBy("ok") });
         await flushPromises();
         expect(requests).toEqual({ "collection c1": 2 });
+    });
+
+    it("summarizes a collection when asked, once its step is ready and again when its state changes", async () => {
+        const wrapper = await mountPreview({ src: "hdca", id: "c1" }, "running", "tool", true);
+        expect(wrapper.text()).toBe("This output isn't ready yet: the step is running.");
+        expect(requests).toEqual({});
+
+        await wrapper.setProps({ step: producedBy("ok") });
+        await flushPromises();
+        expect(wrapper.findComponent({ name: "CollectionDisplay" }).exists()).toBe(false);
+        expect(requests).toEqual({ "collection c1": 1, "elements c1": 1 });
+
+        await wrapper.setProps({ step: producedBy("error") });
+        await flushPromises();
+        expect(requests).toEqual({ "collection c1": 2, "elements c1": 2 });
     });
 });
