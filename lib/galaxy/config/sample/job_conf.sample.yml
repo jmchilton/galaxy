@@ -790,6 +790,20 @@ execution:
       runner: drmma
       tmp_dir: '$(mktemp -d /mnt/scratch/fastest/gxyjobXXXXXXXXXXX)'
 
+    # Fail a job with an out of memory error (so memory_limit_reached resubmission
+    # applies) when the kernel OOM-killed any of its processes, even if the job then
+    # exited 0, e.g. because the killed process was not the last in a pipeline. The job
+    # script compares its memory cgroup's oom_kill counter (cgroup v2 memory.events,
+    # v1 memory.oom_control) before and after the tool runs. Only enable this where the
+    # resource manager gives each job its own cgroup (e.g. Slurm with the cgroup task
+    # plugin); kills elsewhere in a shared cgroup would be blamed on the job. Docker
+    # containers run in the Docker daemon's cgroup, so their kills are not seen. Pulsar
+    # destinations pass the same parameter to Pulsar servers that support it. Slurm's own
+    # "Detected N oom-kill event(s)" message on the job's stderr is recognized without this.
+    oom_checked_cluster:
+      runner: drmaa
+      check_cgroup_oom_kills: true
+
     real_user_cluster:
       # The drmaa runner can be used to run jobs as the submitting user,
       # make sure to setup 3 real user parameters in galaxy.yml.

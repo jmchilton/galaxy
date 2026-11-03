@@ -613,6 +613,7 @@ class BaseJobRunner:
             command=command_line,
             shell=job_wrapper.shell,
             preserve_python_environment=job_wrapper.tool.requires_galaxy_python_environment,
+            check_cgroup_oom_kills=asbool(destination.params.get("check_cgroup_oom_kills", False)),
         )
         # Additional logging to enable if debugging from_work_dir handling, metadata
         # commands, etc... (or just peak in the job script.)

@@ -290,6 +290,7 @@ include src/galaxy/jobs/runners/util/gcp_batch/container_script.sh
 include src/galaxy/jobs/runners/util/job_script/MEMORY_STATEMENT_TEMPLATE.sh
 include src/galaxy/jobs/runners/util/job_script/DEFAULT_JOB_FILE_TEMPLATE.sh
 include src/galaxy/jobs/runners/util/job_script/CLUSTER_SLOTS_STATEMENT.sh
+include src/galaxy/jobs/runners/util/job_script/CGROUP_OOM_KILLS_STATEMENT.sh
 include src/galaxy/carbon_emissions/carbon_intensity.csv
 include src/galaxy/authnz/xsd/oidc_backends_config.xsd
 recursive-include src/galaxy/tools/bundled *.py

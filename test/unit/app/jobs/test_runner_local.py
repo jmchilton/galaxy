@@ -116,6 +116,15 @@ class TestLocalJobRunner(TestCase, UsesTools):
         runner.queue_job(cast(MinimalJobWrapper, self.job_wrapper))
         assert self.job_wrapper.exit_code == 4
 
+    def test_check_cgroup_oom_kills(self):
+        self.job_wrapper.job_destination.params["check_cgroup_oom_kills"] = "true"
+        self.job_wrapper.command_line = '''sh -c "exit 4"'''
+        runner = local.LocalJobRunner(self.app, 1)
+        runner.queue_job(cast(MinimalJobWrapper, self.job_wrapper))
+        with open(os.path.join(self.job_wrapper.working_directory, "galaxy_1.sh")) as job_script:
+            assert "\n_galaxy_report_oom_kills\n" in job_script.read()
+        assert self.job_wrapper.exit_code == 4
+
     def test_metadata_gets_set(self):
         runner = local.LocalJobRunner(self.app, 1)
         runner.queue_job(cast(MinimalJobWrapper, self.job_wrapper))
