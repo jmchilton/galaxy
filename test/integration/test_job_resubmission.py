@@ -413,12 +413,6 @@ class TestJobResubmissionPulsarJobStderrOomKillIntegration(TestJobResubmissionJo
 
 
 class TestJobResubmissionUnmappableIntegration(_BaseResubmissionIntegrationTestCase):
-    dataset_populator: DatasetPopulator
-
-    def setUp(self):
-        super().setUp()
-        self.dataset_populator = DatasetPopulator(self.galaxy_interactor)
-
     @classmethod
     def handle_galaxy_config_kwds(cls, config):
         super().handle_galaxy_config_kwds(config)
