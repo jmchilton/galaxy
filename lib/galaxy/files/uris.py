@@ -76,7 +76,7 @@ def validate_uri_access(uri: str, is_admin: bool, ip_allowlist: list[IpAllowedLi
     - Don't allow non-admins to access file:// URIs.
     """
     validate_non_local(uri, ip_allowlist)
-    if not is_admin and uri.lstrip().startswith("file://"):
+    if not is_admin and uri.lstrip().lower().startswith("file://"):
         raise AdminRequiredException()
 
 
@@ -94,7 +94,7 @@ def split_port(parsed_url: str, url: str) -> tuple[str, int]:
 
 def validate_non_local(uri: str, ip_allowlist: list[IpAllowedListEntryT]) -> str:
     # If it doesn't look like a URL, ignore it.
-    if not (uri.lstrip().startswith("http://") or uri.lstrip().startswith("https://")):
+    if not uri.lstrip().lower().startswith(("http://", "https://")):
         return uri
 
     # Strip leading whitespace before passing url to urlparse()
