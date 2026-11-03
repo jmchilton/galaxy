@@ -6,10 +6,14 @@ from unittest import (
 )
 
 import pytest
+import responses
 import yaml
 
 from galaxy.config import GalaxyAppConfiguration
-from galaxy.exceptions import ConfigDoesNotAllowException
+from galaxy.exceptions import (
+    ConfigDoesNotAllowException,
+    RequestParameterInvalidException,
+)
 from galaxy.util import requests
 from galaxy.util.unittest_utils import skip_if_workflowhub_down
 from galaxy.workflow.trs_proxy import (
@@ -123,6 +127,45 @@ def test_match_url():
     except ConfigDoesNotAllowException as e:
         expected_exception = e
     assert expected_exception, "matching url against localhost should fail"
+
+
+@pytest.mark.parametrize("url", ["file:///ga4gh/trs/v2/tools/x/versions/1"])
+def test_match_url_rejects_file_uri(url):
+    with pytest.raises(RequestParameterInvalidException):
+        get_trs_proxy().match_url(url, [])
+
+
+@responses.activate
+@pytest.mark.usefixtures("fake_public_dns")
+def test_server_from_url_follows_redirect_to_public_host():
+    responses.get(
+        "https://trs.example/ga4gh/trs/v2/tools/x", status=302, headers={"Location": "https://other.example/tools/x"}
+    )
+    redirect_target = responses.get("https://other.example/tools/x", json={"id": "x"})
+    assert get_trs_proxy().server_from_url("https://trs.example").get_tool("x") == {"id": "x"}
+    assert redirect_target.call_count == 1
+
+
+@responses.activate
+@pytest.mark.usefixtures("fake_public_dns")
+def test_server_from_url_follows_allowlisted_redirect():
+    responses.get(
+        "https://trs.example/ga4gh/trs/v2/tools/x", status=302, headers={"Location": "http://127.0.0.1/tools/x"}
+    )
+    redirect_target = responses.get("http://127.0.0.1/tools/x", json={"id": "x"})
+    proxy = TrsProxy(GalaxyAppConfiguration(fetch_url_allowlist="127.0.0.1", override_tempdir=False))
+    assert proxy.server_from_url("https://trs.example").get_tool("x") == {"id": "x"}
+    assert redirect_target.call_count == 1
+
+
+@responses.activate
+def test_configured_server_follows_redirect_unchecked():
+    responses.get(
+        "https://dockstore.org/api/ga4gh/trs/v2/tools/x", status=302, headers={"Location": "http://127.0.0.1/tools/x"}
+    )
+    redirect_target = responses.get("http://127.0.0.1/tools/x", json={"id": "x"})
+    assert get_trs_proxy().get_server("dockstore").get_tool("x") == {"id": "x"}
+    assert redirect_target.call_count == 1
 
 
 @skip_if_workflowhub_down
