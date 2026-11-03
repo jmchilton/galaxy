@@ -205,6 +205,68 @@ describe("layoutEmbeddedOutputs", () => {
         expect(movedSteps(nodes, result)).toEqual([]);
     });
 
+    describe("a step that grew", () => {
+        /** A step shown larger than the 200×100 it has in the author's layout */
+        function grown(id: number, x: number, y: number, width: number, height: number): LayoutNode {
+            return { ...node(id, x, y, width, height), grewFrom: { width: 200, height: 100 } };
+        }
+
+        it("pushes the next step in its row along, leaving steps outside its rows alone", () => {
+            const nodes = [grown(0, 0, 0, 400, 300), node(1, 250, 0), node(2, 250, 400)];
+            const result = expectNudged(nodes, []);
+            expect(result.nodes[1]).toMatchObject({ x: 400 + GAP, y: 0 });
+            expect(overlaps(result.nodes[0]!, result.nodes[1]!)).toBe(false);
+            expect(result.nodes[2]).toMatchObject({ x: 250, y: 400 });
+        });
+
+        it("keeps the spacing the author left tighter than the gap", () => {
+            const nodes = [grown(0, 0, 0, 400, 100), node(1, 210, 0)];
+            const result = expectNudged(nodes, []);
+            expect(result.nodes[1]!.x).toBe(400 + 10);
+        });
+
+        it("pushes a step it grew down into past it, by the full gap", () => {
+            // the steps shared no rows in the author's layout, and start at the same x
+            const nodes = [grown(0, 0, 0, 300, 250), node(1, 0, 200)];
+            const result = expectNudged(nodes, []);
+            expect(result.nodes[1]).toMatchObject({ x: 300 + GAP, y: 200 });
+        });
+
+        it("carries along a step its edge flowed to in the author's layout", () => {
+            // step 1 grew past the start of the step it feeds, in another row; step 0's card pushes step 1
+            const nodes = [node(0, 0, 0), grown(1, 300, 0, 400, 300), node(2, 550, 400)];
+            const result = expectNudged(nodes, [card(0)], [{ from: 1, to: 2 }]);
+            expect(result.nodes[1]!.x).toBe(220 + 400 + GAP);
+            expect(result.nodes[2]!.x - result.nodes[1]!.x).toBe(550 - 300);
+        });
+
+        it.each([
+            [0, 55],
+            [3, 55],
+            [5, 55],
+            [0, 45],
+            [3, 45],
+        ])(
+            "doesn't overlap a step placed %ipx below its shrunk size, given a base height of %i (exact or under)",
+            (below, baseHeight) => {
+                // a 144×55 step grew to 260×171; the next step started just below it, at the same x
+                const nodes = [
+                    { ...node(0, 0, 0, 260, 171), grewFrom: { width: 144, height: baseHeight } },
+                    node(1, 0, 55 + below, 144, 55),
+                ];
+                const result = expectNudged(nodes, []);
+                expect(result.nodes[1]!.x).toBe(260 + GAP);
+            },
+        );
+
+        it("keeps its own embedded nodes beside its grown edge", () => {
+            const nodes = [grown(0, 0, 0, 300, 200), node(1, 250, 0)];
+            const result = expectNudged(nodes, [card(0)]);
+            expect(result.embedded["0"]).toMatchObject({ x: 300 + GAP, y: 0 });
+            expect(result.nodes[1]!.x).toBe(300 + GAP + 400 + GAP);
+        });
+    });
+
     it("ignores outputs whose source step is missing", () => {
         const result = layoutEmbeddedOutputs([node(0, 0, 0)], [card(7)]);
         expect(result.embedded).toEqual({});

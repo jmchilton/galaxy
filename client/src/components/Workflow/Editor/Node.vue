@@ -139,7 +139,15 @@
                 :readonly="readonly"
                 @onChange="onChange" />
             <div v-if="!isInvocation && showRule" class="rule" />
-            <NodeInvocationText v-if="isInvocation || isPopulatedInput" :invocation-step="invocationStep" />
+            <!-- in place of the step's state: the step is drawn as its preferred output -->
+            <InvocationOutputSnapshot
+                v-if="preferredItem"
+                class="node-preferred-output"
+                :class="{ 'node-preferred-output-collection': preferredItem.src === 'hdca' }"
+                data-description="invocation step preferred output"
+                :item="preferredItem"
+                :step="invocationStep" />
+            <NodeInvocationText v-else-if="isInvocation || isPopulatedInput" :invocation-step="invocationStep" />
             <NodeOutput
                 v-for="(output, index) in outputs"
                 :key="`out-${index}-${output.name}`"
@@ -170,12 +178,13 @@ import { faCodeBranch, faKey } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import type { UseElementBoundingReturn, UseScrollReturn, VueInstance } from "@vueuse/core";
 import type { PropType, Ref } from "vue";
-import { computed, reactive, ref } from "vue";
+import { computed, inject, reactive, ref } from "vue";
 
 import { getGalaxyInstance } from "@/app";
 import { DatatypesMapperModel } from "@/components/Datatypes/model";
 import { useNodePosition } from "@/components/Workflow/Editor/composables/useNodePosition";
 import WorkflowIcons from "@/components/Workflow/icons";
+import { PREFERRED_OUTPUT_ITEMS } from "@/components/Workflow/Invocation/Graph/usePreferredOutputItems";
 import type { GraphStep } from "@/composables/useInvocationGraph";
 import { useWorkflowStores } from "@/composables/workflowStores";
 import type { TerminalPosition, XYPosition } from "@/stores/workflowEditorStateStore";
@@ -202,6 +211,7 @@ import NodeInput from "@/components/Workflow/Editor/NodeInput.vue";
 import NodeInvocationText from "@/components/Workflow/Editor/NodeInvocationText.vue";
 import NodeOutput from "@/components/Workflow/Editor/NodeOutput.vue";
 import Recommendations from "@/components/Workflow/Editor/Recommendations.vue";
+import InvocationOutputSnapshot from "@/components/Workflow/Invocation/Graph/InvocationOutputSnapshot.vue";
 import InvocationStepOutputsPopover from "@/components/Workflow/Invocation/Graph/InvocationStepOutputsPopover.vue";
 
 const props = defineProps({
@@ -282,6 +292,7 @@ const isPopulatedInput = computed(
 
 const classes = computed(() => {
     return {
+        "node-preferred-output-host": !!preferredItem.value,
         "node-on-scroll-to": scrolledTo.value,
         "node-highlight": props.highlight || isActive.value,
         "is-active": isActive.value,
@@ -352,6 +363,11 @@ const invalidOutputs = computed(() => {
 });
 
 const invocationStep = computed(() => props.step as GraphStep);
+
+// the invocation graph decides which steps are shown as their preferred output, and lays them out to match
+const preferredOutputItems = inject(PREFERRED_OUTPUT_ITEMS, undefined);
+const preferredItem = computed(() => (props.isInvocation ? preferredOutputItems?.value[props.id] : undefined));
+
 const outputs = computed(() => {
     return [...props.step.outputs, ...invalidOutputs.value];
 });
@@ -465,6 +481,15 @@ function toggleSelected() {
 
 <style scoped lang="scss">
 @import "@/style/scss/theme/blue.scss";
+
+// sized like the body of an embedded output card (260×170, collections 260×120)
+.node-preferred-output {
+    height: 8.5rem;
+
+    &.node-preferred-output-collection {
+        height: 5.25rem;
+    }
+}
 
 .workflow-node {
     --dblclick: prevent;

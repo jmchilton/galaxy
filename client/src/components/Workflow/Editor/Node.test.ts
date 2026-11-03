@@ -8,6 +8,10 @@ import { describe, expect, it, vi } from "vitest";
 import { ref } from "vue";
 
 import { testDatatypesMapper } from "@/components/Datatypes/test_fixtures";
+import {
+    PREFERRED_OUTPUT_ITEMS,
+    type PreferredOutputItems,
+} from "@/components/Workflow/Invocation/Graph/usePreferredOutputItems";
 import { useConnectionStore } from "@/stores/workflowConnectionStore";
 import { useWorkflowNodeInspectorStore } from "@/stores/workflowNodeInspectorStore";
 import type { Connection } from "@/stores/workflowStoreTypes";
@@ -16,8 +20,10 @@ import { mockOffset } from "./test_fixtures";
 
 import Node from "./Node.vue";
 import NodeInput from "./NodeInput.vue";
+import NodeInvocationText from "./NodeInvocationText.vue";
 import NodeOutput from "./NodeOutput.vue";
 import GPopover from "@/components/BaseComponents/GPopover.vue";
+import InvocationOutputSnapshot from "@/components/Workflow/Invocation/Graph/InvocationOutputSnapshot.vue";
 
 const galaxyConfig = vi.hoisted(() => ({ enable_tool_recommendations: false }));
 
@@ -60,7 +66,12 @@ const MISSING_TOOL_CONNECTIONS: Connection[] = [
     },
 ];
 
-function mountNode(mounter: typeof shallowMount = shallowMount, propsData = {}, connections: Connection[] = []) {
+function mountNode(
+    mounter: typeof shallowMount = shallowMount,
+    propsData = {},
+    connections: Connection[] = [],
+    provide: Record<string | symbol, unknown> = {},
+) {
     const testingPinia = createTestingPinia({ createSpy: vi.fn });
     setActivePinia(testingPinia);
     useConnectionStore("mock-workflow").$patch({ stepToConnections: { 0: connections } });
@@ -79,7 +90,7 @@ function mountNode(mounter: typeof shallowMount = shallowMount, propsData = {}, 
         },
         global: {
             ...localVue,
-            provide: { workflowId: "mock-workflow", transform: ref(zoomIdentity), isDragging: ref(false) },
+            provide: { workflowId: "mock-workflow", transform: ref(zoomIdentity), isDragging: ref(false), ...provide },
         },
         pinia: testingPinia,
     });
@@ -200,6 +211,50 @@ describe("Node", () => {
             await clickNode(wrapper);
 
             expect(inspectorStore.setMaximized).not.toHaveBeenCalled();
+        });
+    });
+
+    describe("in an invocation graph, a step with a preferred output", () => {
+        const INVOCATION_STEP = {
+            ...TOOL_STEP,
+            state: "ok",
+            outputs: [
+                { name: "out_file1", extensions: ["tabular"] },
+                { name: "list", extensions: ["input"], collection: true },
+            ],
+            preferred_output: "out_file1",
+        };
+
+        /** Mount the step as the invocation graph does, which decides the steps shown as their preferred output */
+        function mountInvocationNode(shown: PreferredOutputItems, propsData: object = {}) {
+            return mountNode(
+                shallowMount,
+                { step: INVOCATION_STEP, isInvocation: true, readonly: true, ...propsData },
+                [],
+                {
+                    [PREFERRED_OUTPUT_ITEMS]: ref(shown),
+                },
+            ).wrapper;
+        }
+
+        it("is shown as that output in place of its state, while the graph shows it so", async () => {
+            const wrapper = mountInvocationNode({ 0: { src: "hdca", id: "c1" } });
+            await flushPromises();
+            expect(wrapper.findComponent(InvocationOutputSnapshot).props("item")).toEqual({ src: "hdca", id: "c1" });
+            expect(wrapper.findComponent(NodeInvocationText).exists()).toBe(false);
+        });
+
+        it("is shown as usual while the graph doesn't show it so", async () => {
+            const wrapper = mountInvocationNode({ 1: { src: "hda", id: "d1" } });
+            await flushPromises();
+            expect(wrapper.findComponent(InvocationOutputSnapshot).exists()).toBe(false);
+            expect(wrapper.findComponent(NodeInvocationText).exists()).toBe(true);
+        });
+
+        it("is shown as usual when drawn as a workflow step", async () => {
+            const wrapper = mountInvocationNode({ 0: { src: "hda", id: "d1" } }, { isInvocation: false });
+            await flushPromises();
+            expect(wrapper.findComponent(InvocationOutputSnapshot).exists()).toBe(false);
         });
     });
 });

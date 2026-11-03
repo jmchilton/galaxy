@@ -221,4 +221,81 @@ describe("useEmbeddedOutputs", () => {
         await settle();
         expect(embedded.value.map((output) => output.label)).toEqual(["summary", "lines", "not yet"]);
     });
+
+    describe("steps shown as their preferred output", () => {
+        const output = (name: string) => ({ name, extensions: ["input"], optional: false });
+
+        /** Step 3 names its table, which the invocation lists, as its preferred output */
+        function buildPreferredSteps(preferred: Partial<GraphStep> = {}) {
+            const steps = buildSteps();
+            steps[3] = {
+                ...steps[3]!,
+                outputs: [output("out_file1")],
+                outputItems: { out_file1: { src: "hda", id: "d3" } },
+                invocationStepId: "is3",
+                preferred_output: "out_file1",
+                ...preferred,
+            } as GraphStep;
+            return steps;
+        }
+
+        it.each([
+            ["no card of its own, when its step is shown as it", "tool", ["summary"]],
+            ["its card, when its step can't be shown as it", "subworkflow", ["summary", "lines"]],
+        ])("gives a step's preferred output %s", async (_name, type, labels) => {
+            const steps = buildSteps();
+            steps[1] = { ...steps[1]!, type, outputs: [output("list")], preferred_output: "list" } as GraphStep;
+            const { enabled, embedded } = setup(steps);
+            enabled.value = true;
+            await settle();
+            expect(embedded.value.map((output) => output.label)).toEqual(labels);
+        });
+
+        it("can be embedded once such a step is scheduled, even with no workflow output to show", () => {
+            const steps = buildPreferredSteps({ invocationStepId: undefined, outputItems: undefined });
+            delete steps[0]!.outputItems;
+            delete steps[1]!.outputItems;
+            const { hasEmbeddableOutputs, steps: stepsRef } = setup(steps);
+            expect(hasEmbeddableOutputs.value).toBe(false);
+
+            stepsRef.value[3]!.invocationStepId = "is3";
+            expect(hasEmbeddableOutputs.value).toBe(true);
+        });
+
+        it("can't be embedded for a preferred output that isn't one of the step's outputs", () => {
+            const steps = buildPreferredSteps({ preferred_output: "gone" });
+            delete steps[0]!.outputItems;
+            delete steps[1]!.outputItems;
+            const { hasEmbeddableOutputs } = setup(steps);
+            expect(hasEmbeddableOutputs.value).toBe(false);
+        });
+
+        it("moves nothing when a step shown as its preferred output finishes", async () => {
+            const { enabled, steps } = setup(buildPreferredSteps({ state: "running" }));
+            enabled.value = true;
+            await settle();
+            const positions = Object.values(steps.value).map((step) => ({ ...step.position }));
+            vi.mocked(layoutEmbeddedOutputs).mockClear();
+
+            // the job finishes: the preview fills in, but the step keeps its size and its output item
+            steps.value[3]!.state = "ok";
+            await settle();
+            expect(layoutEmbeddedOutputs).not.toHaveBeenCalled();
+            expect(Object.values(steps.value).map((step) => step.position)).toEqual(positions);
+        });
+
+        it("gives the layout the size a step grew from, only while it's shown as its preferred output", async () => {
+            // step 6 names an output that doesn't exist yet, so it isn't shown as it
+            const steps = buildPreferredSteps();
+            steps[6] = graphStep(6, 0, 1200, { outputs: [output("out_file1")], preferred_output: "out_file1" });
+            const { enabled } = setup(steps);
+            enabled.value = true;
+            await settle();
+
+            const nodes = vi.mocked(layoutEmbeddedOutputs).mock.lastCall![0];
+            // a one-line shrunk step's size, at the 16px root font size: never larger than the step really was
+            expect(nodes.find((node) => node.id === 3)!.grewFrom).toEqual({ width: STEP_WIDTH, height: STEP_HEIGHT });
+            expect(nodes.find((node) => node.id === 6)!.grewFrom).toBeUndefined();
+        });
+    });
 });

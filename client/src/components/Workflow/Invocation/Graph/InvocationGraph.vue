@@ -12,7 +12,7 @@ import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { until, watchDebounced } from "@vueuse/core";
 import { BCard, BCardBody, BCardHeader } from "bootstrap-vue";
 import { storeToRefs } from "pinia";
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, provide, ref, watch } from "vue";
 
 import type { StepJobSummary, WorkflowInvocationElementView } from "@/api/invocations";
 import type { StoredWorkflowDetailed } from "@/api/workflows";
@@ -22,7 +22,8 @@ import { useUid } from "@/composables/utils/uid";
 import { useWorkflowStateStore } from "@/stores/workflowEditorStateStore";
 import type { Rectangle } from "@/utils/geometry";
 
-import { useEmbeddedOutputs } from "./useEmbeddedOutputs";
+import { EMBEDDED_OUTPUT_WIDTH, EMBEDDED_STEP_WIDTH_REM, useEmbeddedOutputs } from "./useEmbeddedOutputs";
+import { PREFERRED_OUTPUT_ITEMS } from "./usePreferredOutputItems";
 
 import GAlert from "@/components/BaseComponents/GAlert.vue";
 import GButton from "@/components/BaseComponents/GButton.vue";
@@ -125,7 +126,14 @@ watch(
 const stateStore = useWorkflowStateStore(storeId.value);
 
 const embedOutputs = ref(false);
-const { embedded, hasEmbeddableOutputs } = useEmbeddedOutputs(storeId.value, steps, embedOutputs);
+const { embedded, hasEmbeddableOutputs, preferredItems } = useEmbeddedOutputs(storeId.value, steps, embedOutputs, () =>
+    detailedViewEnabled.value ? stateStore.activeNodeId : null,
+);
+// while outputs are embedded, steps that name a preferred output are shown as that output
+provide(PREFERRED_OUTPUT_ITEMS, preferredItems);
+// the step widths the layout assumes while outputs are embedded, for the styles below
+const embeddedStepWidth = `${EMBEDDED_STEP_WIDTH_REM}rem`;
+const preferredOutputStepWidth = `${EMBEDDED_OUTPUT_WIDTH}px`;
 
 // refit once the layout has settled after toggling, so the embedded outputs are in view
 const fitPending = ref(false);
@@ -422,8 +430,13 @@ function toggleDetailedView() {
 
 .invocation-graph {
     &.embed-outputs:deep(.workflow-node) {
-        width: 9rem;
+        width: v-bind(embeddedStepWidth);
         font-size: 0.75rem;
+    }
+
+    // as wide as an embedded output card
+    &.embed-outputs:deep(.workflow-node.node-preferred-output-host) {
+        width: v-bind(preferredOutputStepWidth);
     }
 
     &:deep(.workflow-overview),

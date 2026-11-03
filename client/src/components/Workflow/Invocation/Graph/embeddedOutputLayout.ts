@@ -2,8 +2,9 @@
  * Makes room for embedded output nodes without re-laying out the workflow.
  *
  * Each embedded node is pinned to the right of its source step (several outputs of one step stack
- * downwards), and steps are pushed right just enough to clear them. Steps never move vertically
- * and never move left, so the arrangement users remember is kept; only horizontal space is added.
+ * downwards), and steps are pushed right just enough to clear them, and any step that grew (a step
+ * shown as its preferred output). Steps never move vertically and never move left, so the
+ * arrangement users remember is kept; only horizontal space is added.
  */
 import type { Rectangle } from "@/utils/geometry";
 
@@ -12,6 +13,9 @@ export const EMBEDDED_LAYOUT_GAP = 20;
 
 export interface LayoutNode extends Rectangle {
     id: number;
+    /** The size the node grew from, when it is shown larger than in the author's layout (a step shown as its
+     * preferred output); tells the overlaps and spacing the author made from those the growth made */
+    grewFrom?: { width: number; height: number };
 }
 
 export interface EmbeddedNodeRequest {
@@ -52,6 +56,16 @@ function rowsOf(step: LayoutNode): Rows {
     return { top: step.y, bottom: step.y + step.height };
 }
 
+/** The rows a step had before it grew */
+function baseRowsOf(step: LayoutNode): Rows {
+    return { top: step.y, bottom: step.y + (step.grewFrom ?? step).height };
+}
+
+/** The width a step had before it grew */
+function baseWidthOf(step: LayoutNode) {
+    return (step.grewFrom ?? step).width;
+}
+
 /** The rows of a source's embedded nodes */
 function stackRowsOf(source: LayoutNode, stack: Stack): Rows {
     return { top: source.y, bottom: source.y + stack.height };
@@ -84,8 +98,11 @@ export function layoutEmbeddedOutputs(
         let offset = -Infinity;
         if (rowsOverlap(rowsOf(earlier), rowsOf(later))) {
             // steps sharing a row keep their order, at least the gap apart unless the author placed them closer
-            // (overlaps the author made stay as they are)
-            offset = earlier.width + Math.min(later.x - earlier.x - earlier.width, gap);
+            // (overlaps the author made stay as they are); a step that grew into a row it wasn't in keeps the gap
+            const authorSpacing = rowsOverlap(baseRowsOf(earlier), baseRowsOf(later))
+                ? later.x - earlier.x - baseWidthOf(earlier)
+                : gap;
+            offset = earlier.width + Math.min(authorSpacing, gap);
         } else if (laterStack && rowsOverlap(rowsOf(earlier), stackRowsOf(later, laterStack), gap)) {
             // a source's embedded nodes stay clear of a step to their left in another row
             offset = earlier.width - later.width;
@@ -105,12 +122,13 @@ export function layoutEmbeddedOutputs(
         return offset;
     }
 
-    // edges that flow left to right keep their length, so a pushed step carries its downstream steps
+    // edges that flow left to right in the author's layout keep their length, so a pushed step carries its
+    // downstream steps
     const upstream = new Map<number, LayoutNode[]>();
     for (const edge of edges) {
         const from = nodesById.get(edge.from);
         const to = nodesById.get(edge.to);
-        if (from && to && from.x + from.width <= to.x) {
+        if (from && to && from.x + baseWidthOf(from) <= to.x) {
             upstream.set(to.id, [...(upstream.get(to.id) ?? []), from]);
         }
     }
