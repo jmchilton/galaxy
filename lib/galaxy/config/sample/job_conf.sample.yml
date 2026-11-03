@@ -795,12 +795,14 @@ execution:
     # exited 0, e.g. because the killed process was not the last in a pipeline. The job
     # script compares its memory cgroup's oom_kill counter (cgroup v2 memory.events,
     # v1 memory.oom_control, which has the counter from Linux 4.13) before and after the
-    # tool runs; Singularity/Apptainer containers stay in that cgroup. Only enable this where the
-    # resource manager gives each job its own cgroup (e.g. Slurm with the cgroup task
-    # plugin); kills elsewhere in a shared cgroup would be blamed on the job. Docker
-    # containers run in the Docker daemon's cgroup, so their kills are not seen. Pulsar
-    # destinations pass the same parameter to Pulsar servers that support it. Slurm's own
-    # "Detected N oom-kill event(s)" message on the job's stderr is recognized without this.
+    # tool runs; Singularity/Apptainer containers normally stay in that cgroup. Only enable
+    # this where the resource manager gives each job its own cgroup (e.g. Slurm with the
+    # cgroup task plugin); kills elsewhere in a shared cgroup would be blamed on the job.
+    # Docker containers get their own cgroup outside the job's, so their kills are not seen.
+    # Pulsar renders its own job script: on Pulsar destinations this needs a Pulsar server
+    # and pulsar-galaxy-lib that support check_cgroup_oom_kills, and is ignored otherwise.
+    # Slurm's own "Detected N oom-kill event(s)" message on the job's stderr is recognized
+    # without this.
     oom_checked_cluster:
       runner: drmaa
       check_cgroup_oom_kills: true
