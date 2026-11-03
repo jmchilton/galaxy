@@ -1333,21 +1333,7 @@ class WorkflowContentsManager(UsesAnnotations):
             assert step.module is not None
             step_model = None
             if step.type == "tool":
-                incoming: dict[str, Any] = {}
-                tool_id = step.effective_tool_id
-                tool = trans.app.toolbox.get_tool(
-                    tool_id, tool_version=step.tool_version, tool_uuid=step.tool_uuid, user=trans.user
-                )
-                if not tool:
-                    raise exceptions.MessageException(
-                        f"Following tool missing or inaccessible: '{tool_id}/{step.tool_uuid}'"
-                    )
-                tool = trans.app.toolbox.materialize_tool(tool, reason="validation")
-                assert step.state is not None
-                params_to_incoming(incoming, tool.inputs, step.state.inputs, trans.app)
-                step_model = tool.to_json(
-                    trans, incoming, workflow_building_mode=workflow_building_modes.USE_HISTORY, history=history
-                )
+                step_model = self._tool_step_run_model(trans, step, history)
                 step_model["post_job_actions"] = [
                     {
                         "short_str": ActionBox.get_short_str(pja),
@@ -1590,6 +1576,23 @@ class WorkflowContentsManager(UsesAnnotations):
             "name": workflow.name,
             "steps": step_dicts,
         }
+
+    def _tool_step_run_model(
+        self, trans: ProvidesHistoryContext, step: model.WorkflowStep, history: History | None
+    ) -> dict[str, Any]:
+        incoming: dict[str, Any] = {}
+        tool_id = step.effective_tool_id
+        tool = trans.app.toolbox.get_tool(
+            tool_id, tool_version=step.tool_version, tool_uuid=step.tool_uuid, user=trans.user
+        )
+        if not tool:
+            raise exceptions.MessageException(f"Following tool missing or inaccessible: '{tool_id}/{step.tool_uuid}'")
+        tool = trans.app.toolbox.materialize_tool(tool, reason="validation")
+        assert step.state is not None
+        params_to_incoming(incoming, tool.inputs, step.state.inputs, trans.app)
+        return tool.to_json(
+            trans, incoming, workflow_building_mode=workflow_building_modes.USE_HISTORY, history=history
+        )
 
     def _workflow_resource_parameters(self, trans: ProvidesUserContext, stored, workflow):
         """Get workflow scheduling resource parameters for this user and workflow or None if not configured."""
