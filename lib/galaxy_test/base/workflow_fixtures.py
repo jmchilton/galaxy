@@ -1303,10 +1303,13 @@ WORKFLOW_WITH_DATA_TAG_FILTER = r"""{
 WORKFLOW_STEP_PARAMETER_OVERRIDES = """
 class: GalaxyWorkflow
 inputs:
-  table: data
+  table:
+    type: data
+    position: {left: 0, top: 0}
   threshold_param:
     type: float
     default: 0.5
+    position: {left: 0, top: 200}
 outputs:
   echo:
     outputSource: echo/out_file1
@@ -1315,6 +1318,7 @@ outputs:
 steps:
   echo:
     tool_id: echo_step_parameters
+    position: {left: 300, top: 0}
     in:
       input1: table
     state:
@@ -1332,6 +1336,7 @@ steps:
         min: 1
   echo_connected:
     tool_id: echo_step_parameters
+    position: {left: 300, top: 300}
     in:
       input1: table
       threshold: threshold_param
@@ -1342,12 +1347,15 @@ steps:
 WORKFLOW_STEP_PARAMETER_OVERRIDES_NESTED = """
 class: GalaxyWorkflow
 inputs:
-  table: data
+  table:
+    type: data
+    position: {left: 0, top: 0}
 outputs:
   echo:
     outputSource: nested/echo
 steps:
   nested:
+    position: {left: 300, top: 0}
     in:
       table: table
     run:

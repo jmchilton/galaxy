@@ -1976,7 +1976,9 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
         # Wait for the form to load first - both forms have the run_workflow button
         workflow_run.run_workflow.wait_for_visible()
         if workflow_run.expanded_form.is_absent:
-            workflow_run.runtime_setting_button.wait_for_and_click()
+            # The runtime settings panel stays open across page loads once opened - clicking again would close it.
+            if workflow_run.expand_form_link.is_absent:
+                workflow_run.runtime_setting_button.wait_for_and_click()
             expand_link = workflow_run.expand_form_link.wait_for_clickable()
             # A plain click doesn't work reliably on GButton components due to
             # an internal tooltip element - move to the element first.

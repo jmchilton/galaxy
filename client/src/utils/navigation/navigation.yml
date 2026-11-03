@@ -1021,6 +1021,36 @@ workflow_run:
         select_collection: '[data-description="selection collection card"]'
         collection_selection: .selection-dialog-modal tr[data-pk="${id}"]
 
+  step_parameters:
+    selectors:
+      _: '[data-description="workflow run step parameters"]'
+      choose: '[data-description="choose step parameters"]'
+      card: '[data-description="step parameter card"][data-parameter-key="${key}"]'
+      card_input: '[data-description="step parameter card"][data-parameter-key="${key}"] .ui-input'
+      card_error: '[data-description="step parameter card"][data-parameter-key="${key}"] .ui-form-error-text'
+      card_remove: '[data-description="step parameter card"][data-parameter-key="${key}"] [data-description="remove step parameter"]'
+      dropped_parameter: '[data-description="dropped step parameter"][data-parameter-key="${key}"]'
+      link_error: '[data-description="step parameter link error"]'
+      open_workflow_view: '[data-description="choose step parameters in workflow view"]'
+      picker: '[data-description="step parameter picker"]'
+      picker_filter: '[data-description="step parameter filter"]'
+      # A row is a parameter, or a conditional keyed by its path (e.g. 2/cond); the list and workflow panel share them.
+      picker_row: '[data-description="step parameter list"] [data-description="step parameter row"][data-parameter-key="${key}"]'
+      picker_parameter: '[data-description="step parameter list"] [data-description="step parameter row"][data-parameter-key="${key}"] input[type="checkbox"]'
+      picker_help: '[data-description="step parameter list"] [data-description="step parameter row"][data-parameter-key="${key}"] [data-description="step parameter help"]'
+      picker_lock: '[data-description="step parameter list"] [data-description="step parameter row"][data-parameter-key="${key}"] [data-description="step parameter locked"]'
+      picker_apply: '[data-description="step parameter picker"] .g-modal-confirm-buttons button:last-child'
+      picker_cancel: '[data-description="step parameter picker"] .g-modal-confirm-buttons button:first-child'
+      help_popover: '[data-description="step parameter help text"][data-parameter-key="${key}"]'
+      lock_tooltip: '[data-description="step parameter row"][data-parameter-key="${key}"] [data-description="step parameter lock tooltip"][data-show="true"]'
+      picker_workflow_view: '[data-description="step parameter picker workflow view"]'
+      picker_list_view: '[data-description="step parameter picker list view"]'
+      workflow_node: '[data-description="step parameter workflow view"] #wf-node-step-${order_index}'
+      workflow_node_title: '[data-description="step parameter workflow view"] #wf-node-step-${order_index} .node-title'
+      workflow_panel: '[data-description="step parameter workflow panel"]'
+      workflow_panel_parameter: '[data-description="step parameter workflow panel"] [data-description="step parameter row"][data-parameter-key="${key}"] input[type="checkbox"]'
+      workflow_step_select: '[data-description="step parameter workflow step select"]'
+
   form_element:
     selectors:
       _: 'div.workflow-run-element[id="form-element-${index}"]'
@@ -1045,6 +1075,8 @@ workflow_run:
     job_reuse_checkbox: '.workflow-expanded-form [data-label="Attempt to re-use jobs with identical parameters?"] input[type="checkbox"]'
     simple_form_link: '.workflow-simple-form-link'
     simple_form_disabled_reason: '[data-description="workflow run simple form disabled reason"]'
+    linked_step_parameters: '[data-description="workflow run linked step parameters"]'
+    linked_step_parameter: '[data-description="workflow run linked step parameter"][data-parameter-key="${key}"]'
     current_history_indicator: '[data-description="current history indicator"]'
     not_current_history_indicator: '[data-description="not current history indicator"]'
     history_target_link: '[data-description="switch to history link"]'
@@ -1306,6 +1338,7 @@ invocations:
     input_details_name: '[data-label="${label}"] .name'
     step_title: '[data-step="${order_index}"] .step-title'
     step_details: '[data-step="${order_index}"] .portlet-operations'
+    rerun_with_this_changed: '[data-description="rerun with this changed"][data-parameter-path="${path}"]'
     step_outputs_tab_link: '.invocation-step-outputs-tab > a.nav-link'
     step_output_collection: '[data-step="${order_index}"] .invocation-step-output-collection-details'
     step_output_collection_toggle: '[data-step="${order_index}"] .invocation-step-output-collection-details .content-title'
