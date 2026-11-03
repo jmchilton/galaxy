@@ -4784,10 +4784,11 @@ outer_input:
         )
         self._assert_status_code_is(response, 400)
         assert_error_message_contains(response, "Error computing workflow step runtime state")
-        # The inner step's errors are keyed by its own index - the same as the subworkflow step's here.
+        # The inner step's errors are nested under the subworkflow step's index.
         err_data = response.json()["err_data"]
         assert list(err_data) == ["1"], err_data
-        assert list(err_data["1"]) == ["num_lines"], err_data
+        assert list(err_data["1"]) == ["1"], err_data
+        assert list(err_data["1"]["1"]) == ["num_lines"], err_data
 
     @skip_without_tool("cat")
     def test_run_subworkflow_replacement_parameters(self):

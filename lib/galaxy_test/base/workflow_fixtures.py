@@ -1300,6 +1300,121 @@ WORKFLOW_WITH_DATA_TAG_FILTER = r"""{
     "version": 3
 }"""
 
+WORKFLOW_STEP_PARAMETER_OVERRIDES = """
+class: GalaxyWorkflow
+inputs:
+  table: data
+  threshold_param:
+    type: float
+    default: 0.5
+outputs:
+  echo:
+    outputSource: echo/out_file1
+  echo_connected:
+    outputSource: echo_connected/out_file1
+steps:
+  echo:
+    tool_id: echo_step_parameters
+    in:
+      input1: table
+    state:
+      threshold: 0.5
+      mode: fast
+      flag: false
+      column: "1"
+      advanced:
+        label: run
+      queries:
+        - column_name: c1
+        - column_name: c2
+      cond:
+        filter_type: min
+        min: 1
+  echo_connected:
+    tool_id: echo_step_parameters
+    in:
+      input1: table
+      threshold: threshold_param
+    state:
+      column: "1"
+"""
+
+WORKFLOW_STEP_PARAMETER_OVERRIDES_NESTED = """
+class: GalaxyWorkflow
+inputs:
+  table: data
+outputs:
+  echo:
+    outputSource: nested/echo
+steps:
+  nested:
+    in:
+      table: table
+    run:
+      class: GalaxyWorkflow
+      inputs:
+        table: data
+      outputs:
+        echo:
+          outputSource: echo/out_file1
+      steps:
+        echo:
+          tool_id: echo_step_parameters
+          in:
+            input1: table
+          state:
+            threshold: 0.5
+            column: "1"
+            queries:
+              - column_name: c1
+              - column_name: c2
+            cond:
+              filter_type: min
+              min: 1
+"""
+
+WORKFLOW_STEP_PARAMETER_OVERRIDES_DOUBLY_NESTED = """
+class: GalaxyWorkflow
+inputs:
+  table: data
+outputs:
+  echo:
+    outputSource: outer_nested/echo
+steps:
+  outer_nested:
+    in:
+      table: table
+    run:
+      class: GalaxyWorkflow
+      inputs:
+        table: data
+      outputs:
+        echo:
+          outputSource: nested/echo
+      steps:
+        nested:
+          in:
+            table: table
+          run:
+            class: GalaxyWorkflow
+            inputs:
+              table: data
+            outputs:
+              echo:
+                outputSource: echo/out_file1
+            steps:
+              echo:
+                tool_id: echo_step_parameters
+                in:
+                  input1: table
+                state:
+                  threshold: 0.5
+                  column: "1"
+                  cond:
+                    filter_type: min
+                    min: 1
+"""
+
 WORKFLOW_KEEP_SUCCESSFUL_DATASETS = """
 class: GalaxyWorkflow
 inputs:
