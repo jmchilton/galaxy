@@ -1,7 +1,6 @@
 import io
 import ipaddress
 import os
-import urllib
 from typing import Any
 from unittest import mock
 
@@ -13,6 +12,7 @@ from ._util import (
     assert_realizes_as,
     assert_realizes_contains,
     configured_file_sources,
+    patch_http_open,
     user_context_fixture,
 )
 
@@ -32,7 +32,7 @@ def test_file_source_http_specific():
         response.geturl = lambda: test_url
         return response
 
-    with mock.patch.object(urllib.request, "urlopen", new=check_specific_header):
+    with patch_http_open(check_specific_header):
         user_context = user_context_fixture()
         file_sources = configured_file_sources(FILE_SOURCES_CONF)
         file_source_pair = file_sources.get_file_source_path(test_url)
@@ -54,7 +54,7 @@ def test_file_source_another_http_specific():
         response.headers = {}
         return response
 
-    with mock.patch.object(urllib.request, "urlopen", new=check_another_header):
+    with patch_http_open(check_another_header):
         user_context = user_context_fixture()
         file_sources = configured_file_sources(FILE_SOURCES_CONF)
         file_source_pair = file_sources.get_file_source_path(test_url)
@@ -76,7 +76,7 @@ def test_file_source_http_generic():
         response.geturl = lambda: test_url
         return response
 
-    with mock.patch.object(urllib.request, "urlopen", new=check_generic_headers):
+    with patch_http_open(check_generic_headers):
         user_context = user_context_fixture()
         file_sources = configured_file_sources(FILE_SOURCES_CONF)
         file_source_pair = file_sources.get_file_source_path(test_url)
@@ -108,7 +108,7 @@ def test_file_source_http_leaves_reused_fd_open(tmp_path):
     file_sources = configured_file_sources(FILE_SOURCES_CONF)
     file_source_pair = file_sources.get_file_source_path(test_url)
     with (
-        mock.patch.object(urllib.request, "urlopen", new=generic_response),
+        patch_http_open(generic_response),
         mock.patch.object(os, "close", new=close_and_reuse_fd),
     ):
         file_source_pair.file_source.realize_to(file_source_pair.path, str(target), user_context=user_context_fixture())
@@ -135,7 +135,7 @@ def test_file_source_ftp_url():
         response.geturl = lambda: test_url
         return response
 
-    with mock.patch.object(urllib.request, "urlopen", new=check_generic_headers):
+    with patch_http_open(check_generic_headers):
         user_context = user_context_fixture()
         file_sources = configured_file_sources(FILE_SOURCES_CONF)
         file_source_pair = file_sources.get_file_source_path(test_url)
@@ -180,7 +180,7 @@ def test_file_source_http_without_stock_specific():
         response.geturl = lambda: test_url
         return response
 
-    with mock.patch.object(urllib.request, "urlopen", new=check_specific_header):
+    with patch_http_open(check_specific_header):
         user_context = user_context_fixture()
         file_sources = configured_file_sources(FILE_SOURCES_CONF_WITHOUT_STOCK)
         file_source_pair = file_sources.get_file_source_path(test_url)
