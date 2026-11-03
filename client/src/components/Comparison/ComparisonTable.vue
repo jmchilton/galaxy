@@ -389,6 +389,9 @@ const tableKey = computed(() => `${props.transpose}:${props.table.rows.map((row)
     }
     :deep(.g-table-details-row td) {
         white-space: normal;
+    }
+    // Only the detail's own cell: nested tables (the parameter diff's changed rows) keep their colours.
+    :deep(.g-table-details-row > td) {
         background: var(--color-grey-100);
     }
     // Outranks GTable's compact cell padding, so the pinned detail spans the whole scroller.
