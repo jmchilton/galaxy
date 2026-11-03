@@ -161,6 +161,7 @@
                 @stopDragging="onStopDragging"
                 @onChange="onChange" />
         </div>
+        <InvocationStepOutputsPopover v-if="isInvocation" :step="invocationStep" :target="topOutputTerminal" />
     </DraggableWrapper>
 </template>
 
@@ -201,6 +202,7 @@ import NodeInput from "@/components/Workflow/Editor/NodeInput.vue";
 import NodeInvocationText from "@/components/Workflow/Editor/NodeInvocationText.vue";
 import NodeOutput from "@/components/Workflow/Editor/NodeOutput.vue";
 import Recommendations from "@/components/Workflow/Editor/Recommendations.vue";
+import InvocationStepOutputsPopover from "@/components/Workflow/Invocation/Graph/InvocationStepOutputsPopover.vue";
 
 const props = defineProps({
     id: { type: Number, required: true },
@@ -353,6 +355,12 @@ const invocationStep = computed(() => props.step as GraphStep);
 const outputs = computed(() => {
     return [...props.step.outputs, ...invalidOutputs.value];
 });
+
+/** Invocation-mode output terminals are stacked on one spot; the top one opens the step's output previews */
+function topOutputTerminal() {
+    const terminals = elHtml.value?.querySelectorAll(".invocation-node-output .output-terminal");
+    return terminals?.[terminals.length - 1];
+}
 
 const hasTerminals = computed(() => inputs.value.length > 0 || outputs.value.length > 0);
 
