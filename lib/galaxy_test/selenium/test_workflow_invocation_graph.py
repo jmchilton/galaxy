@@ -1,4 +1,10 @@
-from typing import NamedTuple
+from typing import (
+    Any,
+    NamedTuple,
+)
+
+from gxformat2 import python_to_workflow
+from gxformat2.yaml import ordered_load
 
 from galaxy.selenium.smart_components import SmartComponent
 from galaxy.selenium.web_element_protocol import WebElementProtocol
@@ -150,6 +156,9 @@ EMBEDDED_OUTPUT_SOURCES = {
     "numbers_b": "numbers",
     "final_table": "final",
 }
+# Steps of WORKFLOW_OUTPUT_KINDS shown as their preferred output: one of a workflow output (so it gets no card),
+# one of an output the invocation doesn't list
+PREFERRED_OUTPUTS = {"head_table": "out_file1", "cat_table": "out_file1"}
 # The layout puts each card 20 workflow pixels right of its step, so at a zoom of at most 1 it's closer than this.
 MAX_CARD_GAP = 30
 # Allowance for subpixel rounding when comparing on-screen edges.
@@ -413,6 +422,60 @@ class TestWorkflowInvocationGraph(SeleniumTestCase):
         assert toggle.wait_for_visible().get_attribute("aria-pressed") == "false"
         assert self._node_positions() == authored
 
+    @selenium_test
+    def test_embed_shows_steps_as_their_preferred_output(self):
+        self._open_output_kinds_invocation(preferred_outputs=PREFERRED_OUTPUTS)
+        invocations = self.components.invocations
+        authored = self._node_positions()
+        invocations.graph_step_preferred_output._(label="head_table").assert_absent()
+
+        transform = self._graph_transform()
+        invocations.graph_embed_outputs_toggle.wait_for_and_click()
+        invocations.graph_embedded_outputs.wait_for_present()
+        invocations.graph_embedded_outputs_loading.wait_for_absent()
+        # the step stands in for its preferred output, so that workflow output gets no card
+        labels = [card.get_attribute("data-output-label") for card in invocations.graph_embedded_outputs.all()]
+        sources = {label: step for label, step in EMBEDDED_OUTPUT_SOURCES.items() if label != "top_rows"}
+        assert sorted(labels) == sorted(sources)
+
+        head_table = invocations.graph_step_preferred_output._(label="head_table")
+        head_table.table.wait_for_present()
+        assert len(head_table.table_row.all()) == 5  # head -n 5
+        # the step's own output, which the invocation doesn't list, is fetched with the step's details
+        cat_table = invocations.graph_step_preferred_output._(label="cat_table")
+        cat_table.table.wait_for_present()
+        cat_table.table_pagination.wait_for_present()
+        cat_table.table_pagination.assert_absent_or_hidden()
+        self._assert_static(
+            {"head_table": head_table.wait_for_present(), "cat_table": cat_table.wait_for_present()},
+            invocations.graph_step_preferred_output_controls.all(),
+        )
+
+        self._assert_cards_beside_their_steps(sources)
+        embedded = self._node_positions()
+        for label in OUTPUT_KINDS_LABELS:
+            assert embedded[label][0] >= authored[label][0] and embedded[label][1] == authored[label][1], label
+        for label in ["table", "image", "text", "head_table", "copy_image", "split_text"]:
+            assert embedded[label] == authored[label], label
+        # head_table grew down into cat_table's row, so cat_table moves past it (clear of it, as checked above)
+        assert embedded["cat_table"][0] > authored["cat_table"][0]
+        self._wait_on(
+            lambda: self._graph_transform() != transform, "graph to refit", wait_type=self.wait_types.UX_RENDER
+        )
+        self._settle_for_screenshot()
+        self.screenshot("invocation_graph_embedded_preferred_outputs")
+
+        # up close at 100%: both steps shown as their tables
+        node = self.components.workflow_editor.node
+        self._zoom_in_around(node._(label="head_table"), node._(label="cat_table"))
+        self._settle_for_screenshot()
+        self.screenshot("invocation_graph_embedded_preferred_outputs_zoomed")
+
+        invocations.graph_embed_outputs_toggle.wait_for_and_click()
+        invocations.graph_embedded_outputs.wait_for_absent()
+        head_table.wait_for_absent()
+        assert self._node_positions() == authored
+
     def _graph_transform(self) -> str:
         return str(self.components.invocations.graph_node_area.wait_for_present().value_of_css_property("transform"))
 
@@ -450,19 +513,19 @@ class TestWorkflowInvocationGraph(SeleniumTestCase):
             assert not focused, f"{control.text!r} in a static preview takes focus"
 
     @retry_assertion_during_transitions
-    def _assert_cards_beside_their_steps(self) -> None:
+    def _assert_cards_beside_their_steps(self, sources: dict[str, str] = EMBEDDED_OUTPUT_SOURCES) -> None:
         """Each embedded output sits just right of the step that produced it, level with it, clear of every step,
         and a connector joins the step's right edge to the card. No two steps overlap."""
         invocations = self.components.invocations
         node = self.components.workflow_editor.node
         steps = {label: self._client_rect(node._(label=label).wait_for_present()) for label in OUTPUT_KINDS_LABELS}
         # The layout keeps any overlaps the author made, so this is a property of WORKFLOW_OUTPUT_KINDS, which has
-        # none, not of the layout: it checks that steps pushed to make room for the cards push their neighbours
+        # none, not of the layout: it checks that steps grown to show their preferred output push their neighbours
         # clear.
         for i, (label, step) in enumerate(steps.items()):
             for other_label, other in list(steps.items())[i + 1 :]:
                 assert step.clear_of(other), f"{label} overlaps {other_label}"
-        for output_label, step_label in EMBEDDED_OUTPUT_SOURCES.items():
+        for output_label, step_label in sources.items():
             card = self._client_rect(invocations.graph_embedded_output._(label=output_label).wait_for_present())
             step = steps[step_label]
             just_right = step.right < card.left < step.right + MAX_CARD_GAP
@@ -498,8 +561,17 @@ class TestWorkflowInvocationGraph(SeleniumTestCase):
             )
         )
 
-    def _open_output_kinds_invocation(self) -> None:
-        self._open_invocation(WORKFLOW_OUTPUT_KINDS, OUTPUT_KINDS_LABELS)
+    def _open_output_kinds_invocation(self, preferred_outputs: dict[str, str] | None = None) -> None:
+        if preferred_outputs:
+            # format 2 workflows can't name a preferred output yet, so set it on the converted native workflow
+            as_python = ordered_load(WORKFLOW_OUTPUT_KINDS)
+            native = python_to_workflow(as_python, galaxy_interface=None, workflow_directory=None)
+            for step in native["steps"].values():
+                if step.get("label") in preferred_outputs:
+                    step["preferred_output"] = preferred_outputs[step["label"]]
+            self._open_invocation(native, OUTPUT_KINDS_LABELS, test_data=as_python["test_data"], client_convert=False)
+        else:
+            self._open_invocation(WORKFLOW_OUTPUT_KINDS, OUTPUT_KINDS_LABELS)
         # the pointer is still on the activity that closed the invocations panel; move it off that tooltip
         self.clear_tooltips()
         self.components.invocations.activity_tooltip.wait_for_absent_or_hidden()
@@ -562,8 +634,9 @@ class TestWorkflowInvocationGraph(SeleniumTestCase):
             wait_type=self.wait_types.UX_TRANSITION,
         )
 
-    def _open_invocation(self, workflow: str, labels: list[str]):
-        self.workflow_populator.run_workflow(workflow, history_id=self.current_history_id())
+    def _open_invocation(self, workflow: str | dict[str, Any], labels: list[str], **run_kwds: Any):
+        """Run the workflow (``run_kwds`` go to ``run_workflow``), open its invocation and wait for these steps"""
+        self.workflow_populator.run_workflow(workflow, history_id=self.current_history_id(), **run_kwds)
         self.invocation_open_latest()
         timeout = self.wait_length(self.wait_types.JOB_COMPLETION)
         for label in labels:

@@ -1473,6 +1473,8 @@ invocations:
     graph_embedded_output_connector: '[data-description="invocation embedded output connector"][data-output-label="${label}"]'
     # Anything in the embedded outputs that would take keyboard focus if the cards weren't static.
     graph_embedded_output_controls: '[data-description="invocation embedded output"] :is(button, a[href], input, select, [tabindex])'
+    # The same, in steps shown as their preferred output.
+    graph_step_preferred_output_controls: '[data-description="invocation step preferred output"] :is(button, a[href], input, select, [tabindex])'
     # The graph's panned and zoomed layer, holding the steps and embedded outputs.
     graph_node_area: '.invocation-graph .node-area'
     graph_zoom_reset: '.invocation-graph .zoom-reset'
@@ -1517,6 +1519,13 @@ invocations:
       image: '${_} img'
       # a collection card summarizes the collection and lists its first few elements
       collection_element_name: '${_} [data-description="invocation embedded collection element"]'
+  # a graph step shown as its preferred output, while outputs are embedded
+  graph_step_preferred_output:
+    selectors:
+      _: "[node-label='${label}'] [data-description='invocation step preferred output']"
+      table: '${_} table.g-table'
+      table_row: '${_} table.g-table tbody tr'
+      table_pagination: '${_} .pagination'
 
 tour:
   popover:
