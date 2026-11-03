@@ -1994,6 +1994,10 @@ def summarize_destination_params(trans: ProvidesUserContext, job):
     return destination_params
 
 
+# Parameter types the workflow run form can expose as step parameter overrides.
+OVERRIDABLE_PARAMETER_TYPES = {"text", "integer", "float", "boolean", "select", "color"}
+
+
 def summarize_job_parameters(trans: ProvidesHistoryContext, job: Job) -> dict[str, Any]:
     """Produce a dict-ified version of job parameters ready for tabular rendering.
 
@@ -2003,7 +2007,7 @@ def summarize_job_parameters(trans: ProvidesHistoryContext, job: Job) -> dict[st
     # More client logic here than is ideal but it is hard to reason about
     # tool parameter types on the client relative to the server.
 
-    def inputs_recursive(input_params, param_values, depth=1, upgrade_messages=None):
+    def inputs_recursive(input_params, param_values, depth=1, upgrade_messages=None, path=()):
         if upgrade_messages is None:
             upgrade_messages = {}
 
@@ -2014,7 +2018,9 @@ def summarize_job_parameters(trans: ProvidesHistoryContext, job: Job) -> dict[st
                 input_value = param_values[input.name]
                 if input.type == "repeat":
                     for i in range(len(input_value)):
-                        rval.extend(inputs_recursive(input.inputs, input_value[i], depth=depth + 1))
+                        rval.extend(
+                            inputs_recursive(input.inputs, input_value[i], depth=depth + 1, path=(*path, input.name, i))
+                        )
                 elif input.type == "section":
                     # Get the value of the current Section parameter
                     rval.append(dict(text=input.name, depth=depth))
@@ -2024,6 +2030,7 @@ def summarize_job_parameters(trans: ProvidesHistoryContext, job: Job) -> dict[st
                             input_value,
                             depth=depth + 1,
                             upgrade_messages=upgrade_messages.get(input.name),
+                            path=(*path, input.name),
                         )
                     )
                 elif input.type == "conditional":
@@ -2047,6 +2054,7 @@ def summarize_job_parameters(trans: ProvidesHistoryContext, job: Job) -> dict[st
                                 input_value,
                                 depth=depth + 1,
                                 upgrade_messages=upgrade_messages.get(input.name),
+                                path=(*path, input.name),
                             )
                         )
                     else:
@@ -2099,6 +2107,11 @@ def summarize_job_parameters(trans: ProvidesHistoryContext, job: Job) -> dict[st
                             depth=depth,
                             value=input.value_to_display_text(input_value),
                             notes=upgrade_messages.get(input.name, ""),
+                            path=(
+                                [*path, input.name]
+                                if input.type in OVERRIDABLE_PARAMETER_TYPES and not input.is_dynamic
+                                else None
+                            ),
                         )
                     )
             else:

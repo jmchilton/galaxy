@@ -1317,10 +1317,33 @@ steps:
             f"/api/jobs/{job_id}/parameters_display", data={"hda_ldda": "hda"}
         )
         self._assert_status_code_is(display_parameters_by_job_response, 200)
-        display_parameters_by_dataset_response = self._get(
-            f"/api/datasets/{dataset_id}/parameters_display", data={"hda_ldda": "hda"}
-        )
+        display_parameters_by_dataset_response = self._dataset_parameters_display(dataset_id)
         self._assert_status_code_is(display_parameters_by_dataset_response, 200)
+
+    @skip_without_tool("echo_step_parameters")
+    def test_parameters_display_override_paths(self, history_id):
+        table = self.dataset_populator.new_dataset(history_id, content="1\t2\t3\n", file_type="tabular", wait=True)
+        run = self.dataset_populator.run_tool(
+            "echo_step_parameters", {"input1": {"src": "hda", "id": table["id"]}}, history_id
+        )
+        self.dataset_populator.wait_for_job(run["jobs"][0]["id"], assert_ok=True)
+        response = self._dataset_parameters_display(run["outputs"][0]["id"])
+        self._assert_status_code_is(response, 200)
+        rows = response.json()["parameters"]
+        paths = {row["text"]: row.get("path") for row in rows}
+        assert paths["Threshold"] == ["threshold"]
+        assert paths["Mode"] == ["mode"]
+        assert paths["Run label"] == ["advanced", "label"]
+        assert paths["Minimum value"] == ["cond", "min"]
+        column_name_paths = [row.get("path") for row in rows if row["text"] == "Column name"]
+        assert column_name_paths == [["queries", 0, "column_name"], ["queries", 1, "column_name"]]
+        # Data, data-dependent and conditional test parameters can't be exposed as workflow step parameter overrides.
+        assert paths["Input table"] is None
+        assert paths["Column"] is None
+        assert paths["Filter type"] is None
+
+    def _dataset_parameters_display(self, dataset_id: str) -> requests.Response:
+        return self._get(f"/api/datasets/{dataset_id}/parameters_display", data={"hda_ldda": "hda"})
 
     def _create_and_search_job(self, history_id, inputs, tool_id):
         # create a job
