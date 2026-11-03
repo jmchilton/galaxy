@@ -175,4 +175,48 @@ describe("Job Step", () => {
         expect(jobDetails.attributes()["jobid"]).toBe(singleJob.id);
         expect(jobDetails.attributes()["invocationid"]).toBe(TEST_INVOCATION_ID);
     });
+
+    it("checks once per invocation whether to offer rerunning a single job's step, however often jobs are polled", async () => {
+        const invocationId = "top-level-invocation-id";
+        const singleJob = nth(TEST_JOBS_JSON, 0);
+        let invocationsRequests = 0;
+        server.use(
+            http.get("/api/invocations", ({ response }) => {
+                invocationsRequests++;
+                return response(200).json([{ id: invocationId }] as never);
+            }),
+        );
+        const mountStep = (stepIndex: number) =>
+            shallowMount(JobStep, {
+                props: { jobs: [singleJob], invocationId, stepIndex },
+                global: { plugins: [createTestingPinia({ createSpy: vi.fn })] },
+            });
+
+        const wrapper = mountStep(2);
+        await flushPromises();
+        const jobDetails = () => wrapper.find(SELECTORS.STUBBED_JOB_DETAILS);
+        expect(jobDetails().attributes()["rerunstepindex"]).toBe("2");
+
+        // Polling a running step hands over a new jobs array with the same job each time.
+        for (const state of ["queued", "running", "ok"] as const) {
+            await wrapper.setProps({ jobs: [{ ...singleJob, state }] });
+            await flushPromises();
+            expect(jobDetails().attributes()["rerunstepindex"]).toBe("2");
+        }
+
+        // Another step of the same invocation reuses the answer.
+        mountStep(3);
+        await flushPromises();
+        expect(invocationsRequests).toBe(1);
+    });
+
+    it("doesn't offer rerunning a job's step in a subworkflow invocation", async () => {
+        server.use(http.get("/api/invocations", ({ response }) => response(200).json([])));
+        const wrapper = shallowMount(JobStep, {
+            props: { jobs: [nth(TEST_JOBS_JSON, 0)], invocationId: "subworkflow-invocation-id", stepIndex: 2 },
+            global: { plugins: [createTestingPinia({ createSpy: vi.fn })] },
+        });
+        await flushPromises();
+        expect(wrapper.find(SELECTORS.STUBBED_JOB_DETAILS).attributes()["rerunstepindex"]).toBeUndefined();
+    });
 });

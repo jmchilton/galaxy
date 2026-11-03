@@ -15,6 +15,8 @@ const props = defineProps<{
     jobId?: string;
     invocationId?: string;
     showHeader?: boolean;
+    /** Step ``order_index`` of ``invocationId`` the job ran for, offers "rerun with this changed" */
+    rerunStepIndex?: number;
 }>();
 
 const id = computed(() => props.job?.id || props.jobId);
@@ -40,7 +42,11 @@ const remoteHost = computed(() => (props.job && "remote_host" in props.job ? (pr
         </JobInformation>
         <br />
         <Heading id="job-parameters-heading" h1 separator inline size="md"> Job Parameters </Heading>
-        <JobParameters :job-id="id" :include-title="false" />
+        <JobParameters
+            :job-id="id"
+            :include-title="false"
+            :rerun-invocation-id="rerunStepIndex !== undefined ? invocationId : undefined"
+            :rerun-step-index="rerunStepIndex" />
         <br />
         <Heading id="job-metrics-heading" h1 separator inline size="md"> Job Metrics </Heading>
         <JobMetrics :job-id="id" :include-title="false" />

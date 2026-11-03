@@ -10,6 +10,7 @@
                         <th>Input Parameter</th>
                         <th>Value</th>
                         <th v-if="anyNotes">Note for rerun</th>
+                        <th v-if="rerunInvocationId" class="sr-only">Rerun</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -28,6 +29,17 @@
                         </td>
                         <td v-if="anyNotes">
                             <em v-if="parameter.notes">{{ parameter.notes }}</em>
+                        </td>
+                        <td v-if="rerunInvocationId">
+                            <router-link
+                                v-if="parameter.path"
+                                v-b-tooltip.hover
+                                :to="rerunWithChangedLink(parameter)"
+                                title="Rerun the workflow with this parameter changed"
+                                data-description="rerun with this changed"
+                                :data-parameter-path="parameter.path.join('/')">
+                                <span class="fa fa-redo" />
+                            </router-link>
                         </td>
                     </tr>
                 </tbody>
@@ -54,6 +66,7 @@
 <script>
 import axios from "axios";
 
+import { buildStepParameterOverrides } from "@/components/Workflow/Run/stepParameterTree";
 import { getAppRoot } from "@/onload/loadConfig";
 import { useJobParametersStore } from "@/stores/jobParametersStore";
 
@@ -98,6 +111,15 @@ export default {
             type: Boolean,
             default: true,
         },
+        /** Invocation and step ``order_index`` the job ran for, offers "rerun with this changed" */
+        rerunInvocationId: {
+            type: String,
+            default: undefined,
+        },
+        rerunStepIndex: {
+            type: Number,
+            default: undefined,
+        },
     },
     setup() {
         return { jobParametersStore: useJobParametersStore() };
@@ -137,6 +159,19 @@ export default {
         this.initJob();
     },
     methods: {
+        rerunWithChangedLink(parameter) {
+            // A null value shows the parameter with the original run's value.
+            const overrides = buildStepParameterOverrides([
+                { stepPath: [this.rerunStepIndex], paramPath: parameter.path, value: null },
+            ]);
+            return {
+                path: "/workflows/rerun",
+                query: {
+                    invocation_id: this.rerunInvocationId,
+                    step_parameter_overrides: JSON.stringify(overrides),
+                },
+            };
+        },
         isRequestJson(parameter) {
             return parameter.text == "request_json" && typeof parameter.value == "string";
         },

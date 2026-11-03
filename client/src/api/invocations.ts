@@ -53,6 +53,40 @@ export async function fetchInvocationReport(invocationId: string): Promise<Invoc
     return data as InvocationReport;
 }
 
+const topLevelInvocations = new Map<string, Promise<boolean>>();
+
+/**
+ * Whether ``invocationId`` is a top-level invocation, not another invocation's subworkflow invocation.
+ *
+ * ``jobId`` is any job that ran for one of ``invocationId``'s own steps. The answer can't change, so it is
+ * fetched once per invocation, however many of its steps ask.
+ */
+export function isTopLevelInvocation(invocationId: string, jobId: string): Promise<boolean> {
+    let topLevel = topLevelInvocations.get(invocationId);
+    if (!topLevel) {
+        topLevel = fetchIsTopLevelInvocation(invocationId, jobId);
+        topLevelInvocations.set(invocationId, topLevel);
+        // Let a later call retry after an error.
+        topLevel.catch(() => topLevelInvocations.delete(invocationId));
+    }
+    return topLevel;
+}
+
+async function fetchIsTopLevelInvocation(invocationId: string, jobId: string): Promise<boolean> {
+    // The job's invocations, leaving out subworkflow invocations: empty if the job ran in one.
+    const { data: invocations, error } = await GalaxyApi().GET("/api/invocations", {
+        params: {
+            query: { job_id: jobId, include_nested_invocations: false },
+        },
+    });
+
+    if (error) {
+        rethrowSimple(error);
+    }
+
+    return invocations.some((invocation) => invocation.id === invocationId);
+}
+
 /**
  * Fetches the workflow invocation associated with a given job ID
  * @param {string} jobId The ID of the job to fetch the invocation for
