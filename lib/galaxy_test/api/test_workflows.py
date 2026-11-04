@@ -7991,6 +7991,92 @@ steps:
         assert self.workflow_populator.workflow_invocations(workflow_id) == []
         assert not [h for h in self.dataset_populator.get_histories() if h["name"].startswith(history_name)]
 
+    @pytest.mark.parametrize("parameter_type,value", [("integer", "5"), ("float", "0.5"), ("boolean", "true")])
+    def test_run_with_parameter_input_as_string(self, history_id, parameter_type, value):
+        workflow_id = self._upload_yaml_workflow(f"""
+class: GalaxyWorkflow
+inputs:
+  parameter: {parameter_type}
+steps: []
+""")
+        invocation_id = self.workflow_populator.invoke_workflow_and_assert_ok(
+            workflow_id, history_id=history_id, inputs={"parameter": value}, inputs_by="name"
+        )
+        invocation = self.workflow_populator.get_invocation(invocation_id)
+        assert invocation["input_step_parameters"]["parameter"]["parameter_value"] == value
+
+    def test_run_with_parameter_input_not_in_suggestions(self, history_id):
+        workflow_id = self._upload_yaml_workflow("""
+class: GalaxyWorkflow
+inputs:
+  parameter:
+    type: text
+    suggestions: ["a", "b"]
+steps: []
+""")
+        invocation_id = self.workflow_populator.invoke_workflow_and_assert_ok(
+            workflow_id, history_id=history_id, inputs={"parameter": "c"}, inputs_by="name"
+        )
+        invocation = self.workflow_populator.get_invocation(invocation_id)
+        assert invocation["input_step_parameters"]["parameter"]["parameter_value"] == "c"
+
+    def test_run_with_optional_parameter_input_empty(self, history_id):
+        workflow_id = self._upload_yaml_workflow("""
+class: GalaxyWorkflow
+inputs:
+  parameter:
+    type: integer
+    optional: true
+steps: []
+""")
+        invocation_id = self.workflow_populator.invoke_workflow_and_assert_ok(
+            workflow_id, history_id=history_id, inputs={"parameter": ""}, inputs_by="name"
+        )
+        invocation = self.workflow_populator.get_invocation(invocation_id)
+        assert invocation["input_step_parameters"]["parameter"]["parameter_value"] == ""
+
+    def test_run_with_multiple_text_parameter_input_validated_per_value(self, history_id):
+        workflow_id = self._upload_yaml_workflow(
+            """
+class: GalaxyWorkflow
+inputs:
+  parameter:
+    type: [text]
+    validators:
+      - type: regex
+        expression: "^a.*$"
+        message: must start with a
+steps: []
+""",
+            client_convert=False,
+        )
+        response = self.workflow_populator.invoke_workflow(
+            workflow_id, history_id=history_id, inputs={"parameter": ["a1", "b2"]}, inputs_by="name"
+        )
+        self._assert_status_code_is(response, 400)
+        assert_error_message_contains(response, "parameter: must start with a")
+        invocation_id = self.workflow_populator.invoke_workflow_and_assert_ok(
+            workflow_id, history_id=history_id, inputs={"parameter": ["a1", "a2"]}, inputs_by="name"
+        )
+        invocation = self.workflow_populator.get_invocation(invocation_id)
+        assert invocation["input_step_parameters"]["parameter"]["parameter_value"] == ["a1", "a2"]
+
+    def test_run_with_mappable_collection_type(self, history_id):
+        workflow_id = self._upload_yaml_workflow("""
+class: GalaxyWorkflow
+inputs:
+  input1:
+    type: collection
+    collection_type: list
+steps: []
+""")
+        hdca = self.dataset_collection_populator.create_list_of_list_in_history(history_id, wait=True).json()
+        invocation_id = self.workflow_populator.invoke_workflow_and_assert_ok(
+            workflow_id, history_id=history_id, inputs={"input1": {"src": "hdca", "id": hdca["id"]}}, inputs_by="name"
+        )
+        invocation = self.workflow_populator.get_invocation(invocation_id)
+        assert invocation["inputs"]["0"]["id"] == hdca["id"]
+
     @skip_without_tool("test_data_source")
     @pytest.mark.parametrize("new_history", [False, True])
     @pytest.mark.parametrize("nested", [False, True])
