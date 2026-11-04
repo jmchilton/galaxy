@@ -370,8 +370,6 @@ class WorkflowsService(ServiceBase):
         self._check_on_complete(payload.on_complete)
         run_configs = build_workflow_run_configs(trans, workflow, payload.model_dump(exclude_unset=True))
         is_batch = payload.batch
-        if not is_batch and len(run_configs) != 1:
-            raise exceptions.RequestParameterInvalidException("Must specify 'batch' to use batch parameters.")
 
         invocations = []
         for run_config in run_configs:

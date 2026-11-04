@@ -1,4 +1,5 @@
 import json
+from collections.abc import Callable
 from typing import (
     Any,
     Literal,
@@ -189,6 +190,53 @@ WORKFLOW_PARAMETER_VALIDATOR_TYPES: dict[INPUT_PARAMETER_TYPES, list[ValidatorTy
     "float": PARAMETER_VALIDATOR_TYPE_COMPATIBILITY["float"],
     "boolean": [],
     "color": [],
+}
+
+
+def _is_string_value(value: Any) -> bool:
+    return isinstance(value, str)
+
+
+def _is_integer_value(value: Any) -> bool:
+    if isinstance(value, bool):
+        return False
+    if isinstance(value, int):
+        return True
+    if isinstance(value, str):
+        try:
+            int(value)
+        except ValueError:
+            return False
+        return True
+    return False
+
+
+def _is_float_value(value: Any) -> bool:
+    if isinstance(value, bool):
+        return False
+    if isinstance(value, (int, float)):
+        return True
+    if isinstance(value, str):
+        try:
+            float(value)
+        except ValueError:
+            return False
+        return True
+    return False
+
+
+def _is_boolean_value(value: Any) -> bool:
+    return isinstance(value, bool) or (isinstance(value, str) and value.lower() in ("true", "false"))
+
+
+# Value checks for a run request's input to each workflow parameter type, with the error message.
+WORKFLOW_PARAMETER_VALUE_TYPE_CHECKS: dict[INPUT_PARAMETER_TYPES, tuple[Callable[[Any], bool], str]] = {
+    "text": (_is_string_value, "a string is required"),
+    "color": (_is_string_value, "a string is required"),
+    "directory_uri": (_is_string_value, "a string is required"),
+    "integer": (_is_integer_value, "an integer is required"),
+    "float": (_is_float_value, "a float is required"),
+    "boolean": (_is_boolean_value, "a boolean is required"),
 }
 
 

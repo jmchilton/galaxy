@@ -7991,6 +7991,36 @@ steps:
         assert self.workflow_populator.workflow_invocations(workflow_id) == []
         assert not [h for h in self.dataset_populator.get_histories() if h["name"].startswith(history_name)]
 
+    @pytest.mark.parametrize(
+        "parameter_type,value",
+        [
+            ("text", 5),
+            ("text", 5.5),
+            ("text", True),
+            ("integer", "abc"),
+            ("integer", 5.5),
+            ("integer", True),
+            ("float", "abc"),
+            ("float", False),
+            ("boolean", "maybe"),
+            ("boolean", 1),
+        ],
+    )
+    def test_run_with_parameter_input_of_wrong_type(self, history_id, parameter_type, value):
+        workflow_id = self._upload_yaml_workflow(f"""
+class: GalaxyWorkflow
+inputs:
+  parameter: {parameter_type}
+steps: []
+""")
+        response = self.workflow_populator.invoke_workflow(
+            workflow_id, history_id=history_id, inputs={"parameter": value}, inputs_by="name"
+        )
+        self._assert_status_code_is(response, 400)
+        required = {"text": "a string", "integer": "an integer", "float": "a float", "boolean": "a boolean"}
+        assert_error_message_contains(response, f"parameter: {required[parameter_type]} is required")
+        assert self.workflow_populator.workflow_invocations(workflow_id) == []
+
     @pytest.mark.parametrize("parameter_type,value", [("integer", "5"), ("float", "0.5"), ("boolean", "true")])
     def test_run_with_parameter_input_as_string(self, history_id, parameter_type, value):
         workflow_id = self._upload_yaml_workflow(f"""
@@ -8004,6 +8034,35 @@ steps: []
         )
         invocation = self.workflow_populator.get_invocation(invocation_id)
         assert invocation["input_step_parameters"]["parameter"]["parameter_value"] == value
+
+    @pytest.mark.parametrize(
+        "parameter_type,invalid_value,valid_value,message",
+        [
+            ("text", "c", "a", "parameter: an invalid option ('c') was selected"),
+            ("[text]", ["a", "c"], ["a", "b"], "parameter: invalid options ('c') were selected"),
+        ],
+    )
+    def test_run_with_parameter_input_not_in_restrictions(
+        self, history_id, parameter_type, invalid_value, valid_value, message
+    ):
+        workflow_id = self._upload_yaml_workflow(f"""
+class: GalaxyWorkflow
+inputs:
+  parameter:
+    type: {parameter_type}
+    restrictions: ["a", "b"]
+steps: []
+""")
+        response = self.workflow_populator.invoke_workflow(
+            workflow_id, history_id=history_id, inputs={"parameter": invalid_value}, inputs_by="name"
+        )
+        self._assert_status_code_is(response, 400)
+        assert_error_message_contains(response, message)
+        invocation_id = self.workflow_populator.invoke_workflow_and_assert_ok(
+            workflow_id, history_id=history_id, inputs={"parameter": valid_value}, inputs_by="name"
+        )
+        invocation = self.workflow_populator.get_invocation(invocation_id)
+        assert invocation["input_step_parameters"]["parameter"]["parameter_value"] == valid_value
 
     def test_run_with_parameter_input_not_in_suggestions(self, history_id):
         workflow_id = self._upload_yaml_workflow("""
@@ -8061,6 +8120,47 @@ steps: []
         invocation = self.workflow_populator.get_invocation(invocation_id)
         assert invocation["input_step_parameters"]["parameter"]["parameter_value"] == ["a1", "a2"]
 
+    def test_run_with_dataset_for_collection_input(self, history_id):
+        workflow_id = self._upload_yaml_workflow("""
+class: GalaxyWorkflow
+inputs:
+  input1:
+    type: collection
+    collection_type: list
+steps: []
+""")
+        hda = self.dataset_populator.new_dataset(history_id, wait=True)
+        response = self.workflow_populator.invoke_workflow(
+            workflow_id, history_id=history_id, inputs={"input1": {"src": "hda", "id": hda["id"]}}, inputs_by="name"
+        )
+        self._assert_status_code_is(response, 400)
+        assert_error_message_contains(response, "input1: a dataset collection is required")
+        assert self.workflow_populator.workflow_invocations(workflow_id) == []
+
+    def test_run_with_invalid_sample_sheet_uri_input_creates_no_history(self):
+        workflow_id = self._upload_yaml_workflow("""
+class: GalaxyWorkflow
+inputs:
+  input1:
+    type: collection
+    collection_type: list
+steps: []
+""")
+        history_name = f"invalid sample sheet history {uuid4()}"
+        input_request = {
+            "class": "Collection",
+            "collection_type": "list",
+            "rows": {"el1": ["a"]},
+            "elements": [{"class": "File", "identifier": "el1", "url": "base64://MSAyIDM=", "ext": "txt"}],
+        }
+        response = self.workflow_populator.invoke_workflow(
+            workflow_id, inputs={"input1": input_request}, request={"new_history_name": history_name}, inputs_by="name"
+        )
+        self._assert_status_code_is(response, 400)
+        assert_error_message_contains(response, "Sample sheet metadata (column_definitions, rows) can only be used")
+        assert self.workflow_populator.workflow_invocations(workflow_id) == []
+        assert not [h for h in self.dataset_populator.get_histories() if h["name"].startswith(history_name)]
+
     def test_run_with_mappable_collection_type(self, history_id):
         workflow_id = self._upload_yaml_workflow("""
 class: GalaxyWorkflow
@@ -8076,6 +8176,111 @@ steps: []
         )
         invocation = self.workflow_populator.get_invocation(invocation_id)
         assert invocation["inputs"]["0"]["id"] == hdca["id"]
+
+    def test_run_with_deleted_inputs(self, history_id):
+        workflow_id = self._upload_yaml_workflow("""
+class: GalaxyWorkflow
+inputs:
+  input1: data
+  input2:
+    type: collection
+    collection_type: list
+steps: []
+""")
+        hda = self.dataset_populator.new_dataset(history_id, wait=True)
+        deleted_hda = self.dataset_populator.new_dataset(history_id, wait=True)
+        self.dataset_populator.delete_dataset(history_id, deleted_hda["id"])
+        purged_hda = self.dataset_populator.new_dataset(history_id, wait=True)
+        self.dataset_populator.delete_dataset(history_id, purged_hda["id"], purge=True, wait_for_purge=True)
+        fetch_response = self.dataset_collection_populator.create_list_in_history(history_id, wait=True).json()
+        hdca = self.dataset_collection_populator.wait_for_fetched_collection(fetch_response)
+        deleted_fetch_response = self.dataset_collection_populator.create_list_in_history(history_id, wait=True).json()
+        deleted_hdca = self.dataset_collection_populator.wait_for_fetched_collection(deleted_fetch_response)
+        self._delete(f"histories/{history_id}/contents/dataset_collections/{deleted_hdca['id']}").raise_for_status()
+
+        for inputs, message in [
+            (
+                {"input1": {"src": "hda", "id": deleted_hda["id"]}, "input2": {"src": "hdca", "id": hdca["id"]}},
+                "input1: the selected dataset has been deleted",
+            ),
+            (
+                {"input1": {"src": "hda", "id": hda["id"]}, "input2": {"src": "hdca", "id": deleted_hdca["id"]}},
+                "input2: the selected dataset collection has been deleted",
+            ),
+            (
+                {"input1": {"src": "hda", "id": purged_hda["id"]}, "input2": {"src": "hdca", "id": hdca["id"]}},
+                "input1: the selected dataset has been deleted",
+            ),
+        ]:
+            response = self.workflow_populator.invoke_workflow(
+                workflow_id, history_id=history_id, inputs=inputs, inputs_by="name"
+            )
+            self._assert_status_code_is(response, 400)
+            assert_error_message_contains(response, message)
+        assert self.workflow_populator.workflow_invocations(workflow_id) == []
+
+    def test_invalid_run_request_creates_no_history(self):
+        workflow_id = self._upload_yaml_workflow("""
+class: GalaxyWorkflow
+inputs:
+  parameter: integer
+steps: []
+""")
+        history_name = f"invalid request history {uuid4()}"
+        response = self.workflow_populator.invoke_workflow(
+            workflow_id, inputs={"parameter": "abc"}, request={"new_history_name": history_name}, inputs_by="name"
+        )
+        self._assert_status_code_is(response, 400)
+        assert self.workflow_populator.workflow_invocations(workflow_id) == []
+        assert not [h for h in self.dataset_populator.get_histories() if h["name"].startswith(history_name)]
+
+    def test_invalid_batch_entry_creates_no_history(self):
+        workflow_id = self._upload_yaml_workflow(
+            """
+class: GalaxyWorkflow
+inputs:
+  parameter:
+    type: text
+    validators:
+      - type: regex
+        expression: "^[A-Z]+$"
+        message: Upper case letters only
+steps: []
+""",
+            client_convert=False,
+        )
+        history_name = f"invalid batch entry history {uuid4()}"
+        response = self.workflow_populator.invoke_workflow(
+            workflow_id,
+            inputs={"parameter": {"batch": True, "values": ["UPPER", "lower"]}},
+            request={"new_history_name": history_name, "batch": True},
+            inputs_by="name",
+        )
+        self._assert_status_code_is(response, 400)
+        assert_error_message_contains(response, "parameter: Upper case letters only")
+        assert self.workflow_populator.workflow_invocations(workflow_id) == []
+        assert not [h for h in self.dataset_populator.get_histories() if h["name"].startswith(history_name)]
+
+    @skip_without_tool("validation_repeat")
+    def test_invalid_step_parameter_creates_no_history(self):
+        workflow_id = self._upload_yaml_workflow("""
+class: GalaxyWorkflow
+steps:
+  validation:
+    tool_id: validation_repeat
+    state:
+      r2:
+        - text: "abd"
+""")
+        history_name = f"invalid step parameter history {uuid4()}"
+        workflow_request = dict(
+            new_history_name=history_name, parameters=dumps(dict(validation_repeat={"r2_0|text": ""}))
+        )
+        response = self.workflow_populator.invoke_workflow_raw(workflow_id, workflow_request)
+        self._assert_status_code_is(response, 400)
+        assert_error_message_contains(response, "Error computing workflow step runtime state")
+        assert self.workflow_populator.workflow_invocations(workflow_id) == []
+        assert not [h for h in self.dataset_populator.get_histories() if h["name"].startswith(history_name)]
 
     @skip_without_tool("test_data_source")
     @pytest.mark.parametrize("new_history", [False, True])

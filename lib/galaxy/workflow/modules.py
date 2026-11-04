@@ -139,6 +139,7 @@ from galaxy.tools.parameters.basic import (
     raw_to_galaxy,
     SelectToolParameter,
     TextToolParameter,
+    ToolParameter,
 )
 from galaxy.tools.parameters.grouping import (
     Conditional,
@@ -179,6 +180,7 @@ from galaxy.workflow.workflow_parameter_input_definitions import (
     split_numeric_bounds,
     validators_from_form,
     validators_to_form,
+    WORKFLOW_PARAMETER_VALUE_TYPE_CHECKS,
 )
 
 if TYPE_CHECKING:
@@ -1185,6 +1187,13 @@ class InputModule(WorkflowModule):
     def get_all_inputs(self, data_only=False, connectable_only=False) -> list[InputDescription]:
         return []
 
+    def validate_input_content(self, content: model.DatasetInstance | HistoryDatasetCollectionAssociation) -> None:
+        """Raise ``ParameterValueError`` if ``content`` cannot be supplied to this input step."""
+        if isinstance(content, model.HistoryDatasetAssociation) and (content.deleted or content.purged):
+            raise ParameterValueError("the selected dataset has been deleted", "input")
+        if isinstance(content, HistoryDatasetCollectionAssociation) and content.deleted:
+            raise ParameterValueError("the selected dataset collection has been deleted", "input")
+
     def execute(
         self,
         trans: "WorkRequestContext",
@@ -1375,6 +1384,11 @@ class InputDataCollectionModule(InputModule):
         # TODO: this needs to land up part of DataCollectionToolParameter
         input_param = DataCollectionToolParameter(None, collection_param_source, self.trans)
         return dict(input=input_param)
+
+    def validate_input_content(self, content: model.DatasetInstance | HistoryDatasetCollectionAssociation) -> None:
+        if not isinstance(content, HistoryDatasetCollectionAssociation):
+            raise ParameterValueError("a dataset collection is required but a dataset was supplied", "input")
+        super().validate_input_content(content)
 
     def get_all_outputs(self, data_only=False):
         parameter_def = self._parse_state_into_dict()
@@ -1872,6 +1886,32 @@ class InputParameterModule(WorkflowModule):
         input_source = get_input_source(input_source_dict, trusted=False)
         input = parameter_class(None, input_source)
         return dict(input=input)
+
+    def validate_input_value(self, trans: "ProvidesHistoryContext", input_param: ToolParameter, value: Any) -> Any:
+        """Check a value supplied for this step's runtime ``input_param`` and return the value to record.
+
+        Raises ``ParameterValueError`` on a wrong type, a value outside the restrictions or a failed validator.
+        """
+        parameter_def = self._parse_state_into_dict()
+        parameter_type = parameter_def["parameter_type"]
+        if value in ("", None) and input_param.optional:
+            return value
+        multiple = bool(parameter_def.get("multiple"))
+        if multiple and isinstance(input_param, TextToolParameter):
+            input_param.validate(value, trans)
+            return input_param.to_python(value, trans.app)
+        values = value if multiple and isinstance(value, list) else [value]
+        is_value_type, type_message = WORKFLOW_PARAMETER_VALUE_TYPE_CHECKS[parameter_type]
+        for v in values:
+            if not is_value_type(v):
+                raise ParameterValueError(type_message, input_param.name, v)
+        try:
+            if isinstance(input_param, SelectToolParameter):
+                input_param.from_json(value, trans)
+            input_param.validate(value, trans)
+        except TypeError as e:
+            raise ParameterValueError(str(e), input_param.name, value) from None
+        return value
 
     def get_runtime_state(self):
         state = DefaultToolState()
