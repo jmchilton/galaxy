@@ -17,6 +17,8 @@ from galaxy_test.base.populators import (
 from galaxy_test.base.uses_shed_api import UsesShedApi
 from galaxy_test.driver import integration_util
 
+UNVERSIONED_COMPOSE_TEXT_PARAM = "toolshed.g2.bx.psu.edu/repos/iuc/compose_text_param/compose_text_param"
+
 OPTIONAL_INPUT_BOOL_WORKFLOW = """
 class: GalaxyWorkflow
 inputs:
@@ -255,6 +257,38 @@ steps:
                 invocation_response.json().get("err_msg")
                 == "Workflow was not invoked; the following required tools are not installed: nonexistent_tool"
             )
+
+    def test_run_workflow_with_unversioned_shed_tool_id(self):
+        self.install_repository("iuc", "compose_text_param", "feb3acba1e0a")  # 0.1.0
+        with self.dataset_populator.test_history() as history_id:
+            workflow_id = self._upload_compose_text_param_workflow(UNVERSIONED_COMPOSE_TEXT_PARAM, "0.1.0")
+            invocation_response = self.workflow_populator.invoke_workflow(
+                workflow_id, history_id=history_id, request={"require_exact_tool_versions": False}
+            )
+            self._assert_status_code_is(invocation_response, 200)
+
+    def test_run_workflow_with_unversioned_shed_tool_id_wrong_version(self):
+        self.install_repository("iuc", "compose_text_param", "feb3acba1e0a")  # 0.1.0
+        with self.dataset_populator.test_history() as history_id:
+            workflow_id = self._upload_compose_text_param_workflow(UNVERSIONED_COMPOSE_TEXT_PARAM, "0.0.1")
+            invocation_response = self.workflow_populator.invoke_workflow(
+                workflow_id, history_id=history_id, request={"require_exact_tool_versions": True}
+            )
+            self._assert_status_code_is(invocation_response, 400)
+            assert (
+                invocation_response.json().get("err_msg")
+                == f"Workflow was not invoked; the following required tools are not installed: {UNVERSIONED_COMPOSE_TEXT_PARAM} (version 0.0.1)"
+            )
+
+    def _upload_compose_text_param_workflow(self, tool_id: str, tool_version: str) -> str:
+        return self.workflow_populator.upload_yaml_workflow(f"""
+class: GalaxyWorkflow
+steps:
+  compose_text_param:
+    tool_id: {tool_id}
+    tool_version: "{tool_version}"
+    label: compose_text_param
+""")
 
     def test_workflow_run_collection_with_auto_extension(self):
         """Workflow with collection input whose datasets have ext='auto' should delay and succeed."""
