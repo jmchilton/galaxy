@@ -163,8 +163,12 @@ class ClientRect(NamedTuple):
     bottom: float
 
     def clear_of(self, other: "ClientRect") -> bool:
+        """Whether the boxes don't overlap, allowing touching edges to round into each other"""
         return (
-            self.right <= other.left or other.right <= self.left or self.bottom <= other.top or other.bottom <= self.top
+            self.right <= other.left + EDGE_TOLERANCE
+            or other.right <= self.left + EDGE_TOLERANCE
+            or self.bottom <= other.top + EDGE_TOLERANCE
+            or other.bottom <= self.top + EDGE_TOLERANCE
         )
 
 
@@ -443,10 +447,16 @@ class TestWorkflowInvocationGraph(SeleniumTestCase):
     @retry_assertion_during_transitions
     def _assert_cards_beside_their_steps(self) -> None:
         """Each embedded output sits just right of the step that produced it, level with it, clear of every step,
-        and a connector joins the step's right edge to the card"""
+        and a connector joins the step's right edge to the card. No two steps overlap."""
         invocations = self.components.invocations
         node = self.components.workflow_editor.node
         steps = {label: self._client_rect(node._(label=label).wait_for_present()) for label in OUTPUT_KINDS_LABELS}
+        # The layout keeps any overlaps the author made, so this is a property of WORKFLOW_OUTPUT_KINDS, which has
+        # none, not of the layout: it checks that steps pushed to make room for the cards push their neighbours
+        # clear.
+        for i, (label, step) in enumerate(steps.items()):
+            for other_label, other in list(steps.items())[i + 1 :]:
+                assert step.clear_of(other), f"{label} overlaps {other_label}"
         for output_label, step_label in EMBEDDED_OUTPUT_SOURCES.items():
             card = self._client_rect(invocations.graph_embedded_output._(label=output_label).wait_for_present())
             step = steps[step_label]
