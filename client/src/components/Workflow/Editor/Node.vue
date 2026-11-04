@@ -140,13 +140,7 @@
                 @onChange="onChange" />
             <div v-if="!isInvocation && showRule" class="rule" />
             <!-- in place of the step's state: the step is drawn as its preferred output -->
-            <InvocationOutputSnapshot
-                v-if="preferredItem"
-                class="node-preferred-output"
-                :class="{ 'node-preferred-output-collection': preferredItem.src === 'hdca' }"
-                data-description="invocation step preferred output"
-                :item="preferredItem"
-                :step="invocationStep" />
+            <InvocationStepPreferredOutput v-if="preferredItem" :item="preferredItem" :step="invocationStep" />
             <NodeInvocationText v-else-if="isInvocation || isPopulatedInput" :invocation-step="invocationStep" />
             <NodeOutput
                 v-for="(output, index) in outputs"
@@ -211,8 +205,8 @@ import NodeInput from "@/components/Workflow/Editor/NodeInput.vue";
 import NodeInvocationText from "@/components/Workflow/Editor/NodeInvocationText.vue";
 import NodeOutput from "@/components/Workflow/Editor/NodeOutput.vue";
 import Recommendations from "@/components/Workflow/Editor/Recommendations.vue";
-import InvocationOutputSnapshot from "@/components/Workflow/Invocation/Graph/InvocationOutputSnapshot.vue";
 import InvocationStepOutputsPopover from "@/components/Workflow/Invocation/Graph/InvocationStepOutputsPopover.vue";
+import InvocationStepPreferredOutput from "@/components/Workflow/Invocation/Graph/InvocationStepPreferredOutput.vue";
 
 const props = defineProps({
     id: { type: Number, required: true },
@@ -481,15 +475,6 @@ function toggleSelected() {
 
 <style scoped lang="scss">
 @import "@/style/scss/theme/blue.scss";
-
-// sized like the body of an embedded output card (260×170, collections 260×120)
-.node-preferred-output {
-    height: 8.5rem;
-
-    &.node-preferred-output-collection {
-        height: 5.25rem;
-    }
-}
 
 .workflow-node {
     --dblclick: prevent;

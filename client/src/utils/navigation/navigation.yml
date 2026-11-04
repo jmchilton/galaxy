@@ -1523,6 +1523,8 @@ invocations:
   graph_step_preferred_output:
     selectors:
       _: "[node-label='${label}'] [data-description='invocation step preferred output']"
+      # the output's workflow output label, or its name, above the snapshot
+      output_label: "${_} [data-description='invocation step preferred output label']"
       table: '${_} table.g-table'
       table_row: '${_} table.g-table tbody tr'
       table_pagination: '${_} .pagination'

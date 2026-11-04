@@ -441,9 +441,12 @@ class TestWorkflowInvocationGraph(SeleniumTestCase):
         head_table = invocations.graph_step_preferred_output._(label="head_table")
         head_table.table.wait_for_present()
         assert len(head_table.table_row.all()) == 5  # head -n 5
+        # labelled as the workflow output's card would have been
+        assert head_table.output_label.wait_for_text().strip() == "top_rows"
         # the step's own output, which the invocation doesn't list, is fetched with the step's details
         cat_table = invocations.graph_step_preferred_output._(label="cat_table")
         cat_table.table.wait_for_present()
+        assert cat_table.output_label.wait_for_text().strip() == "out_file1"
         cat_table.table_pagination.wait_for_present()
         cat_table.table_pagination.assert_absent_or_hidden()
         self._assert_static(

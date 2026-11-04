@@ -23,7 +23,7 @@ import NodeInput from "./NodeInput.vue";
 import NodeInvocationText from "./NodeInvocationText.vue";
 import NodeOutput from "./NodeOutput.vue";
 import GPopover from "@/components/BaseComponents/GPopover.vue";
-import InvocationOutputSnapshot from "@/components/Workflow/Invocation/Graph/InvocationOutputSnapshot.vue";
+import InvocationStepPreferredOutput from "@/components/Workflow/Invocation/Graph/InvocationStepPreferredOutput.vue";
 
 const galaxyConfig = vi.hoisted(() => ({ enable_tool_recommendations: false }));
 
@@ -240,21 +240,24 @@ describe("Node", () => {
         it("is shown as that output in place of its state, while the graph shows it so", async () => {
             const wrapper = mountInvocationNode({ 0: { src: "hdca", id: "c1" } });
             await flushPromises();
-            expect(wrapper.findComponent(InvocationOutputSnapshot).props("item")).toEqual({ src: "hdca", id: "c1" });
+            expect(wrapper.findComponent(InvocationStepPreferredOutput).props("item")).toEqual({
+                src: "hdca",
+                id: "c1",
+            });
             expect(wrapper.findComponent(NodeInvocationText).exists()).toBe(false);
         });
 
         it("is shown as usual while the graph doesn't show it so", async () => {
             const wrapper = mountInvocationNode({ 1: { src: "hda", id: "d1" } });
             await flushPromises();
-            expect(wrapper.findComponent(InvocationOutputSnapshot).exists()).toBe(false);
+            expect(wrapper.findComponent(InvocationStepPreferredOutput).exists()).toBe(false);
             expect(wrapper.findComponent(NodeInvocationText).exists()).toBe(true);
         });
 
         it("is shown as usual when drawn as a workflow step", async () => {
             const wrapper = mountInvocationNode({ 0: { src: "hda", id: "d1" } }, { isInvocation: false });
             await flushPromises();
-            expect(wrapper.findComponent(InvocationOutputSnapshot).exists()).toBe(false);
+            expect(wrapper.findComponent(InvocationStepPreferredOutput).exists()).toBe(false);
         });
     });
 });
