@@ -5,6 +5,7 @@ from typing import Any
 from uuid import uuid4
 
 from galaxy.model import Job
+from galaxy.tools import Tool
 from galaxy_test.api.test_tools import TestsTools
 from galaxy_test.base.populators import (
     DatasetPopulator,
@@ -78,6 +79,8 @@ class BaseUserDefinedToolContainerAllowlist(integration_util.IntegrationTestCase
 
 
 class TestUserDefinedToolContainerAllowlist(BaseUserDefinedToolContainerAllowlist):
+    framework_tool_and_types = True
+
     def test_create_rejects_container_outside_allowlist(self):
         with self.dataset_populator.user_tool_execute_permissions():
             assert TOOL_WITH_SHELL_COMMAND["container"] == "busybox"
@@ -92,6 +95,31 @@ class TestUserDefinedToolContainerAllowlist(BaseUserDefinedToolContainerAllowlis
 
     def test_job_of_stored_tool_with_disallowed_container_fails(self):
         self._run_stored_disallowed_tool()
+
+    def test_job_of_tool_with_allowed_container_runs(self):
+        with (
+            self.dataset_populator.test_history() as history_id,
+            self.dataset_populator.user_tool_execute_permissions(),
+        ):
+            uuid = self.dataset_populator.create_unprivileged_tool(BIOCONTAINERS_TOOL)["uuid"]
+            dataset = self.dataset_populator.new_dataset(history_id=history_id, content="abc", wait=True)
+            response = self._run(
+                history_id=history_id,
+                tool_uuid=uuid,
+                inputs={"input": {"src": "hda", "id": dataset["id"]}},
+                wait_for_job=True,
+                assert_ok=True,
+            )
+            job = self.dataset_populator.get_job_details(response["jobs"][0]["id"]).json()
+            assert job["state"] == "ok"
+
+    def test_admin_tool_with_unlisted_container_is_not_checked(self):
+        tool = self._app.toolbox.get_tool("job_environment_default_legacy")
+        assert isinstance(tool, Tool)
+        assert tool.containers[0].identifier == "busybox:1.36.1-glibc"
+        with self.dataset_populator.test_history() as history_id:
+            response = self.dataset_populator.run_tool("job_environment_default_legacy", {}, history_id)
+            self.dataset_populator.wait_for_job(response["jobs"][0]["id"], assert_ok=True)
 
     def test_import_workflow_embedding_disallowed_tool_is_rejected(self):
         workflow = {
