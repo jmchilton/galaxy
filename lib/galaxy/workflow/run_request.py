@@ -283,13 +283,9 @@ def _flatten_step_params(param_dict: dict, prefix: str = "") -> dict:
 
 
 def _get_target_history(
-    trans: "ProvidesHistoryContext",
-    workflow: "Workflow",
-    payload: dict[str, Any],
-    param_keys: list[list] | None = None,
-    index: int = 0,
-) -> History:
-    param_keys = param_keys or []
+    trans: "ProvidesHistoryContext", workflow: "Workflow", payload: dict[str, Any]
+) -> History | str:
+    """Return the requested existing history, or the base name for new histories."""
     history_name = payload.get("new_history_name", None)
     history_id = payload.get("history_id", None)
     history_param = payload.get("history", None)
@@ -304,27 +300,19 @@ def _get_target_history(
             history_name = history_param
     if history_id:
         history_manager = trans.app.history_manager
-        target_history = history_manager.get_mutable(
+        return history_manager.get_mutable(
             trans.security.decode_id(history_id), trans.user, current_history=trans.history
         )
-    else:
-        if history_name:
-            nh_name = history_name
-        else:
-            nh_name = f"History from {workflow.name} workflow"
-        if len(param_keys) <= index:
-            raise exceptions.MessageException("Incorrect expansion of workflow batch parameters.")
-        ids = param_keys[index]
-        nids = len(ids)
-        if nids == 1:
-            nh_name = f"{nh_name} on {ids[0]}"
-        elif nids > 1:
-            nh_name = f"{nh_name} on {', '.join(ids[0:-1])} and {ids[-1]}"
-        new_history = History(user=trans.user, name=nh_name)
-        trans.sa_session.add(new_history)
-        trans.sa_session.commit()
-        target_history = new_history
-    return target_history
+    return history_name or f"History from {workflow.name} workflow"
+
+
+def _new_history_name(base_name: str, ids: list[str]) -> str:
+    nids = len(ids)
+    if nids == 1:
+        return f"{base_name} on {ids[0]}"
+    elif nids > 1:
+        return f"{base_name} on {', '.join(ids[0:-1])} and {ids[-1]}"
+    return base_name
 
 
 def _get_input_or_not_found(
@@ -339,6 +327,45 @@ def _get_input_or_not_found(
             f"{workflow_step_name(step)}: workflow input '{data_request.id}' ({data_request.src}) not found"
         )
     return item
+
+
+def _validate_resource_params(
+    trans: "ProvidesHistoryContext", workflow: "Workflow", resource_params: dict[str, Any]
+) -> None:
+    # quick attempt to validate parameters, just handle select options now since is what
+    # is needed for DTD - arbitrary plugins can define arbitrary logic at runtime in the
+    # destination function. In the future this should be extended to allow arbitrary
+    # pluggable validation.
+    resource_mapper_function = get_resource_mapper_function(trans.app)
+    # TODO: Do we need to do anything with the stored_workflow or can this be removed.
+    resource_parameters = resource_mapper_function(trans=trans, stored_workflow=None, workflow=workflow)
+    for resource_parameter in resource_parameters:
+        if resource_parameter.get("type") == "select":
+            name = resource_parameter.get("name")
+            if name in resource_params:
+                value = resource_params[name]
+                valid_option = False
+                # TODO: How should be handle the case where no selection is made by the user
+                # This can happen when there is a select on the page but the user has no options to select
+                # Here I have the validation pass it through. An alternative may be to remove the parameter if
+                # it is None.
+                if value is None:
+                    valid_option = True
+                else:
+                    for option_elem in resource_parameter.get("data"):
+                        option_value = option_elem.get("value")
+                        if value == option_value:
+                            valid_option = True
+                if not valid_option:
+                    raise exceptions.RequestParameterInvalidException(f"Invalid value for parameter '{name}' found.")
+
+
+def _validate_replacement_params(replacement_dict: dict[str, Any]) -> None:
+    for name, value in replacement_dict.items():
+        if not isinstance(value, str):
+            raise exceptions.RequestParameterInvalidException(
+                f"Replacement parameter '{name}' must be a string, got {type(value).__name__}"
+            )
 
 
 def _validate_subworkflow_input_connections(workflow: "Workflow", step_path: tuple[str, ...] = ()) -> None:
@@ -432,8 +459,14 @@ def build_workflow_run_configs(
     expanded_params, expanded_param_keys, expanded_inputs = expand_workflow_inputs(
         unexpanded_param_map, unexpanded_inputs
     )
-    for index, (param_map, inputs) in enumerate(zip(expanded_params, expanded_inputs)):
-        history = _get_target_history(trans, workflow, payload, expanded_param_keys, index)
+    for param_map, inputs, param_keys in zip(expanded_params, expanded_inputs, expanded_param_keys):
+        target_history = _get_target_history(trans, workflow, payload)
+        if isinstance(target_history, History):
+            history = target_history
+        else:
+            history = History(user=trans.user, name=_new_history_name(target_history, param_keys))
+            trans.sa_session.add(history)
+            trans.sa_session.commit()
         if inputs or not already_normalized:
             normalized_inputs = _normalize_inputs(workflow.steps, inputs, inputs_by)
         else:
@@ -551,34 +584,7 @@ def build_workflow_run_configs(
                 normalized_inputs[key] = value
         resource_params = payload.get("resource_params", {})
         if resource_params:
-            # quick attempt to validate parameters, just handle select options now since is what
-            # is needed for DTD - arbitrary plugins can define arbitrary logic at runtime in the
-            # destination function. In the future this should be extended to allow arbitrary
-            # pluggable validation.
-            resource_mapper_function = get_resource_mapper_function(trans.app)
-            # TODO: Do we need to do anything with the stored_workflow or can this be removed.
-            resource_parameters = resource_mapper_function(trans=trans, stored_workflow=None, workflow=workflow)
-            for resource_parameter in resource_parameters:
-                if resource_parameter.get("type") == "select":
-                    name = resource_parameter.get("name")
-                    if name in resource_params:
-                        value = resource_params[name]
-                        valid_option = False
-                        # TODO: How should be handle the case where no selection is made by the user
-                        # This can happen when there is a select on the page but the user has no options to select
-                        # Here I have the validation pass it through. An alternative may be to remove the parameter if
-                        # it is None.
-                        if value is None:
-                            valid_option = True
-                        else:
-                            for option_elem in resource_parameter.get("data"):
-                                option_value = option_elem.get("value")
-                                if value == option_value:
-                                    valid_option = True
-                        if not valid_option:
-                            raise exceptions.RequestParameterInvalidException(
-                                f"Invalid value for parameter '{name}' found."
-                            )
+            _validate_resource_params(trans, workflow, resource_params)
         history.add_pending_items()
         run_configs.append(
             WorkflowRunConfig(
@@ -672,11 +678,8 @@ def workflow_run_config_to_request(
             )
 
     replacement_dict = run_config.replacement_dict
+    _validate_replacement_params(replacement_dict)
     for name, value in replacement_dict.items():
-        if not isinstance(value, str):
-            raise exceptions.RequestParameterInvalidException(
-                f"Replacement parameter '{name}' must be a string, got {type(value).__name__}"
-            )
         add_parameter(
             name=name,
             value=value,
