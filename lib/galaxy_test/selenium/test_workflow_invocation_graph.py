@@ -428,21 +428,26 @@ class TestWorkflowInvocationGraph(SeleniumTestCase):
     def _assert_embedded_outputs_static(self) -> None:
         """The cards are snapshots: pointer events go through them to the graph, and nothing in them takes focus"""
         invocations = self.components.invocations
-        for card in invocations.graph_embedded_outputs.all():
+        cards = {card.get_attribute("data-output-label"): card for card in invocations.graph_embedded_outputs.all()}
+        self._assert_static(cards, invocations.graph_embedded_output_controls.all())
+
+    def _assert_static(self, snapshots: dict[str, WebElementProtocol], controls: list[WebElementProtocol]) -> None:
+        """Pointer events go through these previews, keyed by a label for failures, to what's beneath them, and none
+        of their controls takes focus"""
+        for label, snapshot in snapshots.items():
             hit = self.execute_script(
                 "const r = arguments[0].getBoundingClientRect();"
                 "const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);"
                 "return hit === null ? null : arguments[0].contains(hit);",
-                card,
+                snapshot,
             )
-            assert hit is False, f"{card.get_attribute('data-output-label')} takes the pointer (or is out of view)"
-        controls = invocations.graph_embedded_output_controls.all()
+            assert hit is False, f"{label}'s preview takes the pointer (or is out of view)"
         assert controls, "expected the previews to render controls"
         for control in controls:
             focused = self.execute_script(
                 "arguments[0].focus(); return document.activeElement === arguments[0];", control
             )
-            assert not focused, f"{control.text!r} in an embedded output takes focus"
+            assert not focused, f"{control.text!r} in a static preview takes focus"
 
     @retry_assertion_during_transitions
     def _assert_cards_beside_their_steps(self) -> None:
