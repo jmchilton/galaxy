@@ -66,6 +66,8 @@ function connectorPath({ stepRect, rect }: EmbeddedOutput) {
     width: 1px;
     height: 1px;
     pointer-events: none;
+    // over the cards' halos, so each connector still meets its card
+    z-index: 101;
 
     path {
         stroke: $brand-primary;
@@ -81,6 +83,8 @@ function connectorPath({ stepRect, rect }: EmbeddedOutput) {
     // a static snapshot: dragging and zooming over it move the graph, as anywhere else on the canvas
     pointer-events: none;
     border: 2px solid $brand-primary;
+    // edges keep their routes and pass under cards; a halo shows they pass under, rather than end at, a card
+    box-shadow: 0 0 0 5px var(--background-color);
     display: flex;
     flex-direction: column;
     overflow: hidden;
