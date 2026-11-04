@@ -4,7 +4,7 @@ import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 
 import type { EmbeddedOutput } from "./useEmbeddedOutputs";
 
-import InvocationOutputPreview from "./InvocationOutputPreview.vue";
+import InvocationOutputSnapshot from "./InvocationOutputSnapshot.vue";
 
 defineProps<{
     embedded: EmbeddedOutput[];
@@ -43,10 +43,7 @@ function connectorPath({ stepRect, rect }: EmbeddedOutput) {
                 <FontAwesomeIcon :icon="faSignOutAlt" fixed-width />
                 <span class="font-weight-bold">{{ output.label }}</span>
             </div>
-            <div class="embedded-output-body">
-                <!-- a collection's full preview loads every element, more than a card can show -->
-                <InvocationOutputPreview :item="output.item" :step="output.step" summarize-collection />
-            </div>
+            <InvocationOutputSnapshot class="embedded-output-body" :item="output.item" :step="output.step" />
         </div>
     </div>
 </template>
@@ -98,48 +95,10 @@ function connectorPath({ stepRect, rect }: EmbeddedOutput) {
 .embedded-output-body {
     flex: 1;
     min-height: 0;
-    overflow: hidden;
-    font-size: 0.75rem;
-    // images fill the body, less the preview's padding and border, at any root font size
-    container-type: size;
-    --invocation-output-image-height: calc(100cqh - 1rem - 2px);
-
-    // clipped to the card, not scrolled: a static card can't be scrolled
-    :deep(.invocation-output-preview) {
-        overflow: hidden;
-    }
 
     // inset like the dataset and collection previews beside it, rather than against the card's border
     :deep(.invocation-output-not-ready) {
         padding: 0.25rem 0.5rem;
-    }
-
-    :deep(.image-wrapper) {
-        display: block;
-    }
-
-    :deep(img) {
-        width: 100%;
-        height: var(--invocation-output-image-height);
-    }
-
-    // a card shows a table's first rows; it can't be sorted or paged, so drop those controls and tighten the rows
-    :deep(.pagination) {
-        display: none;
-    }
-
-    :deep(.g-table-container .g-table) {
-        margin-bottom: 0;
-        line-height: 1.3;
-
-        thead th,
-        tbody td {
-            padding: 0.125rem 0.375rem;
-        }
-
-        thead th svg {
-            display: none;
-        }
     }
 }
 </style>

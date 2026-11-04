@@ -7,7 +7,7 @@ import type { GraphStep } from "@/composables/useInvocationGraph";
 import type { EmbeddedOutput } from "./useEmbeddedOutputs";
 
 import InvocationEmbeddedOutputs from "./InvocationEmbeddedOutputs.vue";
-import InvocationOutputPreview from "./InvocationOutputPreview.vue";
+import InvocationOutputSnapshot from "./InvocationOutputSnapshot.vue";
 
 const STEP = { id: 4, state: "running", position: { left: 100, top: 50 } } as unknown as GraphStep;
 
@@ -33,12 +33,7 @@ it("renders each embedded output as a card, previewing it under its step's state
     const cards = mountCards().findAll("[data-description='invocation embedded output']");
     expect(cards.length).toBe(1);
     expect(cards.at(0)!.text()).toContain("top_rows");
-    const preview = cards.at(0)!.findComponent(InvocationOutputPreview);
-    expect(preview.props("item")).toEqual({ src: "hda", id: "d1" });
-    expect(preview.props("step")).toEqual(STEP);
-});
-
-it("summarizes collection outputs rather than previewing every element", () => {
-    const preview = mountCards().findComponent(InvocationOutputPreview);
-    expect(preview.props("summarizeCollection")).toBe(true);
+    const snapshot = cards.at(0)!.findComponent(InvocationOutputSnapshot);
+    expect(snapshot.props("item")).toEqual({ src: "hda", id: "d1" });
+    expect(snapshot.props("step")).toEqual(STEP);
 });
