@@ -4,8 +4,6 @@ from typing import (
     Any,
 )
 
-from pydantic import UUID4
-
 from galaxy import (
     exceptions,
     web,
@@ -17,6 +15,7 @@ from galaxy.managers.context import (
     ProvidesUserContext,
 )
 from galaxy.managers.jobs import JobManager
+from galaxy.managers.landing import LandingRequestManager
 from galaxy.managers.markdown_parse import is_quotable_argument_value
 from galaxy.managers.pages import PageManager
 from galaxy.managers.workflow_extraction_naming import normalize_label
@@ -186,8 +185,10 @@ class WorkflowsService(ServiceBase):
         workflow_scheduling_manager: WorkflowSchedulingManager,
         config: GalaxyAppConfiguration,
         completion_hook_registry: WorkflowCompletionHookRegistry,
+        landing_manager: LandingRequestManager,
     ):
         self._workflows_manager = workflows_manager
+        self._landing_manager = landing_manager
         self._completion_hook_registry = completion_hook_registry
         self._workflow_scheduling_manager = workflow_scheduling_manager
         self._workflow_contents_manager = workflow_contents_manager
@@ -368,6 +369,11 @@ class WorkflowsService(ServiceBase):
             )
         self._check_workflow_tools(trans, workflow, bool(payload.require_exact_tool_versions))
         self._check_on_complete(payload.on_complete)
+        landing_request = None
+        if payload.landing_uuid:
+            landing_request = self._landing_manager.get_claimed_workflow_landing_request_model(
+                trans, payload.landing_uuid
+            )
         run_configs = build_workflow_run_configs(trans, workflow, payload.model_dump(exclude_unset=True))
         is_batch = payload.batch
 
@@ -385,9 +391,8 @@ class WorkflowsService(ServiceBase):
             )
             invocations.append(workflow_invocation)
 
-        # Create landing request association if provided
-        if payload.landing_uuid:
-            self._create_landing_request_association(trans, payload.landing_uuid, invocations)
+        if landing_request:
+            self._create_landing_request_association(trans, landing_request, invocations)
 
         trans.sa_session.commit()
         encoded_invocations = [WorkflowInvocationResponse(**invocation.to_dict()) for invocation in invocations]
@@ -681,20 +686,14 @@ class WorkflowsService(ServiceBase):
                 hook.validate_config(action[action_name])
 
     def _create_landing_request_association(
-        self, trans: ProvidesUserContext, landing_uuid: UUID4 | None, invocations: list[WorkflowInvocation]
+        self,
+        trans: ProvidesUserContext,
+        landing_request: WorkflowLandingRequest,
+        invocations: list[WorkflowInvocation],
     ):
         """Create association between landing request and workflow invocations."""
-        # Look up the workflow landing request by UUID
-        workflow_landing_request = (
-            trans.sa_session.query(WorkflowLandingRequest).where(WorkflowLandingRequest.uuid == landing_uuid).first()
-        )
-
-        if not workflow_landing_request:
-            raise exceptions.ObjectNotFound(f"WorkflowLandingRequest with UUID {landing_uuid} not found")
-
-        # Create associations for each invocation
         for invocation in invocations:
             association = LandingRequestToWorkflowInvocationAssociation(
-                landing_request=workflow_landing_request, workflow_invocation=invocation
+                landing_request=landing_request, workflow_invocation=invocation
             )
             trans.sa_session.add(association)

@@ -2,7 +2,9 @@ from base64 import b64encode
 from typing import (
     Any,
 )
+from uuid import uuid4
 
+import pytest
 import yaml
 from pydantic import HttpUrl
 
@@ -471,6 +473,26 @@ class TestLandingApi(ApiTestCase):
         assert invocation_details["landing_uuid"] == str(
             landing_response.uuid
         ), "landing_uuid should match the original landing request"
+
+    @skip_without_tool("cat1")
+    @pytest.mark.parametrize("landing", ["unknown", "unclaimed", "claimed_by_other_user"])
+    def test_invoke_with_unusable_landing_uuid_creates_no_history(self, landing):
+        request = _get_simple_landing_payload(self.workflow_populator)
+        landing_response = self.dataset_populator.create_workflow_landing(request)
+        landing_uuid = str(landing_response.uuid) if landing != "unknown" else str(uuid4())
+        if landing == "claimed_by_other_user":
+            with self._different_user():
+                _can_claim_request(self.dataset_populator, landing_response)
+        history_name = f"unusable landing history {uuid4()}"
+        response = self.workflow_populator.invoke_workflow(
+            request.workflow_id,
+            inputs=request.request_state,
+            request={"new_history_name": history_name, "landing_uuid": landing_uuid},
+            inputs_by="name",
+        )
+        assert_status_code_is(response, {"unknown": 404, "unclaimed": 409, "claimed_by_other_user": 403}[landing])
+        assert self.workflow_populator.workflow_invocations(request.workflow_id) == []
+        assert not [h for h in self.dataset_populator.get_histories() if h["name"].startswith(history_name)]
 
     @skip_without_tool("cat1")
     def test_workflow_landing_with_sample_sheet(self):
