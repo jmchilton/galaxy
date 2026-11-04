@@ -27,8 +27,7 @@ class: GalaxyWorkflow
 label: Tests metadata copied to copied outputs
 inputs:
   bam_file:
-    type: collection
-    collection_type: list
+    type: data
 outputs:
   copied_bam:
     outputSource: extract/output
