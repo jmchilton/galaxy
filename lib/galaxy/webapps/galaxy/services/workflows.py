@@ -648,15 +648,22 @@ class WorkflowsService(ServiceBase):
                 exact=require_exact_tool_versions,
                 user=trans.user,
             ):
-                missing_tools.append(tool_reference)
-                continue
-            tool = toolbox.get_tool(
-                tool_reference["tool_id"],
-                tool_version=tool_reference["tool_version"],
-                tool_uuid=tool_reference["tool_uuid"],
-                exact=require_exact_tool_versions,
-                user=trans.user,
-            )
+                # ``exact`` means exact tool id; an unversioned shed guid or short
+                # id still satisfies an exact version request if that version is installed.
+                tool = None
+                if require_exact_tool_versions and tool_reference["tool_version"] and not tool_reference["tool_uuid"]:
+                    tool = toolbox.get_tool_at_version(tool_reference["tool_id"], tool_reference["tool_version"])
+                if tool is None:
+                    missing_tools.append(tool_reference)
+                    continue
+            else:
+                tool = toolbox.get_tool(
+                    tool_reference["tool_id"],
+                    tool_version=tool_reference["tool_version"],
+                    tool_uuid=tool_reference["tool_uuid"],
+                    exact=require_exact_tool_versions,
+                    user=trans.user,
+                )
             if tool and not tool.is_workflow_compatible:
                 incompatible_tools.append(tool_reference)
         if missing_tools:
