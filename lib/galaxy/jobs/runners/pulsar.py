@@ -580,13 +580,6 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
             assert job_wrapper.tool is not None
             tool = job_wrapper.tool
             remote_job_config = client.setup(tool.id, tool.version, tool.requires_galaxy_python_environment)
-            remote_container_handling = PulsarJobRunner.__remote_container_handling(client)
-            if remote_container_handling:
-                # Handle this remotely and don't pass it to build_command
-                remote_container = self._find_container(
-                    job_wrapper,
-                )
-
             needed_features = self.__needed_features(client)
             PulsarJobRunner.check_job_config(remote_job_config, check_features=needed_features)
             rewrite_parameters = PulsarJobRunner.__rewrite_parameters(client)
@@ -613,6 +606,12 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
                 job_prepare_ret = False
             if job_prepare_ret is False:
                 return command_line, client, remote_job_config, compute_environment, remote_container
+
+            if PulsarJobRunner.__remote_container_handling(client):
+                # Handle this remotely and don't pass it to build_command
+                remote_container = self._find_container(
+                    job_wrapper,
+                )
 
             self.__prepare_input_files_locally(job_wrapper)
             remote_metadata = PulsarJobRunner.__remote_metadata(client)
