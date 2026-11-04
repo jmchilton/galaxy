@@ -367,7 +367,8 @@ class TestWorkflowInvocationGraph(SeleniumTestCase):
         assert [element.text for element in lines.collection_element_name.all()] == ["1", "2"]
         assert "a list with 2" in lines.wait_for_visible().text
         assert embedded_output._(label="numbers_b").text.wait_for_text().strip() == "4"
-        self._wait_for_image_loaded(embedded_output._(label="plot").image.wait_for_visible())
+        plot = embedded_output._(label="plot")
+        self._wait_for_image_loaded(plot.image.wait_for_visible())
         self._assert_cards_beside_their_steps()
         # steps only move right, and the inputs and first column of tools stay put
         embedded = self._node_positions()
@@ -380,6 +381,16 @@ class TestWorkflowInvocationGraph(SeleniumTestCase):
             lambda: self._graph_transform() != transform, "graph to refit", wait_type=self.wait_types.UX_RENDER
         )
         assert self._rows_shown(top_rows) == 5
+        # the image is sized to the card's body, whatever the picture's own size, and the snapshot doesn't scroll
+        fit = self.execute_script(
+            "const card = arguments[0].getBoundingClientRect();"
+            "const image = arguments[0].querySelector('img').getBoundingClientRect();"
+            "const preview = arguments[0].querySelector('.invocation-output-preview');"
+            "return {width: image.width / card.width, height: image.height / card.height,"
+            " below: image.bottom - card.bottom, scrolls: preview.scrollHeight > preview.clientHeight};",
+            plot.wait_for_present(),
+        )
+        assert fit["width"] > 0.9 and fit["height"] > 0.6 and fit["below"] <= 0 and not fit["scrolls"], fit
         self._assert_embedded_outputs_static()
         self._settle_for_screenshot()
         self.screenshot("invocation_graph_embedded_outputs")

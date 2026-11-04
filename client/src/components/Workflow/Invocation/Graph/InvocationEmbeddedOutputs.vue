@@ -93,13 +93,30 @@ function connectorPath({ stepRect, rect }: EmbeddedOutput) {
 
 .embedded-output-body {
     flex: 1;
+    min-height: 0;
     overflow: hidden;
     font-size: 0.75rem;
-    --invocation-output-image-height: 8rem;
+    // images fill the body, less the preview's padding and border, at any root font size
+    container-type: size;
+    --invocation-output-image-height: calc(100cqh - 1rem - 2px);
+
+    // clipped to the card, not scrolled: a static card can't be scrolled
+    :deep(.invocation-output-preview) {
+        overflow: hidden;
+    }
 
     // inset like the dataset and collection previews beside it, rather than against the card's border
     :deep(.invocation-output-not-ready) {
         padding: 0.25rem 0.5rem;
+    }
+
+    :deep(.image-wrapper) {
+        display: block;
+    }
+
+    :deep(img) {
+        width: 100%;
+        height: var(--invocation-output-image-height);
     }
 
     // a card shows a table's first rows; it can't be sorted or paged, so drop those controls and tighten the rows
