@@ -1511,6 +1511,7 @@ invocations:
       table: '${_} table.g-table'
       table_row: '${_} table.g-table tbody tr'
       table_pagination: '${_} .pagination'
+      table_sort_icon: '${_} table.g-table thead th svg'
       text: '${_} pre'
       image: '${_} img'
       # a collection card summarizes the collection and lists its first few elements

@@ -102,9 +102,23 @@ function connectorPath({ stepRect, rect }: EmbeddedOutput) {
         padding: 0.25rem 0.5rem;
     }
 
-    // a card shows a table's first rows; its pagination can't be used on a static card
+    // a card shows a table's first rows; it can't be sorted or paged, so drop those controls and tighten the rows
     :deep(.pagination) {
         display: none;
+    }
+
+    :deep(.g-table-container .g-table) {
+        margin-bottom: 0;
+        line-height: 1.3;
+
+        thead th,
+        tbody td {
+            padding: 0.125rem 0.375rem;
+        }
+
+        thead th svg {
+            display: none;
+        }
     }
 }
 </style>

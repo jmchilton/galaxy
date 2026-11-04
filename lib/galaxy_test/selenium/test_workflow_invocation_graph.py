@@ -357,9 +357,11 @@ class TestWorkflowInvocationGraph(SeleniumTestCase):
         summary = embedded_output._(label="summary")
         summary.table.wait_for_present()
         assert len(summary.table_row.all()) == 8  # head -n 8
-        # a static card can't page through a table, so it hides the table's pagination
+        # a static card can't page or sort a table, so it hides those controls, and its compact rows all fit
         top_rows.table_pagination.wait_for_present()
         top_rows.table_pagination.assert_absent_or_hidden()
+        top_rows.table_sort_icon.wait_for_present()
+        top_rows.table_sort_icon.assert_absent_or_hidden()
         lines = embedded_output._(label="lines")
         lines.collection_element_name.wait_for_present()
         assert [element.text for element in lines.collection_element_name.all()] == ["1", "2"]
@@ -377,6 +379,7 @@ class TestWorkflowInvocationGraph(SeleniumTestCase):
         self._wait_on(
             lambda: self._graph_transform() != transform, "graph to refit", wait_type=self.wait_types.UX_RENDER
         )
+        assert self._rows_shown(top_rows) == 5
         self._assert_embedded_outputs_static()
         self._settle_for_screenshot()
         self.screenshot("invocation_graph_embedded_outputs")
@@ -450,6 +453,16 @@ class TestWorkflowInvocationGraph(SeleniumTestCase):
             assert joins, f"{output_label}'s connector doesn't join {step_label}"
             for other_label, other in steps.items():
                 assert card.clear_of(other), f"{output_label} overlaps {other_label}"
+
+    def _rows_shown(self, preview: SmartComponent) -> int:
+        """How many of the preview's table rows it shows in full, rather than clipping (measured at once)"""
+        return self.execute_script(
+            "const bottom = arguments[0].getBoundingClientRect().bottom;"
+            "return [...arguments[0].querySelectorAll('table.g-table tbody tr')]"
+            ".filter((row) => row.getBoundingClientRect().bottom <= bottom + arguments[1]).length;",
+            preview.wait_for_present(),
+            EDGE_TOLERANCE,
+        )
 
     def _client_rect(self, element: WebElementProtocol) -> ClientRect:
         """The element's on-screen bounding box"""
