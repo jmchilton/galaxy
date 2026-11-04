@@ -156,10 +156,10 @@ def dereference_collection_dataset_element(
     parent_dataset_collection.elements.append(dce)
 
 
-def _validate_sample_sheet_metadata(
+def validate_sample_sheet_metadata(
     data_request_uri: DataRequestCollectionUri,
 ):
-    """Validate sample sheet metadata for landing requests."""
+    """Validate sample sheet metadata on a collection request."""
     # Extract metadata from data request
     collection_type = data_request_uri.collection_type
     column_definitions = data_request_uri.column_definitions
@@ -199,7 +199,7 @@ def derefence_collection_to_model(
     collection_name: str = "Collection",
 ) -> HistoryDatasetCollectionAssociation:
     # Validate sample sheet metadata before creating any objects
-    _validate_sample_sheet_metadata(data_request_uri)
+    validate_sample_sheet_metadata(data_request_uri)
 
     name = data_request_uri.name or collection_name
     hdca = HistoryDatasetCollectionAssociation(
