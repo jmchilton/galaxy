@@ -3,33 +3,58 @@ import { computed, type Ref } from "vue";
 import type { GraphStep, GraphStepState, InvocationOutputItem } from "@/composables/useInvocationGraph";
 import { useInvocationStore } from "@/stores/invocationStore";
 
+type InvocationStore = ReturnType<typeof useInvocationStore>;
+
+/** The dataset or collection produced for a step's output, if any.
+ *
+ * The invocation lists only workflow inputs and outputs (`GraphStep.outputItems`); any other output comes from the
+ * step's details, which reading fetches once. Returns the stored object itself rather than a copy, so reevaluating
+ * a computed over it doesn't re-render the output's previews.
+ */
+export function stepOutputItem(
+    invocationStore: InvocationStore,
+    step: GraphStep,
+    name: string,
+): InvocationOutputItem | undefined {
+    const listed = step.outputItems?.[name];
+    if (listed || !step.invocationStepId) {
+        return listed;
+    }
+    const details = invocationStore.getInvocationStepById(step.invocationStepId);
+    return details?.outputs?.[name] ?? details?.output_collections?.[name];
+}
+
+/** Fetches a step's details again, at most once per state of the step: an output still missing after the step's
+ * state changed (e.g. after it ran) may exist now, while some outputs never appear (e.g. filtered ones). */
+export function useStepDetailsRefetch(invocationStore: InvocationStore) {
+    const fetchedUnderState = new Map<string, GraphStepState>();
+    return function refetch(invocationStepId: string, state: GraphStepState) {
+        if (fetchedUnderState.get(invocationStepId) !== state) {
+            fetchedUnderState.set(invocationStepId, state);
+            invocationStore.fetchInvocationStepById({ id: invocationStepId });
+        }
+    };
+}
+
 /** Every produced output of an invocation graph step, keyed by output name.
  *
- * The invocation lists only workflow inputs and outputs (`GraphStep.outputItems`). When those don't cover every
- * output, reading `items` fetches the step's details once, and `load()` fetches them again once the step's state
- * has changed, e.g. after the step has run and created its outputs.
+ * Reading `items` fetches the step's details once when the invocation doesn't list every output (see
+ * `stepOutputItem`), and `load()` fetches them again once the step's state has changed.
  * @param step - The invocation graph step
  */
 export function useStepOutputItems(step: Ref<GraphStep>) {
     const invocationStore = useInvocationStore();
+    const refetch = useStepDetailsRefetch(invocationStore);
 
-    const listedItems = computed(() => step.value.outputItems ?? {});
-    const allListed = computed(() => step.value.outputs.every((output) => listedItems.value[output.name]));
-
-    const items = computed<Record<string, InvocationOutputItem>>(() => {
-        const invocationStepId = step.value.invocationStepId;
-        if (allListed.value || !invocationStepId) {
-            return listedItems.value;
+    const items = computed(() => {
+        const items: Record<string, InvocationOutputItem> = {};
+        for (const output of step.value.outputs) {
+            const item = stepOutputItem(invocationStore, step.value, output.name);
+            if (item) {
+                items[output.name] = item;
+            }
         }
-        const details = invocationStore.getInvocationStepById(invocationStepId);
-        const merged = { ...listedItems.value };
-        for (const [name, output] of [
-            ...Object.entries(details?.outputs ?? {}),
-            ...Object.entries(details?.output_collections ?? {}),
-        ]) {
-            merged[name] ??= { src: output.src, id: output.id };
-        }
-        return merged;
+        return items;
     });
 
     const loading = computed(() => {
@@ -37,15 +62,10 @@ export function useStepOutputItems(step: Ref<GraphStep>) {
         return !!invocationStepId && invocationStore.isLoadingInvocationStep(invocationStepId);
     });
 
-    /** The step's state when `load()` last fetched its details; some outputs never appear, e.g. filtered ones */
-    let fetchedUnderState: GraphStepState | undefined;
-
     function load() {
         const { invocationStepId, outputs, state } = step.value;
-        const missing = outputs.some((output) => !items.value[output.name]);
-        if (invocationStepId && missing && state !== fetchedUnderState) {
-            fetchedUnderState = state;
-            invocationStore.fetchInvocationStepById({ id: invocationStepId });
+        if (invocationStepId && outputs.some((output) => !items.value[output.name])) {
+            refetch(invocationStepId, state);
         }
     }
 
