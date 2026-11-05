@@ -8196,6 +8196,45 @@ steps: []
         invocation = self.workflow_populator.get_invocation(invocation_id)
         assert invocation["inputs"]["0"]["id"] == hdca["id"]
 
+    @pytest.mark.parametrize("declared_type,supplied_type", [("paired", "list"), ("list", "paired")])
+    def test_run_with_incompatible_collection_type(self, history_id, declared_type, supplied_type):
+        workflow_id = self._upload_yaml_workflow(f"""
+class: GalaxyWorkflow
+inputs:
+  input1:
+    type: collection
+    collection_type: {declared_type}
+steps: []
+""")
+        if supplied_type == "list":
+            fetch_response = self.dataset_collection_populator.create_list_in_history(history_id, wait=True).json()
+        else:
+            fetch_response = self.dataset_collection_populator.create_pair_in_history(history_id, wait=True).json()
+        hdca = self.dataset_collection_populator.wait_for_fetched_collection(fetch_response)
+        response = self.workflow_populator.invoke_workflow(
+            workflow_id, history_id=history_id, inputs={"input1": {"src": "hdca", "id": hdca["id"]}}, inputs_by="name"
+        )
+        self._assert_status_code_is(response, 400)
+        assert_error_message_contains(
+            response, f"input1: collection type '{supplied_type}' cannot be used for an input of collection type"
+        )
+        assert self.workflow_populator.workflow_invocations(workflow_id) == []
+
+    def test_run_with_untyped_collection_input_accepts_any_collection_type(self, history_id):
+        workflow_id = self._upload_yaml_workflow("""
+class: GalaxyWorkflow
+inputs:
+  input1: collection
+steps: []
+""")
+        fetch_response = self.dataset_collection_populator.create_pair_in_history(history_id, wait=True).json()
+        hdca = self.dataset_collection_populator.wait_for_fetched_collection(fetch_response)
+        invocation_id = self.workflow_populator.invoke_workflow_and_assert_ok(
+            workflow_id, history_id=history_id, inputs={"input1": {"src": "hdca", "id": hdca["id"]}}, inputs_by="name"
+        )
+        invocation = self.workflow_populator.get_invocation(invocation_id)
+        assert invocation["inputs"]["0"]["id"] == hdca["id"]
+
     def test_run_with_deleted_inputs(self, history_id):
         workflow_id = self._upload_yaml_workflow("""
 class: GalaxyWorkflow

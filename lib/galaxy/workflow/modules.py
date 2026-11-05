@@ -58,6 +58,7 @@ from galaxy.model import (
 )
 from galaxy.model.base import ensure_object_added_to_session
 from galaxy.model.dataset_collections.adapters import PromoteCollectionElementToCollectionAdapter
+from galaxy.model.dataset_collections.query import HistoryQuery
 from galaxy.model.dataset_collections.type_description import COLLECTION_TYPE_DESCRIPTION_FACTORY
 from galaxy.model.dataset_collections.types.sample_sheet_util import validate_column_definitions
 from galaxy.objectstore import ObjectStorePopulator
@@ -1392,7 +1393,16 @@ class InputDataCollectionModule(InputModule):
 
     def validate_input_content(self, content: model.DatasetInstance | HistoryDatasetCollectionAssociation) -> None:
         self.validate_input_kind(isinstance(content, HistoryDatasetCollectionAssociation))
+        assert isinstance(content, HistoryDatasetCollectionAssociation)
         super().validate_input_content(content)
+        input_param = self.get_runtime_inputs(None)["input"]
+        history_query = HistoryQuery.from_parameter(input_param, COLLECTION_TYPE_DESCRIPTION_FACTORY)
+        if not history_query.direct_match(content) and not history_query.can_map_over(content):
+            raise ParameterValueError(
+                f"collection type '{content.collection.collection_type}' cannot be used for an input of "
+                f"collection type '{','.join(input_param.collection_types or [])}'",
+                "input",
+            )
 
     def get_all_outputs(self, data_only=False):
         parameter_def = self._parse_state_into_dict()
