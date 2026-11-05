@@ -1345,8 +1345,6 @@ class InputDataModule(InputModule):
 class InputDataCollectionModule(InputModule):
     type = "data_collection_input"
     name = "Input dataset collection"
-    default_collection_type = "list"
-    collection_type = default_collection_type
 
     def get_inputs(self):
         # migrated to frontend
@@ -1409,17 +1407,15 @@ class InputDataCollectionModule(InputModule):
                 name="output",
                 extensions=extensions,
                 collection=True,
-                collection_type=parameter_def.get("collection_type", self.default_collection_type),
+                collection_type=parameter_def["collection_type"],
                 optional=optional,
             )
         ]
 
     def _parse_state_into_dict(self):
         state_as_dict = super()._parse_state_into_dict()
-        if "collection_type" in (inputs := self.state.inputs):
-            collection_type = inputs["collection_type"]
-        else:
-            collection_type = self.default_collection_type
+        inputs = self.state.inputs
+        collection_type = inputs.get("collection_type")
         if "column_definitions" in inputs:
             column_definitions = inputs["column_definitions"]
         else:

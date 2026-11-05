@@ -101,7 +101,13 @@ def test_data_collection_input_default_state():
     module = modules.module_factory.from_dict(
         trans, {"type": "data_collection_input", "label": "Input Dataset Collection"}
     )
-    __assert_has_runtime_input(module, label="Input Dataset Collection", collection_type="list")
+    input_param = __assert_has_runtime_input(module, label="Input Dataset Collection")
+    assert input_param.collection_types is None
+    step = model.WorkflowStep()
+    module.save_to_step(step)
+    assert step.tool_inputs["collection_type"] is None
+    assert module.get_export_state()["collection_type"] is None
+    assert module.get_all_outputs()[0]["collection_type"] is None
 
 
 def test_data_input_collection_modified_state():
