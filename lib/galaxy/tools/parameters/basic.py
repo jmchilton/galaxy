@@ -1164,8 +1164,8 @@ class SelectToolParameter(ToolParameter):
     """
 
     value_label: str
-    # A stored string is a single selected option. Subclasses that parse separated
-    # strings in from_json leave stored strings to from_json instead.
+    # A stored string is a single selected option, so _select_from_json no longer
+    # whitespace-splits it. Subclasses whose from_json splits strings opt out.
     stored_string_is_single_option: bool = True
 
     def __init__(self, tool: Optional["Tool"], input_source, context=None):
