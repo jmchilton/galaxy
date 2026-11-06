@@ -2,18 +2,13 @@ import { createTestingPinia } from "@pinia/testing";
 import { getLocalVue, withPlugins } from "@tests/vitest/helpers";
 import { mount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ref } from "vue";
 
-import { createHistoryDatasetCollectionInstanceFull } from "@/api/datasetCollections";
+import { useServerMock } from "@/api/client/__mocks__";
 import { useHistoryItemsStore } from "@/stores/historyItemsStore";
 
 import CollectionCreatorIndex from "./CollectionCreatorIndex.vue";
-
-vi.mock("@/api/datasetCollections", async (importOriginal) => ({
-    ...((await importOriginal()) as Record<string, unknown>),
-    createHistoryDatasetCollectionInstanceFull: vi.fn(),
-}));
 
 vi.mock("@/composables/useHistoryDatasets", () => ({
     useHistoryDatasets: () => ({
@@ -25,7 +20,7 @@ vi.mock("@/composables/useHistoryDatasets", () => ({
     }),
 }));
 
-const createCollection = vi.mocked(createHistoryDatasetCollectionInstanceFull);
+const { server, http } = useServerMock();
 
 const CREATED_COLLECTION = { id: "hdca-1", history_content_type: "dataset_collection", state: "ok" };
 
@@ -64,12 +59,12 @@ function findLinkByText(wrapper: ReturnType<typeof mountCreatorIndex>, text: str
 }
 
 describe("CollectionCreatorIndex", () => {
-    beforeEach(() => {
-        createCollection.mockReset();
-    });
-
     it("offers a 'Try again' button after a failed create that brings back the creator", async () => {
-        createCollection.mockRejectedValue("Collection name is invalid");
+        server.use(
+            http.post("/api/dataset_collections", ({ response }) =>
+                response("4XX").json({ err_code: 400008, err_msg: "Collection name is invalid" }, { status: 400 }),
+            ),
+        );
         const wrapper = mountCreatorIndex();
 
         await submitCreator(wrapper);
@@ -87,7 +82,9 @@ describe("CollectionCreatorIndex", () => {
     });
 
     it("offers a 'Create another collection' button after a successful create", async () => {
-        createCollection.mockResolvedValue(CREATED_COLLECTION as never);
+        server.use(
+            http.post("/api/dataset_collections", ({ response }) => response(200).json(CREATED_COLLECTION as never)),
+        );
         const wrapper = mountCreatorIndex();
 
         await submitCreator(wrapper);
