@@ -306,6 +306,11 @@ class TestHistoriesApi(ApiTestCase, BaseHistories):
             assert [history["id"] for history in response.json()] == [small, empty_second]
             assert response.headers["total_matches"] == "4"
 
+            data = dict(search=unique_id, show_own=False, show_published=False, sort_by="size")
+            response = self._get("histories", data=data)
+            self._assert_status_code_is(response, 200)
+            assert len(response.json()) == 4
+
     def test_index_sort_by_size_requires_own_histories(self):
         for flags in [dict(show_published=True), dict(show_published=False, show_shared=True)]:
             response = self._get("histories", data=dict(search="", sort_by="size", **flags))
