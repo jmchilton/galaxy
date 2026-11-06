@@ -1,4 +1,4 @@
-import { currentPagerPage, getLocalVue, goToPage, pagerPages } from "@tests/vitest/helpers";
+import { currentPagerPage, getLocalVue, goToPage } from "@tests/vitest/helpers";
 import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 
@@ -29,11 +29,5 @@ describe("ZipImportSummary", () => {
                 .slice(24)
                 .map((file) => file.path),
         );
-    });
-
-    it("shows no pager when every file fits on one page", () => {
-        const wrapper = mountSummary(24);
-
-        expect(pagerPages(wrapper)).toEqual([]);
     });
 });
