@@ -58,6 +58,10 @@ describe("StorageOperationRunsTable", () => {
 
         expect(pagerPages(wrapper)).toEqual(["1", "2", "3"]);
         expect(currentPagerPage(wrapper)).toBe("2");
+        expect(wrapper.findAll("tbody tr").map((row) => row.find("a").attributes("href"))).toEqual([
+            "/histories/history-1/storage/runs/run-3",
+            "/histories/history-1/storage/runs/run-4",
+        ]);
     });
 
     it("emits page-change with the clicked page", async () => {
