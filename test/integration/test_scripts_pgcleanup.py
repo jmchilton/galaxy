@@ -518,6 +518,44 @@ class TestScriptsPgCleanupIntegration(BaseScriptsIntegrationTestCase, UsesMetada
             "exists": False,
         }
 
+    def test_purge_deleted_hdas_keeps_metadata_file_named_by_live_row(self):
+        self._skip_unless_postgres()
+
+        history_id = self.dataset_populator.new_history()
+        live = self.dataset_populator.new_dataset(history_id, content="live", wait=True)
+        purged = self.dataset_populator.new_dataset(history_id, content="purged", wait=True)
+        live_file = self._add_metadata_file(self._db_get(model.HistoryDatasetAssociation, live["id"]))
+        purged_file = self._add_metadata_file(
+            self._db_get(model.HistoryDatasetAssociation, purged["id"]), uuid=self._metadata_file_uuid(live_file[0])
+        )
+        assert live_file[1] == purged_file[1]
+        self.dataset_populator.delete_dataset(history_id, purged["id"])
+
+        self._pgcleanup_check_output(["--older-than", "0", "purge_deleted_hdas"])
+
+        assert self._metadata_file_state(*purged_file) == {"deleted": True, "purged": True, "exists": True}
+        assert self._metadata_file_state(*live_file) == {"deleted": False, "purged": False, "exists": True}
+
+    def test_delete_library_datasets_keeps_metadata_file_named_by_live_row(self):
+        self._skip_unless_postgres()
+
+        history_id = self.dataset_populator.new_history()
+        live = self.dataset_populator.new_dataset(history_id, content="live", wait=True)
+        live_file = self._add_metadata_file(self._db_get(model.HistoryDatasetAssociation, live["id"]))
+        _, library_dataset = self.library_populator.new_library_dataset_in_private_library(
+            "pgcleanup_library_dataset_shared_uuid"
+        )
+        ldda_file = self._add_metadata_file(
+            self._db_get(model.LibraryDatasetDatasetAssociation, library_dataset["ldda_id"]),
+            uuid=self._metadata_file_uuid(live_file[0]),
+        )
+        self.library_populator.delete_library_dataset(library_dataset["id"])
+
+        self._pgcleanup_check_output(["--older-than", "0", "delete_library_datasets"])
+
+        assert self._metadata_file_state(*ldda_file) == {"deleted": True, "purged": True, "exists": True}
+        assert self._metadata_file_state(*live_file) == {"deleted": False, "purged": False, "exists": True}
+
     def test_purge_historyless_hdas(self):
         # same as above - this is just a negative test for things being broken
         # we could access the model layer to write a test to verify the positive

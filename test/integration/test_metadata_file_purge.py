@@ -4,12 +4,15 @@ from galaxy_test.base.populators import (
     LibraryPopulator,
 )
 from galaxy_test.driver import integration_util
-from ._metadata_files import UsesMetadataFiles
+from ._metadata_files import (
+    METADATA_FILE_CONTENT,
+    UsesMetadataFiles,
+)
 
 PURGED_AND_GONE = {"deleted": True, "purged": True, "exists": False}
 
 
-class TestMetadataFilePurge(integration_util.IntegrationTestCase, UsesMetadataFiles):
+class MetadataFilePurgeTestCase(integration_util.IntegrationTestCase, UsesMetadataFiles):
     dataset_populator: DatasetPopulator
     library_populator: LibraryPopulator
 
@@ -35,6 +38,17 @@ class TestMetadataFilePurge(integration_util.IntegrationTestCase, UsesMetadataFi
         )
         self._assert_status_code_is(response, 200)
 
+    def _copy_to_library(self, library: dict, hda_id: str) -> str:
+        response = self._post(
+            f"libraries/{library['id']}/contents",
+            data={"folder_id": library["root_folder_id"], "create_type": "file", "from_hda_id": hda_id},
+            json=True,
+        )
+        self._assert_status_code_is(response, 200)
+        return response.json()["library_dataset_id"]
+
+
+class TestMetadataFilePurge(MetadataFilePurgeTestCase):
     def test_purge_hda(self):
         history_id = self.dataset_populator.new_history()
         dataset = self.dataset_populator.new_dataset(history_id, content="ABC", wait=True)
@@ -53,3 +67,42 @@ class TestMetadataFilePurge(integration_util.IntegrationTestCase, UsesMetadataFi
         self._purge_library_dataset(library["id"], library_dataset["id"])
 
         assert self._metadata_file_state(*metadata_file) == PURGED_AND_GONE
+
+    def test_purge_hda_keeps_file_named_by_row_of_live_dataset(self):
+        history_id = self.dataset_populator.new_history()
+        live = self.dataset_populator.new_dataset(history_id, content="live", wait=True)
+        purged = self.dataset_populator.new_dataset(history_id, content="purged", wait=True)
+        live_file = self._add_metadata_file(self._hda(live["id"]))
+        purged_file = self._add_metadata_file(self._hda(purged["id"]), uuid=self._metadata_file_uuid(live_file[0]))
+        assert live_file[1] == purged_file[1]
+
+        self.dataset_populator.delete_dataset(history_id, purged["id"], purge=True, wait_for_purge=True)
+
+        assert self._metadata_file_state(*purged_file) == {"deleted": True, "purged": True, "exists": True}
+        assert self._metadata_file_state(*live_file) == {"deleted": False, "purged": False, "exists": True}
+        with open(live_file[1], "rb") as f:
+            assert f.read() == METADATA_FILE_CONTENT
+
+        # the last row naming the file releases it
+        self.dataset_populator.delete_dataset(history_id, live["id"], purge=True, wait_for_purge=True)
+        assert self._metadata_file_state(*live_file) == PURGED_AND_GONE
+
+
+class TestMetadataFilePurgeStoreById(MetadataFilePurgeTestCase):
+    @classmethod
+    def handle_galaxy_config_kwds(cls, config):
+        super().handle_galaxy_config_kwds(config)
+        config["object_store_store_by"] = "id"
+
+    def test_purge_hda_removes_own_file_despite_shared_uuid(self):
+        history_id = self.dataset_populator.new_history()
+        live = self.dataset_populator.new_dataset(history_id, content="live", wait=True)
+        purged = self.dataset_populator.new_dataset(history_id, content="purged", wait=True)
+        live_file = self._add_metadata_file(self._hda(live["id"]))
+        purged_file = self._add_metadata_file(self._hda(purged["id"]), uuid=self._metadata_file_uuid(live_file[0]))
+        assert live_file[1] != purged_file[1]
+
+        self.dataset_populator.delete_dataset(history_id, purged["id"], purge=True, wait_for_purge=True)
+
+        assert self._metadata_file_state(*purged_file) == PURGED_AND_GONE
+        assert self._metadata_file_state(*live_file) == {"deleted": False, "purged": False, "exists": True}

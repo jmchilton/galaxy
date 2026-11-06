@@ -5159,9 +5159,8 @@ class Dataset(Base, StorableObject, Serializable):
                     MetadataFile.lda_id.in_([ldda.id for ldda in self.library_associations]),
                 )
             )
-        )
-        for metadata_file in metadata_files:
-            metadata_file.purge(user=user)
+        ).all()
+        MetadataFile.purge_all(session, list(metadata_files), user=user)
 
     def get_access_roles(self, security_agent):
         return self._roles_for_action(security_agent.permitted_actions.DATASET_ACCESS.action)
@@ -11437,22 +11436,39 @@ class MetadataFile(Base, StorableObject, Serializable):
             "alt_name": f"metadata_{getattr(self, store_by)}.dat",
         }
 
-    def purge(self, user=None) -> None:
-        """Remove the file from the object store and mark this row deleted and purged."""
+    def purge(self, user=None, keep_uuid_named_file=False) -> None:
+        """Mark this row deleted and purged and remove its file from the object store."""
         dataset = self.dataset
         assert dataset is not None
         object_store = dataset.object_store
         assert object_store is not None
-        try:
-            object_store.delete(
-                self,
-                auth=ObjectStoreAuth(user=user) if user else None,
-                **self._object_store_kwargs(object_store.get_store_by(dataset)),
-            )
-        except galaxy.exceptions.ObjectNotFound:
-            pass
+        store_by = object_store.get_store_by(dataset)
+        if not (keep_uuid_named_file and store_by == "uuid"):
+            try:
+                object_store.delete(
+                    self, auth=ObjectStoreAuth(user=user) if user else None, **self._object_store_kwargs(store_by)
+                )
+            except galaxy.exceptions.ObjectNotFound:
+                pass
         self.deleted = True
         self.purged = True
+
+    @staticmethod
+    def purge_all(session, metadata_files: list["MetadataFile"], user=None) -> None:
+        """Purge rows, keeping any file an unpurged row outside them names by the same uuid."""
+        if not metadata_files:
+            return
+        uuids_in_use = set(
+            session.scalars(
+                select(MetadataFile.uuid).where(
+                    MetadataFile.uuid.in_({metadata_file.uuid for metadata_file in metadata_files}),
+                    MetadataFile.id.not_in([metadata_file.id for metadata_file in metadata_files]),
+                    MetadataFile.purged.isnot(True),
+                )
+            )
+        )
+        for metadata_file in metadata_files:
+            metadata_file.purge(user=user, keep_uuid_named_file=metadata_file.uuid in uuids_in_use)
 
     def update_from_file(self, file_name):
         if not self.dataset:
