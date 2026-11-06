@@ -78,6 +78,7 @@ preferences:
     delete_account: '#g-card-delete-account'
     delete_account_input: '#name-input'
     delete_account_ok_btn: '.modal-footer .btn-danger'
+    delete_account_error: '#modal-user-deletion .alert-danger'
     email_input: "input[id='email']"
     username_input: "input[id='username']"
     preferred_storage: '#g-card-manage-preferred-object-store'

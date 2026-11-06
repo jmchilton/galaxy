@@ -1539,6 +1539,14 @@ class NavigatesGalaxy(HasDriver):
         self.components.masthead.user.wait_for_and_click()
         self.components.masthead.preferences.wait_for_and_click()
 
+    def request_account_deletion(self, email: str):
+        """Open Delete Account from User Preferences, confirm with ``email`` and submit."""
+        self.navigate_to_user_preferences()
+        preferences = self.components.preferences
+        preferences.delete_account.wait_for_and_click()
+        preferences.delete_account_input.wait_for_and_send_keys(email)
+        preferences.delete_account_ok_btn.wait_for_and_click()
+
     def navigate_to_invocations_grid(self):
         self.home()
         self.components.invocations.activity.wait_for_and_click()
