@@ -216,6 +216,14 @@ class LibraryContentsService(ServiceBase, LibraryActions, UsesLibraryMixinItems,
             trans.sa_session.add(ld)
             trans.sa_session.commit()
 
+            # independent of the dataset below, which can outlive this library dataset
+            try:
+                ld.purge_metadata_files(user=trans.user)
+                trans.sa_session.commit()
+            except Exception:
+                log.exception("Failed to purge metadata files of library dataset %s", ld.id)
+                trans.sa_session.rollback()
+
             # TODO: had to change this up a bit from Dataset.user_can_purge
             dataset = ld.library_dataset_dataset_association.dataset
             no_history_assoc = len(dataset.history_associations) == len(dataset.purged_history_associations)

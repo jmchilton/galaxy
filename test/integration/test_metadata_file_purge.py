@@ -87,6 +87,55 @@ class TestMetadataFilePurge(MetadataFilePurgeTestCase):
         self.dataset_populator.delete_dataset(history_id, live["id"], purge=True, wait_for_purge=True)
         assert self._metadata_file_state(*live_file) == PURGED_AND_GONE
 
+    def test_purge_library_item_with_live_hda_copy(self):
+        history_id = self.dataset_populator.new_history()
+        bam = self.dataset_populator.new_bam_dataset(history_id, self.test_data_resolver)
+        self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+        library = self.library_populator.new_private_library("metadata_files_live_hda")
+        library_dataset_id = self._copy_to_library(library, bam["id"])
+        ldda = self._library_dataset(library_dataset_id).library_dataset_dataset_association
+        hda = self._hda(bam["id"])
+        assert ldda.dataset_id == hda.dataset_id
+        ldda_index = ldda.metadata.bam_index
+        hda_index = hda.metadata.bam_index
+        assert ldda_index.id != hda_index.id
+        ldda_file = ldda_index.id, ldda_index.get_file_name()
+        hda_file = hda_index.id, hda_index.get_file_name()
+        with open(hda_file[1], "rb") as f:
+            hda_index_content = f.read()
+        assert hda_index_content
+
+        self._purge_library_dataset(library["id"], library_dataset_id)
+
+        assert self._metadata_file_state(*ldda_file) == PURGED_AND_GONE
+        assert self._metadata_file_state(*hda_file) == {"deleted": False, "purged": False, "exists": True}
+        with open(hda_file[1], "rb") as f:
+            assert f.read() == hda_index_content
+        details = self.dataset_populator.get_history_dataset_details(history_id, dataset_id=bam["id"])
+        assert details["purged"] is False
+
+    def test_purge_library_item_removes_files_of_all_versions(self):
+        library, library_dataset = self.library_populator.new_library_dataset_in_private_library("metadata_versions")
+        sa_session = self._app.model.session
+        library_dataset_model = self._library_dataset(library_dataset["id"])
+        current = library_dataset_model.library_dataset_dataset_association
+        older = model.LibraryDatasetDatasetAssociation(
+            name="older",
+            extension="txt",
+            library_dataset=library_dataset_model,
+            create_dataset=True,
+            sa_session=sa_session,
+        )
+        sa_session.add(older)
+        sa_session.commit()
+        older_file = self._add_metadata_file(older)
+        current_file = self._add_metadata_file(current)
+
+        self._purge_library_dataset(library["id"], library_dataset["id"])
+
+        assert self._metadata_file_state(*older_file) == PURGED_AND_GONE
+        assert self._metadata_file_state(*current_file) == PURGED_AND_GONE
+
 
 class TestMetadataFilePurgeStoreById(MetadataFilePurgeTestCase):
     @classmethod

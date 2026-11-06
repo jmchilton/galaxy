@@ -6994,6 +6994,16 @@ class LibraryDataset(Base, Serializable):
         ("import_from_history", "Import datasets from your current history"),
     ]
 
+    def purge_metadata_files(self, user=None) -> None:
+        """Purge the metadata files of all versions of this library dataset."""
+        session = required_object_session(self)
+        metadata_files = session.scalars(
+            select(MetadataFile)
+            .join(LibraryDatasetDatasetAssociation, MetadataFile.lda_id == LibraryDatasetDatasetAssociation.id)
+            .where(LibraryDatasetDatasetAssociation.library_dataset_id == self.id, MetadataFile.purged.isnot(True))
+        ).all()
+        MetadataFile.purge_all(session, list(metadata_files), user=user)
+
     def get_info(self):
         if self.library_dataset_dataset_association:
             return self.library_dataset_dataset_association.info
