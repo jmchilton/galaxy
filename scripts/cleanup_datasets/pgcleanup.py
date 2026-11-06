@@ -1047,7 +1047,7 @@ class PurgeErrorHDAs(PurgesHDAs, RemovesMetadataFiles, RequiresDiskUsageRecalcul
     )
 
 
-class PurgeHDAsOfPurgedHistories(PurgesHDAs, RequiresDiskUsageRecalculation, Action):
+class PurgeHDAsOfPurgedHistories(PurgesHDAs, RemovesMetadataFiles, RequiresDiskUsageRecalculation, Action):
     """
     - Mark purged all HistoryDatasetAssociations in histories that are purged and older than the
       specified number of days.
@@ -1088,7 +1088,7 @@ class PurgeHDAsOfPurgedHistories(PurgesHDAs, RequiresDiskUsageRecalculation, Act
     """
 
 
-class PurgeDeletedHistories(PurgesHDAs, RequiresDiskUsageRecalculation, Action):
+class PurgeDeletedHistories(PurgesHDAs, RemovesMetadataFiles, RequiresDiskUsageRecalculation, Action):
     """
     - Mark purged all Histories marked deleted that are older than the specified number of days.
     - Mark purged all HistoryDatasetAssociations in Histories marked purged in this step (if not

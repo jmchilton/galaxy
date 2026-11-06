@@ -98,6 +98,33 @@ class TestScriptsPgCleanupIntegration(BaseScriptsIntegrationTestCase, UsesMetada
         assert history_response.status_code == 200
         assert history_response.json()["purged"] is True, history_response.json()
 
+    def test_purge_deleted_histories_metadata_files(self):
+        self._skip_unless_postgres()
+
+        history_id = self.dataset_populator.new_history()
+        hda = self.dataset_populator.new_dataset(history_id, wait=True)
+        metadata_file = self._add_metadata_file(self._db_get(model.HistoryDatasetAssociation, hda["id"]))
+        assert self.dataset_populator._delete(f"histories/{history_id}").status_code == 200
+
+        self._pgcleanup_check_output(["--older-than", "0", "--sequence", "purge_deleted_histories"])
+
+        assert self._metadata_file_state(*metadata_file) == {"deleted": True, "purged": True, "exists": False}
+
+    def test_purge_hdas_of_purged_histories_metadata_files(self):
+        self._skip_unless_postgres()
+
+        history_id = self.dataset_populator.new_history()
+        hda = self.dataset_populator.new_dataset(history_id, wait=True)
+        metadata_file = self._add_metadata_file(self._db_get(model.HistoryDatasetAssociation, hda["id"]))
+        history = self._db_get(model.History, history_id)
+        history.deleted = True
+        history.purged = True
+        self._app.model.session.commit()
+
+        self._pgcleanup_check_output(["--older-than", "0", "purge_hdas_of_purged_histories"])
+
+        assert self._metadata_file_state(*metadata_file) == {"deleted": True, "purged": True, "exists": False}
+
     def test_purge_old_hdas(self):
         self._skip_unless_postgres()
 
