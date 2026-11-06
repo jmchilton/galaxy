@@ -1,4 +1,6 @@
 from galaxy import model
+from galaxy.managers.datasets import DatasetManager
+from galaxy.schema.tasks import PurgeDatasetsTaskRequest
 from galaxy_test.base.populators import (
     DatasetPopulator,
     LibraryPopulator,
@@ -86,6 +88,24 @@ class TestMetadataFilePurge(MetadataFilePurgeTestCase):
         # the last row naming the file releases it
         self.dataset_populator.delete_dataset(history_id, live["id"], purge=True, wait_for_purge=True)
         assert self._metadata_file_state(*live_file) == PURGED_AND_GONE
+
+    def test_batch_purge_releases_file_all_rows_name(self):
+        history_id = self.dataset_populator.new_history()
+        first = self.dataset_populator.new_dataset(history_id, content="first", wait=True)
+        second = self.dataset_populator.new_dataset(history_id, content="second", wait=True)
+        first_file = self._add_metadata_file(self._hda(first["id"]))
+        second_file = self._add_metadata_file(self._hda(second["id"]), uuid=self._metadata_file_uuid(first_file[0]))
+        dataset_ids = []
+        for hda in (self._hda(first["id"]), self._hda(second["id"])):
+            hda.deleted = True
+            hda.purged = True
+            dataset_ids.append(hda.dataset_id)
+        self._app.model.session.commit()
+
+        self._app[DatasetManager].purge_datasets(PurgeDatasetsTaskRequest(dataset_ids=dataset_ids))
+
+        assert self._metadata_file_state(*first_file) == PURGED_AND_GONE
+        assert self._metadata_file_state(*second_file) == PURGED_AND_GONE
 
     def test_purge_library_item_with_live_hda_copy(self):
         history_id = self.dataset_populator.new_history()

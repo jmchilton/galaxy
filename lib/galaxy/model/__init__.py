@@ -11470,15 +11470,15 @@ class MetadataFile(Base, StorableObject, Serializable):
         """Purge rows, keeping any file an unpurged row outside them names by the same uuid."""
         if not metadata_files:
             return
-        uuids_in_use = set(
-            session.scalars(
-                select(MetadataFile.uuid).where(
-                    MetadataFile.uuid.in_({metadata_file.uuid for metadata_file in metadata_files}),
-                    MetadataFile.id.not_in([metadata_file.id for metadata_file in metadata_files]),
-                    MetadataFile.purged.isnot(True),
-                )
+        # selects rows, not uuids: the session doesn't autoflush, a batch's earlier purges are only on the instances
+        other_rows = session.scalars(
+            select(MetadataFile).where(
+                MetadataFile.uuid.in_({metadata_file.uuid for metadata_file in metadata_files}),
+                MetadataFile.id.not_in([metadata_file.id for metadata_file in metadata_files]),
+                MetadataFile.purged.isnot(True),
             )
         )
+        uuids_in_use = {other_row.uuid for other_row in other_rows if not other_row.purged}
         for metadata_file in metadata_files:
             metadata_file.purge(user=user, keep_uuid_named_file=metadata_file.uuid in uuids_in_use)
 
