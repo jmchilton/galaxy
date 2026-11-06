@@ -38,7 +38,7 @@ export interface UsePaginationReturn<T> {
  *
  * // In template:
  * <ItemCard v-for="item in paginatedItems" :key="item.id" :item="item" />
- * <BPagination v-if="showPagination" :value="currentPage" @change="onPageChange" />
+ * <GPagination v-if="showPagination" :model-value="currentPage" @change="onPageChange" />
  * ```
  *
  * @param items - Reactive array of items to paginate
