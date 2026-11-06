@@ -27,7 +27,7 @@ Controls draw their keyboard focus ring with the `focus-ring` mixin in `src/styl
 
 ```scss
 &:focus-visible {
-    @include focus-ring; // ($color: ..., $halo: false, $important: true) where needed
+    @include focus-ring; // ($halo: false, $important: true) where needed
 }
 ```
 

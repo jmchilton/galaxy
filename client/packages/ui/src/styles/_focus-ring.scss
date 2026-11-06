@@ -7,8 +7,8 @@ $focus-ring-color: var(--color-ring, var(--color-blue-600, #25537b));
 
 // $halo fills the offset gap with the page colour, keeping the ring clear of the control's fill and its neighbours.
 // $important lets the halo beat consumer button styles that put their own focus shadow on the element.
-@mixin focus-ring($color: $focus-ring-color, $halo: true, $important: false) {
-    outline: $focus-ring-width solid $color;
+@mixin focus-ring($halo: true, $important: false) {
+    outline: $focus-ring-width solid $focus-ring-color;
     outline-offset: $focus-ring-offset;
 
     @if $halo and $important {
