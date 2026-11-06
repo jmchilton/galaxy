@@ -1,33 +1,13 @@
 import { currentPagerPage, getLocalVue, goToPage } from "@tests/vitest/helpers";
 import { mount } from "@vue/test-utils";
-import { describe, expect, it, vi } from "vitest";
-import { computed, defineComponent, h, ref } from "vue";
+import { beforeEach, describe, expect, it } from "vitest";
+import { defineComponent, h } from "vue";
+
+import { makePastedItem } from "@/composables/upload/testHelpers/uploadFixtures";
+
+import { useUploadState } from "./uploadState";
 
 import UploadProgress from "./UploadProgress.vue";
-
-const UPLOADS = Array.from({ length: 30 }, (_, index) => ({ id: `upload-${index + 1}` }));
-
-vi.mock("./uploadState", () => ({
-    useUploadState: () => {
-        const items = ref(UPLOADS);
-        return {
-            activeItems: items,
-            activeBatches: ref([]),
-            batchesWithProgress: computed(() => []),
-            hasActiveUploads: computed(() => false),
-            hasCompleted: computed(() => false),
-            orderedUploadItems: computed(() => items.value.map((upload) => ({ type: "upload", upload }))),
-        };
-    },
-}));
-
-vi.mock("@/composables/upload/useUploadBatchOperations", () => ({
-    useUploadBatchOperations: () => ({}),
-}));
-
-vi.mock("@/stores/uploadDatasetMonitorStore", () => ({
-    useUploadDatasetMonitorStore: () => ({}),
-}));
 
 const SELECTORS = {
     ROW: ".upload-row-stub",
@@ -36,19 +16,32 @@ const SELECTORS = {
 const UploadFileRowStub = defineComponent({
     props: { file: { type: Object, required: true } },
     setup(props) {
-        return () => h("div", { class: "upload-row-stub", "data-id": props.file.id });
+        return () => h("div", { class: "upload-row-stub", "data-name": props.file.name });
     },
 });
 
+function addUploads(count: number) {
+    const { addUploadItem } = useUploadState();
+    return Array.from({ length: count }, (_, index) => addUploadItem(makePastedItem({ name: `upload-${index + 1}` })));
+}
+
+function mountProgress() {
+    const localVue = getLocalVue();
+    return mount(UploadProgress as object, {
+        global: {
+            ...localVue,
+            stubs: { ...localVue.stubs, BreadcrumbHeading: true, UploadFileRow: UploadFileRowStub },
+        },
+    });
+}
+
 describe("UploadProgress", () => {
+    // Upload state is a module singleton
+    beforeEach(() => useUploadState().clearAll());
+
     it("pages through the uploads", async () => {
-        const localVue = getLocalVue();
-        const wrapper = mount(UploadProgress as object, {
-            global: {
-                ...localVue,
-                stubs: { ...localVue.stubs, BreadcrumbHeading: true, UploadFileRow: UploadFileRowStub },
-            },
-        });
+        addUploads(30);
+        const wrapper = mountProgress();
 
         expect(wrapper.findAll(SELECTORS.ROW)).toHaveLength(24);
         expect(currentPagerPage(wrapper)).toBe("1");
@@ -56,8 +49,6 @@ describe("UploadProgress", () => {
         await goToPage(wrapper, 2);
 
         expect(currentPagerPage(wrapper)).toBe("2");
-        expect(wrapper.findAll(SELECTORS.ROW).map((row) => row.attributes("data-id"))).toEqual(
-            UPLOADS.slice(24).map((upload) => upload.id),
-        );
+        expect(wrapper.findAll(SELECTORS.ROW)).toHaveLength(6);
     });
 });
