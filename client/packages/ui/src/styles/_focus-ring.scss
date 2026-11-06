@@ -17,3 +17,11 @@ $focus-ring-color: var(--color-ring, var(--color-blue-600, #25537b));
         box-shadow: 0 0 0 $focus-ring-offset var(--background-color, #ffffff);
     }
 }
+
+// For items filling their menu edge to edge, where an outer ring would be clipped.
+// Focus shares the hover background: the light ring tells them apart, the blue edge shows on unfilled active items.
+@mixin focus-ring-inset {
+    outline: $focus-ring-width solid var(--color-grey-100);
+    outline-offset: -2 * $focus-ring-width;
+    box-shadow: inset 0 0 0 $focus-ring-width $focus-ring-color;
+}

@@ -34,7 +34,7 @@ Controls draw their keyboard focus ring with the `focus-ring` mixin in `src/styl
 Deliberate exceptions:
 
 - GCheckbox and the native GRadio use `$halo: false`: the halo is square and would show as a page-colour box around the control on tinted rows. The offset gap already shows the real background.
-- GDropdownItem and GDropdownItemButton keep an inset ring: items fill the menu edge to edge, so an outer ring would be clipped by the menu and run into neighbouring items.
+- GDropdownItem and GDropdownItemButton use the `focus-ring-inset` mixin: items fill the menu edge to edge, so an outer ring would be clipped by the menu and run into neighbouring items.
 - The GAlert close button keeps a `currentColor` ring: it sits on the variant fill, where blue-600 can fall below 3:1.
 - Stated GFormInput and GSelect fields keep the shape and tint only the ring (green-700 valid, red-600 invalid) through `outline-color`.
 
