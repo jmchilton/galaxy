@@ -1,4 +1,4 @@
-import { getLocalVue } from "@tests/vitest/helpers";
+import { currentPagerPage, getLocalVue, goToPage, pagerPages } from "@tests/vitest/helpers";
 import { mount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
 import { describe, expect, it } from "vitest";
@@ -12,8 +12,6 @@ const { server, http } = useServerMock();
 
 const SELECTORS = {
     JOB_HEADER: ".job-header-stub",
-    PAGE_BUTTON: "nav[aria-label='Pagination'] button[data-page]",
-    CURRENT_PAGE: "nav[aria-label='Pagination'] button[aria-current='page']",
 };
 
 // Renders only the pager slot and the shown job id, so the spec needs no job API mocks
@@ -56,11 +54,11 @@ describe("ToolExecutionJobs", () => {
         const wrapper = await mountToolExecutionJobs();
 
         expect(wrapper.find(SELECTORS.JOB_HEADER).attributes("data-job-id")).toBe("job-1");
-        expect(wrapper.find(SELECTORS.CURRENT_PAGE).text()).toBe("1");
+        expect(currentPagerPage(wrapper)).toBe("1");
 
-        await wrapper.find(`${SELECTORS.PAGE_BUTTON}[data-page='3']`).trigger("click");
+        await goToPage(wrapper, 3);
 
-        expect(wrapper.find(SELECTORS.CURRENT_PAGE).text()).toBe("3");
+        expect(currentPagerPage(wrapper)).toBe("3");
         expect(wrapper.find(SELECTORS.JOB_HEADER).attributes("data-job-id")).toBe("job-3");
     });
 
@@ -69,6 +67,6 @@ describe("ToolExecutionJobs", () => {
         const wrapper = await mountToolExecutionJobs();
 
         expect(wrapper.find(SELECTORS.JOB_HEADER).attributes("data-job-id")).toBe("job-1");
-        expect(wrapper.find("nav[aria-label='Pagination']").exists()).toBe(false);
+        expect(pagerPages(wrapper)).toEqual([]);
     });
 });

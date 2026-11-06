@@ -1,4 +1,4 @@
-import { getLocalVue } from "@tests/vitest/helpers";
+import { currentPagerPage, getLocalVue, goToPage, pagerPages } from "@tests/vitest/helpers";
 import { mount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -44,11 +44,6 @@ vi.mock("@/stores/storageOperationsStore", () => ({
     useStorageOperationsStore: () => ({ startRun: vi.fn() }),
 }));
 
-const SELECTORS = {
-    PAGE_BUTTON: "nav[aria-label='Pagination'] button[data-page]",
-    CURRENT_PAGE: "nav[aria-label='Pagination'] button[aria-current='page']",
-};
-
 async function mountRunView() {
     const localVue = getLocalVue();
     const wrapper = mount(StorageOperationRunView as object, {
@@ -82,14 +77,14 @@ describe("StorageOperationRunView", () => {
     it("loads the page picked in the pager", async () => {
         const wrapper = await mountRunView();
 
-        expect(wrapper.findAll(SELECTORS.PAGE_BUTTON).map((button) => button.text())).toEqual(["1", "2", "3"]);
-        expect(wrapper.find(SELECTORS.CURRENT_PAGE).text()).toBe("1");
+        expect(pagerPages(wrapper)).toEqual(["1", "2", "3"]);
+        expect(currentPagerPage(wrapper)).toBe("1");
         expect(requestedOffsets()).toEqual([0]);
 
-        await wrapper.find(`${SELECTORS.PAGE_BUTTON}[data-page='3']`).trigger("click");
+        await goToPage(wrapper, 3);
         await flushPromises();
 
-        expect(wrapper.find(SELECTORS.CURRENT_PAGE).text()).toBe("3");
+        expect(currentPagerPage(wrapper)).toBe("3");
         expect(requestedOffsets()).toEqual([0, 100]);
     });
 });

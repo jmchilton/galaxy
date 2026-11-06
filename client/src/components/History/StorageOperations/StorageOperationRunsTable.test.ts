@@ -1,4 +1,4 @@
-import { emittedArg, getLocalVue } from "@tests/vitest/helpers";
+import { currentPagerPage, emittedArg, getLocalVue, goToPage, pagerPages } from "@tests/vitest/helpers";
 import { mount } from "@vue/test-utils";
 import { describe, expect, it, vi } from "vitest";
 
@@ -7,12 +7,6 @@ import StorageOperationRunsTable from "./StorageOperationRunsTable.vue";
 vi.mock("@/stores/objectStoreStore", () => ({
     useObjectStoreStore: () => ({ getObjectStoreNameById: () => null }),
 }));
-
-const SELECTORS = {
-    PAGER: "nav[aria-label='Pagination']",
-    PAGE_BUTTON: "nav[aria-label='Pagination'] button[data-page]",
-    CURRENT_PAGE: "nav[aria-label='Pagination'] button[aria-current='page']",
-};
 
 function makeRows(count: number) {
     return Array.from({ length: count }, (_, index) => ({
@@ -61,14 +55,14 @@ describe("StorageOperationRunsTable", () => {
     it("shows the page the parent passes in", () => {
         const wrapper = mountTable(5, 2);
 
-        expect(wrapper.findAll(SELECTORS.PAGE_BUTTON).map((button) => button.text())).toEqual(["1", "2", "3"]);
-        expect(wrapper.find(SELECTORS.CURRENT_PAGE).text()).toBe("2");
+        expect(pagerPages(wrapper)).toEqual(["1", "2", "3"]);
+        expect(currentPagerPage(wrapper)).toBe("2");
     });
 
     it("emits page-change with the clicked page", async () => {
         const wrapper = mountTable(5);
 
-        await wrapper.find(`${SELECTORS.PAGE_BUTTON}[data-page='3']`).trigger("click");
+        await goToPage(wrapper, 3);
 
         expect(emittedArg(wrapper, "page-change")).toBe(3);
     });
@@ -76,6 +70,6 @@ describe("StorageOperationRunsTable", () => {
     it("shows no pager when every row fits on one page", () => {
         const wrapper = mountTable(2);
 
-        expect(wrapper.find(SELECTORS.PAGER).exists()).toBe(false);
+        expect(pagerPages(wrapper)).toEqual([]);
     });
 });

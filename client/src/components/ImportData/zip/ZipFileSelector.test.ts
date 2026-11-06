@@ -1,4 +1,4 @@
-import { getLocalVue } from "@tests/vitest/helpers";
+import { currentPagerPage, getLocalVue, goToPage, pagerPages } from "@tests/vitest/helpers";
 import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 import { defineComponent, h, type PropType } from "vue";
@@ -10,8 +10,6 @@ import DelayedInput from "@/components/Common/DelayedInput.vue";
 
 const SELECTORS = {
     CARD: ".entry-card-stub",
-    PAGE_BUTTON: "nav[aria-label='Pagination'] button[data-page]",
-    CURRENT_PAGE: "nav[aria-label='Pagination'] button[aria-current='page']",
 };
 
 const EntryCardStub = defineComponent({
@@ -60,24 +58,24 @@ describe("ZipFileSelector", () => {
     it("pages through the files in the archive", async () => {
         const wrapper = mountSelector();
 
-        expect(wrapper.findAll(SELECTORS.PAGE_BUTTON).map((button) => button.text())).toEqual(["1", "2", "3"]);
+        expect(pagerPages(wrapper)).toEqual(["1", "2", "3"]);
         expect(shownPaths(wrapper)).toEqual(ALPHA_FILES.slice(0, 24).map((file) => file.path));
 
-        await wrapper.find(`${SELECTORS.PAGE_BUTTON}[data-page='3']`).trigger("click");
+        await goToPage(wrapper, 3);
 
-        expect(wrapper.find(SELECTORS.CURRENT_PAGE).text()).toBe("3");
+        expect(currentPagerPage(wrapper)).toBe("3");
         expect(shownPaths(wrapper)).toEqual(BETA_FILES.slice(18).map((file) => file.path));
     });
 
     it("goes back to the first page when the search changes", async () => {
         const wrapper = mountSelector();
-        await wrapper.find(`${SELECTORS.PAGE_BUTTON}[data-page='3']`).trigger("click");
+        await goToPage(wrapper, 3);
 
         wrapper.findComponent(DelayedInput).vm.$emit("change", "beta");
         await wrapper.vm.$nextTick();
 
-        expect(wrapper.findAll(SELECTORS.PAGE_BUTTON).map((button) => button.text())).toEqual(["1", "2"]);
-        expect(wrapper.find(SELECTORS.CURRENT_PAGE).text()).toBe("1");
+        expect(pagerPages(wrapper)).toEqual(["1", "2"]);
+        expect(currentPagerPage(wrapper)).toBe("1");
         expect(shownPaths(wrapper)).toEqual(BETA_FILES.slice(0, 24).map((file) => file.path));
     });
 });

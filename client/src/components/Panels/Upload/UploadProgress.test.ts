@@ -1,4 +1,4 @@
-import { getLocalVue } from "@tests/vitest/helpers";
+import { currentPagerPage, getLocalVue, goToPage } from "@tests/vitest/helpers";
 import { mount } from "@vue/test-utils";
 import { describe, expect, it, vi } from "vitest";
 import { computed, defineComponent, h, ref } from "vue";
@@ -31,8 +31,6 @@ vi.mock("@/stores/uploadDatasetMonitorStore", () => ({
 
 const SELECTORS = {
     ROW: ".upload-row-stub",
-    PAGE_BUTTON: "nav[aria-label='Pagination'] button[data-page]",
-    CURRENT_PAGE: "nav[aria-label='Pagination'] button[aria-current='page']",
 };
 
 const UploadFileRowStub = defineComponent({
@@ -53,11 +51,11 @@ describe("UploadProgress", () => {
         });
 
         expect(wrapper.findAll(SELECTORS.ROW)).toHaveLength(24);
-        expect(wrapper.find(SELECTORS.CURRENT_PAGE).text()).toBe("1");
+        expect(currentPagerPage(wrapper)).toBe("1");
 
-        await wrapper.find(`${SELECTORS.PAGE_BUTTON}[data-page='2']`).trigger("click");
+        await goToPage(wrapper, 2);
 
-        expect(wrapper.find(SELECTORS.CURRENT_PAGE).text()).toBe("2");
+        expect(currentPagerPage(wrapper)).toBe("2");
         expect(wrapper.findAll(SELECTORS.ROW).map((row) => row.attributes("data-id"))).toEqual(
             UPLOADS.slice(24).map((upload) => upload.id),
         );

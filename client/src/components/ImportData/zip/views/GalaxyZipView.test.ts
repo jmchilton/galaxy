@@ -1,4 +1,4 @@
-import { getLocalVue } from "@tests/vitest/helpers";
+import { currentPagerPage, getLocalVue, goToPage } from "@tests/vitest/helpers";
 import { mount } from "@vue/test-utils";
 import { describe, expect, it, vi } from "vitest";
 import { defineComponent, h, type PropType } from "vue";
@@ -19,8 +19,6 @@ vi.mock("@/composables/zipExplorer", async (importOriginal) => ({
 
 const SELECTORS = {
     CARD: ".entry-card-stub",
-    PAGE_BUTTON: "nav[aria-label='Pagination'] button[data-page]",
-    CURRENT_PAGE: "nav[aria-label='Pagination'] button[aria-current='page']",
 };
 
 const EntryCardStub = defineComponent({
@@ -40,9 +38,9 @@ describe("GalaxyZipView", () => {
 
         expect(wrapper.findAll(SELECTORS.CARD)).toHaveLength(24);
 
-        await wrapper.find(`${SELECTORS.PAGE_BUTTON}[data-page='2']`).trigger("click");
+        await goToPage(wrapper, 2);
 
-        expect(wrapper.find(SELECTORS.CURRENT_PAGE).text()).toBe("2");
+        expect(currentPagerPage(wrapper)).toBe("2");
         expect(wrapper.findAll(SELECTORS.CARD).map((card) => card.attributes("data-path"))).toEqual(
             FILES.slice(24).map((file) => file.path),
         );

@@ -210,6 +210,33 @@ export function emittedArg(wrapper, event, index = 0) {
     return args[0];
 }
 
+/**
+ * Labels of the page number buttons of the GPagination inside `wrapper`, empty when there is no pager.
+ * @param {import("@vue/test-utils").VueWrapper} wrapper
+ * @returns {string[]}
+ */
+export function pagerPages(wrapper) {
+    return wrapper.findAll('button[aria-label^="Go to page "]').map((button) => button.text());
+}
+
+/**
+ * Label of the current page button of the GPagination inside `wrapper`.
+ * @param {import("@vue/test-utils").VueWrapper} wrapper
+ * @returns {string}
+ */
+export function currentPagerPage(wrapper) {
+    return wrapper.get('button[aria-current="page"]').text();
+}
+
+/**
+ * Clicks a page number button of the GPagination inside `wrapper`.
+ * @param {import("@vue/test-utils").VueWrapper} wrapper
+ * @param {number} page
+ */
+export async function goToPage(wrapper, page) {
+    await wrapper.get(`button[aria-label="Go to page ${page}"]`).trigger("click");
+}
+
 export function dispatchEvent(wrapper, type, props = {}) {
     const event = new Event(type, { bubbles: true });
     Object.assign(event, props);

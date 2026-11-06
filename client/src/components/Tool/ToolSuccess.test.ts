@@ -1,5 +1,12 @@
 import { createTestingPinia } from "@pinia/testing";
-import { advanceTimersAndFlush, getLocalVue, injectTestRouter } from "@tests/vitest/helpers";
+import {
+    advanceTimersAndFlush,
+    currentPagerPage,
+    getLocalVue,
+    goToPage,
+    injectTestRouter,
+    pagerPages,
+} from "@tests/vitest/helpers";
 import { enableAutoUnmount, mount, type VueWrapper } from "@vue/test-utils";
 import flushPromises from "flush-promises";
 import { setActivePinia } from "pinia";
@@ -74,12 +81,6 @@ const TEST_JOB_RESPONSE = {
     outputs: [],
     output_collections: [],
 } as unknown as JobResponse;
-
-// Selectors
-const SELECTORS = {
-    PAGINATION_ITEM: "nav[aria-label='Pagination'] button[data-page]",
-    PAGINATION_CURRENT: "nav[aria-label='Pagination'] button[aria-current='page']",
-};
 
 async function mountToolSuccess(latestResponse: ResponseVal | null, currentUser: unknown = null) {
     const testPinia = createTestingPinia({
@@ -156,7 +157,7 @@ describe("ToolSuccess", () => {
         });
 
         it("does not show the multi-job pagination header", () => {
-            expect(wrapper.findAll(SELECTORS.PAGINATION_ITEM).length).toBe(0);
+            expect(pagerPages(wrapper)).toEqual([]);
         });
     });
 
@@ -201,7 +202,7 @@ describe("ToolSuccess", () => {
         });
 
         it("shows a pagination control for each job", () => {
-            expect(wrapper.findAll(SELECTORS.PAGINATION_ITEM).length).toBeGreaterThan(0);
+            expect(pagerPages(wrapper)).toEqual(["1", "2"]);
         });
 
         it("shows JobState and RerunJobButton for the currently viewed job", () => {
@@ -211,15 +212,11 @@ describe("ToolSuccess", () => {
         });
 
         it("switches the viewed job when navigating to the next pagination page", async () => {
-            const pageTwo = wrapper
-                .findAll(SELECTORS.PAGINATION_ITEM)
-                .filter((link) => link.text() === "2")
-                .at(0);
-            await pageTwo?.trigger("click");
+            await goToPage(wrapper, 2);
 
             const jobState = wrapper.findComponent(JobState);
             expect(jobState.props("jobId")).toEqual(SECOND_JOB.id);
-            expect(wrapper.find(SELECTORS.PAGINATION_CURRENT).text()).toBe("2");
+            expect(currentPagerPage(wrapper)).toBe("2");
         });
 
         it("goes back to the first job when a new response has fewer jobs", async () => {
@@ -229,10 +226,7 @@ describe("ToolSuccess", () => {
                 jobResponse: { ...TEST_JOB_RESPONSE, jobs: jobs as unknown as JobResponse["jobs"] },
             });
             await flushPromises();
-            await wrapper
-                .findAll(SELECTORS.PAGINATION_ITEM)
-                .find((link) => link.text() === "3")!
-                .trigger("click");
+            await goToPage(wrapper, 3);
             expect(wrapper.findComponent(JobState).props("jobId")).toEqual("test_id_3");
 
             useJobStore().saveLatestResponse({
@@ -241,7 +235,7 @@ describe("ToolSuccess", () => {
             });
             await flushPromises();
 
-            expect(wrapper.find(SELECTORS.PAGINATION_CURRENT).text()).toBe("1");
+            expect(currentPagerPage(wrapper)).toBe("1");
             expect(wrapper.findComponent(JobState).props("jobId")).toEqual(jobInformationResponse.id);
         });
     });
@@ -275,9 +269,7 @@ describe("ToolSuccess live job state", () => {
         });
         expect(wrapper.findComponent(JobState).text()).toContain("running");
         expect(calls).toEqual([firstId]);
-        const pageTwo = wrapper.findAll(SELECTORS.PAGINATION_ITEM).find((link) => link.text() === "2");
-        expect(pageTwo).toBeDefined();
-        await pageTwo!.trigger("click");
+        await goToPage(wrapper, 2);
         await flushPromises();
         expect(calls).toEqual([firstId, secondId]);
         state = "ok";
@@ -289,7 +281,7 @@ describe("ToolSuccess live job state", () => {
         await advanceTimersAndFlush(3000);
         expect(calls).toEqual([firstId, secondId, secondId]);
         // Polling the viewed job must not move the pager back to page 1
-        expect(wrapper.find(SELECTORS.PAGINATION_CURRENT).text()).toBe("2");
+        expect(currentPagerPage(wrapper)).toBe("2");
         wrapper.unmount();
     });
 });
