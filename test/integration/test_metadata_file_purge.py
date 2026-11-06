@@ -136,6 +136,23 @@ class TestMetadataFilePurge(MetadataFilePurgeTestCase):
         assert self._metadata_file_state(*older_file) == PURGED_AND_GONE
         assert self._metadata_file_state(*current_file) == PURGED_AND_GONE
 
+    def test_show_purged_library_item_does_not_recreate_metadata_file(self):
+        history_id = self.dataset_populator.new_history()
+        bam = self.dataset_populator.new_bam_dataset(history_id, self.test_data_resolver)
+        self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+        library = self.library_populator.new_private_library("metadata_files_show")
+        library_dataset_id = self._copy_to_library(library, bam["id"])
+        ldda = self._library_dataset(library_dataset_id).library_dataset_dataset_association
+        index_file = ldda.metadata.bam_index.id, ldda.metadata.bam_index.get_file_name()
+        self.dataset_populator.delete_dataset(history_id, bam["id"], purge=True, wait_for_purge=True)
+
+        self._purge_library_dataset(library["id"], library_dataset_id)
+        assert self._metadata_file_state(*index_file) == PURGED_AND_GONE
+
+        show_response = self._get(f"libraries/{library['id']}/contents/{library_dataset_id}")
+        self._assert_status_code_is(show_response, 200)
+        assert self._metadata_file_state(*index_file) == PURGED_AND_GONE
+
 
 class TestMetadataFilePurgeStoreById(MetadataFilePurgeTestCase):
     @classmethod
