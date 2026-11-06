@@ -2049,6 +2049,14 @@ zip_import_wizard:
     pager_page_button: '.zip-import-wizard .g-pagination button[aria-label="Go to page ${page}"]'
     pager_current_page: '.zip-import-wizard .g-pagination button[aria-label="Go to page ${page}"][aria-current="page"]'
 
+history_graph:
+  tool_executions:
+    selectors:
+      _: '.history-graph-tool-executions'
+      execution_header: '.history-graph-tool-executions .portlet-header'
+      page_button: '.history-graph-tool-executions .g-pagination button[aria-label="Go to page ${page}"]'
+      current_page: '.history-graph-tool-executions .g-pagination button[aria-label="Go to page ${page}"][aria-current="page"]'
+
 file_set_wizard:
   selectors:
     _: '.rule-based-import-wizard'
