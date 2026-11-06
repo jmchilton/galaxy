@@ -1330,7 +1330,7 @@ def apply_sort_column(
     values can return a row on two pages, or on none.
     """
     expression = sort_expression(column)
-    if expression is not column:
+    if expression is not column or not isinstance(column, InstrumentedAttribute):
         # Postgres rejects ordering a SELECT DISTINCT by an expression missing from the
         # select list. Selecting it cannot change which rows are distinct -- it derives
         # from a column that is already selected. add_columns() widens the row type, but
