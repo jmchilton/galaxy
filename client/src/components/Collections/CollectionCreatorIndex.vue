@@ -234,7 +234,7 @@ defineExpose({ redrawCreator });
         </GAlert>
         <GAlert v-else-if="createCollectionError" variant="danger" show>
             {{ createCollectionError }}
-            <GLink thin @click.stop.prevent="resetCreator">
+            <GLink thin @click.stop="resetCreator">
                 <FontAwesomeIcon :icon="faUndo" fixed-width />
                 {{ localize("Try again") }}
             </GLink>
@@ -249,7 +249,7 @@ defineExpose({ redrawCreator });
                     {{ localize("Collection created successfully.") }}
                     {{ localize("It might still not be a valid input based on individual element properties.") }}
                     {{ localize("Expand the collection to see its individual elements.") }}
-                    <GLink v-if="!fromSelection" thin @click.stop.prevent="resetCreator">
+                    <GLink v-if="!fromSelection" thin @click.stop="resetCreator">
                         <FontAwesomeIcon :icon="faUndo" fixed-width />
                         {{ localize("Create another collection") }}
                     </GLink>
