@@ -55,7 +55,11 @@ function isExpanded(id: string): boolean {
                     <FontAwesomeIcon class="ml-auto" :icon="isExpanded(node.id) ? faChevronUp : faChevronDown" />
                 </div>
                 <div v-if="isExpanded(node.id)" class="portlet-content">
-                    <ToolExecutionJobs v-if="node.data?.itemId" class="p-2" :tool-execution-id="node.data.itemId" />
+                    <ToolExecutionJobs
+                        v-if="node.data?.itemId"
+                        class="p-2"
+                        :tool-execution-id="node.data.itemId"
+                        :pager-label="`${node.label} jobs`" />
                 </div>
             </div>
         </template>

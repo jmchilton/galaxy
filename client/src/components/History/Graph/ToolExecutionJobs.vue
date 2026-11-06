@@ -18,6 +18,8 @@ interface Props {
     infoTitle?: string;
     /** Custom icon for the Information tab title (forwarded to JobDetailsTabs). */
     infoIcon?: IconDefinition;
+    /** Accessible name of the job pager, needed when several of these are on a page. */
+    pagerLabel?: string;
 }
 
 const props = defineProps<Props>();
@@ -43,7 +45,11 @@ const currentJob = computed(() => jobs.value[currentIndex.value] ?? null);
                 <template v-slot:nav-end>
                     <JobHeader v-if="currentJob" :job-id="currentJob.id" no-tool-name no-hr>
                         <template v-slot:pagination>
-                            <JobPager v-model="currentIndex" :job-count="jobs.length" class="mr-2" />
+                            <JobPager
+                                v-model="currentIndex"
+                                :job-count="jobs.length"
+                                :aria-label="props.pagerLabel"
+                                class="mr-2" />
                         </template>
                     </JobHeader>
                 </template>

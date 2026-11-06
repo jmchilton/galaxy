@@ -174,6 +174,7 @@ function formatDataCopied(totalBytesProcessed: number, succeededCount: number) {
         <div v-if="showPagination" class="d-flex justify-content-end" :class="props.paginationClass">
             <GPagination
                 :model-value="props.currentPage"
+                :aria-label="`${props.title} ${localize('pagination')}`"
                 :total-rows="props.rows.length"
                 :per-page="props.perPage"
                 align="right"
