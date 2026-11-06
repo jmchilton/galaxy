@@ -22,6 +22,7 @@ const { currentUser } = storeToRefs(userStore);
 const touched = ref(false);
 const userInput = ref("");
 const deleteError = ref("");
+const deleting = ref(false);
 
 const userId = computed(() => (isRegisteredUser(currentUser.value) && currentUser.value?.id) || "");
 const userEmail = computed(() => isRegisteredUser(currentUser.value) && currentUser.value?.email);
@@ -33,6 +34,7 @@ const showDeleteError = computed(() => {
 
 function resetModal() {
     userInput.value = "";
+    deleting.value = false;
     emit("reset");
 }
 
@@ -40,6 +42,7 @@ async function handleSubmit(event: BvModalEvent) {
     // Keep the modal open so a failed deletion can show its error; success logs out.
     event.preventDefault();
     if (nameState.value) {
+        deleting.value = true;
         const { error } = await GalaxyApi().DELETE("/api/users/{user_id}", {
             params: {
                 path: {
@@ -55,6 +58,7 @@ async function handleSubmit(event: BvModalEvent) {
             } else {
                 deleteError.value = "An error occurred while deleting the user.";
             }
+            deleting.value = false;
         } else {
             userLogoutClient();
         }
@@ -73,7 +77,7 @@ async function handleSubmit(event: BvModalEvent) {
         ok-variant="danger"
         ok-title="Delete Account Permanently"
         cancel-variant="outline-primary"
-        :ok-disabled="!nameState"
+        :ok-disabled="!nameState || deleting"
         @hidden="resetModal"
         @ok="handleSubmit">
         <BAlert variant="danger" :show="showDeleteError">{{ deleteError }}</BAlert>

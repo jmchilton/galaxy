@@ -132,6 +132,30 @@ describe("UserDeletion.vue", () => {
         expect(userLogoutClientMock).not.toHaveBeenCalled();
         expectModalStillOpen(wrapper);
     });
+
+    it("disables the delete button while the deletion request is pending", async () => {
+        let respond: () => void = () => {};
+        const responded = new Promise<void>((resolve) => (respond = resolve));
+        server.use(
+            http.delete("/api/users/{user_id}", async ({ response }) => {
+                await responded;
+                return response("4XX").json(
+                    { err_code: 403005, err_msg: "You are not allowed to delete this user." },
+                    { status: 403 },
+                );
+            }),
+        );
+
+        const wrapper = await submitDeletion();
+        const deleteButton = wrapper.find(".btn-danger");
+        expect(deleteButton.attributes("disabled")).toBe("disabled");
+
+        respond();
+        await flushPromises();
+
+        expect(wrapper.find(".alert-danger").text()).toBe("An error occurred while deleting the user.");
+        expect(deleteButton.attributes("disabled")).toBeUndefined();
+    });
 });
 
 /** BModal hides itself after "ok" (emitting its v-model `change` as false) unless the handler prevents it. */
