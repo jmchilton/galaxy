@@ -445,6 +445,7 @@ storage_dashboard:
   selectors:
     free_space_link: '[data-description="free-space card"] button'
     explore_usage_link: '[data-description="explore-storage card"] button'
+    breadcrumb_link: '.breadcrumb-heading-header-active'
 
   # Free up disk space; review_link/no_items take a cleanup id (e.g. deleted_datasets), the rest are the shared dialogs
   cleanup:
