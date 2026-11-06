@@ -262,9 +262,12 @@ describe("HistoryList sorting", () => {
     });
 
     it.each(["shared", "published", "archived"] as const)("offers no size sort for %s histories", async (list) => {
-        for (const fetch of [getSharedHistories, getPublishedHistories, getArchivedHistories]) {
-            vi.mocked(fetch).mockResolvedValueOnce(historiesResponse([]) as never);
-        }
+        const fetchers = {
+            shared: getSharedHistories,
+            published: getPublishedHistories,
+            archived: getArchivedHistories,
+        };
+        vi.mocked(fetchers[list]).mockResolvedValueOnce(historiesResponse([]) as never);
         const wrapper = await mountHistoryList(list);
 
         expect(wrapper.find("#sortby-update_time").exists()).toBe(true);
