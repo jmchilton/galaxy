@@ -12,11 +12,11 @@ import { useJobStore } from "@/stores/jobStore";
 import LoadingSpan from "../LoadingSpan.vue";
 import ToolRecommendation from "../ToolRecommendation.vue";
 import GAlert from "@/components/BaseComponents/GAlert.vue";
-import GPagination from "@/components/BaseComponents/GPagination.vue";
 import DetailBlock from "@/components/Common/DetailBlock.vue";
 import Webhook from "@/components/Common/Webhook.vue";
 import JobHeader from "@/components/JobInformation/JobHeader.vue";
 import JobInformation from "@/components/JobInformation/JobInformation.vue";
+import JobPager from "@/components/JobInformation/JobPager.vue";
 import ToolSuccessOutputs from "@/components/Tool/ToolSuccessOutputs.vue";
 import ToolSuccessToc from "@/components/Tool/ToolSuccessToc.vue";
 import ToolEntryPoints from "@/components/ToolEntryPoints/ToolEntryPoints.vue";
@@ -37,13 +37,6 @@ if (!latestResponse.value || Object.keys(latestResponse.value).length === 0) {
 }
 
 const currentIndex = ref(0);
-// GPagination is 1-indexed; bridge to the 0-indexed currentIndex.
-const paginationPage = computed<number>({
-    get: () => currentIndex.value + 1,
-    set: (val: number) => {
-        currentIndex.value = val - 1;
-    },
-});
 
 watch(jobResponse, () => {
     currentIndex.value = 0;
@@ -69,17 +62,7 @@ const toolSuccessOutputsCollapsed = useUserLocalStorage("tool-success-outputs-co
         <template v-if="viewedJobId">
             <JobHeader :job-id="viewedJobId" :job="viewedJob" animate-success>
                 <template v-slot:pagination>
-                    <GPagination
-                        v-if="nJobs > 1"
-                        v-model="paginationPage"
-                        :total-rows="nJobs"
-                        :per-page="1"
-                        size="small"
-                        :limit="3"
-                        first-number
-                        last-number
-                        hide-goto-end-buttons
-                        class="job-pagination unselectable" />
+                    <JobPager v-model="currentIndex" :job-count="nJobs" />
                 </template>
             </JobHeader>
 
@@ -119,9 +102,3 @@ const toolSuccessOutputsCollapsed = useUserLocalStorage("tool-success-outputs-co
         </div>
     </div>
 </template>
-
-<style scoped>
-.job-pagination {
-    margin-bottom: 0;
-}
-</style>
