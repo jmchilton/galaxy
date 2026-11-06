@@ -324,6 +324,16 @@ class TestHistoriesApi(ApiTestCase, BaseHistories):
         response = self._get("histories", data=dict(search="", show_published=False, limit=999))
         self._assert_status_code_is(response, 200)
 
+    def test_index_query_limit_defaults_to_100(self):
+        with self._different_user(f"user_{uuid4()}@bx.psu.edu"):
+            unique_id = uuid4().hex
+            for i in range(101):
+                self._create_history(f"history_{i}_{unique_id}")
+            response = self._get("histories", data=dict(search=unique_id, show_published=False))
+            self._assert_status_code_is(response, 200)
+            assert len(response.json()) == 100
+            assert response.headers["total_matches"] == "101"
+
     def test_index_advanced_filter(self):
         # Create the histories with a different user to ensure the test
         # is not conflicted with the current user's histories.
