@@ -5152,9 +5152,6 @@ class Dataset(Base, StorableObject, Serializable):
         session = object_session(self)
         if session is None:
             return
-        auth = ObjectStoreAuth(user=user) if user else None
-        # same naming as MetadataFile.get_file_name, which is what created the file
-        store_by = self.object_store.get_store_by(self) or "id"
         metadata_files = session.scalars(
             select(MetadataFile).where(
                 or_(
@@ -5164,18 +5161,7 @@ class Dataset(Base, StorableObject, Serializable):
             )
         )
         for metadata_file in metadata_files:
-            try:
-                self.object_store.delete(
-                    metadata_file,
-                    extra_dir="_metadata_files",
-                    extra_dir_at_root=True,
-                    alt_name=f"metadata_{getattr(metadata_file, store_by)}.dat",
-                    auth=auth,
-                )
-            except galaxy.exceptions.ObjectNotFound:
-                pass
-            metadata_file.deleted = True
-            metadata_file.purged = True
+            metadata_file.purge(user=user)
 
     def get_access_roles(self, security_agent):
         return self._roles_for_action(security_agent.permitted_actions.DATASET_ACCESS.action)
@@ -11443,6 +11429,31 @@ class MetadataFile(Base, StorableObject, Serializable):
         da = self.history_dataset or self.library_dataset
         return da.dataset if da is not None else None
 
+    def _object_store_kwargs(self, store_by: str) -> dict[str, Any]:
+        """Locate this file in the object store."""
+        return {
+            "extra_dir": "_metadata_files",
+            "extra_dir_at_root": True,
+            "alt_name": f"metadata_{getattr(self, store_by)}.dat",
+        }
+
+    def purge(self, user=None) -> None:
+        """Remove the file from the object store and mark this row deleted and purged."""
+        dataset = self.dataset
+        assert dataset is not None
+        object_store = dataset.object_store
+        assert object_store is not None
+        try:
+            object_store.delete(
+                self,
+                auth=ObjectStoreAuth(user=user) if user else None,
+                **self._object_store_kwargs(object_store.get_store_by(dataset)),
+            )
+        except galaxy.exceptions.ObjectNotFound:
+            pass
+        self.deleted = True
+        self.purged = True
+
     def update_from_file(self, file_name):
         if not self.dataset:
             raise Exception("Attempted to write MetadataFile, but no DatasetAssociation set")
@@ -11468,18 +11479,10 @@ class MetadataFile(Base, StorableObject, Serializable):
             store_by = object_store.get_store_by(da.dataset)
             if store_by == "id" and self.id is None:
                 self.flush()  # type: ignore[unreachable]
-            identifier = getattr(self, store_by)
-            alt_name = f"metadata_{identifier}.dat"
-            if not object_store.exists(self, extra_dir="_metadata_files", extra_dir_at_root=True, alt_name=alt_name):
-                object_store.create(self, extra_dir="_metadata_files", extra_dir_at_root=True, alt_name=alt_name)
-            path = object_store.get_filename(
-                self,
-                extra_dir="_metadata_files",
-                extra_dir_at_root=True,
-                alt_name=alt_name,
-                sync_cache=sync_cache,
-                auth=auth,
-            )
+            object_store_kwargs = self._object_store_kwargs(store_by)
+            if not object_store.exists(self, **object_store_kwargs):
+                object_store.create(self, **object_store_kwargs)
+            path = object_store.get_filename(self, sync_cache=sync_cache, auth=auth, **object_store_kwargs)
             return path
         except (AssertionError, AttributeError):
             assert (
