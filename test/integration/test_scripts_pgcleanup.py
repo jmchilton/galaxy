@@ -13,7 +13,10 @@ from galaxy_test.base.populators import (
     skip_without_tool,
 )
 from galaxy_test.driver import integration_util
-from ._metadata_files import UsesMetadataFiles
+from ._metadata_files import (
+    METADATA_FILE_CONTENT,
+    UsesMetadataFiles,
+)
 from .test_scripts import BaseScriptsIntegrationTestCase
 
 DISTRIBUTED_OBJECT_STORE_CONFIG_TEMPLATE = string.Template("""
@@ -314,10 +317,13 @@ class TestScriptsPgCleanupIntegration(BaseScriptsIntegrationTestCase, UsesMetada
             "dataset_deleted": False,
             "dataset_purged": False,
         }
+        untouched = {"deleted": False, "purged": False, "exists": True}
+        assert self._metadata_file_state(metadata_file_id, metadata_file_path) == untouched
 
         # the library dataset is not old enough to be acted on
         self._pgcleanup_check_output(["--older-than", "1", "delete_library_datasets"])
         assert self._library_dataset_state(library_dataset)["version_deleted"] is False
+        assert self._metadata_file_state(metadata_file_id, metadata_file_path) == untouched
 
         # with no retention window the version is marked deleted, the library dataset purged, and
         # the metadata files of the version are marked deleted and removed from the object store
@@ -405,10 +411,16 @@ class TestScriptsPgCleanupIntegration(BaseScriptsIntegrationTestCase, UsesMetada
         hda_model = self._db_get(model.HistoryDatasetAssociation, hda["id"])
         ldda = self._db_get(model.LibraryDatasetDatasetAssociation, library_dataset["ldda_id"])
         assert hda_model.dataset_id == ldda.dataset_id
+        ldda_file = self._add_metadata_file(ldda)
+        hda_file = self._add_metadata_file(hda_model)
 
         self.library_populator.delete_library_dataset(library_dataset["id"])
         chain = ["--older-than", "0", "delete_library_datasets", "delete_datasets", "purge_datasets"]
         self._pgcleanup_check_output(chain)
+        assert self._metadata_file_state(*ldda_file) == {"deleted": True, "purged": True, "exists": False}
+        assert self._metadata_file_state(*hda_file) == {"deleted": False, "purged": False, "exists": True}
+        with open(hda_file[1], "rb") as f:
+            assert f.read() == METADATA_FILE_CONTENT
         assert self._library_dataset_state(library_dataset) == {
             "library_dataset_deleted": True,
             "library_dataset_purged": True,
@@ -425,6 +437,56 @@ class TestScriptsPgCleanupIntegration(BaseScriptsIntegrationTestCase, UsesMetada
         state = self._library_dataset_state(library_dataset)
         assert state["dataset_deleted"] is True
         assert state["dataset_purged"] is True
+
+    def test_delete_library_datasets_metadata_files_of_all_versions(self):
+        self._skip_unless_postgres()
+
+        _, library_dataset = self.library_populator.new_library_dataset_in_private_library(
+            "pgcleanup_library_dataset_versions"
+        )
+        sa_session = self._app.model.session
+        current = self._db_get(model.LibraryDatasetDatasetAssociation, library_dataset["ldda_id"])
+        older = model.LibraryDatasetDatasetAssociation(
+            name="older",
+            extension="txt",
+            library_dataset=current.library_dataset,
+            create_dataset=True,
+            sa_session=sa_session,
+        )
+        sa_session.add(older)
+        sa_session.commit()
+        metadata_files = [
+            self._add_metadata_file(current),
+            self._add_metadata_file(current),
+            self._add_metadata_file(older),
+        ]
+        # legacy rows may carry a NULL purged flag
+        sa_session.get(model.MetadataFile, metadata_files[2][0]).purged = None
+        sa_session.commit()
+        self.library_populator.delete_library_dataset(library_dataset["id"])
+
+        force_retry = ["--older-than", "0", "--force-retry", "delete_library_datasets"]
+        log = self._pgcleanup_action_log(force_retry, "delete_library_datasets")
+
+        def events(metadata_file_id: int) -> list[int]:
+            return list(
+                sa_session.scalars(
+                    select(model.CleanupEventMetadataFileAssociation.cleanup_event_id).filter_by(
+                        metadata_file_id=metadata_file_id
+                    )
+                ).all()
+            )
+
+        for metadata_file in metadata_files:
+            assert self._metadata_file_state(*metadata_file) == {"deleted": True, "purged": True, "exists": False}
+            assert f"deleted_metadata_file_id: {metadata_file[0]}" in log
+            assert len(events(metadata_file[0])) == 1
+
+        # a repeat run neither logs nor records already purged files
+        repeat_log = self._pgcleanup_action_log(force_retry, "delete_library_datasets")
+        assert "deleted_metadata_file_id" not in repeat_log
+        for metadata_file in metadata_files:
+            assert len(events(metadata_file[0])) == 1
 
     def test_delete_library_datasets_force_retry(self):
         self._skip_unless_postgres()
