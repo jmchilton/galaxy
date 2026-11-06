@@ -1,4 +1,4 @@
-import { currentPagerPage, getLocalVue, goToPage } from "@tests/vitest/helpers";
+import { currentPagerPage, getLocalVue, goToPage, pagerPages } from "@tests/vitest/helpers";
 import { mount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it } from "vitest";
 import { defineComponent, h } from "vue";
@@ -30,7 +30,7 @@ function mountProgress() {
     return mount(UploadProgress as object, {
         global: {
             ...localVue,
-            stubs: { ...localVue.stubs, BreadcrumbHeading: true, UploadFileRow: UploadFileRowStub },
+            stubs: { ...localVue.stubs, UploadFileRow: UploadFileRowStub },
         },
     });
 }
@@ -50,5 +50,18 @@ describe("UploadProgress", () => {
 
         expect(currentPagerPage(wrapper)).toBe("2");
         expect(wrapper.findAll(SELECTORS.ROW)).toHaveLength(6);
+    });
+
+    it("leaves the emptied page when Clear Completed removes it", async () => {
+        const ids = addUploads(30);
+        ids.slice(10).forEach((id) => useUploadState().setStatus(id, "completed"));
+        const wrapper = mountProgress();
+        await goToPage(wrapper, 2);
+
+        const clearCompleted = wrapper.findAll("button").find((button) => button.text() === "Clear Completed");
+        await clearCompleted!.trigger("click");
+
+        expect(pagerPages(wrapper)).toEqual([]);
+        expect(wrapper.findAll(SELECTORS.ROW)).toHaveLength(10);
     });
 });
