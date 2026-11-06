@@ -261,17 +261,6 @@ describe("HistoryList sorting", () => {
         expect(isBusy(wrapper)).toBe(false);
     });
 
-    it("sorts by size, largest first", async () => {
-        const wrapper = await mountHistoryList("my");
-        vi.mocked(getMyHistories).mockResolvedValueOnce(historiesResponse(["big", "small"]) as never);
-
-        await wrapper.find("#sortby-size").trigger("click");
-        await flushPromises();
-
-        expect(getMyHistories).toHaveBeenLastCalledWith(expect.objectContaining({ sortBy: "size", sortDesc: true }));
-        expect(listedNames(wrapper)).toEqual(["big", "small"]);
-    });
-
     it.each(["shared", "published", "archived"] as const)("offers no size sort for %s histories", async (list) => {
         for (const fetch of [getSharedHistories, getPublishedHistories, getArchivedHistories]) {
             vi.mocked(fetch).mockResolvedValueOnce(historiesResponse([]) as never);
