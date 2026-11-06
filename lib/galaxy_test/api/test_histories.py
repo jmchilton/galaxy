@@ -299,6 +299,13 @@ class TestHistoriesApi(ApiTestCase, BaseHistories):
             self._assert_status_code_is(response, 200)
             assert [history["id"] for history in response.json()] == [large, small, empty_second, empty_first]
 
+            # This window starts between the two tied empty histories.
+            data.update(limit=2, offset=1)
+            response = self._get("histories", data=data)
+            self._assert_status_code_is(response, 200)
+            assert [history["id"] for history in response.json()] == [small, empty_second]
+            assert response.headers["total_matches"] == "4"
+
     def test_index_sort_by_size_requires_own_histories(self):
         for flags in [dict(show_published=True), dict(show_published=False, show_shared=True)]:
             response = self._get("histories", data=dict(search="", sort_by="size", **flags))
