@@ -14,7 +14,10 @@ from galaxy.model.unittest_utils.store_fixtures import (
     TEST_HISTORY_NAME,
 )
 from galaxy_test.api.sharable import SharingApiTests
-from galaxy_test.base.api_asserts import assert_has_keys
+from galaxy_test.base.api_asserts import (
+    assert_error_message_contains,
+    assert_has_keys,
+)
 from galaxy_test.base.api_mixins import (
     BaseHistories,
     ImportExportTests,
@@ -300,6 +303,7 @@ class TestHistoriesApi(ApiTestCase, BaseHistories):
         for flags in [dict(show_published=True), dict(show_published=False, show_shared=True)]:
             response = self._get("histories", data=dict(search="", sort_by="size", **flags))
             self._assert_status_code_is(response, 400)
+            assert_error_message_contains(response, "Sorting by size requires")
 
     @requires_admin
     def test_index_sort_by_size_requires_own_histories_for_admins(self):
@@ -307,6 +311,7 @@ class TestHistoriesApi(ApiTestCase, BaseHistories):
             data = dict(search="", sort_by="size", show_own=False, show_published=False)
             response = self._get("histories", data=data)
             self._assert_status_code_is(response, 400)
+            assert_error_message_contains(response, "Sorting by size requires")
 
             data["show_own"] = True
             response = self._get("histories", data=data)
