@@ -5152,12 +5152,13 @@ class Dataset(Base, StorableObject, Serializable):
         session = object_session(self)
         if session is None:
             return
+        hda_ids = [hda.id for hda in self.history_associations]
+        ldda_ids = [ldda.id for ldda in self.library_associations]
+        if not hda_ids and not ldda_ids:
+            return
         metadata_files = session.scalars(
             select(MetadataFile).where(
-                or_(
-                    MetadataFile.hda_id.in_([hda.id for hda in self.history_associations]),
-                    MetadataFile.lda_id.in_([ldda.id for ldda in self.library_associations]),
-                ),
+                or_(MetadataFile.hda_id.in_(hda_ids), MetadataFile.lda_id.in_(ldda_ids)),
                 MetadataFile.purged.isnot(True),
             )
         ).all()
