@@ -12,6 +12,10 @@ import { userLogoutClient } from "@/utils/logout";
 /** Backend `err_code` of a refusal by this instance's configuration (`CONFIG_DOES_NOT_ALLOW`) */
 const CONFIG_DOES_NOT_ALLOW = 403004;
 
+const CONFIG_REFUSAL_MESSAGE =
+    "User deletion must be configured on this instance in order to allow user self-deletion.  Please contact an administrator for assistance.";
+const GENERIC_ERROR_MESSAGE = "An error occurred while deleting the user.";
+
 const emit = defineEmits<{
     (e: "reset"): void;
 }>();
@@ -43,6 +47,19 @@ async function handleSubmit(event: BvModalEvent) {
     event.preventDefault();
     if (nameState.value) {
         deleting.value = true;
+        const error = await requestDeletion();
+        if (error) {
+            deleteError.value = error;
+            deleting.value = false;
+        } else {
+            userLogoutClient();
+        }
+    }
+}
+
+/** Ask the server to delete the current user; resolves to the message to show if it did not. */
+async function requestDeletion(): Promise<string | undefined> {
+    try {
         const { error } = await GalaxyApi().DELETE("/api/users/{user_id}", {
             params: {
                 path: {
@@ -50,18 +67,12 @@ async function handleSubmit(event: BvModalEvent) {
                 },
             },
         });
-
         if (error) {
-            if (error.err_code === CONFIG_DOES_NOT_ALLOW) {
-                deleteError.value =
-                    "User deletion must be configured on this instance in order to allow user self-deletion.  Please contact an administrator for assistance.";
-            } else {
-                deleteError.value = "An error occurred while deleting the user.";
-            }
-            deleting.value = false;
-        } else {
-            userLogoutClient();
+            return error.err_code === CONFIG_DOES_NOT_ALLOW ? CONFIG_REFUSAL_MESSAGE : GENERIC_ERROR_MESSAGE;
         }
+        return undefined;
+    } catch {
+        return GENERIC_ERROR_MESSAGE;
     }
 }
 </script>

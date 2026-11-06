@@ -7,7 +7,7 @@ import flushPromises from "flush-promises";
 import { createPinia } from "pinia";
 import { getLocalVue } from "tests/jest/helpers";
 
-import { useServerMock } from "@/api/client/__mocks__";
+import { HttpResponse, useServerMock } from "@/api/client/__mocks__";
 import { useUserStore } from "@/stores/userStore";
 import { userLogoutClient } from "@/utils/logout";
 
@@ -155,6 +155,17 @@ describe("UserDeletion.vue", () => {
 
         expect(wrapper.find(".alert-danger").text()).toBe("An error occurred while deleting the user.");
         expect(deleteButton.attributes("disabled")).toBeUndefined();
+    });
+
+    it("shows a generic error and re-enables the delete button when the request fails to reach the server", async () => {
+        server.use(http.delete("/api/users/{user_id}", ({ response }) => response.untyped(HttpResponse.error())));
+
+        const wrapper = await submitDeletion();
+
+        expect(wrapper.find(".alert-danger").text()).toBe("An error occurred while deleting the user.");
+        expect(wrapper.find(".btn-danger").attributes("disabled")).toBeUndefined();
+        expect(userLogoutClientMock).not.toHaveBeenCalled();
+        expectModalStillOpen(wrapper);
     });
 });
 
