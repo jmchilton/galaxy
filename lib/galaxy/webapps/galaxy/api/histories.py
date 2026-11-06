@@ -246,20 +246,20 @@ class FastAPIHistories:
                 trans, serialization_params, filter_query_params, deleted_only=deleted, all_histories=all
             )
         else:
-            fields: dict[str, Any] = dict(
-                show_own=show_own,
-                show_published=show_published,
-                show_shared=show_shared,
-                show_archived=show_archived,
-                sort_by=sort_by,
-                sort_desc=sort_desc,
-                limit=limit,
-                offset=offset,
-                search=search,
-            )
+            # An omitted limit takes the payload default.
+            limit_field = {} if limit is None else {"limit": limit}
             try:
-                # Omitted values take the payload defaults, which cap the page size.
-                payload = HistoryIndexQueryPayload(**{key: value for key, value in fields.items() if value is not None})
+                payload = HistoryIndexQueryPayload(
+                    show_own=show_own,
+                    show_published=show_published,
+                    show_shared=show_shared,
+                    show_archived=show_archived,
+                    sort_by=sort_by,
+                    sort_desc=sort_desc,
+                    offset=offset,
+                    search=search,
+                    **limit_field,
+                )
             except ValidationError as e:
                 raise RequestValidationError(e.errors())
             entries, total_matches = self.service.index_query(
