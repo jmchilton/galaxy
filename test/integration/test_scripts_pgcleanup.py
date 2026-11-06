@@ -13,6 +13,7 @@ from galaxy_test.base.populators import (
     skip_without_tool,
 )
 from galaxy_test.driver import integration_util
+from ._metadata_files import UsesMetadataFiles
 from .test_scripts import BaseScriptsIntegrationTestCase
 
 DISTRIBUTED_OBJECT_STORE_CONFIG_TEMPLATE = string.Template("""
@@ -42,7 +43,7 @@ USER_OBJECT_STORE_CATALOG = """
 SCRIPT = "cleanup_datasets/pgcleanup.py"
 
 
-class TestScriptsPgCleanupIntegration(BaseScriptsIntegrationTestCase):
+class TestScriptsPgCleanupIntegration(BaseScriptsIntegrationTestCase, UsesMetadataFiles):
     def setUp(self):
         super().setUp()
         self.library_populator = LibraryPopulator(self.galaxy_interactor)
@@ -80,33 +81,6 @@ class TestScriptsPgCleanupIntegration(BaseScriptsIntegrationTestCase):
                 return ""
             with open(log_path) as f:
                 return f.read()
-
-    def _metadata_file_state(self, metadata_file_id: int, path: str) -> dict[str, bool]:
-        """Return the cleanup flags of a metadata file and whether its file is on disk."""
-        sa_session = self._app.model.session
-        sa_session.rollback()
-        metadata_file = sa_session.get(model.MetadataFile, metadata_file_id)
-        assert metadata_file is not None
-        return {
-            "deleted": bool(metadata_file.deleted),
-            "purged": bool(metadata_file.purged),
-            "exists": os.path.exists(path),
-        }
-
-    def _add_metadata_file(self, dataset_instance: Any) -> tuple[int, str]:
-        """Attach a metadata file to a dataset instance, both in the database and on disk."""
-        sa_session = self._app.model.session
-        metadata_file = model.MetadataFile(dataset=dataset_instance, name="bai")
-        sa_session.add(metadata_file)
-        sa_session.commit()
-        metadata_file_id = metadata_file.id
-        with tempfile.NamedTemporaryFile() as source:
-            source.write(b"BAI\x01")
-            source.flush()
-            metadata_file.update_from_file(source.name)
-        path = metadata_file.get_file_name()
-        sa_session.commit()
-        return metadata_file_id, path
 
     def test_help(self):
         self._skip_unless_postgres()
