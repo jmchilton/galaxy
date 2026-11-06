@@ -3,6 +3,7 @@ from selenium.webdriver.common.by import By
 from .framework import (
     retry_assertion_during_transitions,
     selenium_test,
+    SeleniumTestCase,
     SharedStateSeleniumTestCase,
 )
 
@@ -387,3 +388,34 @@ class TestSavedHistories(SharedStateSeleniumTestCase):
         # rename XHR has completed before any subsequent home() navigation
         # that would otherwise cancel the still-in-flight request.
         self.wait_for_selector(f'[data-description="name display"][title="{name}"]')
+
+
+class TestHistoriesListSortByStorage(SeleniumTestCase):
+    ensure_registered = True
+
+    @selenium_test
+    def test_sort_by_storage_used(self):
+        # Creation order matches neither size order, so update-time order satisfies neither check.
+        names = {}
+        for label, repeat in [("medium", 10), ("large", 100), ("small", 1)]:
+            names[label] = self._get_random_name()
+            history_id = self.dataset_populator.new_history(names[label])
+            self.dataset_populator.new_dataset(history_id, content="1\t2\t3\n" * repeat, wait=True)
+        self.navigate_to_histories_page()
+
+        histories = self.components.histories
+        # The first click selects the field, descending; the second switches to ascending.
+        histories.sort_button(field="Storage used", direction="ascending").wait_for_and_click()
+        histories.list_loading.wait_for_absent()
+        self._assert_sized_histories_order([names["large"], names["medium"], names["small"]])
+
+        histories.sort_button(field="Storage used", direction="ascending").wait_for_and_click()
+        histories.sort_button(field="Storage used", direction="descending").wait_for_visible()
+        histories.list_loading.wait_for_absent()
+        self._assert_sized_histories_order([names["small"], names["medium"], names["large"]])
+
+    @retry_assertion_during_transitions
+    def _assert_sized_histories_order(self, expected):
+        # The registered user also has an empty current history.
+        titles = self.get_history_titles(len(expected))
+        assert [title for title in titles if title in expected] == expected
