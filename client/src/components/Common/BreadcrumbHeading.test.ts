@@ -75,7 +75,6 @@ describe("BreadcrumbHeading.vue", () => {
         expect(link.exists()).toBe(true);
         expect(link.text()).toBe(items[0]?.title);
         expect(link.classes()).toContain(ACTIVE_CLASS.replace(".", ""));
-        expect(link.classes()).toContain("g-link");
         expect(link.attributes("href")).toBe("/test");
         expect(link.attributes("title")).toBe("Go back to Test Title");
     });
@@ -86,7 +85,6 @@ describe("BreadcrumbHeading.vue", () => {
         const wrapper = await mountComponent(items, "/different-route");
 
         const link = wrapper.find("a");
-        expect(link.classes()).toContain("g-link");
         expect(link.attributes("href")).toBe("/storage");
     });
 

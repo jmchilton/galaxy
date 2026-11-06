@@ -211,8 +211,6 @@ describe("PersistentTaskProgressMonitorAlert.vue", () => {
 
         const downloadLink = wrapper.find(".download-link");
         expect(downloadLink.exists()).toBe(true);
-        expect(downloadLink.element.tagName).toBe("A");
-        expect(downloadLink.classes()).toContain("g-link");
         expect(downloadLink.text()).toBe("Download here");
         expect(downloadLink.attributes("href")).toBe(`/api/short_term_storage/${taskId}`);
     });

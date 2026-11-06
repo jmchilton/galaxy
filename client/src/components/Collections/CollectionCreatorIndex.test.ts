@@ -51,7 +51,7 @@ async function submitCreator(wrapper: ReturnType<typeof mountCreatorIndex>) {
 }
 
 function findLinkByText(wrapper: ReturnType<typeof mountCreatorIndex>, text: string) {
-    const link = wrapper.findAll(".g-link").find((element) => element.text() === text);
+    const link = wrapper.findAll("button").find((element) => element.text() === text);
     if (!link) {
         throw new Error(`No link with text "${text}"`);
     }
@@ -73,7 +73,6 @@ describe("CollectionCreatorIndex", () => {
         expect(wrapper.findComponent({ name: "ListCollectionCreator" }).exists()).toBe(false);
 
         const retry = findLinkByText(wrapper, "Try again");
-        expect(retry.element.tagName).toBe("BUTTON");
 
         await retry.trigger("click");
 
@@ -92,7 +91,6 @@ describe("CollectionCreatorIndex", () => {
         expect(wrapper.text()).toContain("Collection created successfully.");
 
         const another = findLinkByText(wrapper, "Create another collection");
-        expect(another.element.tagName).toBe("BUTTON");
 
         await another.trigger("click");
 
