@@ -153,7 +153,7 @@ const currentPage = computed(() => Math.floor(offset.value / limit.value) + 1);
 const currentListViewMode = computed(() => userStore.currentListViewPreferences.histories || "grid");
 const sortDesc = computed(() => (listHeader.value && listHeader.value.sortDesc) ?? true);
 const sortBy = computed(() => (listHeader.value && listHeader.value.sortBy) || "update_time");
-// The server sorts by size only when listing the user's own, non-archived histories.
+// The server sorts by size only for the user's own histories, and the archived endpoint ignores sort_by.
 const sortOptions = computed(() =>
     myView.value
         ? [
