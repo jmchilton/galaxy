@@ -53,6 +53,26 @@ class TestArchiveExplorer(SeleniumTestCase, UsesHistoryItemAssertions, UsesUploa
         self.expect_history_item_to_be_imported(hid=1, name="README.txt")
 
     @selenium_test
+    def test_paginate_large_archive(self):
+        self.login()
+        self.ensure_empty_history()
+        ctx = (
+            self.upload_context("explore-zip")
+            .explore_local_zip(self.get_filename("zip_with_30_files.zip"))
+            .expect_total_files(30)
+            .go_to_page(2)
+            .go_next()
+        )
+        assert len(ctx.get_visible_item_cards()) == 24
+        ctx.select_all_files().go_to_page(2)
+        assert len(ctx.get_visible_item_cards()) == 6
+        ctx.select_all_files().search_for("file_").expect_current_page(1)
+        ctx.go_next().expect_files_to_import(30)
+        assert len(ctx.get_visible_summary_cards()) == 24
+        ctx.go_to_page(2)
+        assert len(ctx.get_visible_summary_cards()) == 6
+
+    @selenium_test
     @skip_if_github_down
     def test_import_from_remote_zip(self):
         self.login()

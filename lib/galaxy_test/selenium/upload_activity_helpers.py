@@ -878,6 +878,17 @@ class ExploreZipContext(BaseUploadContext):
     def get_visible_item_cards(self) -> list:
         return self._context.driver_wrapper.find_elements_by_selector(".zip-file-selector .g-card")
 
+    def get_visible_summary_cards(self) -> list:
+        return self._wizard.summary_file_card.all()
+
+    def go_to_page(self, page: int) -> "ExploreZipContext":
+        self._wizard.pager_page_button(page=page).wait_for_and_click()
+        return self.expect_current_page(page)
+
+    def expect_current_page(self, page: int) -> "ExploreZipContext":
+        self._wizard.pager_current_page(page=page).wait_for_visible()
+        return self
+
     def wait_for_preview(self) -> "ExploreZipContext":
         loading_indicator = self._wizard.loading_indicator
         loading_indicator.wait_for_present()

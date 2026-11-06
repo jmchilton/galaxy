@@ -2045,6 +2045,9 @@ zip_import_wizard:
       type: xpath
       selector: "//div[@role='button' and contains(@id, 'g-card-${file_path}')]"
     item_card: '.zip-file-selector .g-card'
+    summary_file_card: '.zip-file-summary-card'
+    pager_page_button: '.zip-import-wizard .g-pagination button[aria-label="Go to page ${page}"]'
+    pager_current_page: '.zip-import-wizard .g-pagination button[aria-label="Go to page ${page}"][aria-current="page"]'
 
 file_set_wizard:
   selectors:
