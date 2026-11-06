@@ -11,9 +11,10 @@ from galaxy.files.sources.util import fetch_drs_to_file
 
 
 class TestDRSCompactIdentifiersIntegration:
+    @patch("galaxy.files.sources.util.ValidatingSession.get")
     @patch("galaxy.files.sources.util.requests.get")
     @patch("galaxy.files.sources.util.stream_url_to_file")
-    def test_fetch_compact_identifier_drs_file(self, mock_stream, mock_get):
+    def test_fetch_compact_identifier_drs_file(self, mock_stream, mock_get, mock_session_get):
         namespace_response = Mock()
         namespace_response.json.return_value = {
             "_links": {
@@ -47,13 +48,14 @@ class TestDRSCompactIdentifiersIntegration:
         drs_response.raise_for_status.return_value = None
         drs_response.status_code = 200
 
-        mock_get.side_effect = [namespace_response, resources_response, drs_response]
+        mock_get.side_effect = [namespace_response, resources_response]
+        mock_session_get.return_value = drs_response
 
         with tempfile.NamedTemporaryFile(delete=False) as tmp:
             try:
                 fetch_drs_to_file("drs://drs.test:test-object-id", tmp.name, None)
 
-                assert mock_get.call_count == 3
+                assert mock_get.call_count == 2
                 mock_get.assert_any_call(
                     "https://registry.api.identifiers.org/restApi/namespaces/search/findByPrefix?prefix=drs.test",
                     timeout=600,
@@ -63,7 +65,7 @@ class TestDRSCompactIdentifiersIntegration:
                     timeout=600,
                 )
 
-                mock_get.assert_any_call(
+                mock_session_get.assert_called_once_with(
                     "https://example-drs.com/ga4gh/drs/v1/objects/test-object-id", timeout=600, headers=None
                 )
 
