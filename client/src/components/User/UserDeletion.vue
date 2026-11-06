@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { faExclamationTriangle } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
-import { BAlert, BFormGroup, BFormInput, BModal } from "bootstrap-vue";
+import { BAlert, BFormGroup, BFormInput, BModal, type BvModalEvent } from "bootstrap-vue";
 import { storeToRefs } from "pinia";
 import { computed, ref } from "vue";
 
@@ -36,7 +36,9 @@ function resetModal() {
     emit("reset");
 }
 
-async function handleSubmit() {
+async function handleSubmit(event: BvModalEvent) {
+    // Keep the modal open so a failed deletion can show its error; success logs out.
+    event.preventDefault();
     if (nameState.value) {
         const { error } = await GalaxyApi().DELETE("/api/users/{user_id}", {
             params: {

@@ -2,6 +2,7 @@ import "tests/jest/mockHelpPopovers";
 
 import { getFakeRegisteredUser } from "@tests/test-data";
 import { mount } from "@vue/test-utils";
+import { BModal } from "bootstrap-vue";
 import flushPromises from "flush-promises";
 import { createPinia } from "pinia";
 import { getLocalVue } from "tests/jest/helpers";
@@ -116,6 +117,7 @@ describe("UserDeletion.vue", () => {
             "User deletion must be configured on this instance in order to allow user self-deletion.  Please contact an administrator for assistance.",
         );
         expect(userLogoutClientMock).not.toHaveBeenCalled();
+        expectModalStillOpen(wrapper);
     });
 
     it("shows a generic error and stays logged in when another 403 refuses the deletion", async () => {
@@ -128,8 +130,14 @@ describe("UserDeletion.vue", () => {
 
         expect(wrapper.find(".alert-danger").text()).toBe("An error occurred while deleting the user.");
         expect(userLogoutClientMock).not.toHaveBeenCalled();
+        expectModalStillOpen(wrapper);
     });
 });
+
+/** BModal hides itself after "ok" (emitting its v-model `change` as false) unless the handler prevents it. */
+function expectModalStillOpen(wrapper: Awaited<ReturnType<typeof mountComponent>>) {
+    expect(wrapper.findComponent(BModal).emitted("change")).toBeUndefined();
+}
 
 function mockDelete403(body: { err_code: number; err_msg: string }) {
     server.use(
