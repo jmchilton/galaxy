@@ -103,6 +103,21 @@ describe("UserDeletion.vue", () => {
         expect(userLogoutClientMock).toHaveBeenCalled();
     });
 
+    it("explains a deletion refused by the instance configuration and stays logged in", async () => {
+        // Body Galaxy sends when allow_user_deletion is false (ConfigDoesNotAllowException).
+        mockDelete403({
+            err_code: 403004,
+            err_msg: "The configuration of this Galaxy instance does not allow admins to delete users.",
+        });
+
+        const wrapper = await submitDeletion();
+
+        expect(wrapper.find(".alert-danger").text()).toBe(
+            "User deletion must be configured on this instance in order to allow user self-deletion.  Please contact an administrator for assistance.",
+        );
+        expect(userLogoutClientMock).not.toHaveBeenCalled();
+    });
+
     it("shows a generic error and stays logged in when another 403 refuses the deletion", async () => {
         mockDelete403({
             err_code: 403005,

@@ -9,6 +9,9 @@ import { GalaxyApi, isRegisteredUser } from "@/api";
 import { useUserStore } from "@/stores/userStore";
 import { userLogoutClient } from "@/utils/logout";
 
+/** Backend `err_code` of a refusal by this instance's configuration (`CONFIG_DOES_NOT_ALLOW`) */
+const CONFIG_DOES_NOT_ALLOW = 403004;
+
 const emit = defineEmits<{
     (e: "reset"): void;
 }>();
@@ -44,8 +47,9 @@ async function handleSubmit() {
         });
 
         if (error) {
-            if (error.err_code === 403) {
-                ("User deletion must be configured on this instance in order to allow user self-deletion.  Please contact an administrator for assistance.");
+            if (error.err_code === CONFIG_DOES_NOT_ALLOW) {
+                deleteError.value =
+                    "User deletion must be configured on this instance in order to allow user self-deletion.  Please contact an administrator for assistance.";
             } else {
                 deleteError.value = "An error occurred while deleting the user.";
             }
