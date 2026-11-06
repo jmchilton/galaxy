@@ -1,12 +1,12 @@
 import { currentPagerPage, emittedArg, getLocalVue, goToPage, pagerPages } from "@tests/vitest/helpers";
 import { mount } from "@vue/test-utils";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+
+import { useServerMock } from "@/api/client/__mocks__";
 
 import StorageOperationRunsTable from "./StorageOperationRunsTable.vue";
 
-vi.mock("@/stores/objectStoreStore", () => ({
-    useObjectStoreStore: () => ({ getObjectStoreNameById: () => null }),
-}));
+const { server, http } = useServerMock();
 
 function makeRows(count: number) {
     return Array.from({ length: count }, (_, index) => ({
@@ -28,6 +28,7 @@ function makeRows(count: number) {
 }
 
 function mountTable(rowCount: number, currentPage = 1) {
+    server.use(http.get("/api/object_stores", ({ response }) => response(200).json([])));
     const localVue = getLocalVue();
     return mount(StorageOperationRunsTable as object, {
         props: {

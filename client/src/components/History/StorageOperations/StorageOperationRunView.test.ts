@@ -1,19 +1,16 @@
 import { currentPagerPage, getLocalVue, goToPage, pagerPages } from "@tests/vitest/helpers";
 import { mount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { computed, ref } from "vue";
 
-import { getStorageOperationRunItemsWithTotal } from "@/api/histories";
+import { useServerMock } from "@/api/client/__mocks__";
 
 import StorageOperationRunView from "./StorageOperationRunView.vue";
 
 const TOTAL_FAILED = 120;
 
-vi.mock("@/api/histories", async (importOriginal) => ({
-    ...(await importOriginal<Record<string, unknown>>()),
-    getStorageOperationRunItemsWithTotal: vi.fn(),
-}));
+const { server, http } = useServerMock();
 
 vi.mock("@/composables/useStorageRunWatcher", () => ({
     useStorageRunWatcher: () => {
@@ -36,13 +33,17 @@ vi.mock("@/composables/useStorageRunWatcher", () => ({
     },
 }));
 
-vi.mock("@/stores/objectStoreStore", () => ({
-    useObjectStoreStore: () => ({ getObjectStoreNameById: () => null }),
-}));
-
-vi.mock("@/stores/storageOperationsStore", () => ({
-    useStorageOperationsStore: () => ({ startRun: vi.fn() }),
-}));
+function mockRunItems() {
+    const offsets: number[] = [];
+    server.use(
+        http.get("/api/histories/{history_id}/contents/bulk/storage/runs/{run_id}/items", ({ query, response }) => {
+            offsets.push(Number(query.get("offset")));
+            return response(200).json([], { headers: { total_matches: String(TOTAL_FAILED) } });
+        }),
+        http.get("/api/object_stores", ({ response }) => response(200).json([])),
+    );
+    return offsets;
+}
 
 async function mountRunView() {
     const localVue = getLocalVue();
@@ -64,27 +65,19 @@ async function mountRunView() {
     return wrapper;
 }
 
-function requestedOffsets() {
-    return vi.mocked(getStorageOperationRunItemsWithTotal).mock.calls.map(([, , options]) => options?.offset);
-}
-
 describe("StorageOperationRunView", () => {
-    beforeEach(() => {
-        vi.mocked(getStorageOperationRunItemsWithTotal).mockReset();
-        vi.mocked(getStorageOperationRunItemsWithTotal).mockResolvedValue({ data: [], totalMatches: TOTAL_FAILED });
-    });
-
     it("loads the page picked in the pager", async () => {
+        const offsets = mockRunItems();
         const wrapper = await mountRunView();
 
         expect(pagerPages(wrapper)).toEqual(["1", "2", "3"]);
         expect(currentPagerPage(wrapper)).toBe("1");
-        expect(requestedOffsets()).toEqual([0]);
+        expect(offsets).toEqual([0]);
 
         await goToPage(wrapper, 3);
         await flushPromises();
 
         expect(currentPagerPage(wrapper)).toBe("3");
-        expect(requestedOffsets()).toEqual([0, 100]);
+        expect(offsets).toEqual([0, 100]);
     });
 });
