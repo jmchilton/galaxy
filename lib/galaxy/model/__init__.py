@@ -5157,7 +5157,8 @@ class Dataset(Base, StorableObject, Serializable):
                 or_(
                     MetadataFile.hda_id.in_([hda.id for hda in self.history_associations]),
                     MetadataFile.lda_id.in_([ldda.id for ldda in self.library_associations]),
-                )
+                ),
+                MetadataFile.purged.isnot(True),
             )
         ).all()
         MetadataFile.purge_all(session, list(metadata_files), user=user)
