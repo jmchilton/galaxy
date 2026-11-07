@@ -457,6 +457,10 @@ history_storage:
     top_datasets_by_size: "[data-description='chart history top datasets by size']"
     dataset_by_size: "[data-description='chart history top datasets by size'] [aria-roledescription='bar'][aria-label*='${name}']"
     dataset_by_size_delete: '#g-card-action-delete-selected-item-actions-dataset'
+    active_vs_deleted: "[data-description='chart history datasets by active']"
+    active_vs_deleted_bar: "[data-description='chart history datasets by active'] [aria-roledescription='bar'][aria-label*='${name}']"
+    active_vs_deleted_legend: "[data-description='chart history datasets by active'] .legend-label"
+    active_vs_deleted_selection: "[data-description='chart history datasets by active'] .selection-info"
 
 storage_dashboard:
   selectors:

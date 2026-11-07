@@ -95,6 +95,20 @@ class TestHistoryStorage(SeleniumTestCase, UsesUploadActivity):
         self.screenshot("history_storage_post_delete")
 
     @selenium_test
+    @managed_history
+    def test_active_vs_deleted_chart_is_not_selectable(self):
+        self._upload_named_paste_content(UPLOAD_DATA_3)
+        self.wait_for_history()
+        self.home()
+        self.components.history_panel.storage_overview.wait_for_and_click()
+        history_storage = self.components.history_storage
+        history_storage.active_vs_deleted.wait_for_visible()
+        # Byte formatting comes from byteFormattingForChart, not BarChart's default formatter.
+        assert history_storage.active_vs_deleted_legend.wait_for_text().endswith(" b")
+        history_storage.active_vs_deleted_bar(name="Active").wait_for_and_click()
+        history_storage.active_vs_deleted_selection.assert_absent_or_hidden_after_transitions()
+
+    @selenium_test
     def test_purge_deleted_datasets_from_storage_dashboard(self):
         history_id = self.current_history_id()
         deleted = self.dataset_populator.new_dataset(history_id, content="purge me\n", wait=True)
