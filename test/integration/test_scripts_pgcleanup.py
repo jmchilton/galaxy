@@ -1,5 +1,7 @@
+import os
 import string
 
+from galaxy import model
 from galaxy_test.base.populators import skip_without_tool
 from galaxy_test.driver import integration_util
 from .test_scripts import BaseScriptsIntegrationTestCase
@@ -240,6 +242,47 @@ class TestScriptsPgCleanupIntegration(BaseScriptsIntegrationTestCase):
         )
 
         assert not self.is_purged(history_id, hda)
+
+    def test_purge_deleted_hdas_keeps_metadata_file_a_live_row_names(self):
+        self._skip_unless_postgres()
+        history_id = self.dataset_populator.new_history()
+        live = self.dataset_populator.new_dataset(history_id, content="live", wait=True)
+        duplicate = self.dataset_populator.new_dataset(history_id, content="duplicate", wait=True)
+        session = self._app.model.session
+        security = self._app.security
+
+        def hda(dataset) -> model.HistoryDatasetAssociation:
+            instance = session.get(model.HistoryDatasetAssociation, security.decode_id(dataset["id"]))
+            assert instance
+            return instance
+
+        live_row = model.MetadataFile(dataset=hda(live), name="bam_index")
+        duplicate_row = model.MetadataFile(dataset=hda(duplicate), name="bam_index", uuid=live_row.uuid)
+        session.add_all([live_row, duplicate_row])
+        session.commit()
+        live_row_id, duplicate_row_id = live_row.id, duplicate_row.id
+        path = live_row.get_file_name()
+        assert duplicate_row.get_file_name() == path
+        with open(path, "wb") as f:
+            f.write(b"index")
+
+        def row(row_id) -> model.MetadataFile:
+            session.rollback()
+            session.expire_all()
+            metadata_file = session.get(model.MetadataFile, row_id)
+            assert metadata_file
+            return metadata_file
+
+        self.dataset_populator.delete_dataset(history_id, duplicate["id"])
+        self._pgcleanup_check_output(["--older-than", "0", "purge_deleted_hdas"])
+        assert row(duplicate_row_id).deleted
+        assert not row(live_row_id).deleted
+        assert os.path.exists(path)
+
+        self.dataset_populator.delete_dataset(history_id, live["id"])
+        self._pgcleanup_check_output(["--older-than", "0", "purge_deleted_hdas"])
+        assert row(live_row_id).deleted
+        assert not os.path.exists(path)
 
 
 class TestPgCleanupUserObjectStoreIntegration(

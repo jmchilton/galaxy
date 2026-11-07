@@ -124,6 +124,7 @@ class Action:
         self._batch_size = app.args.batch_size
         self._config = app.config
         self._update = app._update
+        self._conn = app.conn
         self.__log = None
         self.__row_methods = []
         self.__post_methods = []
@@ -442,9 +443,21 @@ class RemovesMetadataFiles(RemovesObjects):
     id_column = "deleted_metadata_file_id"
     uuid_column = "deleted_metadata_file_uuid"
 
+    def _uuid_in_use(self, metadata_file):
+        row = self._conn.execute(
+            text("""SELECT 1 FROM metadata_file
+                    WHERE uuid = :uuid AND deleted IS NOT TRUE AND purged IS NOT TRUE AND id != :id
+                    LIMIT 1"""),
+            {"uuid": uuid.UUID(metadata_file.uuid).hex, "id": metadata_file.id},
+        ).first()
+        return row is not None
+
     def remove_object(self, metadata_file):
         store_by = self.object_store.get_store_by(metadata_file)
         if store_by == "uuid":
+            if self._uuid_in_use(metadata_file):
+                self.log.info("keeping %s: a live metadata file has the same uuid", metadata_file)
+                return
             alt_name = f"metadata_{metadata_file.uuid}.dat"
         else:
             alt_name = f"metadata_{metadata_file.id}.dat"
