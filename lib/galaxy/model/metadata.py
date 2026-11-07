@@ -725,7 +725,8 @@ class FileParameter(MetadataParameter):
             value = MetadataTempFile.from_JSON(value)
         if isinstance(value, MetadataTempFile):
             mf = parent.metadata.get(self.spec.name, None)
-            if mf is None:
+            # An output from before outputs got their own metadata files can resolve to its input's file.
+            if mf is None or not _shares_dataset(mf, parent):
                 mf = self.new_file(dataset=parent, **value.kwds)
             # Ensure the metadata file gets updated with content
             file_name = value.get_file_name()

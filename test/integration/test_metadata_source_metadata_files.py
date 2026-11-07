@@ -132,6 +132,34 @@ class MetadataSourceDiscoveredTestCase(integration_util.IntegrationTestCase):
 class TestMetadataSourceDiscoveredExtendedUuid(MetadataSourceDiscoveredTestCase):
     metadata_strategy = "extended"
 
+    def _share_input_metadata_file(self, run: MetadataSourceRun) -> None:
+        """Put the output in the state jobs left it in before outputs got their own metadata files."""
+        input_uuid = self._owned_row(run.input_id).uuid
+        self._owned_row(run.output_id).uuid = input_uuid
+        # keeps the HDA referenced, metadata only holds it weakly
+        output_hda = self._hda(run.output_id)
+        output_hda.metadata.bam_index = str(input_uuid)
+        self._app.model.session.commit()
+
+    def test_set_metadata_separates_output_already_sharing_input_file(self):
+        run = self._run_tool()
+        self._share_input_metadata_file(run)
+        input_path = self._index_path(run.input_id)
+        assert self._index_path(run.output_id) == input_path
+        with open(input_path, "wb") as f:
+            f.write(SENTINEL)
+
+        self.dataset_populator.validate_dataset(run.history_id, run.output_id)
+        self.dataset_populator.wait_for_dataset(run.history_id, run.output_id, assert_ok=True)
+
+        with open(input_path, "rb") as f:
+            assert f.read() == SENTINEL
+        output_hda = self._hda(run.output_id)
+        assert output_hda.state == "ok"
+        assert output_hda.metadata.bam_index.hda_id == output_hda.id
+        assert self._index_path(run.output_id) != input_path
+        assert self._read_index(run.output_id) == run.data_source_index
+
 
 class TestMetadataSourceDiscoveredExtendedMixedStoreBy(
     MetadataSourceDiscoveredTestCase, integration_util.ConfiguresObjectStores
