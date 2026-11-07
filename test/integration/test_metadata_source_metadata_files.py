@@ -1,6 +1,5 @@
 """Discovered outputs with metadata_source must not share metadata files with their input."""
 
-import os
 import string
 from dataclasses import dataclass
 
@@ -40,13 +39,12 @@ class MetadataSourceDiscoveredTestCase(integration_util.IntegrationTestCase):
     dataset_populator: DatasetPopulator
     framework_tool_and_types = True
     metadata_strategy: str
-    store_by = "uuid"
 
     @classmethod
     def handle_galaxy_config_kwds(cls, config):
         super().handle_galaxy_config_kwds(config)
         config["metadata_strategy"] = cls.metadata_strategy
-        config["object_store_store_by"] = cls.store_by
+        config["object_store_store_by"] = "uuid"
 
     def setUp(self):
         super().setUp()
@@ -135,18 +133,15 @@ class TestMetadataSourceDiscoveredExtendedUuid(MetadataSourceDiscoveredTestCase)
     metadata_strategy = "extended"
 
 
-class TestMetadataSourceDiscoveredExtendedMixedStoreBy(MetadataSourceDiscoveredTestCase):
+class TestMetadataSourceDiscoveredExtendedMixedStoreBy(
+    MetadataSourceDiscoveredTestCase, integration_util.ConfiguresObjectStores
+):
     metadata_strategy = "extended"
 
     @classmethod
     def handle_galaxy_config_kwds(cls, config):
         super().handle_galaxy_config_kwds(config)
-        temp_directory = cls._test_driver.mkdtemp()
-        config_path = os.path.join(temp_directory, "object_store_conf.xml")
-        with open(config_path, "w") as f:
-            f.write(MIXED_STORE_BY_OBJECT_STORE_CONFIG.safe_substitute(temp_directory=temp_directory))
-        config["object_store_config_file"] = config_path
-        config.pop("object_store_store_by", None)
+        cls._configure_object_store(MIXED_STORE_BY_OBJECT_STORE_CONFIG, config)
 
 
 class TestMetadataSourceDiscoveredDirectoryUuid(MetadataSourceDiscoveredTestCase):
