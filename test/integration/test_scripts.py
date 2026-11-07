@@ -7,6 +7,7 @@ import tempfile
 
 import yaml
 
+from galaxy import model
 from galaxy.util import (
     galaxy_directory,
     unicodify,
@@ -26,6 +27,35 @@ class BaseScriptsIntegrationTestCase(integration_util.IntegrationTestCase):
     @classmethod
     def handle_galaxy_config_kwds(cls, config):
         cls._raw_config = config
+
+    def _hda(self, dataset) -> model.HistoryDatasetAssociation:
+        hda = self._app.model.session.get(model.HistoryDatasetAssociation, self._app.security.decode_id(dataset["id"]))
+        assert hda
+        return hda
+
+    def _metadata_files_with_same_uuid(self, *datasets) -> tuple[list[int], str]:
+        """Give each dataset a metadata file row with the same uuid. Returns their ids and shared path."""
+        session = self._app.model.session
+        first = model.MetadataFile(dataset=self._hda(datasets[0]), name="bam_index")
+        rows = [first] + [
+            model.MetadataFile(dataset=self._hda(dataset), name="bam_index", uuid=first.uuid)
+            for dataset in datasets[1:]
+        ]
+        session.add_all(rows)
+        session.commit()
+        path = first.get_file_name()
+        assert all(row.get_file_name() == path for row in rows)
+        with open(path, "wb") as f:
+            f.write(b"index")
+        return [row.id for row in rows], path
+
+    def _metadata_file(self, row_id: int) -> model.MetadataFile:
+        session = self._app.model.session
+        session.rollback()
+        session.expire_all()
+        metadata_file = session.get(model.MetadataFile, row_id)
+        assert metadata_file
+        return metadata_file
 
     def _scripts_check_argparse_help(self, script):
         # Test imports and argparse response to --help with 0 exit code.
@@ -103,6 +133,26 @@ class TestScriptsIntegration(BaseScriptsIntegrationTestCase):
         history_response = self.dataset_populator._get(f"histories/{history_id}")
         assert history_response.status_code == 200
         assert history_response.json()["purged"] is True, history_response.json()
+
+    def test_cleanup_keeps_metadata_file_a_live_row_names(self):
+        history_id = self.dataset_populator.new_history()
+        live = self.dataset_populator.new_dataset(history_id, content="live", wait=True)
+        duplicate = self.dataset_populator.new_dataset(history_id, content="duplicate", wait=True)
+        (live_row_id, duplicate_row_id), path = self._metadata_files_with_same_uuid(live, duplicate)
+        args = ["-c", self.write_config_file(), "--days", "0", "--delete_datasets", "--remove_from_disk"]
+
+        self.dataset_populator.delete_dataset(history_id, duplicate["id"])
+        self._scripts_check_output("cleanup_datasets/cleanup_datasets.py", args)
+        assert self._metadata_file(duplicate_row_id).deleted
+        assert not self._metadata_file(live_row_id).deleted
+        with open(path, "rb") as f:
+            assert f.read() == b"index"
+
+        self.dataset_populator.delete_dataset(history_id, live["id"])
+        self._scripts_check_output("cleanup_datasets/cleanup_datasets.py", args)
+        assert self._metadata_file(live_row_id).purged
+        # The script recreates an empty file after removing it, by logging its name.
+        assert not os.path.exists(path) or os.path.getsize(path) == 0
 
     def test_admin_cleanup_datasets(self):
         script = "cleanup_datasets/admin_cleanup_datasets.py"

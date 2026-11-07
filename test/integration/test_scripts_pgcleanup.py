@@ -1,3 +1,4 @@
+import os
 import string
 
 from galaxy_test.base.populators import skip_without_tool
@@ -240,6 +241,24 @@ class TestScriptsPgCleanupIntegration(BaseScriptsIntegrationTestCase):
         )
 
         assert not self.is_purged(history_id, hda)
+
+    def test_purge_deleted_hdas_keeps_metadata_file_a_live_row_names(self):
+        self._skip_unless_postgres()
+        history_id = self.dataset_populator.new_history()
+        live = self.dataset_populator.new_dataset(history_id, content="live", wait=True)
+        duplicate = self.dataset_populator.new_dataset(history_id, content="duplicate", wait=True)
+        (live_row_id, duplicate_row_id), path = self._metadata_files_with_same_uuid(live, duplicate)
+
+        self.dataset_populator.delete_dataset(history_id, duplicate["id"])
+        self._pgcleanup_check_output(["--older-than", "0", "purge_deleted_hdas"])
+        assert self._metadata_file(duplicate_row_id).deleted
+        assert not self._metadata_file(live_row_id).deleted
+        assert os.path.exists(path)
+
+        self.dataset_populator.delete_dataset(history_id, live["id"])
+        self._pgcleanup_check_output(["--older-than", "0", "purge_deleted_hdas"])
+        assert self._metadata_file(live_row_id).deleted
+        assert not os.path.exists(path)
 
 
 class TestPgCleanupUserObjectStoreIntegration(

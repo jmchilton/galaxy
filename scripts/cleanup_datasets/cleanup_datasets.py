@@ -549,6 +549,19 @@ def _purge_dataset_instance(dataset_instance, app, remove_from_disk, info_only=F
             )
 
 
+def _metadata_file_named_by_live_row(session, metadata_file, dataset) -> bool:
+    """Metadata files stored by uuid are named after a uuid that isn't unique."""
+    if dataset.store_by != "uuid" or metadata_file.uuid is None:
+        return False
+    other_live_rows = session.query(model.MetadataFile).filter(
+        model.MetadataFile.uuid == metadata_file.uuid,
+        model.MetadataFile.id != metadata_file.id,
+        model.MetadataFile.deleted.isnot(True),
+        model.MetadataFile.purged.isnot(True),
+    )
+    return session.query(other_live_rows.exists()).scalar()
+
+
 def _dataset_is_deletable(dataset):
     # a dataset is deletable when it no longer has any non-deleted associations
     return not bool(dataset.active_history_associations or dataset.active_library_associations)
@@ -591,15 +604,18 @@ def _delete_dataset(dataset, app, remove_from_disk, info_only=False, is_deletabl
                     op_description,
                 )
                 if remove_from_disk:
-                    try:
-                        log.info("Removing disk file %s", metadata_file.get_file_name())
-                        os.unlink(metadata_file.get_file_name())
-                    except Exception as e:
-                        log.info(
-                            "Error, exception: %s caught attempting to purge metadata file %s\n",
-                            unicodify(e),
-                            metadata_file.get_file_name(),
-                        )
+                    if _metadata_file_named_by_live_row(session, metadata_file, dataset):
+                        log.info("Keeping disk file %s, a live metadata file has the same uuid", metadata_file.id)
+                    else:
+                        try:
+                            log.info("Removing disk file %s", metadata_file.get_file_name())
+                            os.unlink(metadata_file.get_file_name())
+                        except Exception as e:
+                            log.info(
+                                "Error, exception: %s caught attempting to purge metadata file %s\n",
+                                unicodify(e),
+                                metadata_file.get_file_name(),
+                            )
                     metadata_file.purged = True
                     session.add(metadata_file)
                     session.commit()
