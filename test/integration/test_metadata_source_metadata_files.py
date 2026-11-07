@@ -121,10 +121,7 @@ class MetadataSourceDiscoveredTestCase(integration_util.IntegrationTestCase):
         input_path = self._index_path(run.input_id)
         with open(input_path, "wb") as f:
             f.write(SENTINEL)
-        self.dataset_populator.validate_dataset(run.history_id, run.output_id)
-        # the set metadata job only shows in the dataset's state
-        self.dataset_populator.wait_for_dataset(run.history_id, run.output_id, assert_ok=True)
-        assert self._hda(run.output_id).state == "ok"
+        self.dataset_populator.validate_dataset_and_wait(run.history_id, run.output_id)
         with open(input_path, "rb") as f:
             assert f.read() == SENTINEL
 
@@ -149,13 +146,11 @@ class TestMetadataSourceDiscoveredExtendedUuid(MetadataSourceDiscoveredTestCase)
         with open(input_path, "wb") as f:
             f.write(SENTINEL)
 
-        self.dataset_populator.validate_dataset(run.history_id, run.output_id)
-        self.dataset_populator.wait_for_dataset(run.history_id, run.output_id, assert_ok=True)
+        self.dataset_populator.validate_dataset_and_wait(run.history_id, run.output_id)
 
         with open(input_path, "rb") as f:
             assert f.read() == SENTINEL
         output_hda = self._hda(run.output_id)
-        assert output_hda.state == "ok"
         assert output_hda.metadata.bam_index.hda_id == output_hda.id
         assert self._index_path(run.output_id) != input_path
         assert self._read_index(run.output_id) == run.data_source_index

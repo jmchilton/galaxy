@@ -143,7 +143,7 @@ class TestScriptsIntegration(BaseScriptsIntegrationTestCase):
 
         self.dataset_populator.delete_dataset(history_id, duplicate["id"])
         self._scripts_check_output("cleanup_datasets/cleanup_datasets.py", args)
-        assert self._metadata_file(duplicate_row_id).deleted
+        assert self._metadata_file(duplicate_row_id).purged
         assert not self._metadata_file(live_row_id).deleted
         with open(path, "rb") as f:
             assert f.read() == b"index"
