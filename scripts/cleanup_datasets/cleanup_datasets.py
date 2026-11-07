@@ -550,7 +550,10 @@ def _purge_dataset_instance(dataset_instance, app, remove_from_disk, info_only=F
 
 
 def _metadata_file_named_by_live_row(session, metadata_file, dataset) -> bool:
-    """Metadata files stored by uuid are named after a uuid that isn't unique."""
+    """Metadata files stored by uuid are named after a uuid that isn't unique.
+
+    pgcleanup.py's RemovesMetadataFiles applies the same rule.
+    """
     if dataset.store_by != "uuid" or metadata_file.uuid is None:
         return False
     other_live_rows = session.query(model.MetadataFile).filter(

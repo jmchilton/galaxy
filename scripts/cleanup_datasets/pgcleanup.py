@@ -124,7 +124,6 @@ class Action:
         self._batch_size = app.args.batch_size
         self._config = app.config
         self._update = app._update
-        self._conn = app.conn
         self.__log = None
         self.__row_methods = []
         self.__post_methods = []
@@ -443,40 +442,44 @@ class RemovesMetadataFiles(RemovesObjects):
     id_column = "deleted_metadata_file_id"
     uuid_column = "deleted_metadata_file_uuid"
 
-    def _find_uuids_in_use(self):
-        """Find the uuids in this batch that a live metadata file outside it also has."""
-        to_check = [
+    def remove_objects(self):
+        self._keep_files_named_by_live_rows()
+        super().remove_objects()
+
+    def _keep_files_named_by_live_rows(self):
+        """Take a file out of this batch if a live metadata file outside the batch has the same uuid, so the same name.
+
+        cleanup_datasets.py applies the same rule. On a real run the batch is already committed as deleted, leaving it
+        out of the query only matters to --dry-run, where it would otherwise look live.
+        """
+        named_by_uuid = [
             metadata_file
             for metadata_file in self.objects_to_remove
             if metadata_file.uuid and self.object_store.get_store_by(metadata_file) == "uuid"
         ]
-        if not to_check:
-            return set()
-        # IN with bound values rather than = ANY(array): an array is text[], which casts the CHAR(32) column
-        # and loses its index.
-        stmt = text("""SELECT DISTINCT uuid FROM metadata_file
-                       WHERE uuid IN :uuids AND id NOT IN :ids AND deleted IS NOT TRUE AND purged IS NOT TRUE""")
-        rows = self._conn.execute(
-            stmt.bindparams(bindparam("uuids", expanding=True), bindparam("ids", expanding=True)),
+        if not named_by_uuid:
+            return
+        # _update ends the transaction, so its lock on metadata_file isn't held through object store deletes.
+        # IN with bound values rather than = ANY(array): an array is text[], which casts the CHAR(32) column and loses
+        # its index.
+        cur = self._update(
+            """SELECT DISTINCT uuid FROM metadata_file
+               WHERE uuid IN :uuids AND id NOT IN :ids AND deleted IS NOT TRUE AND purged IS NOT TRUE""",
             {
-                "uuids": [uuid.UUID(metadata_file.uuid).hex for metadata_file in to_check],
-                "ids": [metadata_file.id for metadata_file in to_check],
+                "uuids": [uuid.UUID(metadata_file.uuid).hex for metadata_file in named_by_uuid],
+                "ids": [metadata_file.id for metadata_file in named_by_uuid],
             },
-        ).fetchall()
-        # Don't hold this read's transaction, and its lock on metadata_file, through object store deletes.
-        self._conn.rollback()
-        return {row.uuid for row in rows}
-
-    def remove_objects(self):
-        self._uuids_in_use = self._find_uuids_in_use()
-        super().remove_objects()
+            add_event=False,
+        )
+        uuids_in_use = {str(uuid.UUID(row.uuid)) for row in cur}
+        for metadata_file in named_by_uuid:
+            if metadata_file.uuid in uuids_in_use:
+                self.log.info("keeping %s: a live metadata file has the same uuid", metadata_file)
+                self.objects_to_remove.discard(metadata_file)
 
     def remove_object(self, metadata_file):
         store_by = self.object_store.get_store_by(metadata_file)
         if store_by == "uuid":
-            if metadata_file.uuid and uuid.UUID(metadata_file.uuid).hex in self._uuids_in_use:
-                self.log.info("keeping %s: a live metadata file has the same uuid", metadata_file)
-                return
             alt_name = f"metadata_{metadata_file.uuid}.dat"
         else:
             alt_name = f"metadata_{metadata_file.id}.dat"
