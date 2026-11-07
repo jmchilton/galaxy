@@ -1,5 +1,7 @@
 """Discovered outputs with metadata_source must not share metadata files with their input."""
 
+import os
+import string
 from dataclasses import dataclass
 
 from sqlalchemy import select
@@ -9,6 +11,20 @@ from galaxy_test.base.populators import DatasetPopulator
 from galaxy_test.driver import integration_util
 
 SENTINEL = b"sentinel index bytes"
+
+# The store_by="id" backend is only searched, nothing new is stored in it.
+MIXED_STORE_BY_OBJECT_STORE_CONFIG = string.Template("""<?xml version="1.0"?>
+<object_store type="distributed" id="primary" order="0">
+    <backends>
+        <backend id="legacy" type="disk" weight="0" store_by="id">
+            <files_dir path="${temp_directory}/legacy"/>
+        </backend>
+        <backend id="current" type="disk" weight="1" store_by="uuid">
+            <files_dir path="${temp_directory}/current"/>
+        </backend>
+    </backends>
+</object_store>
+""")
 
 
 @dataclass
@@ -113,6 +129,24 @@ class MetadataSourceDiscoveredTestCase(integration_util.IntegrationTestCase):
         assert self._hda(run.output_id).state == "ok"
         with open(input_path, "rb") as f:
             assert f.read() == SENTINEL
+
+
+class TestMetadataSourceDiscoveredExtendedUuid(MetadataSourceDiscoveredTestCase):
+    metadata_strategy = "extended"
+
+
+class TestMetadataSourceDiscoveredExtendedMixedStoreBy(MetadataSourceDiscoveredTestCase):
+    metadata_strategy = "extended"
+
+    @classmethod
+    def handle_galaxy_config_kwds(cls, config):
+        super().handle_galaxy_config_kwds(config)
+        temp_directory = cls._test_driver.mkdtemp()
+        config_path = os.path.join(temp_directory, "object_store_conf.xml")
+        with open(config_path, "w") as f:
+            f.write(MIXED_STORE_BY_OBJECT_STORE_CONFIG.safe_substitute(temp_directory=temp_directory))
+        config["object_store_config_file"] = config_path
+        config.pop("object_store_store_by", None)
 
 
 class TestMetadataSourceDiscoveredDirectoryUuid(MetadataSourceDiscoveredTestCase):

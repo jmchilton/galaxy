@@ -678,9 +678,13 @@ class FileParameter(MetadataParameter):
         if target is None:
             return None
         if value and not value.id:
-            # This is a new MetadataFile object, we're not copying to another dataset.
-            # Just use it.
-            return self.unwrap(value)
+            if _shares_dataset(value, target):
+                # This is a new MetadataFile object, we're not copying to another dataset.
+                # Just use it.
+                return self.unwrap(value)
+            # Job-side discovery copying metadata from an input. The target's data isn't stored yet and
+            # setting metadata generates its own file, as it does when the target has no data to copy for.
+            return None
         if value and (value.history_dataset is target or value.library_dataset is target):
             # The MetadataFile already belongs to the target dataset, there is nothing to copy.
             return self.unwrap(value)
@@ -758,6 +762,21 @@ class FileParameter(MetadataParameter):
             # we will be copying its contents into the MetadataFile objects filename after restoring from JSON
             # we do not include 'dataset' in the kwds passed, as from_JSON_value() will handle this for us
             return MetadataTempFile(metadata_tmp_files_dir=metadata_tmp_files_dir, **kwds)
+
+
+def _shares_dataset(
+    metadata_file: "galaxy.model.MetadataFile", target: Union["DatasetInstance", "NoneDataset"]
+) -> bool:
+    """Can the target use this metadata file as is, because no other Dataset owns it?
+
+    Copies of a dataset share its Dataset and its metadata file's content. Metadata imported for a dataset
+    arrives on a clone with its own Dataset object but the same Dataset id.
+    """
+    owner = metadata_file.dataset
+    target_dataset = target.dataset
+    if owner is None or owner is target_dataset:
+        return True
+    return bool(target_dataset and owner.id and owner.id == target_dataset.id)
 
 
 # This class is used when a database file connection is not available
