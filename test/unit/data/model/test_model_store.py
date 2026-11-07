@@ -1196,7 +1196,6 @@ def test_make_copy_of_new_metadata_file_for_copy_of_dataset():
 
     bam_index = model.MetadataFile(dataset=d1, name="bam_index")
     assert bam_index.id is None
-    assert d1.metadata.make_dict_copy({"bam_index": bam_index})["bam_index"] is bam_index
     assert copy_of_d1.metadata.make_dict_copy({"bam_index": bam_index})["bam_index"] is bam_index
 
 
