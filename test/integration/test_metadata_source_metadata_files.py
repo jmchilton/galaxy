@@ -132,11 +132,14 @@ class TestMetadataSourceDiscoveredExtendedUuid(MetadataSourceDiscoveredTestCase)
     def _share_input_metadata_file(self, run: MetadataSourceRun) -> None:
         """Put the output in the state jobs left it in before outputs got their own metadata files."""
         input_uuid = self._owned_row(run.input_id).uuid
-        self._owned_row(run.output_id).uuid = input_uuid
         # keeps the HDA referenced, metadata only holds it weakly
         output_hda = self._hda(run.output_id)
         output_hda.metadata.bam_index = str(input_uuid)
-        self._app.model.session.commit()
+        session = self._app.model.session
+        # looked up here because _owned_row rolls the session back
+        session.scalars(select(model.MetadataFile).filter_by(hda_id=output_hda.id)).one().uuid = input_uuid
+        session.commit()
+        assert self._owned_row(run.output_id).uuid == input_uuid
 
     def test_set_metadata_separates_output_already_sharing_input_file(self):
         run = self._run_tool()
