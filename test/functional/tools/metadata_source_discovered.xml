@@ -1,0 +1,12 @@
+<tool id="metadata_source_discovered" name="metadata_source_discovered" version="0.1.0" profile="20.09">
+  <command><![CDATA[mkdir outputs && cp '$data_source' outputs/discovered.bam]]></command>
+  <inputs>
+    <param name="metadata_input" type="data" format="bam" label="Metadata source" />
+    <param name="data_source" type="data" format="bam" label="Copied to the discovered output" />
+  </inputs>
+  <outputs>
+    <collection name="discovered" type="list" format="bam" metadata_source="metadata_input">
+      <discover_datasets pattern="__name_and_ext__" directory="outputs" />
+    </collection>
+  </outputs>
+</tool>

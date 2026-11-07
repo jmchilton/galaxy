@@ -1182,6 +1182,51 @@ def test_metadata_file_wrap_with_duplicate_uuid_rows():
     assert d1.metadata.bam_index == bam_index
 
 
+def test_make_copy_of_new_metadata_file_for_copy_of_dataset():
+    app = _mock_app(store_by="uuid")
+    sa_session = app.model.context
+
+    u = model.User(email="collection@example.com", password="password")
+    h = model.History(name="Test History", user=u)
+    d1 = _create_datasets(sa_session, h, 1, extension="bam")[0]
+    copy_of_d1 = model.HistoryDatasetAssociation(
+        extension="bam", dataset=d1.dataset, history=h, create_dataset=False, sa_session=sa_session
+    )
+    app.add_and_commit(h, d1, copy_of_d1)
+
+    bam_index = model.MetadataFile(dataset=d1, name="bam_index")
+    assert bam_index.id is None
+    assert d1.metadata.make_dict_copy({"bam_index": bam_index})["bam_index"] is bam_index
+    assert copy_of_d1.metadata.make_dict_copy({"bam_index": bam_index})["bam_index"] is bam_index
+
+
+def test_metadata_from_sessionless_import_keeps_new_metadata_file(tmp_path):
+    app = _mock_app(store_by="uuid")
+    sa_session = app.model.context
+
+    u = model.User(email="collection@example.com", password="password")
+    h = model.History(name="Test History", user=u)
+    d1 = _create_datasets(sa_session, h, 1, extension="bam")[0]
+    app.add_and_commit(h, d1)
+    app.object_store.update_from_file(d1.dataset, file_name=TEST_PATH_1, create=True)
+    with NamedTemporaryFile("w") as index:
+        index.write("cool bam index")
+        index.flush()
+        d1.metadata.from_JSON_dict(
+            json_dict={"bam_index": MetadataTempFile.from_JSON({"kwds": {}, "filename": index.name})}
+        )
+    app.commit()
+    with store.DirectoryModelExportStore(tmp_path, app=app, for_edit=True, strip_metadata_files=False) as export_store:
+        export_store.add_dataset(d1)
+
+    import_store = store.imported_store_for_metadata(str(tmp_path), object_store=app.object_store)
+    imported = import_store.sa_session.query(model.HistoryDatasetAssociation).find(d1.id)
+    imported_bam_index = imported.metadata.bam_index
+    assert imported_bam_index.id is None
+    d1.metadata = imported.metadata
+    assert d1.metadata.bam_index is imported_bam_index
+
+
 def test_sessionless_import_edit_datasets():
     app, h, temp_directory, import_history = _setup_simple_export({"for_edit": True})
     # Create a model store without a session and import it.
