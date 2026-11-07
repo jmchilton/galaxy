@@ -12,9 +12,9 @@ function makeRouter() {
 }
 
 /**
- * The galaxy-ui package ships raw source. The Galaxy client compiles it under
- * @vue/compat, which still emulates Vue 2 behaviour such as `.native` listeners;
- * this app compiles it on plain Vue 3. Anything compat smooths over -- listener
+ * The galaxy-ui package ships raw source. The Galaxy client runs it under
+ * @vue/compat, which still emulates Vue 2 behaviour such as `value`/`input` v-model;
+ * this app runs it on plain Vue 3. Anything compat smooths over -- listener
  * fallthrough, attribute merging -- only shows up here.
  *
  * These cover the plain Vue 3 side, kept next to the first external consumer

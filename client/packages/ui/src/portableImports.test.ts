@@ -48,8 +48,8 @@ describe("galaxy-ui source portability", () => {
         expect(offenders, `${specifier} resolves for only one of the supported peer versions`).toEqual([]);
     });
 
-    // `.native` is Vue 2 syntax. @vue/compat honours it, so the client never notices, but plain Vue 3
-    // drops the modifier and binds an ordinary listener: next to a plain @click, the handler runs twice.
+    // `.native` is Vue 2 syntax. Vue 3 template compilation, which both consumers use, drops the modifier
+    // and binds an ordinary listener: next to a plain @click, the handler runs twice.
     it("uses no .native event modifiers", () => {
         const offenders = files.filter(
             (file) =>

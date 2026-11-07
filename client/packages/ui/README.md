@@ -13,8 +13,9 @@ they need. It ships raw source, not a build: each consumer compiles the SFCs wit
 
 So a change has to work in both. In particular:
 
-- Vue 2-only syntax (`.native`, `value`/`input` v-model, a bare `<template>` without a directive)
-  can look fine under compat and break in the shed. `src/portableImports.test.ts` guards some of this.
+- `value`/`input` v-model is Vue 2-only and can look fine under compat, then break in the shed. Both
+  consumers compile templates with Vue 3 semantics, so `.native` and a bare `<template>` without a
+  directive break in both; lint rejects them. `src/portableImports.test.ts` guards some of this.
 - Bootstrap styles the client's markup for free. Anything a component needs to look right has to be
   in its own styles; baselines that only restate Bootstrap go in `:where()` so they stay at zero
   specificity and the client keeps Bootstrap's look.
