@@ -260,6 +260,20 @@ class TestScriptsPgCleanupIntegration(BaseScriptsIntegrationTestCase):
         assert self._metadata_file(live_row_id).deleted
         assert not os.path.exists(path)
 
+    def test_purge_deleted_hdas_removes_metadata_file_when_every_row_naming_it_goes(self):
+        self._skip_unless_postgres()
+        history_id = self.dataset_populator.new_history()
+        first = self.dataset_populator.new_dataset(history_id, content="first", wait=True)
+        second = self.dataset_populator.new_dataset(history_id, content="second", wait=True)
+        (first_row_id, second_row_id), path = self._metadata_files_with_same_uuid(first, second)
+
+        self.dataset_populator.delete_dataset(history_id, first["id"])
+        self.dataset_populator.delete_dataset(history_id, second["id"])
+        self._pgcleanup_check_output(["--older-than", "0", "purge_deleted_hdas"])
+        assert self._metadata_file(first_row_id).deleted
+        assert self._metadata_file(second_row_id).deleted
+        assert not os.path.exists(path)
+
 
 class TestPgCleanupUserObjectStoreIntegration(
     BaseScriptsIntegrationTestCase,
