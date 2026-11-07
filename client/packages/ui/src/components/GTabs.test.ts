@@ -6,7 +6,7 @@ import GTab from "./GTab.vue";
 import GTabs from "./GTabs.vue";
 
 describe("GTabs", () => {
-    it("keeps the managed tab attributes when titleLinkAttributes overlaps them", async () => {
+    it.each([false, true])("keeps the managed tab attributes (vertical: %s)", async (vertical) => {
         // One object for every slot render; GTab re-registers whenever this prop changes identity.
         const titleLinkAttributes = {
             id: "caller-id",
@@ -17,6 +17,7 @@ describe("GTabs", () => {
         // titleLinkAttributes is spread before the explicit bindings, so under Vue 3 source-order
         // v-bind the managed id/role/href win and anything else from the caller still applies.
         const wrapper = mount(GTabs, {
+            props: { vertical },
             slots: {
                 default: () =>
                     h(GTab, {
