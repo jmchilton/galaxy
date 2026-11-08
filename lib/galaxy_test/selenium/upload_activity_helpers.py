@@ -866,7 +866,7 @@ class ExploreZipContext(BaseUploadContext):
         return self
 
     def select_all_files(self) -> "ExploreZipContext":
-        self._wizard.select_all_checkbox.wait_for_and_click()
+        self._context.driver_wrapper.components.list_header(scope=".zip-file-selector").select_all.wait_for_and_click()
         return self
 
     def search_for(self, query: str) -> "ExploreZipContext":

@@ -671,6 +671,12 @@ data_landing:
     execute: 'button#execute'
     success: '[data-description="fetch landing success"]'
 
+# Common/ListHeader.vue; scope is a selector for the page rendering it.
+list_header:
+  selectors:
+    _: '${scope} .list-header'
+    select_all: '${_} .list-header-select-all .g-checkbox'
+
 histories:
   selectors:
     activity: '#activity-histories'
@@ -687,7 +693,6 @@ histories:
     bulk_delete_button: 'button[id="history-list-footer-bulk-delete-button"]'
     bulk_restore_button: 'button[id="history-list-footer-bulk-restore-button"]'
     bulk_purge_button: 'button[id="history-list-footer-bulk-purge-button"]'
-    select_all: '#history-list .list-header-select-all .g-checkbox'
     bulk_open_multiview_button: 'button[id="history-list-footer-bulk-open-multiview-button"]'
     sort_button: '[data-title="Sort by ${field} ${direction}"]'
     list_loading: '#history-list-overlay .g-overlay'
@@ -2096,7 +2101,6 @@ zip_import_wizard:
     wizard_next_button: '.wizard-actions .go-next-btn'
     wizard_import_button: '.wizard-actions .go-next-btn.btn-primary'
     search_input: '.zip-file-selector-search input'
-    select_all_checkbox: '.list-header-select-all'
     select_file:
       type: xpath
       selector: "//div[@role='button' and contains(@id, 'g-card-${file_path}')]"

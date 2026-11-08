@@ -1031,7 +1031,7 @@ class NavigatesGalaxy(HasDriverProxy[WaitType]):
     def histories_purge_all(self):
         """Purge every listed history: Histories > Select all > Purge (N) > Purge histories."""
         histories = self.components.histories
-        histories.select_all.wait_for_and_click()
+        self.components.list_header(scope="#history-list").select_all.wait_for_and_click()
         histories.bulk_purge_button.wait_for_and_click()
         self.components.confirm_dialog.ok_button.wait_for_and_click()
         histories.bulk_purge_button.wait_for_absent_or_hidden()
