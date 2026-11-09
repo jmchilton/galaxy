@@ -19,10 +19,13 @@ from pydantic import (
 )
 
 from galaxy.tool_util.lint import lint_user_tool_source
+from galaxy.tool_util.parameters import input_models_for_tool_source
 from galaxy.tool_util.parameters.convert import assert_yaml_v1_parameters
+from galaxy.tool_util.parser.yaml import YamlToolSource as YamlToolSourceParser
 from galaxy.tool_util_models import (
     UserToolSource,
     UserToolSourceAuthoringView,
+    YamlToolSource,
 )
 from galaxy.tool_util_models.dynamic_tool_models import DynamicUnprivilegedToolCreatePayload
 from galaxy.tool_util_models.parameters import (
@@ -118,6 +121,49 @@ def test_reference_data_maps_to_a_select_carrying_its_table(multiple):
     assert internal.reference_data is not None
     assert internal.reference_data.table == "fasta_indexes"
     assert internal.multiple is multiple
+
+
+@pytest.mark.parametrize("dump_kwargs", [{}, {"exclude_unset": True}, {"exclude_none": True}])
+@pytest.mark.parametrize("tool_class", ["GalaxyUserTool", "GalaxyTool"])
+@pytest.mark.parametrize(
+    "reference_input",
+    [
+        {"name": "reference", "type": "reference_data", "table": "t", "label": "Genome"},
+        {"name": "reference", "type": "reference_data", "table": "t", "multiple": True, "optional": True},
+        {
+            "name": "reference",
+            "type": "reference_data",
+            "table": "t",
+            "filter": {"from_input": "reads", "on_metadata": "dbkey"},
+        },
+    ],
+    ids=["single", "multiple_optional", "filter"],
+)
+def test_reference_data_loads_like_its_authoring_model(reference_input, tool_class, dump_kwargs):
+    source = {
+        "class": tool_class,
+        "id": "reference_tool",
+        "version": "1.0",
+        "name": "reference_tool",
+        "container": "busybox",
+        "shell_command": "echo",
+        "inputs": [{"name": "reads", "type": "data", "format": "txt"}, reference_input],
+        "outputs": [],
+    }
+    model_class = UserToolSource if tool_class == "GalaxyUserTool" else YamlToolSource
+    dumped = model_class.model_validate(source).model_dump(by_alias=True, **dump_kwargs)
+    tool_source = YamlToolSourceParser(dumped)
+    parsed = input_models_for_tool_source(tool_source).parameters[1]
+    assert parsed == _validate(reference_input).to_internal()
+    input_source = tool_source.parse_input_pages().page_sources[0].parse_input_sources()[1]
+    options = input_source.parse_dynamic_options()
+    assert options is not None
+    filter_elem = options.elem().find("filter")
+    if "filter" in reference_input:
+        assert filter_elem is not None
+        assert filter_elem.attrib == {"type": "data_meta", "ref": "reads", "key": "dbkey", "column": "dbkey"}
+    else:
+        assert filter_elem is None
 
 
 @pytest.mark.parametrize(

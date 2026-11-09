@@ -6,6 +6,7 @@ from typing import (
 )
 
 import pytest
+from pydantic import ValidationError
 
 from galaxy.datatypes.registry import example_datatype_registry_for_sample
 from galaxy.model import (
@@ -214,6 +215,16 @@ def test_filter_offers_only_entries_matching_the_selected_dataset(app):
 def test_table_this_instance_does_not_have_offers_nothing(app):
     tool = _tool(app, table="not_installed", filter={"from_input": "reads", "on_metadata": "dbkey"})
     assert _values(app, tool) == []
+
+
+@pytest.mark.parametrize(
+    "filter_def",
+    [{"from_input": "reads"}, {"from_input": "reads", "on_metadata": "dbkey", "type": "regexp"}],
+    ids=["missing_on_metadata", "extra_key"],
+)
+def test_malformed_filter_is_rejected_when_loading(app, filter_def):
+    with pytest.raises(ValidationError):
+        _tool(app, filter=filter_def)
 
 
 def test_filter_on_a_missing_column_is_rejected_when_loading(app):

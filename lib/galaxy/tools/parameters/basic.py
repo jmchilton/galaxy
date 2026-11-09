@@ -1881,14 +1881,14 @@ class ReferenceDataToolParameter(SelectToolParameter):
 
     def __init__(self, tool: Optional["Tool"], input_source, context=None):
         input_source = ensure_input_source(input_source)
-        if input_source.parse_reference_data() is None:
+        if (reference_data := input_source.parse_reference_data()) is None:
             raise ParameterValueError("reference_data is only supported in YAML tools", input_source.parse_name())
-        table_name = input_source.get("table")
-        filter_def = input_source.get("filter")
+        table_name = reference_data.table
+        filter_def = reference_data.filter
         table = tool.app.tool_data_tables.get(table_name) if tool else None
-        if filter_def and table is not None and filter_def["on_metadata"] not in table.columns:
+        if filter_def and table is not None and filter_def.on_metadata not in table.columns:
             raise ParameterValueError(
-                f"data table '{table_name}' has no '{filter_def['on_metadata']}' column to filter on",
+                f"data table '{table_name}' has no '{filter_def.on_metadata}' column to filter on",
                 input_source.parse_name(),
             )
         super().__init__(tool, input_source, context)

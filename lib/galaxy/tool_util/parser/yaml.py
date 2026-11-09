@@ -42,7 +42,10 @@ from galaxy.tool_util_models.tool_source import (
     XrefDict,
     YamlTemplateConfigFile,
 )
-from galaxy.tool_util_models.yaml_parameters import YamlReferenceDataParameter
+from galaxy.tool_util_models.yaml_parameters import (
+    YamlReferenceDataFilter,
+    YamlReferenceDataParameter,
+)
 from galaxy.util import (
     Element,
     listify,
@@ -668,17 +671,17 @@ class CanonicalYamlPageSource(YamlPageSource):
 class YamlReferenceDataOptions(DynamicOptions):
     """A ``reference_data`` input's table and filter, as the ``<options>`` element Galaxy's selects load."""
 
-    def __init__(self, table: str, filter_def: dict[str, str] | None):
+    def __init__(self, table: str, filter_def: YamlReferenceDataFilter | None):
         self._table = table
         self._filter_def = filter_def
 
     def elem(self) -> Element:
         options_elem = Element("options", {"from_data_table": self._table})
         if self._filter_def:
-            on_metadata = self._filter_def["on_metadata"]
+            on_metadata = self._filter_def.on_metadata
             filter_attributes = {
                 "type": "data_meta",
-                "ref": self._filter_def["from_input"],
+                "ref": self._filter_def.from_input,
                 "key": on_metadata,
                 "column": on_metadata,
             }
@@ -723,9 +726,9 @@ class CanonicalYamlInputSource(YamlInputSource):
         return YamlReferenceDataParameter.model_validate(self.input_dict)
 
     def parse_dynamic_options(self) -> YamlReferenceDataOptions | None:
-        if self.input_dict["type"] != "reference_data":
+        if (reference_data := self.parse_reference_data()) is None:
             return None
-        return YamlReferenceDataOptions(self.input_dict["table"], self.input_dict.get("filter"))
+        return YamlReferenceDataOptions(reference_data.table, reference_data.filter)
 
     def parse_nested_inputs_source(self):
         input_type = self.parse_input_type()
