@@ -172,6 +172,19 @@ def test_readiness_snapshot_change_reschedules(change):
     assert harness.attempt(scheduler) == 2
 
 
+def test_readiness_snapshot_ignores_moves_between_non_ready_states():
+    harness = SchedulingHarness()
+    hda, dependency = _readiness_dependency(harness)
+    scheduler = RecordingScheduler(pending(dependency))
+
+    assert harness.attempt(scheduler) == 1
+    for state in ("queued", "setting_metadata", "ok"):
+        harness.session.execute(update(model.Dataset).where(model.Dataset.id == hda.dataset_id).values(state=state))
+        harness.session.commit()
+        harness.attempt(scheduler)
+    assert scheduler.scheduled == 2
+
+
 def test_readiness_snapshots_are_checked_in_batches():
     harness = SchedulingHarness()
     readiness = [_readiness_dependency(harness) for _ in range(501)]
