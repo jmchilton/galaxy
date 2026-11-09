@@ -1893,13 +1893,13 @@ class ReferenceDataToolParameter(SelectToolParameter):
             )
         super().__init__(tool, input_source, context)
         self.reference_data = ReferenceDataConfig(table=table_name)
-        self.requires_user_accessible_table = not input_source.trusted
+        self.trusted = input_source.trusted
         # The tool form and the workflow editor render this as a plain select.
         self.type = "select"
 
     def get_options(self, trans: "ProvidesHistoryContext", other_values) -> Sequence[ParameterOption]:
         table = self.options.tool_data_table if self.options else None
-        if table is None or (self.requires_user_accessible_table and not table.user_accessible):
+        if table is None or not table.readable_by(self.trusted):
             return []
         # A history data bundle offered as an entry of the table is not an installed row.
         return [

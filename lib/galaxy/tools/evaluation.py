@@ -43,6 +43,7 @@ from galaxy.structured_app import (
 )
 from galaxy.tool_util.data import TabularToolDataTable
 from galaxy.tool_util.parameters import JobInternalToolState
+from galaxy.tool_util.parameters.convert import reference_data_runtime_json
 from galaxy.tool_util.parser.output_objects import ToolOutput
 from galaxy.tool_util_models.parameters import ToolParameterBundleModel
 from galaxy.tool_util_models.tool_source import (
@@ -1198,10 +1199,7 @@ class UserToolEvaluator(ToolEvaluator):
             def resolve_reference_data(input, value, **kwargs):
                 if not isinstance(input, ReferenceDataToolParameter) or not value:
                     return None
-                config = input.reference_data
-                if input.multiple and isinstance(value, list):
-                    return [adapt_reference_data(config, v).model_dump(by_alias=True) for v in value]
-                return adapt_reference_data(config, value).model_dump(by_alias=True)
+                return reference_data_runtime_json(adapt_reference_data, input.reference_data, input.multiple, value)
 
             if self.tool.has_data_table:
                 visit_input_values(self.tool.inputs, incoming, resolve_reference_data)

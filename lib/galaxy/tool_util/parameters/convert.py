@@ -784,6 +784,15 @@ CollectionToRuntimeJson = Callable[[DataCollectionRequestInternal, str | None, l
 ReferenceDataToRuntimeJson = Callable[[ReferenceDataConfig, str], ReferenceDataInternalJson]
 
 
+def reference_data_runtime_json(
+    adapt_reference_data: ReferenceDataToRuntimeJson, config: ReferenceDataConfig, multiple: bool, value: Any
+) -> Any:
+    """Dump the selected table entry, or each entry of a multiple selection, as runtime JSON."""
+    if multiple and isinstance(value, list):
+        return [adapt_reference_data(config, v).model_dump(by_alias=True) for v in value]
+    return adapt_reference_data(config, value).model_dump(by_alias=True)
+
+
 # Parameter models the narrow YAML authoring layer is allowed to produce.
 # Mirrors the v1 supported set in `lib/galaxy/tool_util_models/yaml_parameters.py`.
 # Anything outside this set in a YAML-origin tool indicates a bug in the
@@ -864,10 +873,9 @@ def runtimeify(
                 return VISITOR_NO_REPLACEMENT
             if adapt_reference_data is None:
                 raise ValueError(f"Cannot resolve reference data for parameter {parameter.name}")
-            config = parameter.reference_data
-            if parameter.multiple and isinstance(value, list):
-                return [adapt_reference_data(config, v).model_dump(by_alias=True) for v in value]
-            return adapt_reference_data(config, value).model_dump(by_alias=True)
+            return reference_data_runtime_json(
+                adapt_reference_data, parameter.reference_data, parameter.multiple, value
+            )
         else:
             return VISITOR_NO_REPLACEMENT
 
