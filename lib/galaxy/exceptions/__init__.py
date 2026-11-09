@@ -17,10 +17,7 @@ and messages.
 """
 
 from collections.abc import Iterable
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from galaxy.workflow.scheduling_dependencies import SchedulingDependency
+from typing import Any
 
 from .error_codes import (
     error_codes_by_name,
@@ -158,10 +155,11 @@ class ToolInputsNotReadyException(MessageException):
         err_msg: str | None = None,
         type="info",
         *,
-        dependencies: Iterable["SchedulingDependency"] = (),
+        dependencies: Iterable[Any] = (),
         **extra_error_info,
     ):
         super().__init__(err_msg, type, **extra_error_info)
+        # Workflow SchedulingDependency values; galaxy-util cannot import galaxy.workflow.
         self.dependencies = tuple(dependencies)
 
     status_code = 400
