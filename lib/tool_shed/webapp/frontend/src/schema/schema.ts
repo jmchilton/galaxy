@@ -2749,6 +2749,11 @@ export interface components {
             /** Total Results */
             total_results: number
         }
+        /** ReferenceDataConfig */
+        ReferenceDataConfig: {
+            /** Table */
+            table: string
+        }
         /**
          * RegexParameterValidatorModel
          * @description Require a regular expression to match from the start of the value.
@@ -3480,6 +3485,7 @@ export interface components {
              * @constant
              */
             parameter_type: "gx_select"
+            reference_data?: components["schemas"]["ReferenceDataConfig"] | null
             /**
              * Type
              * @constant
