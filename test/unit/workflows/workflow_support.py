@@ -184,6 +184,7 @@ class SchedulingHarness:
         self.session.add(invocation)
         self.session.commit()
         self.invocation_id = invocation.id
+        self.history_id = self.history.id
         self.set_history_update_time(now() - timedelta(seconds=60))
 
     def attempt(self, scheduler) -> int:
@@ -191,10 +192,13 @@ class SchedulingHarness:
         return scheduler.scheduled
 
     def set_history_update_time(self, update_time):
-        history_id = self.history.id
-        self.session.execute(delete(model.HistoryAudit).where(model.HistoryAudit.history_id == history_id))
-        self.session.execute(insert(model.HistoryAudit).values(history_id=history_id, update_time=update_time))
+        self.session.execute(delete(model.HistoryAudit).where(model.HistoryAudit.history_id == self.history_id))
+        self.session.execute(insert(model.HistoryAudit).values(history_id=self.history_id, update_time=update_time))
         self.session.commit()
+
+    def restore_history_update_time(self):
+        # HDA writes bump the history audit; undo that so only tracked dependencies can wake.
+        self.set_history_update_time(self.monitor.update_time_tracking_dict[self.invocation_id].history_update_time)
 
     def persist(self, *objects):
         self.session.add_all(objects)
