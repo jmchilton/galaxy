@@ -232,6 +232,44 @@ class TestHistorySSEIntegration(IntegrationTestCase):
             self._put(f"groups/{group['id']}/users/{user['id']}", admin=True).raise_for_status()
             listener.wait_for_event("user_quota_update")
 
+    def test_user_quota_update_after_removal_from_quota(self):
+        """Users a quota no longer applies to are told too."""
+        user, user_api_key = self._setup_user_get_key(f"{uuid4()}@galaxy.test")
+
+        with self._listening(user_api_key) as listener, self._quota(in_users=[user["id"]]) as quota:
+            self._wait_until_quiet(listener)
+            with self._expect_new_user_quota_update(listener):
+                self._update_quota(quota, {"in_users": []})
+
+    def test_user_quota_update_after_quota_amount_change(self):
+        user, user_api_key = self._setup_user_get_key(f"{uuid4()}@galaxy.test")
+
+        with self._listening(user_api_key) as listener, self._quota(in_users=[user["id"]]) as quota:
+            self._wait_until_quiet(listener)
+            with self._expect_new_user_quota_update(listener):
+                self._update_quota(quota, {"amount": "2TB", "operation": "="})
+
+    def test_user_quota_update_after_quota_deletion(self):
+        user, user_api_key = self._setup_user_get_key(f"{uuid4()}@galaxy.test")
+
+        with self._listening(user_api_key) as listener:
+            quota = self.dataset_populator.create_quota(self._quota_payload(in_users=[user["id"]]))
+            self._wait_until_quiet(listener)
+            with self._expect_new_user_quota_update(listener):
+                self._delete_quota(quota)
+
+    def test_user_quota_update_after_removal_from_group_with_quota(self):
+        """Replacing a group's members tells the users who left it."""
+        user, user_api_key = self._setup_user_get_key(f"{uuid4()}@galaxy.test")
+        group = self.dataset_populator.create_group(user_ids=[user["id"]])
+
+        with self._listening(user_api_key) as listener, self._quota(in_groups=[group["id"]]):
+            self._wait_until_quiet(listener)
+            with self._expect_new_user_quota_update(listener):
+                self._put(
+                    f"groups/{group['id']}", data={"name": group["name"], "user_ids": []}, admin=True, json=True
+                ).raise_for_status()
+
     def test_user_quota_update_broadcast_after_default_quota_change(self):
         """A new default quota concerns every user, so the event is broadcast."""
         with self._listening(self.galaxy_interactor.api_key) as listener, self._quota(default="registered"):
@@ -271,22 +309,31 @@ class TestHistorySSEIntegration(IntegrationTestCase):
     @contextmanager
     def _quota(
         self, in_users: list[str] | None = None, in_groups: list[str] | None = None, default: str = "no"
-    ) -> Iterator[None]:
-        # Large enough to never get in the way of the other tests in this class
-        quota = self.dataset_populator.create_quota(
-            {
-                "name": f"quota_{uuid4()}",
-                "description": "SSE test quota",
-                "amount": "1TB",
-                "operation": "=",
-                "default": default,
-                "in_users": in_users or [],
-                "in_groups": in_groups or [],
-            }
-        )
+    ) -> Iterator[dict]:
+        quota = self.dataset_populator.create_quota(self._quota_payload(in_users, in_groups, default))
         try:
-            yield
+            yield quota
         finally:
             # A default quota can't be deleted
-            self._put(f"quotas/{quota['id']}", data={"default": "no"}, admin=True, json=True).raise_for_status()
-            self._delete(f"quotas/{quota['id']}", data={"purge": "true"}, admin=True, json=True).raise_for_status()
+            self._update_quota(quota, {"default": "no"})
+            self._delete_quota(quota)
+
+    def _quota_payload(
+        self, in_users: list[str] | None = None, in_groups: list[str] | None = None, default: str = "no"
+    ) -> dict:
+        # Large enough to never get in the way of the other tests in this class
+        return {
+            "name": f"quota_{uuid4()}",
+            "description": "SSE test quota",
+            "amount": "1TB",
+            "operation": "=",
+            "default": default,
+            "in_users": in_users or [],
+            "in_groups": in_groups or [],
+        }
+
+    def _update_quota(self, quota: dict, payload: dict) -> None:
+        self._put(f"quotas/{quota['id']}", data=payload, admin=True, json=True).raise_for_status()
+
+    def _delete_quota(self, quota: dict) -> None:
+        self._delete(f"quotas/{quota['id']}", data={"purge": "true"}, admin=True, json=True).raise_for_status()
