@@ -1,6 +1,7 @@
 """Integration tests for SSE-based history update notifications."""
 
 import json
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from urllib.parse import urljoin
@@ -13,6 +14,9 @@ from galaxy_test.base.sse import (
     SSELineListener,
 )
 from galaxy_test.driver.integration_util import IntegrationTestCase
+
+# Longer than the server's one second ``UserQuotaUpdateBatcher`` interval
+QUIET_PERIOD = 1.5
 
 
 class TestHistorySSEIntegration(IntegrationTestCase):
@@ -183,20 +187,26 @@ class TestHistorySSEIntegration(IntegrationTestCase):
 
     def test_user_quota_update_after_job_finishes(self):
         """A finished job charges its outputs to its owner's usage, so it pushes ``user_quota_update`` to them."""
-        history_id = self.dataset_populator.new_history(name=f"test_history_{uuid4()}")
+        # A fresh user, so no event batched for another test can satisfy the wait
+        _, user_api_key = self._setup_user_get_key(f"{uuid4()}@galaxy.test")
+        populator = self._populator_for_user(user_api_key)
+        history_id = populator.new_history(name=f"test_history_{uuid4()}")
 
-        with self._listening(self.galaxy_interactor.api_key) as listener:
-            self.dataset_populator.new_dataset(history_id, content="usage test", wait=True)
+        with self._listening(user_api_key) as listener:
+            populator.new_dataset(history_id, content="usage test", wait=True)
             listener.wait_for_event("user_quota_update")
 
     def test_user_quota_update_after_dataset_purge(self):
         """Purging a dataset lowers its owner's usage, so it pushes ``user_quota_update`` to them."""
-        history_id = self.dataset_populator.new_history(name=f"test_history_{uuid4()}")
-        dataset = self.dataset_populator.new_dataset(history_id, content="usage test", wait=True)
+        _, user_api_key = self._setup_user_get_key(f"{uuid4()}@galaxy.test")
+        populator = self._populator_for_user(user_api_key)
+        history_id = populator.new_history(name=f"test_history_{uuid4()}")
 
-        with self._listening(self.galaxy_interactor.api_key) as listener:
-            self.dataset_populator.delete_dataset(history_id, dataset["id"], purge=True)
-            listener.wait_for_event("user_quota_update")
+        with self._listening(user_api_key) as listener:
+            dataset = populator.new_dataset(history_id, content="usage test", wait=True)
+            self._wait_until_quiet(listener)
+            with self._expect_new_user_quota_update(listener):
+                populator.delete_dataset(history_id, dataset["id"], purge=True)
 
     def test_user_quota_update_after_usage_recalculation(self):
         """Recalculating a user's usage pushes ``user_quota_update`` to them."""
@@ -239,6 +249,24 @@ class TestHistorySSEIntegration(IntegrationTestCase):
             yield listener
         finally:
             listener.stop()
+
+    def _wait_until_quiet(self, listener: SSELineListener) -> None:
+        """Wait for the setup's ``user_quota_update``, then until none arrives for longer than the batch interval."""
+        listener.wait_for_event("user_quota_update")
+        seen = -1
+        while (count := len(listener.get_events("user_quota_update"))) != seen:
+            seen = count
+            time.sleep(QUIET_PERIOD)
+
+    @contextmanager
+    def _expect_new_user_quota_update(self, listener: SSELineListener) -> Iterator[None]:
+        seen = len(listener.get_events("user_quota_update"))
+        yield
+        wait_on(
+            lambda: True if len(listener.get_events("user_quota_update")) > seen else None,
+            "new SSE user_quota_update event",
+            timeout=DEFAULT_WAIT_TIMEOUT,
+        )
 
     @contextmanager
     def _quota(
