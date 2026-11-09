@@ -16,18 +16,20 @@ from galaxy.model import (
     User,
 )
 from galaxy.model.unittest_utils import GalaxyDataTestApp
-from galaxy.tool_util.parser import get_tool_source
+from galaxy.tool_util.parameters import input_models_for_tool_source
+from galaxy.tool_util.parameters.factory import ParameterDefinitionError
+from galaxy.tool_util.parser import (
+    get_tool_source,
+    ToolSource,
+)
 from galaxy.tools import create_tool_from_source
 from galaxy.tools.data import ToolDataTableManager
 from galaxy.tools.evaluation import UserToolEvaluator
 from galaxy.tools.parameters.basic import (
     ParameterValueError,
     ReferenceDataToolParameter,
-    ToolParameter,
 )
 from galaxy.tools.runtime import setup_for_reference_data
-from galaxy.util import XML
-from galaxy.util.bunch import Bunch
 from galaxy.work.context import WorkRequestContext
 from .test_evaluation import ComputeEnvironment
 
@@ -175,10 +177,33 @@ def test_history_bundles_are_not_offered_as_table_entries(app, monkeypatch):
     assert [option.value for option in options] == ["hg38", "mm10"]
 
 
-def test_xml_tools_cannot_declare_reference_data(app):
-    tool = cast("Tool", Bunch(app=app, profile=26.1))
+XML_REFERENCE_DATA_PARAMS = pytest.mark.parametrize(
+    "param_xml",
+    [
+        '<param name="reference" type="reference_data" table="open_refs"/>',
+        '<param name="reference" type="reference_data" table="closed_refs"><options from_data_table="open_refs"/></param>',
+    ],
+    ids=["bare", "with_options"],
+)
+
+
+def _xml_tool_source(param_xml: str) -> ToolSource:
+    raw_tool_source = (
+        f'<tool id="x" name="x" version="1" profile="26.1"><command>x</command><inputs>{param_xml}</inputs></tool>'
+    )
+    return get_tool_source(tool_source_class="XmlToolSource", raw_tool_source=raw_tool_source)
+
+
+@XML_REFERENCE_DATA_PARAMS
+def test_xml_tools_cannot_declare_reference_data(app, param_xml):
     with pytest.raises(ParameterValueError, match="only supported in YAML tools"):
-        ToolParameter.build(tool, XML('<param name="reference" type="reference_data" table="open_refs"/>'))
+        create_tool_from_source(app, tool_source=_xml_tool_source(param_xml))
+
+
+@XML_REFERENCE_DATA_PARAMS
+def test_parameter_models_reject_xml_reference_data(param_xml):
+    with pytest.raises(ParameterDefinitionError, match="only supported in YAML tools"):
+        input_models_for_tool_source(_xml_tool_source(param_xml))
 
 
 def test_table_this_instance_does_not_have_offers_nothing(app):
