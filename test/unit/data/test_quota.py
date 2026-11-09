@@ -855,3 +855,51 @@ class TestUsage(BaseModelTestCase):
         assert len(usages) == 2
         assert usages[1].quota_source_label == "foobar"
         assert usages[1].total_disk_usage == 247
+
+
+class TestGroupMembershipQuotaUpdates(BaseModelTestCase):
+    def setUp(self):
+        super().setUp()
+        self.users = [model.User(email=random_email(), password="password") for _ in range(3)]
+        self.group_with_quota = model.Group(name=f"with_quota_{uuid.uuid4()}")
+        self.group_without_quota = model.Group(name=f"without_quota_{uuid.uuid4()}")
+        quota = model.Quota(name=f"group quota {uuid.uuid4()}", amount=30, operation="=")
+        self.persist(*self.users, self.group_with_quota, self.group_without_quota, quota)
+        self.persist(model.GroupQuotaAssociation(self.group_with_quota, quota))
+        self.sent: list[UserQuotaUpdates] = []
+        self._remove_sender = send_user_quota_updates_on_commit(self.model.session, self.sent.append)
+        self.security_agent = self.model.security_agent
+
+    def tearDown(self):
+        self._remove_sender()
+
+    def test_replacing_members_of_a_group_with_quota_tells_who_joined_or_left(self):
+        u0, u1, u2 = self.users
+        self.security_agent.set_group_user_and_role_associations(self.group_with_quota, user_ids=[u0.id, u1.id])
+        self.sent.clear()
+
+        self.security_agent.set_group_user_and_role_associations(self.group_with_quota, user_ids=[u1.id, u2.id])
+
+        assert self.sent == [UserQuotaUpdates(user_ids={u0.id, u2.id})]
+
+    def test_replacing_a_users_groups_tells_them_only_when_a_changed_group_has_a_quota(self):
+        u0 = self.users[0]
+        self.security_agent.set_user_group_and_role_associations(u0, group_ids=[self.group_with_quota.id])
+        assert self.sent == [UserQuotaUpdates(user_ids={u0.id})]
+        self.sent.clear()
+
+        self.security_agent.set_user_group_and_role_associations(
+            u0, group_ids=[self.group_with_quota.id, self.group_without_quota.id]
+        )
+        assert self.sent == []
+
+        self.security_agent.set_user_group_and_role_associations(u0, group_ids=[])
+        assert self.sent == [UserQuotaUpdates(user_ids={u0.id})]
+
+    def test_members_of_a_group_without_quota_are_not_told(self):
+        self.security_agent.set_group_user_and_role_associations(
+            self.group_without_quota, user_ids=[user.id for user in self.users[1:]]
+        )
+        self.security_agent.associate_user_group(self.users[0], self.group_without_quota)
+
+        assert self.sent == []
