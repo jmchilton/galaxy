@@ -40,6 +40,8 @@ from galaxy.tool_util_models.parameters import (
     HiddenParameterModel,
     IntegerParameterModel,
     iter_parameter_models,
+    ReferenceDataConfig,
+    ReferenceDataInternalJson,
     RepeatParameterModel,
     SectionParameterModel,
     SelectParameterModel,
@@ -779,6 +781,7 @@ def _decode_callback_for(decode_id: DecodeFunctionT) -> Callback:
 # Both adapters receive the extensions the consuming parameter accepts.
 DatasetToRuntimeJson = Callable[[DataJobInternalT, list[str]], DataInternalJson]
 CollectionToRuntimeJson = Callable[[DataCollectionRequestInternal, str | None, list[str]], Any]
+ReferenceDataToRuntimeJson = Callable[[ReferenceDataConfig, str], ReferenceDataInternalJson]
 
 
 # Parameter models the narrow YAML authoring layer is allowed to produce.
@@ -825,6 +828,7 @@ def runtimeify(
     adapt_dataset: DatasetToRuntimeJson,
     adapt_collection: CollectionToRuntimeJson,
     yaml_origin: bool = False,
+    adapt_reference_data: ReferenceDataToRuntimeJson | None = None,
 ) -> JobRuntimeToolState:
     if yaml_origin:
         assert_yaml_v1_parameters(list(input_models.parameters))
@@ -855,6 +859,15 @@ def runtimeify(
             collection_request = DataCollectionRequestInternal(**value)
             result = adapt_collection(collection_request, parameter.collection_type, parameter.extensions)
             return result.model_dump(by_alias=True)
+        elif isinstance(parameter, SelectParameterModel) and parameter.reference_data is not None:
+            if value is None:
+                return VISITOR_NO_REPLACEMENT
+            if adapt_reference_data is None:
+                raise ValueError(f"Cannot resolve reference data for parameter {parameter.name}")
+            config = parameter.reference_data
+            if parameter.multiple and isinstance(value, list):
+                return [adapt_reference_data(config, v).model_dump(by_alias=True) for v in value]
+            return adapt_reference_data(config, value).model_dump(by_alias=True)
         else:
             return VISITOR_NO_REPLACEMENT
 

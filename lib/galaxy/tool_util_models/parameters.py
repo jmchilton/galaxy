@@ -867,6 +867,36 @@ class DataInternalJson(StrictModel):
     element_identifier: str | None = None
 
 
+class ReferenceDataSource(StrictModel):
+    table: Annotated[str, Field(description="Name of the tool data table the entry comes from.")]
+    value: Annotated[str, Field(description="Content of the entry's `value` column.")]
+
+
+class ReferenceDataInternalJson(StrictModel):
+    """A tool data table entry, shaped like a dataset for YAML tool expressions."""
+
+    class_: Annotated[
+        Literal["ReferenceData"],
+        Field(alias="class", description="Distinguishes reference data from the 'File' of a history dataset."),
+    ]
+    path: Annotated[
+        str | None,
+        Field(description="Content of the entry's `path` column. Unset for a table without a `path` column."),
+    ] = None
+    basename: Annotated[str | None, Field(description="The last component of `path`.")] = None
+    nameroot: Annotated[str | None, Field(description="The basename root such that nameroot + nameext == basename")] = (
+        None
+    )
+    nameext: Annotated[
+        str | None, Field(description="The basename extension such that nameroot + nameext == basename")
+    ] = None
+    source: Annotated[ReferenceDataSource, Field(description="The table entry this reference data was resolved from.")]
+    metadata: Annotated[
+        dict[str, str],
+        Field(description="The entry's named columns other than `value` and `path`, such as `dbkey` and `name`."),
+    ]
+
+
 class DataCollectionElementInternalJson(DataInternalJson):
     """A file within a collection element - adds collection-specific metadata."""
 
@@ -1907,12 +1937,19 @@ class RulesParameterModel(BaseGalaxyToolParameterModelDefinition):
 SelectCompatiableValidators: TypeAlias = NoOptionsParameterValidatorModel
 
 
+class ReferenceDataConfig(StrictModel):
+    table: str
+
+
 class SelectParameterModel(BaseGalaxyToolParameterModelDefinition):
     parameter_type: Literal["gx_select"] = "gx_select"
     type: Literal["select"]
     options: list[LabelValue] | None = None
     multiple: bool = False
     validators: list[SelectCompatiableValidators] = []
+    # Set for a YAML `reference_data` input: the request names a table entry by its value
+    # and the tool's expressions receive the entry as a ReferenceDataInternalJson.
+    reference_data: ReferenceDataConfig | None = None
 
     def field_kwargs(self) -> dict[str, Any]:
         kwargs = super().field_kwargs()
@@ -1977,6 +2014,10 @@ class SelectParameterModel(BaseGalaxyToolParameterModelDefinition):
             # in JSON test case representation, lists are already validated as lists (no string splitting)
             py_type = self.py_type_if_required(allow_connections=False)
             py_type = optional_if_needed(py_type, self.optional)
+        elif state_representation == "job_runtime" and self.reference_data is not None:
+            requires_value = True
+            py_type = list_type(ReferenceDataInternalJson) if self.multiple else ReferenceDataInternalJson
+            py_type = optional_if_needed(py_type, self.optional or self.multiple)
         elif state_representation in ("job_internal", "job_runtime"):
             requires_value = True
             py_type = self.py_type

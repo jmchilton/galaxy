@@ -46,6 +46,7 @@ from .parameters import (
     GalaxyParameterT,
     IntegerParameterModel,
     LabelValue,
+    ReferenceDataConfig,
     RepeatParameterModel,
     SectionParameterModel,
     SelectParameterModel,
@@ -465,6 +466,64 @@ reverse='$(inputs.reads.elements.reverse.path)'""",
         )
 
 
+class YamlReferenceDataFilter(BaseModel):
+    """Limits the offered table entries to those matching a dataset selected on the same form."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    from_input: Annotated[
+        str,
+        Field(description="Name of the `data` or `data_collection` input whose metadata selects matching entries."),
+    ]
+    on_metadata: Annotated[
+        str,
+        Field(description="Metadata key to read from the dataset, compared with the table column of the same name."),
+    ]
+
+
+class YamlReferenceDataParameter(_YamlParamBase):
+    """A built-in reference, such as a genome, that an administrator installed in a tool data table."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "name": "reference",
+                    "type": "reference_data",
+                    "label": "Reference genome",
+                    "table": "fasta_indexes",
+                }
+            ],
+            "x-shell-command": "reference='$(inputs.reference.path)'",
+        }
+    )
+
+    type: Annotated[
+        Literal["reference_data"],
+        Field(description="Lets the user pick a tool data table entry and exposes it to expressions like a dataset."),
+    ]
+    table: Annotated[
+        str,
+        Field(description="Name of the tool data table. A user-defined tool can only use tables an admin allows."),
+    ]
+    filter: Annotated[
+        YamlReferenceDataFilter | None,
+        Field(description="Only offer table entries that match a dataset selected on the same form."),
+    ] = None
+    multiple: Annotated[
+        bool,
+        Field(description="Set true to let the user select several table entries, supplied as a list."),
+    ] = False
+
+    def to_internal(self) -> SelectParameterModel:
+        return SelectParameterModel(
+            type="select",
+            multiple=self.multiple,
+            reference_data=ReferenceDataConfig(table=self.table),
+            **_common_internal_kwargs(self),
+        )
+
+
 YamlConditionalTestParameter = Annotated[YamlBooleanParameter | YamlSelectParameter, Field(discriminator="type")]
 
 
@@ -644,6 +703,7 @@ YamlGalaxyParameterT = (
     | YamlColorParameter
     | YamlDataParameter
     | YamlDataCollectionParameter
+    | YamlReferenceDataParameter
     | YamlConditionalParameter
     | YamlRepeatParameter
     | YamlSectionParameter

@@ -60,6 +60,7 @@ from galaxy.tool_util.parser.util import (
     multiple_select_value_split,
     ParameterParseException,
 )
+from galaxy.tool_util_models.parameters import ReferenceDataConfig
 from galaxy.tool_util_models.tool_source import DrillDownOptionsDict
 from galaxy.tool_util_models.untrusted import is_loading_untrusted_tools
 from galaxy.tools.parameters.options import ParameterOption
@@ -1870,6 +1871,44 @@ class ColumnListParameter(SelectToolParameter):
         return d
 
 
+class ReferenceDataToolParameter(SelectToolParameter):
+    """
+    An entry of a tool data table that a YAML tool consumes like a dataset.
+
+    On the tool form this is a select over the table's installed entries. A
+    user-defined tool only sees tables the administrator marked ``user_accessible``.
+    """
+
+    def __init__(self, tool: Optional["Tool"], input_source, context=None):
+        input_source = ensure_input_source(input_source)
+        table_name = input_source.get("table")
+        if table_name is None or input_source.parse_dynamic_options() is None:
+            raise ParameterValueError("reference_data is only supported in YAML tools", input_source.parse_name())
+        filter_def = input_source.get("filter")
+        table = tool.app.tool_data_tables.get(table_name) if tool else None
+        if filter_def and table is not None and filter_def["on_metadata"] not in table.columns:
+            raise ParameterValueError(
+                f"data table '{table_name}' has no '{filter_def['on_metadata']}' column to filter on",
+                input_source.parse_name(),
+            )
+        super().__init__(tool, input_source, context)
+        self.reference_data = ReferenceDataConfig(table=table_name)
+        self.requires_user_accessible_table = not input_source.trusted
+        # The tool form and the workflow editor render this as a plain select.
+        self.type = "select"
+
+    def get_options(self, trans: "ProvidesHistoryContext", other_values) -> Sequence[ParameterOption]:
+        table = self.options.tool_data_table if self.options else None
+        if table is None or (self.requires_user_accessible_table and not table.user_accessible):
+            return []
+        # A history data bundle offered as an entry of the table is not an installed row.
+        return [
+            option
+            for option in cast(list[ParameterOption], super().get_options(trans, other_values))
+            if not option.dataset
+        ]
+
+
 class DrillDownSelectToolParameter(SelectToolParameter):
     """
     Parameter that takes on one (or many) of a specific set of values.
@@ -3525,6 +3564,7 @@ parameter_types: dict[str, type[ToolParameter]] = dict(
     boolean=BooleanToolParameter,
     genomebuild=GenomeBuildParameter,
     select=SelectToolParameter,
+    reference_data=ReferenceDataToolParameter,
     color=ColorToolParameter,
     group_tag=SelectTagParameter,
     data_column=ColumnListParameter,

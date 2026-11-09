@@ -42,8 +42,13 @@ from galaxy.tool_util_models.tool_source import (
     XrefDict,
     YamlTemplateConfigFile,
 )
-from galaxy.util import listify
+from galaxy.util import (
+    Element,
+    listify,
+    SubElement,
+)
 from .interface import (
+    DynamicOptions,
     InputSource,
     PageSource,
     PagesSource,
@@ -659,6 +664,36 @@ class CanonicalYamlPageSource(YamlPageSource):
         return CanonicalYamlInputSource(input_dict, trusted=self.trusted)
 
 
+class YamlReferenceDataOptions(DynamicOptions):
+    """A ``reference_data`` input's table and filter, as the ``<options>`` element Galaxy's selects load."""
+
+    def __init__(self, table: str, filter_def: dict[str, str] | None):
+        self._table = table
+        self._filter_def = filter_def
+
+    def elem(self) -> Element:
+        options_elem = Element("options", {"from_data_table": self._table})
+        if self._filter_def:
+            on_metadata = self._filter_def["on_metadata"]
+            filter_attributes = {
+                "type": "data_meta",
+                "ref": self._filter_def["from_input"],
+                "key": on_metadata,
+                "column": on_metadata,
+            }
+            SubElement(options_elem, "filter", filter_attributes)
+        return options_elem
+
+    def get_dynamic_options_code(self) -> str | None:
+        return None
+
+    def get_data_table_name(self) -> str | None:
+        return self._table
+
+    def get_index_file_name(self) -> str | None:
+        return None
+
+
 class CanonicalYamlInputSource(YamlInputSource):
     """A GalaxyTool/GalaxyUserTool parameter: omitted ``optional`` and Boolean ``value`` mean False,
     and repeats and sections nest ``parameters``.
@@ -680,6 +715,11 @@ class CanonicalYamlInputSource(YamlInputSource):
         if self.input_dict["type"] == "section":
             return "section"
         return super().parse_input_type()
+
+    def parse_dynamic_options(self) -> YamlReferenceDataOptions | None:
+        if self.input_dict["type"] != "reference_data":
+            return None
+        return YamlReferenceDataOptions(self.input_dict["table"], self.input_dict.get("filter"))
 
     def parse_nested_inputs_source(self):
         input_type = self.parse_input_type()

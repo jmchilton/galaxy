@@ -102,6 +102,38 @@ def test_select_rejects_dynamic_options():
         )
 
 
+@pytest.mark.parametrize("multiple", [False, True])
+def test_reference_data_maps_to_a_select_carrying_its_table(multiple):
+    internal = _validate(
+        {
+            "name": "reference",
+            "type": "reference_data",
+            "table": "fasta_indexes",
+            "multiple": multiple,
+            "filter": {"from_input": "reads", "on_metadata": "dbkey"},
+        }
+    ).to_internal()
+    assert isinstance(internal, SelectParameterModel)
+    assert internal.options is None
+    assert internal.reference_data is not None
+    assert internal.reference_data.table == "fasta_indexes"
+    assert internal.multiple is multiple
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        {},
+        {"table": "t", "options": [{"label": "A", "value": "a"}]},
+        {"table": "t", "filter": {"from_input": "reads"}},
+        {"table": "t", "filter": {"from_input": "reads", "on_metadata": "dbkey", "type": "regexp"}},
+    ],
+)
+def test_reference_data_rejects_invalid_definitions(invalid):
+    with pytest.raises(ValidationError):
+        _validate({"name": "reference", "type": "reference_data", **invalid})
+
+
 # ---------------------------------------------------------------------------
 # Red cases: whole parameter types rejected
 # ---------------------------------------------------------------------------
@@ -389,6 +421,7 @@ def test_each_parameter_type_publishes_one_valid_example():
         "data_collection",
         "float",
         "integer",
+        "reference_data",
         "repeat",
         "section",
         "select",

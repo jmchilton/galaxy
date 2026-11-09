@@ -22563,6 +22563,11 @@ export interface components {
             /** Workflow */
             workflow: unknown;
         };
+        /** ReferenceDataConfig */
+        ReferenceDataConfig: {
+            /** Table */
+            table: string;
+        };
         /** RegexJobMessage */
         RegexJobMessage: {
             /** Code Desc */
@@ -23548,6 +23553,7 @@ export interface components {
              * @constant
              */
             parameter_type: "gx_select";
+            reference_data?: components["schemas"]["ReferenceDataConfig"] | null;
             /**
              * Type
              * @constant
@@ -29884,6 +29890,7 @@ export interface components {
             | components["schemas"]["YamlColorParameter"]
             | components["schemas"]["YamlDataParameter"]
             | components["schemas"]["YamlDataCollectionParameter"]
+            | components["schemas"]["YamlReferenceDataParameter"]
             | components["schemas"]["YamlConditionalParameter-Input"]
             | components["schemas"]["YamlRepeatParameter-Input"]
             | components["schemas"]["YamlSectionParameter-Input"];
@@ -29897,6 +29904,7 @@ export interface components {
             | components["schemas"]["YamlColorParameter"]
             | components["schemas"]["YamlDataParameter"]
             | components["schemas"]["YamlDataCollectionParameter"]
+            | components["schemas"]["YamlReferenceDataParameter"]
             | components["schemas"]["YamlConditionalParameter-Output"]
             | components["schemas"]["YamlRepeatParameter-Output"]
             | components["schemas"]["YamlSectionParameter-Output"];
@@ -29975,6 +29983,73 @@ export interface components {
             selected: boolean;
             /** Value */
             value: string;
+        };
+        /**
+         * YamlReferenceDataFilter
+         * @description Limits the offered table entries to those matching a dataset selected on the same form.
+         */
+        YamlReferenceDataFilter: {
+            /**
+             * From Input
+             * @description Name of the `data` or `data_collection` input whose metadata selects matching entries.
+             */
+            from_input: string;
+            /**
+             * On Metadata
+             * @description Metadata key to read from the dataset, compared with the table column of the same name.
+             */
+            on_metadata: string;
+        };
+        /**
+         * YamlReferenceDataParameter
+         * @description A built-in reference, such as a genome, that an administrator installed in a tool data table.
+         * @example {
+         *       "label": "Reference genome",
+         *       "name": "reference",
+         *       "table": "fasta_indexes",
+         *       "type": "reference_data"
+         *     }
+         */
+        YamlReferenceDataParameter: {
+            /** @description Only offer table entries that match a dataset selected on the same form. */
+            filter?: components["schemas"]["YamlReferenceDataFilter"] | null;
+            /**
+             * Help
+             * @description Additional guidance shown on the tool form to help users choose a value.
+             */
+            help?: string | null;
+            /**
+             * Label
+             * @description Label shown for the input on the tool form.
+             */
+            label?: string | null;
+            /**
+             * Multiple
+             * @description Set true to let the user select several table entries, supplied as a list.
+             * @default false
+             */
+            multiple: boolean;
+            /**
+             * Name
+             * @description Identifier used to read this input from `shell_command` and other expressions.
+             */
+            name: string;
+            /**
+             * Optional
+             * @description Set true when the command can run without the user supplying this input.
+             * @default false
+             */
+            optional: boolean;
+            /**
+             * Table
+             * @description Name of the tool data table. A user-defined tool can only use tables an admin allows.
+             */
+            table: string;
+            /**
+             * @description Lets the user pick a tool data table entry and exposes it to expressions like a dataset. (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            type: "reference_data";
         };
         /**
          * YamlRepeatParameter
