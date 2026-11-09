@@ -147,6 +147,7 @@ def test_waiting_collection_is_retried_only_after_input_changes(harness, tool_fi
         # datatype wait even though this particular internal tool still needs data.
         harness.session.query(model.HistoryDatasetAssociation).filter_by(id=hda_id).update({"extension": "txt"})
         harness.session.commit()
+        harness.restore_history_update_time()
         harness.attempt(scheduler)
         assert scheduler.scheduled > attempts
         assert_waiting_without_replays(harness, scheduler)
@@ -174,6 +175,7 @@ def test_paused_input_override_does_not_replay_and_resumes_when_cleared(harness)
         {"_state": None, "extension": "txt"}
     )
     harness.session.commit()
+    harness.restore_history_update_time()
     harness.attempt(scheduler)
     invocation = harness.session.get(model.WorkflowInvocation, harness.invocation_id)
     assert invocation.state == invocation.states.SCHEDULED
@@ -197,6 +199,14 @@ def test_independent_workflow_branch_can_progress_while_another_waits(harness):
 
 
 def test_unresolved_extension_waits_on_any_pending_member(harness):
-    hdca, _ = collection_input(harness, states=("error", "running"), extension="auto")
+    hdca, datasets = collection_input(harness, states=("error", "running"), extension="auto")
+    running_dataset_id = datasets[1].dataset_id
     scheduler = real_workflow_scheduler(harness, hdca)
-    assert_waiting_without_replays(harness, scheduler)
+    attempts = assert_waiting_without_replays(harness, scheduler)
+
+    # Only the running member can wake the step.
+    harness.session.query(model.Dataset).filter_by(id=running_dataset_id).update({"state": "ok"})
+    harness.session.commit()
+    assert harness.attempt(scheduler) > attempts
+    invocation = harness.session.get(model.WorkflowInvocation, harness.invocation_id)
+    assert invocation.state == invocation.states.FAILED

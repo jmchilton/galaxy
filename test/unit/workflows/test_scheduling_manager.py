@@ -150,12 +150,6 @@ def _readiness_dependency(harness):
     return hda, SchedulingDependency(DependencyType.HDA, hda.id, dataset_readiness(hda))
 
 
-def _restore_history_update_time(harness):
-    # HDA writes bump the history audit; undo that so only the readiness snapshot can wake.
-    tracking = harness.monitor.update_time_tracking_dict[harness.invocation_id]
-    harness.set_history_update_time(tracking.history_update_time)
-
-
 @pytest.mark.parametrize("change", ["state", "deleted", "dataset_deleted", "missing"])
 def test_readiness_snapshot_change_reschedules(change):
     harness = SchedulingHarness()
@@ -174,7 +168,7 @@ def test_readiness_snapshot_change_reschedules(change):
     }[change]
     harness.session.execute(statement)
     harness.session.commit()
-    _restore_history_update_time(harness)
+    harness.restore_history_update_time()
     assert harness.attempt(scheduler) == 2
 
 
