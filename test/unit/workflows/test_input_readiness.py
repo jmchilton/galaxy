@@ -7,6 +7,13 @@ import pytest
 from galaxy import model
 from galaxy.app_unittest_utils.galaxy_mock import MockTrans
 from galaxy.managers.collections import DatasetCollectionManager
+from galaxy.model.dataset_collections.adapters import (
+    DCECollectionAdapter,
+    PromoteDatasetsToCollection,
+    PromoteDatasetToCollection,
+    TransientCollectionAdapterDatasetInstanceElement,
+)
+from galaxy.model.dataset_collections.readiness import dataset_readiness
 from galaxy.model.unittest_utils.model_testing_utils import create_and_drop_database
 from galaxy.tool_util.parser import get_tool_source
 from galaxy.tools import create_tool_from_source
@@ -17,6 +24,7 @@ from galaxy.workflow.run_request import (
     WorkflowRunConfig,
 )
 from galaxy.workflow.schedulers.core import CoreWorkflowSchedulingPlugin
+from galaxy.workflow.scheduling_dependencies import input_readiness_dependencies
 from .workflow_support import (
     MockToolbox,
     SchedulingHarness,
@@ -210,3 +218,22 @@ def test_unresolved_extension_waits_on_any_pending_member(harness):
     assert harness.attempt(scheduler) > attempts
     invocation = harness.session.get(model.WorkflowInvocation, harness.invocation_id)
     assert invocation.state == invocation.states.FAILED
+
+
+def test_blocker_found_through_elements_and_adapters(harness):
+    hdca, (ready, running) = collection_input(harness, states=("ok", "running"), extension="auto", nested=True)
+    child = hdca.collection.elements[0]
+    pair = [
+        TransientCollectionAdapterDatasetInstanceElement("forward", ready),
+        TransientCollectionAdapterDatasetInstanceElement("reverse", running),
+    ]
+    states = (*model.Dataset.non_ready_states, model.Dataset.states.PAUSED)
+    for value in (
+        child,
+        DCECollectionAdapter(child),
+        PromoteDatasetToCollection(running, "list"),
+        PromoteDatasetsToCollection(pair, "paired"),
+    ):
+        dependencies = input_readiness_dependencies(value, states=states, extensions=("auto",))
+        assert [(d.id, d.readiness) for d in dependencies] == [(running.id, dataset_readiness(running))]
+    assert input_readiness_dependencies(PromoteDatasetToCollection(ready, "list"), states=states) == []
