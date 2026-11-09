@@ -69,8 +69,14 @@ from .tool_source import (
     YamlTemplateConfigFile,
 )
 from .yaml_parameters import (
+    YamlConditionalParameter,
+    YamlDataCollectionParameter,
+    YamlDataParameter,
     YamlGalaxyParameterT,
     YamlGalaxyToolParameter,
+    YamlReferenceDataParameter,
+    YamlRepeatParameter,
+    YamlSectionParameter,
 )
 
 UserToolInputs = Annotated[
@@ -138,6 +144,30 @@ def _command_input_refs(text: str | None) -> set[str]:
         for match in _INPUTS_REF_RE.findall(block):
             refs.add(match)
     return refs
+
+
+def _reference_data_filter_errors(
+    parameters: list[YamlGalaxyToolParameter], data_inputs: frozenset[str] = frozenset()
+) -> list[str]:
+    """Check each ``filter.from_input`` names a data input declared before it, as the tool loader requires."""
+    errors: list[str] = []
+    visible = set(data_inputs)
+    for parameter in parameters:
+        param = parameter.root
+        if isinstance(param, YamlReferenceDataParameter) and param.filter:
+            if param.filter.from_input not in visible:
+                errors.append(
+                    f"input '{param.name}' filter.from_input '{param.filter.from_input}' must name a data or "
+                    "data_collection input declared before it"
+                )
+        elif isinstance(param, (YamlRepeatParameter, YamlSectionParameter)):
+            errors.extend(_reference_data_filter_errors(param.parameters, frozenset(visible)))
+        elif isinstance(param, YamlConditionalParameter):
+            for when in param.whens:
+                errors.extend(_reference_data_filter_errors(when.parameters, frozenset(visible)))
+        if isinstance(param, (YamlDataParameter, YamlDataCollectionParameter)):
+            visible.add(param.name)
+    return errors
 
 
 def format_validation_errors(exc: ValidationError) -> list[str]:
@@ -297,6 +327,12 @@ class _DynamicToolSourceBase(ToolSourceBaseModel):
                 "dynamic_tool.undeclared_input_ref",
                 joined,
             )
+        return self
+
+    @model_validator(mode="after")
+    def _check_reference_data_filters(self) -> "_DynamicToolSourceBase":
+        if errors := _reference_data_filter_errors(self.inputs):
+            raise PydanticCustomError("dynamic_tool.reference_data_filter", "; ".join(errors))
         return self
 
     @model_validator(mode="after")

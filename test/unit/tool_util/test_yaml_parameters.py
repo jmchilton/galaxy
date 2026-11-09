@@ -166,6 +166,49 @@ def test_reference_data_loads_like_its_authoring_model(reference_input, tool_cla
         assert filter_elem is None
 
 
+def _user_tool_with_inputs(inputs):
+    return {
+        "class": "GalaxyUserTool",
+        "id": "reference_tool",
+        "version": "1.0",
+        "name": "reference_tool",
+        "container": "busybox",
+        "shell_command": "echo",
+        "inputs": inputs,
+        "outputs": [],
+    }
+
+
+REFERENCE_FILTERED_ON_READS = {
+    "name": "reference",
+    "type": "reference_data",
+    "table": "t",
+    "filter": {"from_input": "reads", "on_metadata": "dbkey"},
+}
+
+
+@pytest.mark.parametrize(
+    "inputs",
+    [
+        [{"name": "read", "type": "data", "format": "txt"}, REFERENCE_FILTERED_ON_READS],
+        [REFERENCE_FILTERED_ON_READS, {"name": "reads", "type": "data", "format": "txt"}],
+        [{"name": "reads", "type": "text"}, REFERENCE_FILTERED_ON_READS],
+    ],
+    ids=["unknown", "declared_after", "not_data"],
+)
+def test_reference_data_filter_must_name_an_earlier_data_input(inputs):
+    with pytest.raises(ValidationError, match="from_input"):
+        UserToolSource.model_validate(_user_tool_with_inputs(inputs))
+
+
+def test_reference_data_filter_may_name_a_data_input_of_an_enclosing_scope():
+    inputs = [
+        {"name": "reads", "type": "data_collection", "collection_type": "list"},
+        {"name": "group", "type": "section", "parameters": [REFERENCE_FILTERED_ON_READS]},
+    ]
+    UserToolSource.model_validate(_user_tool_with_inputs(inputs))
+
+
 @pytest.mark.parametrize(
     "invalid",
     [
