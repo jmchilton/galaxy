@@ -2,9 +2,11 @@ import logging
 from datetime import timedelta
 from typing import cast
 
+import pytest
 from sqlalchemy import (
     delete,
     insert,
+    update,
 )
 
 from galaxy import model
@@ -12,6 +14,7 @@ from galaxy.app_unittest_utils.galaxy_mock import (
     MockApp,
     MockAppConfig,
 )
+from galaxy.model.dataset_collections.readiness import dataset_readiness
 from galaxy.structured_app import MinimalManagerApp
 from galaxy.util import now
 from galaxy.util.bunch import Bunch
@@ -137,6 +140,56 @@ def test_reschedules_after_backfill_interval_without_changes():
     stale = tracking.schedule_time - harness.monitor.timedelta - timedelta(seconds=1)
     harness.monitor.update_time_tracking_dict[harness.invocation_id] = tracking._replace(schedule_time=stale)
     assert harness.attempt(scheduler) == 2
+    assert harness.attempt(scheduler) == 2
+
+
+def _readiness_dependency(harness):
+    hda = model.HistoryDatasetAssociation(dataset=model.Dataset(state=model.Dataset.states.RUNNING))
+    hda.history = harness.history
+    harness.persist(hda)
+    return hda, SchedulingDependency(DependencyType.HDA, hda.id, dataset_readiness(hda))
+
+
+def _restore_history_update_time(harness):
+    # HDA writes bump the history audit; undo that so only the readiness snapshot can wake.
+    tracking = harness.monitor.update_time_tracking_dict[harness.invocation_id]
+    harness.set_history_update_time(tracking.history_update_time)
+
+
+@pytest.mark.parametrize("change", ["state", "deleted", "dataset_deleted", "missing"])
+def test_readiness_snapshot_change_reschedules(change):
+    harness = SchedulingHarness()
+    hda, dependency = _readiness_dependency(harness)
+    scheduler = RecordingScheduler(pending(dependency))
+
+    assert harness.attempt(scheduler) == 1
+    assert harness.attempt(scheduler) == 1
+
+    HDA, Dataset = model.HistoryDatasetAssociation, model.Dataset
+    statement = {
+        "state": update(Dataset).where(Dataset.id == hda.dataset_id).values(state="error"),
+        "deleted": update(HDA).where(HDA.id == hda.id).values(deleted=True),
+        "dataset_deleted": update(Dataset).where(Dataset.id == hda.dataset_id).values(deleted=True),
+        "missing": delete(HDA).where(HDA.id == hda.id),
+    }[change]
+    harness.session.execute(statement)
+    harness.session.commit()
+    _restore_history_update_time(harness)
+    assert harness.attempt(scheduler) == 2
+
+
+def test_readiness_snapshots_are_checked_in_batches():
+    harness = SchedulingHarness()
+    readiness = [_readiness_dependency(harness) for _ in range(501)]
+    scheduler = RecordingScheduler(pending(*(dependency for _, dependency in readiness)))
+
+    assert harness.attempt(scheduler) == 1
+    assert harness.attempt(scheduler) == 1
+
+    harness.session.execute(
+        update(model.Dataset).where(model.Dataset.id == readiness[-1][0].dataset_id).values(state="ok")
+    )
+    harness.session.commit()
     assert harness.attempt(scheduler) == 2
 
 
