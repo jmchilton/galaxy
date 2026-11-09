@@ -16,6 +16,8 @@ from galaxy.model import (
     User,
 )
 from galaxy.model.unittest_utils import GalaxyDataTestApp
+from galaxy.tool_util.parameters import input_models_for_tool_source
+from galaxy.tool_util.parameters.factory import ParameterDefinitionError
 from galaxy.tool_util.parser import get_tool_source
 from galaxy.tool_util_models.parameters import ReferenceDataConfig
 from galaxy.tools import create_tool_from_source
@@ -177,10 +179,30 @@ def test_history_bundles_are_not_offered_as_table_entries(app, monkeypatch):
     assert [option.value for option in options] == ["hg38", "mm10"]
 
 
-def test_xml_tools_cannot_declare_reference_data(app):
+@pytest.mark.parametrize(
+    "param_xml",
+    [
+        '<param name="reference" type="reference_data" table="open_refs"/>',
+        '<param name="reference" type="reference_data" table="closed_refs"><options from_data_table="open_refs"/></param>',
+    ],
+    ids=["bare", "with_options"],
+)
+def test_xml_tools_cannot_declare_reference_data(app, param_xml):
     tool = cast("Tool", Bunch(app=app, profile=26.1))
     with pytest.raises(ParameterValueError, match="only supported in YAML tools"):
-        ToolParameter.build(tool, XML('<param name="reference" type="reference_data" table="open_refs"/>'))
+        ToolParameter.build(tool, XML(param_xml))
+
+
+def test_parameter_models_reject_xml_reference_data():
+    tool_source = get_tool_source(
+        tool_source_class="XmlToolSource",
+        raw_tool_source=(
+            '<tool id="x" name="x" version="1"><command>x</command><inputs>'
+            '<param name="reference" type="reference_data" table="open_refs"/></inputs></tool>'
+        ),
+    )
+    with pytest.raises(ParameterDefinitionError, match="only supported in YAML tools"):
+        input_models_for_tool_source(tool_source)
 
 
 def test_filter_offers_only_entries_matching_the_selected_dataset(app):

@@ -275,6 +275,8 @@ def _from_input_source_galaxy(input_source: InputSource, profile: float) -> Tool
                 **_common_param_kwargs(input_source),
             )
         elif param_type == "reference_data":
+            if input_source.parse_reference_data() is None:
+                raise ParameterDefinitionError("reference_data is only supported in YAML tools")
             return SelectParameterModel(
                 type="select",
                 name=input_source.parse_name(),
