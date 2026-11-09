@@ -14,7 +14,7 @@
  */
 
 import { vi } from "vitest";
-import { type Ref, ref } from "vue";
+import { getCurrentScope, onScopeDispose, type Ref, ref } from "vue";
 
 export interface SSEMockState {
     onEvent: ((event: MessageEvent) => void) | null;
@@ -37,18 +37,27 @@ export function sseMockFactory(state: SSEMockState) {
     if (!state.hasEverConnected) {
         state.hasEverConnected = ref(false);
     }
-    const handlers = new Map<string, (event: MessageEvent) => void>();
+    type Handler = (event: MessageEvent) => void;
+    const handlers = new Map<string, Set<Handler>>();
     return {
-        useSSE: vi.fn((onEvent: (event: MessageEvent) => void, eventTypes?: readonly string[]) => {
-            // Several stores subscribe at once, each to its own event types; ``state.onEvent`` routes an
-            // event to the store subscribed to its type. Unlike the real composable, a type has one handler,
-            // the latest store's, as each test creates its stores anew. Resetting ``state.onEvent`` drops them all.
+        useSSE: vi.fn((onEvent: Handler, eventTypes?: readonly string[]) => {
+            // Like the real composable, an event reaches every handler subscribed to its type until the
+            // subscriber's scope is disposed. Resetting ``state.onEvent`` drops them all.
             if (!state.onEvent) {
                 handlers.clear();
-                state.onEvent = (event) => (handlers.get(event.type) ?? handlers.get(ALL_EVENTS))?.(event);
+                state.onEvent = (event) => {
+                    const typed = handlers.get(event.type) ?? new Set<Handler>();
+                    for (const handler of new Set([...typed, ...(handlers.get(ALL_EVENTS) ?? [])])) {
+                        handler(event);
+                    }
+                };
             }
-            for (const eventType of eventTypes ?? [ALL_EVENTS]) {
-                handlers.set(eventType, onEvent);
+            const types = eventTypes ?? [ALL_EVENTS];
+            for (const eventType of types) {
+                handlers.set(eventType, (handlers.get(eventType) ?? new Set<Handler>()).add(onEvent));
+            }
+            if (getCurrentScope()) {
+                onScopeDispose(() => types.forEach((eventType) => handlers.get(eventType)?.delete(onEvent)));
             }
             return { connect: state.connect, disconnect: state.disconnect, connected: state.connected };
         }),
