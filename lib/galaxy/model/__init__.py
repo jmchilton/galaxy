@@ -5908,9 +5908,6 @@ class HistoryDatasetAssociation(DatasetInstance, HasTags, Dictifiable, UsesAnnot
             # Copy metadata files into rows this HDA owns, as HDA.copy() does: purging other_hda removes
             # the files its rows name. Copying needs the extension and dataset set above.
             self.metadata = other_hda.metadata
-            if copies:
-                # Copying from this HDA would reuse a MetadataFile that has no id yet instead of copying it.
-                required_object_session(self).flush()
         self.copied_from_history_dataset_association_id = other_hda.id
         for copied_hda in copies:
             # A copy made by a database operation tool is usually a hidden collection element.

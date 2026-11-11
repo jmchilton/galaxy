@@ -665,6 +665,8 @@ class FileParameter(MetadataParameter):
             # so this would ultimately get overwritten anyway.
             new_value = galaxy.model.MetadataFile(dataset=target_context.parent, name=self.spec.name)
             session.add(new_value)
+            # Give the row its id now: under store_by id, get_file_name() would commit the session to get one.
+            session.flush()
             try:
                 new_value.update_from_file(value.get_file_name())
             except AssertionError:

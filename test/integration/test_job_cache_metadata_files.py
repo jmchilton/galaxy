@@ -1,5 +1,7 @@
 """Metadata files of outputs copied from a cached job."""
 
+import os
+
 from galaxy import model
 from galaxy_test.base.populators import DatasetPopulator
 from galaxy_test.driver import integration_util
@@ -46,6 +48,13 @@ class RunsCachedBamJob(integration_util.IntegrationTestCase):
 
 
 class TestJobCacheMetadataFiles(RunsCachedBamJob):
+    store_by = "uuid"
+
+    @classmethod
+    def handle_galaxy_config_kwds(cls, config):
+        super().handle_galaxy_config_kwds(config)
+        config["object_store_store_by"] = cls.store_by
+
     def test_cache_hit_at_submission(self):
         history_id = self.dataset_populator.new_history()
         self._check_cached_output_metadata_file(*self._run_cached_bam_job(history_id))
@@ -65,8 +74,14 @@ class TestJobCacheMetadataFiles(RunsCachedBamJob):
         assert source_index.history_dataset is source
         assert cached_index.history_dataset is cached
         assert cached_index.id != source_index.id
+        assert os.path.basename(cached_index.get_file_name()) == f"metadata_{getattr(cached_index, self.store_by)}.dat"
         assert cached_index.get_file_name() != source_index.get_file_name()
         with open(source_index.get_file_name(), "rb") as fh:
             source_bytes = fh.read()
         with open(cached_index.get_file_name(), "rb") as fh:
             assert fh.read() == source_bytes
+
+
+class TestJobCacheMetadataFilesStoreById(TestJobCacheMetadataFiles):
+    # get_file_name() needs an id under store_by id, so copying flushes each new MetadataFile first.
+    store_by = "id"
