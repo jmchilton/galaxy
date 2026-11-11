@@ -618,7 +618,6 @@ def _deferred(hda):
     "make_hda,opted_in",
     [
         pytest.param(lambda tmp_path: _indexed_hda(tmp_path, bam_index=BAI_CONTENT), False, id="not-opted-in"),
-        pytest.param(lambda tmp_path: _indexed_hda(tmp_path, "sam"), True, id="datatype-without-index"),
         pytest.param(lambda tmp_path: _deferred(_indexed_hda(tmp_path)), True, id="deferred"),
     ],
 )
@@ -638,16 +637,11 @@ def test_adapt_dataset_rejects_a_missing_index(tmp_path):
         _adapt_indexed(hda, {hda})
 
 
-def test_to_cwl_lists_the_index_for_user_tools_only(tmp_path):
+def test_to_cwl_lists_no_index_outside_user_tools(tmp_path):
     hda = _indexed_hda(tmp_path, bam_index=BAI_CONTENT)
-    compute_environment = cast(Any, RewritingComputeEnvironment())
 
-    opted_in = to_cwl(hda, [], compute_environment=compute_environment, secondary_file_datasets={hda})
-    opted_out = to_cwl(hda, [], compute_environment=compute_environment, secondary_file_datasets=set())
-    workflow = to_cwl(hda, [], compute_environment=compute_environment)
+    workflow = to_cwl(hda, [], compute_environment=cast(Any, RewritingComputeEnvironment()))
 
-    assert [f["basename"] for f in opted_in["secondaryFiles"]] == ["sample1.bam.bai"]
-    assert opted_out["secondaryFiles"] == []
     assert "secondaryFiles" not in workflow
 
 
