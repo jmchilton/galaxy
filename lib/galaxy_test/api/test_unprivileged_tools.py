@@ -349,6 +349,12 @@ class TestUnprivilegedToolsApi(ApiTestCase, TestsTools):
             assert output.split("\n") == [nameext, index.hex()]
 
     def test_run_multiple_input_lists_secondary_files(self):
+        self._assert_multiple_input_lists_secondary_files(via_tool_request=False)
+
+    def test_tool_request_multiple_input_lists_secondary_files(self):
+        self._assert_multiple_input_lists_secondary_files(via_tool_request=True)
+
+    def _assert_multiple_input_lists_secondary_files(self, via_tool_request: bool) -> None:
         tool = {
             **TOOL_LINKING_BAM_INDEX,
             "shell_command": "echo '$(inputs.input.map((f) => f.secondaryFiles[0].format).join(\",\"))' > output.fastq",
@@ -357,7 +363,7 @@ class TestUnprivilegedToolsApi(ApiTestCase, TestsTools):
         with self._user_tool_history() as history_id:
             bams = self._new_bams(history_id, 2)
             inputs = {"input": [{"src": "hda", "id": bam["id"]} for bam in bams]}
-            assert self._run_user_tool(history_id, tool, inputs) == "bai,bai\n"
+            assert self._run_user_tool(history_id, tool, inputs, via_tool_request) == "bai,bai\n"
 
     def test_run_collection_input_lists_secondary_files(self):
         self._assert_collection_input_lists_secondary_files(via_tool_request=False)
@@ -385,14 +391,54 @@ class TestUnprivilegedToolsApi(ApiTestCase, TestsTools):
             assert output == "bai,bai\n"
 
     def test_run_mapped_over_list_lists_secondary_files(self):
-        tool = {
-            **TOOL_LINKING_BAM_INDEX,
-            "shell_command": "echo '$(inputs.input.secondaryFiles[0].nameext)' > output.fastq",
-        }
+        self._assert_mapped_over_list_lists_secondary_files(via_tool_request=False)
+
+    def test_tool_request_mapped_over_list_lists_secondary_files(self):
+        self._assert_mapped_over_list_lists_secondary_files(via_tool_request=True)
+
+    def _assert_mapped_over_list_lists_secondary_files(self, via_tool_request: bool) -> None:
+        # Different BAMs, so each job must link its own element's index.
         with self._user_tool_history() as history_id:
-            hdca = self._new_bam_list(history_id, 1)
-            inputs = {"input": {"batch": True, "values": [{"src": "hdca", "id": hdca["id"]}]}}
-            assert self._run_user_tool(history_id, tool, inputs) == ".bai\n"
+            bams = [
+                self.dataset_populator.new_dataset_from_test_data(history_id, self.test_data_resolver, filename, "bam")
+                for filename in ("1.bam", "3.bam")
+            ]
+            hdca = self.dataset_collection_populator.create_list_in_history(
+                history_id,
+                direct_upload=False,
+                element_identifiers=[
+                    {"name": f"sample_{i}", "src": "hda", "id": bam["id"]} for i, bam in enumerate(bams)
+                ],
+                wait=True,
+            ).json()
+            tool_uuid = self.dataset_populator.create_unprivileged_tool(UserToolSource(**TOOL_LINKING_BAM_INDEX))[
+                "uuid"
+            ]
+            values = [{"src": "hdca", "id": hdca["id"]}]
+            if via_tool_request:
+                response = self.dataset_populator.tool_request_raw(
+                    tool_id=None,
+                    inputs={"input": {"__class__": "Batch", "values": values}},
+                    history_id=history_id,
+                    tool_uuid=tool_uuid,
+                )
+                self._assert_status_code_is(response, 200)
+                tool_request_id = response.json()["tool_request_id"]
+                assert self.dataset_populator.wait_on_tool_request(tool_request_id)
+                [implicit] = self.dataset_populator.get_tool_request(tool_request_id)["implicit_collections"]
+            else:
+                run = self._run(
+                    history_id=history_id,
+                    tool_uuid=tool_uuid,
+                    inputs={"input": {"batch": True, "values": values}},
+                    assert_ok=True,
+                )
+                [implicit] = run["implicit_collections"]
+            self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+            contents = self.dataset_populator.get_collection_element_contents(history_id, implicit["id"])
+            assert {identifier: content.strip() for identifier, content in contents.items()} == {
+                f"sample_{i}": self._bam_index_hex(history_id, bam) for i, bam in enumerate(bams)
+            }
 
     def test_run_secondary_files_empty_unless_asked_for_and_indexed(self):
         # Only a dataset in a format Galaxy indexes, on an input that sets secondary_files, gets an index.
