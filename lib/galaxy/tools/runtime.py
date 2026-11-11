@@ -8,7 +8,6 @@ from typing import (
 )
 
 from galaxy.datatypes.data import Directory
-from galaxy.exceptions import RequestParameterInvalidException
 from galaxy.model import (
     DatasetCollection,
     DatasetCollectionElement,
@@ -93,6 +92,10 @@ def dataset_path(
     return rewrite or dataset.get_file_name()
 
 
+class MissingIndexError(ValueError):
+    """A job input in a format Galaxy indexes has no index, so the job is rejected."""
+
+
 def secondary_files_json(
     dataset: DatasetInstance,
     basename: str,
@@ -103,7 +106,7 @@ def secondary_files_json(
     The rewrite is what makes Pulsar stage a metadata file, so call this only
     for inputs that want the index.
 
-    Raises ``RequestParameterInvalidException`` if the datatype has an index and
+    Raises ``MissingIndexError`` if the datatype has an index and
     this dataset doesn't. A deferred dataset passed to the tool as its source URI
     has no local files, and so no index.
     """
@@ -123,7 +126,7 @@ def secondary_files_json(
         set_basename_and_derived_properties(secondary_file, f"{basename}{suffix}")
         secondary_files[suffix] = secondary_file
     if datatype.secondary_file_suffixes and not secondary_files:
-        raise RequestParameterInvalidException(
+        raise MissingIndexError(
             f"Dataset '{dataset.name}' has no index, which the tool needs. "
             "Check that the dataset's metadata was set correctly, or auto-detect it again."
         )

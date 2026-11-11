@@ -62,6 +62,7 @@ from galaxy.tool_util.output_checker import (
 from galaxy.tool_util.parser.stdio import StdioErrorLevel
 from galaxy.tools.expressions import ExpressionTemplateError
 from galaxy.tools.parameters.basic import ParameterValueError
+from galaxy.tools.runtime import MissingIndexError
 from galaxy.util import (
     asbool,
     DATABASE_MAX_STRING_SIZE,
@@ -403,7 +404,12 @@ class BaseJobRunner:
                 modify_command_for_container=modify_command_for_container,
                 stream_stdout_stderr=stream_stdout_stderr,
             )
-        except (ParameterValueError, ExpressionTemplateError, InsufficientPermissionsException) as e:
+        except (
+            ParameterValueError,
+            ExpressionTemplateError,
+            InsufficientPermissionsException,
+            MissingIndexError,
+        ) as e:
             log.info("(%s) job rejected while preparing: %s", job_id, unicodify(e))
             job_wrapper.fail(unicodify(e), exception=False)
             return False

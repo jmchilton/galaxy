@@ -9,7 +9,6 @@ import pytest
 from pydantic import ValidationError
 
 from galaxy.datatypes.registry import example_datatype_registry_for_sample
-from galaxy.exceptions import RequestParameterInvalidException
 from galaxy.model import (
     Dataset,
     DatasetCollection,
@@ -38,6 +37,7 @@ from galaxy.tools.evaluation import UserToolEvaluator
 from galaxy.tools.runtime import (
     _validate_collection_runtime_dict,
     collection_to_runtime,
+    MissingIndexError,
     setup_for_runtimeify,
 )
 from galaxy.util.bunch import Bunch
@@ -644,7 +644,7 @@ def test_adapt_dataset_without_secondary_files(tmp_path, make_hda, opted_in):
 def test_adapt_dataset_rejects_a_missing_index(tmp_path):
     hda = _indexed_hda(tmp_path)
 
-    with pytest.raises(RequestParameterInvalidException, match="'sample1.bam' has no index"):
+    with pytest.raises(MissingIndexError, match="'sample1.bam' has no index"):
         _adapt_indexed(hda, {hda})
 
 
