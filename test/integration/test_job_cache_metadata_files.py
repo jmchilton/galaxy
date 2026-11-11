@@ -66,11 +66,7 @@ class TestJobCacheMetadataFiles(RunsCachedBamJob):
     def test_expression_tool_output_copied_from_input(self):
         history_id = self.dataset_populator.new_history()
         bam = self.dataset_populator.new_bam_dataset(history_id, self.test_data_resolver)
-        run = self.dataset_populator.run_tool(
-            "expression_pick_larger_file", {"input1": {"src": "hda", "id": bam["id"]}}, history_id
-        )
-        self.dataset_populator.wait_for_job(run["jobs"][0]["id"], assert_ok=True)
-        self._check_owns_copied_metadata_file(bam["id"], run["outputs"][0]["id"])
+        self._check_owns_copied_metadata_file(bam["id"], self._pick_larger_file(history_id, bam["id"]))
 
     def test_expression_tool_output_copied_from_linked_input(self):
         history_id = self.dataset_populator.new_history()
@@ -80,11 +76,14 @@ class TestJobCacheMetadataFiles(RunsCachedBamJob):
         bam = self.dataset_populator.fetch(payload).json()["outputs"][0]
         self.dataset_populator.wait_for_history(history_id, assert_ok=True)
         assert self._hda(bam["id"]).dataset.external_filename == path
-        run = self.dataset_populator.run_tool(
-            "expression_pick_larger_file", {"input1": {"src": "hda", "id": bam["id"]}}, history_id
-        )
+        self._check_owns_copied_metadata_file(bam["id"], self._pick_larger_file(history_id, bam["id"]))
+
+    def _pick_larger_file(self, history_id: str, input_id: str) -> str:
+        """Run an expression tool that outputs its input, and return the output's encoded id."""
+        inputs = {"input1": {"src": "hda", "id": input_id}}
+        run = self.dataset_populator.run_tool("expression_pick_larger_file", inputs, history_id)
         self.dataset_populator.wait_for_job(run["jobs"][0]["id"], assert_ok=True)
-        self._check_owns_copied_metadata_file(bam["id"], run["outputs"][0]["id"])
+        return run["outputs"][0]["id"]
 
     def _check_owns_copied_metadata_file(self, source_id: str, copy_id: str) -> None:
         # Hold the HDAs: metadata keeps only a weak reference to its parent.
