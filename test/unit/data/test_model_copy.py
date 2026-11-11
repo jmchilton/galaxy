@@ -4,6 +4,7 @@ import threading
 from typing import Union
 
 from sqlalchemy import (
+    event,
     func,
     select,
 )
@@ -173,6 +174,34 @@ def test_copy_from_leaves_the_transaction_to_the_caller():
         session.rollback()
 
         assert session.scalar(select(func.count(MetadataFile.id))) == 1
+
+
+def test_copy_from_inserts_each_metadata_file_row_once():
+    # A job cache hit over a mapped collection copies a metadata file per element; insert each row complete.
+    with _setup_mapping_and_user() as (test_config, object_store, model, history):
+        session = model.context
+        source = _create_hda(
+            model, object_store, history, test_config.write("moo", "source"), include_metadata_file=True
+        )
+        target = _create_hda(model, object_store, history, test_config.write("cow", "target"))
+        session.commit()
+
+        statements = []
+
+        def record(conn, cursor, statement, *args):
+            statements.append(statement)
+
+        engine = session.get_bind()
+        event.listen(engine, "before_cursor_execute", record)
+        try:
+            target.copy_from(source, include_metadata=True)
+            session.commit()
+        finally:
+            event.remove(engine, "before_cursor_execute", record)
+
+        assert len([s for s in statements if s.startswith("INSERT INTO metadata_file")]) == 1
+        assert not [s for s in statements if s.startswith("UPDATE metadata_file")]
+        assert target.metadata.bam_index.object_store_id == target.dataset.object_store_id
 
 
 @contextlib.contextmanager

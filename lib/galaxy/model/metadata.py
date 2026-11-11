@@ -664,6 +664,8 @@ class FileParameter(MetadataParameter):
             # All current datatypes re-generate MetadataFile objects when setting metadata,
             # so this would ultimately get overwritten anyway.
             new_value = galaxy.model.MetadataFile(dataset=target_context.parent, name=self.spec.name)
+            # Set now, so the flush below inserts it instead of get_file_name() updating the row after.
+            new_value.object_store_id = target_dataset.object_store_id
             session.add(new_value)
             # Give the row its id now: under store_by id, get_file_name() would commit the session to get one.
             session.flush()
