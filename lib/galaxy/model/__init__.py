@@ -10679,8 +10679,7 @@ class MetadataFile(Base, StorableObject, Serializable):
                 file_name=file_name,
                 extra_dir="_metadata_files",
                 extra_dir_at_root=True,
-                # Only the name is needed: syncing the cache would download the empty file get_file_name() creates.
-                alt_name=os.path.basename(self.get_file_name(sync_cache=False)),
+                alt_name=os.path.basename(self.get_file_name()),
             )
 
     def get_file_name(self, sync_cache: bool = True) -> str:
