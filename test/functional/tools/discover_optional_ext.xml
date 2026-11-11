@@ -1,0 +1,38 @@
+<tool id="discover_optional_ext" name="discover_optional_ext" version="0.1.0">
+    <command><![CDATA[
+mkdir collection_out primary_out &&
+echo 1 > collection_out/yelp &&
+echo 2 > primary_out/yelp &&
+echo 3 > '$primary_optional_ext'
+]]></command>
+    <inputs />
+    <outputs>
+        <collection name="collection_optional_ext" type="list" label="optional ext group, collection default format" format="fasta">
+            <discover_datasets directory="collection_out" pattern="^(?P&lt;designation&gt;\.*[^\.]+(?:\.(?P&lt;ext&gt;.*))?)$" />
+        </collection>
+        <data name="primary_optional_ext" format="txt">
+            <discover_datasets directory="primary_out" pattern="^(?P&lt;designation&gt;\.*[^\.]+(?:\.(?P&lt;ext&gt;.*))?)$" format="tabular" visible="true" />
+        </data>
+    </outputs>
+    <tests>
+        <test>
+            <output_collection name="collection_optional_ext" type="list" count="1">
+                <element name="yelp" ftype="fasta">
+                    <assert_contents>
+                        <has_text text="1" />
+                    </assert_contents>
+                </element>
+            </output_collection>
+            <output name="primary_optional_ext">
+                <assert_contents>
+                    <has_text text="3" />
+                </assert_contents>
+                <discovered_dataset designation="yelp" ftype="tabular">
+                    <assert_contents>
+                        <has_text text="2" />
+                    </assert_contents>
+                </discovered_dataset>
+            </output>
+        </test>
+    </tests>
+</tool>
