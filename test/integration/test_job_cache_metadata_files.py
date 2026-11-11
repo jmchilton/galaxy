@@ -46,6 +46,13 @@ class RunsCachedBamJob(integration_util.IntegrationTestCase):
 
 
 class TestJobCacheMetadataFiles(RunsCachedBamJob):
+    require_admin_user = True
+
+    @classmethod
+    def handle_galaxy_config_kwds(cls, config):
+        super().handle_galaxy_config_kwds(config)
+        config["allow_path_paste"] = True
+
     def test_cache_hit_at_submission(self):
         history_id = self.dataset_populator.new_history()
         self._check_owns_copied_metadata_file(*self._run_cached_bam_job(history_id))
@@ -57,6 +64,20 @@ class TestJobCacheMetadataFiles(RunsCachedBamJob):
     def test_expression_tool_output_copied_from_input(self):
         history_id = self.dataset_populator.new_history()
         bam = self.dataset_populator.new_bam_dataset(history_id, self.test_data_resolver)
+        run = self.dataset_populator.run_tool(
+            "expression_pick_larger_file", {"input1": {"src": "hda", "id": bam["id"]}}, history_id
+        )
+        self.dataset_populator.wait_for_job(run["jobs"][0]["id"], assert_ok=True)
+        self._check_owns_copied_metadata_file(bam["id"], run["outputs"][0]["id"])
+
+    def test_expression_tool_output_copied_from_linked_input(self):
+        history_id = self.dataset_populator.new_history()
+        path = self.test_data_resolver.get_filename("1.bam")
+        item = {"src": "path", "path": path, "ext": "bam", "link_data_only": True}
+        payload = {"history_id": history_id, "targets": [{"destination": {"type": "hdas"}, "items": [item]}]}
+        bam = self.dataset_populator.fetch(payload).json()["outputs"][0]
+        self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+        assert self._hda(bam["id"]).dataset.external_filename == path
         run = self.dataset_populator.run_tool(
             "expression_pick_larger_file", {"input1": {"src": "hda", "id": bam["id"]}}, history_id
         )
