@@ -599,21 +599,12 @@ def test_adapt_dataset_lists_and_registers_the_index(tmp_path):
     assert compute_environment.metadata_rewrites == [str(tmp_path / "bam_index.dat")]
 
 
-@pytest.mark.parametrize(
-    "extension,indexes,expected",
-    [
-        pytest.param("bam", {"bam_index": CSI_CONTENT}, [(".csi", "csi")], id="csi-kept-in-bam_index"),
-        pytest.param(
-            "bam", {"bam_index": CSI_CONTENT, "bam_csi_index": CSI_CONTENT}, [(".csi", "csi")], id="one-per-suffix"
-        ),
-    ],
-)
-def test_adapt_dataset_names_the_index_by_its_format(tmp_path, extension, indexes, expected):
-    hda = _indexed_hda(tmp_path, extension, **indexes)
+def test_adapt_dataset_lists_a_csi_index_kept_in_both_metadata_files_once(tmp_path):
+    hda = _indexed_hda(tmp_path, bam_index=CSI_CONTENT, bam_csi_index=CSI_CONTENT)
 
     result, _ = _adapt_indexed(hda, {hda})
 
-    assert [(f.nameext, f.format) for f in result.secondary_files] == expected
+    assert [(f.nameext, f.format) for f in result.secondary_files] == [(".csi", "csi")]
 
 
 def _deferred(hda):

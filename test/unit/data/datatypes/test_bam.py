@@ -1,7 +1,9 @@
 import json
 
+import pytest
 from pysam import (
     AlignmentFile,
+    index,
     view,
 )
 
@@ -99,3 +101,12 @@ def _get_chunk_response(dataset, offset, chunk_size):
     b = Bam()
     chunk = b.get_chunk(None, dataset, offset, chunk_size)
     return json.loads(chunk)
+
+
+@pytest.mark.parametrize("index_flag,suffix", [("-b", ".bai"), ("-c", ".csi")])
+def test_secondary_file_suffix_of_bam_index_follows_its_format(tmp_path, index_flag, suffix):
+    # set_meta stores a CSI index in bam_index for BAMs with very long contigs.
+    index_path = str(tmp_path / "bam_index.dat")
+    with get_input_files("1.bam") as input_files:
+        index(index_flag, "-o", index_path, input_files[0])
+    assert Bam().secondary_file_suffix("bam_index", index_path) == suffix
