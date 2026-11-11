@@ -25,6 +25,7 @@ from galaxy.tool_util_models.parameters import (
     DataJobInternalT,
     DataRequestInternalHda,
     DatasetCollectionElementReference,
+    SecondaryFileInternalJson,
 )
 
 if TYPE_CHECKING:
@@ -100,7 +101,7 @@ def secondary_files_json(
     dataset: DatasetInstance,
     basename: str,
     compute_environment: Optional["ComputeEnvironment"] = None,
-) -> list[dict[str, Any]]:
+) -> list[SecondaryFileInternalJson]:
     """Describe a dataset's index files for a tool input that asked for them.
 
     The rewrite is what makes Pulsar stage a metadata file, so call this only
@@ -113,7 +114,7 @@ def secondary_files_json(
     if dataset.has_deferred_data:
         return []
     datatype = dataset.datatype
-    secondary_files: dict[str, dict[str, Any]] = {}
+    secondary_files: dict[str, SecondaryFileInternalJson] = {}
     for metadata_name in datatype.secondary_file_suffixes:
         if not (metadata_file := dataset.metadata.get(metadata_name)):
             continue
@@ -124,7 +125,7 @@ def secondary_files_json(
         rewrite = compute_environment.input_metadata_rewrite(dataset, local_path) if compute_environment else None
         secondary_file: dict[str, Any] = {"class": "File", "path": rewrite or local_path, "format": suffix.lstrip(".")}
         set_basename_and_derived_properties(secondary_file, f"{basename}{suffix}")
-        secondary_files[suffix] = secondary_file
+        secondary_files[suffix] = SecondaryFileInternalJson(**secondary_file)
     if datatype.secondary_file_suffixes and not secondary_files:
         raise MissingIndexError(
             f"Dataset '{dataset.name}' has no index, which the tool needs. "
