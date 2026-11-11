@@ -1,10 +1,15 @@
+import os
+
 from galaxy_test.base.populators import skip_without_tool
+from .test_job_cache_metadata_files import RunsCachedBamJob
 from .test_scripts import BaseScriptsIntegrationTestCase
 
 SCRIPT = "cleanup_datasets/pgcleanup.py"
 
 
-class TestScriptsPgCleanupIntegration(BaseScriptsIntegrationTestCase):
+class TestScriptsPgCleanupIntegration(RunsCachedBamJob, BaseScriptsIntegrationTestCase):
+    framework_tool_and_types = True
+
     def test_help(self):
         self._skip_unless_postgres()
         self._scripts_check_argparse_help(SCRIPT)
@@ -213,6 +218,25 @@ class TestScriptsPgCleanupIntegration(BaseScriptsIntegrationTestCase):
 
         assert not self.is_purged(history_id, hda)
 
+    def test_purge_deleted_hdas_with_cached_copy(self):
+        self._skip_unless_postgres()
+
+        history_id = self.dataset_populator.new_history()
+        source_id, cached_id = self._run_cached_bam_job(history_id)
+        cached = self._hda(cached_id)
+        cached_index_path = cached.metadata.bam_index.get_file_name()
+        cached_index = _read(cached_index_path)
+        assert cached_index
+
+        self.dataset_populator.delete_dataset(history_id, source_id)
+        self._pgcleanup_check_output(["--older-than", "0", "--sequence", "purge_deleted_hdas"])
+
+        assert self.is_purged(history_id, source_id)
+        assert not self.is_purged(history_id, cached_id)
+        # Current behavior: purging the source removes the index the cached output reads. Reading
+        # the cached output's metadata through the API may recreate the file, empty.
+        assert _read(cached_index_path) != cached_index
+
     def is_purged(self, history_id: str, dataset) -> bool:
         # set wait=False to prevent errored dataset from erroring out
         if isinstance(dataset, str):
@@ -230,3 +254,10 @@ class TestScriptsPgCleanupIntegration(BaseScriptsIntegrationTestCase):
         output = self._scripts_check_output(SCRIPT, ["-c", config_file] + extra_args)
         print(output)
         return output
+
+
+def _read(path: str) -> bytes:
+    if not os.path.exists(path):
+        return b""
+    with open(path, "rb") as fh:
+        return fh.read()
