@@ -201,6 +201,14 @@ def test_collection_element_pattern_without_identifier_is_skipped():
     assert collection.dataset_instances[0].designation == "kept"
 
 
+def test_pattern_with_unmatched_designation_and_matched_name_is_skipped():
+    # ``designation`` takes precedence over ``name`` whenever the group exists,
+    # so a non-participating ``designation`` group leaves no element identifier
+    # even when ``name`` matched.
+    collection_description = FilePatternDatasetCollectionDescription(pattern=r"(?P<designation>a)?(?P<name>.*)\.txt")
+    assert dataset_collector(collection_description).match(None, "b.txt") is None
+
+
 def test_collection_rejects_tool_provided_extra_files_outside_working_directory():
     with tempfile.TemporaryDirectory() as job_working_directory:
         dataset_path = os.path.join(job_working_directory, "dataset.txt")

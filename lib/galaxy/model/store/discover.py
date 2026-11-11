@@ -1282,10 +1282,7 @@ class RegexCollectedDatasetMatch(JsonCollectedDatasetMatch):
         ``groupdict()`` with a value of ``None`` and make the identifier
         unusable.
         """
-        element_identifiers = self.raw_element_identifiers
-        if element_identifiers:
-            return all(identifier is not None for identifier in element_identifiers)
-        return self.as_dict.get("designation") is not None or self.as_dict.get("name") is not None
+        return None not in self.element_identifiers
 
 
 class DiscoveredFileError(NamedTuple):
