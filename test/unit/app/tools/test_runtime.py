@@ -661,16 +661,23 @@ def test_to_cwl_lists_the_index_for_user_tools_only(tmp_path):
     assert "secondaryFiles" not in workflow
 
 
-def test_user_tool_finds_a_converted_input_of_an_input_with_secondary_files():
-    _, original, converted = _csv_with_tabular_conversion()
-    wanted = Bunch(name="wanted", label="wanted", secondary_files=True)
-    unwanted = _hda(3, "txt")
-    other = Bunch(name="other", label="other", secondary_files=False)
-    tool = Bunch(inputs={"wanted": wanted, "other": other})
+def test_user_tool_lists_the_index_of_a_converted_input(tmp_path):
+    # The user picks an unsorted BAM; the job receives its conversion to a coordinate-sorted, indexed BAM.
+    converted = _indexed_hda(tmp_path, bam_index=BAI_CONTENT)
+    converted.id = 2
+    original = _hda(1, "unsorted.bam")
+    ImplicitlyConvertedDatasetAssociation(parent=original, dataset=converted, file_type="bam")
+    tool = Bunch(inputs={"input": Bunch(name="input", label="input", secondary_files=True)})
     evaluator = UserToolEvaluator(cast(Any, Bunch()), cast(Any, tool), cast(Any, None), "/job")
+    secondary_file_datasets = evaluator._datasets_with_secondary_files({"input": original}, {"input": converted})
 
-    datasets = evaluator._datasets_with_secondary_files(
-        {"wanted": original, "other": unwanted}, {"wanted": converted, "other": unwanted}
+    _, adapt_dataset, _ = setup_for_runtimeify(
+        cast(Any, DatatypesApp(example_datatype_registry_for_sample())),
+        cast(Any, RewritingComputeEnvironment()),
+        {"input": converted},
+        secondary_file_datasets=secondary_file_datasets,
     )
+    result = adapt_dataset(DataRequestInternalHda(src="hda", id=original.id), ["bam"])
 
-    assert datasets == {original, converted}
+    assert result.path == "/job/inputs/dataset_2.dat"
+    assert [f.basename for f in result.secondary_files] == ["sample1.bam.bai"]
