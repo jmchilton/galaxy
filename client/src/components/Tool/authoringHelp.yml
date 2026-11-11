@@ -337,7 +337,8 @@ sections:
       format Galaxy does index but whose index is missing, usually because
       setting its metadata failed, fails the job with an error naming the
       dataset. `secondaryFiles` is also empty for an input that doesn't set
-      the option.
+      the option, unless the job passes the same dataset to an input that
+      does.
 
       Pick link names that your `discover_datasets` patterns don't match: a
       link to an input is not a valid output, and fails the job.
