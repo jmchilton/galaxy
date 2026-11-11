@@ -3,8 +3,11 @@ from sqlalchemy import select
 
 from galaxy.files.unittest_utils import TestPosixConfiguredFileSources
 from galaxy.model import (
+    Dataset,
     DatasetCollection,
     DatasetCollectionElement,
+    DatasetHash,
+    DatasetSource,
     HistoryDatasetAssociation,
     HistoryDatasetCollectionAssociation,
     LibraryDatasetDatasetAssociation,
@@ -59,6 +62,35 @@ def test_deferred_hdas_basic_attached():
     assert path
     _assert_path_contains_2_bed(path)
     _assert_2_bed_metadata(materialized_hda)
+
+
+def test_in_place_materialization_from_replacement_owns_metadata_files(tmpdir):
+    app, sa_session, user, history = setup_fixture_context_with_history()
+    source_uri = "https://example.org/1.bam"
+    bam_path = tmpdir.join("1.bam")
+    bam_path.write("moo")
+    replacement = _create_hda(sa_session, app.object_store, history, bam_path, include_metadata_file=True)
+    replacement.dataset.state = Dataset.states.OK
+    replacement.dataset.sources = [DatasetSource(source_uri=source_uri)]
+    replacement.dataset.hashes = [DatasetHash(hash_function="SHA-1", hash_value="abc")]
+    deferred = HistoryDatasetAssociation(extension="bam", create_dataset=True, sa_session=sa_session)
+    deferred.dataset.state = Dataset.states.DEFERRED
+    deferred.dataset.sources = [DatasetSource(source_uri=source_uri)]
+    deferred.dataset.hashes = [DatasetHash(hash_function="SHA-1", hash_value="abc")]
+    history.add_dataset(deferred)
+    sa_session.commit()
+
+    materializer = materializer_factory(True, object_store=app.object_store)
+    materialized = materializer.ensure_materialized(deferred, in_place=True)
+
+    assert materialized is deferred
+    assert materialized.dataset is replacement.dataset
+    replacement_index = replacement.metadata.bam_index
+    materialized_index = materialized.metadata.bam_index
+    assert materialized_index.history_dataset is materialized
+    assert materialized_index.id != replacement_index.id
+    with open(materialized_index.get_file_name()) as fh:
+        assert fh.read() == "moo"
 
 
 def test_hash_validate():
