@@ -606,7 +606,6 @@ def test_adapt_dataset_lists_and_registers_the_index(tmp_path):
         pytest.param(
             "bam", {"bam_index": CSI_CONTENT, "bam_csi_index": CSI_CONTENT}, [(".csi", "csi")], id="one-per-suffix"
         ),
-        pytest.param("cram", {"cram_index": b"crai"}, [(".crai", "crai")], id="cram"),
     ],
 )
 def test_adapt_dataset_names_the_index_by_its_format(tmp_path, extension, indexes, expected):

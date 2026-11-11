@@ -5,6 +5,8 @@ from contextlib import contextmanager
 from typing import Any
 from uuid import uuid4
 
+import pytest
+
 from galaxy.tool_util_models import UserToolSource
 from galaxy_test.base.api_mixins import TestsTools
 from galaxy_test.base.populators import (
@@ -319,6 +321,32 @@ class TestUnprivilegedToolsApi(ApiTestCase, TestsTools):
                 history_id, TOOL_LINKING_BAM_INDEX, {"input": {"src": "hda", "id": bam["id"]}}, via_tool_request
             )
             assert output.strip() == self._bam_index_hex(history_id, bam)
+
+    @pytest.mark.parametrize(
+        "filename,ext,metadata_name,nameext",
+        [
+            ("2.cram", "cram", "cram_index", ".crai"),
+            ("bcf_index_metadata_test.bcf", "bcf", "bcf_index", ".csi"),
+            ("test.vcf.gz", "vcf_bgzip", "tabix_index", ".tbi"),
+        ],
+    )
+    def test_run_links_secondary_file_of_each_indexed_format(self, filename, ext, metadata_name, nameext):
+        tool = {
+            **TOOL_LINKING_BAM_INDEX,
+            "shell_command": (
+                "ln -s '$(inputs.input.secondaryFiles[0].path)' 'index$(inputs.input.secondaryFiles[0].nameext)' && "
+                "echo '$(inputs.input.secondaryFiles[0].nameext)' > output.fastq && "
+                "od -An -v -tx1 'index$(inputs.input.secondaryFiles[0].nameext)' | tr -d ' \\n' >> output.fastq"
+            ),
+            "inputs": [{**BAM_INPUT_WITH_SECONDARY_FILES, "format": ext}],
+        }
+        with self._user_tool_history() as history_id:
+            dataset = self.dataset_populator.new_dataset_from_test_data(
+                history_id, self.test_data_resolver, filename, ext
+            )
+            output = self._run_user_tool(history_id, tool, {"input": {"src": "hda", "id": dataset["id"]}})
+            index = self.dataset_populator.get_history_dataset_metadata_file(history_id, dataset["id"], metadata_name)
+            assert output.split("\n") == [nameext, index.hex()]
 
     def test_run_multiple_input_lists_secondary_files(self):
         tool = {
