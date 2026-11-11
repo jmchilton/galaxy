@@ -32,6 +32,14 @@ from galaxy.tool_util_models.dynamic_tool_models import (
     DynamicToolPayload,
     DynamicUnprivilegedToolCreatePayload,
 )
+from galaxy.tool_util_models.yaml_parameters import (
+    YamlConditionalParameter,
+    YamlDataCollectionParameter,
+    YamlDataParameter,
+    YamlGalaxyToolParameter,
+    YamlRepeatParameter,
+    YamlSectionParameter,
+)
 from galaxy.tools import (
     create_tool_from_source,
     Tool,
@@ -49,6 +57,7 @@ from .executables import artifact_class
 log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    from galaxy.datatypes.registry import Registry
     from galaxy.managers.base import OrmFilterParsersType
 
 
@@ -61,6 +70,34 @@ def _validate_tool_templates(representation: UserToolSource) -> None:
             validate_expression_template(configfile.content, f"configfile '{name}'")
     except ExpressionTemplateError as exc:
         raise exceptions.RequestParameterInvalidException(str(exc)) from exc
+
+
+def _validate_secondary_files(representation: UserToolSource, datatypes_registry: "Registry") -> None:
+    """Refuse ``secondary_files`` on an input none of whose formats Galaxy can index."""
+    indexed = [
+        datatype for datatype in datatypes_registry.datatypes_by_extension.values() if datatype.secondary_file_suffixes
+    ]
+
+    def can_be_indexed(extension: str) -> bool:
+        if (datatype := datatypes_registry.get_datatype_by_extension(extension)) is None:
+            return True
+        return any(isinstance(candidate, type(datatype)) for candidate in indexed)
+
+    def check(parameters: list[YamlGalaxyToolParameter]) -> None:
+        for parameter in (wrapped.root for wrapped in parameters):
+            if isinstance(parameter, YamlConditionalParameter):
+                for when in parameter.whens:
+                    check(when.parameters)
+            elif isinstance(parameter, (YamlRepeatParameter, YamlSectionParameter)):
+                check(parameter.parameters)
+            elif isinstance(parameter, (YamlDataParameter, YamlDataCollectionParameter)) and parameter.secondary_files:
+                if not any(can_be_indexed(extension) for extension in parameter.format):
+                    raise exceptions.RequestParameterInvalidException(
+                        f"Input '{parameter.name}' sets secondary_files, but Galaxy doesn't index any of its formats "
+                        f"({', '.join(parameter.format)})."
+                    )
+
+    check(representation.inputs)
 
 
 def tool_payload_to_tool(app, tool_dict: dict[str, Any]) -> Tool | None:
@@ -209,6 +246,7 @@ class DynamicToolManager(ModelManager[DynamicTool]):
         if lint_errors := lint_user_tool_source(tool_payload.representation):
             raise exceptions.RequestParameterInvalidException("Tool failed lint checks: " + "; ".join(lint_errors))
         _validate_tool_templates(tool_payload.representation)
+        _validate_secondary_files(tool_payload.representation, self.app.datatypes_registry)
         dynamic_tool = self.create(
             tool_format=tool_payload.representation.class_,
             tool_id=tool_payload.representation.id,

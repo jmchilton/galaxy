@@ -385,6 +385,13 @@ class TestUnprivilegedToolsApi(ApiTestCase, TestsTools):
             inputs = {"not_asked": {"src": "hda", "id": bam["id"]}, "not_indexed": {"src": "hda", "id": txt["id"]}}
             assert self._run_user_tool(history_id, tool, inputs) == "0 0\n"
 
+    def test_secondary_files_rejected_on_an_input_that_cannot_be_indexed(self):
+        tool = {**TOOL_LINKING_BAM_INDEX, "inputs": [{**BAM_INPUT_WITH_SECONDARY_FILES, "format": ["sam", "fasta"]}]}
+        with self.dataset_populator.user_tool_execute_permissions():
+            response = self.dataset_populator.create_unprivileged_tool_raw(UserToolSource(**tool))
+        assert response.status_code == 400, response.text
+        assert "doesn't index any of its formats" in response.text
+
     @contextmanager
     def _user_tool_history(self) -> Iterator[str]:
         with (
