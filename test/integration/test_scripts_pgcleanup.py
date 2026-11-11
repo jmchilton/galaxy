@@ -1,4 +1,4 @@
-import os
+from pathlib import Path
 
 import pytest
 
@@ -226,7 +226,7 @@ class TestScriptsPgCleanupIntegration(RunsCachedBamJob, BaseScriptsIntegrationTe
         source_id, cached_id = self._run_cached_bam_job(history_id, rename_input=rename_input)
         cached = self._hda(cached_id)
         cached_index_path = cached.metadata.bam_index.get_file_name()
-        cached_index = _read(cached_index_path)
+        cached_index = Path(cached_index_path).read_bytes()
         assert cached_index
 
         self.dataset_populator.delete_dataset(history_id, source_id)
@@ -234,7 +234,7 @@ class TestScriptsPgCleanupIntegration(RunsCachedBamJob, BaseScriptsIntegrationTe
 
         assert self.is_purged(history_id, source_id)
         assert not self.is_purged(history_id, cached_id)
-        assert _read(cached_index_path) == cached_index
+        assert Path(cached_index_path).read_bytes() == cached_index
 
     def is_purged(self, history_id: str, dataset) -> bool:
         # set wait=False to prevent errored dataset from erroring out
@@ -253,10 +253,3 @@ class TestScriptsPgCleanupIntegration(RunsCachedBamJob, BaseScriptsIntegrationTe
         output = self._scripts_check_output(SCRIPT, ["-c", config_file] + extra_args)
         print(output)
         return output
-
-
-def _read(path: str) -> bytes:
-    if not os.path.exists(path):
-        return b""
-    with open(path, "rb") as fh:
-        return fh.read()

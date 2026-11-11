@@ -1,5 +1,7 @@
 """Metadata files of outputs copied from another output: job cache hits and expression tool passthroughs."""
 
+from pathlib import Path
+
 from galaxy import model
 from galaxy_test.base.populators import DatasetPopulator
 from galaxy_test.driver import integration_util
@@ -96,7 +98,4 @@ class TestJobCacheMetadataFiles(RunsCachedBamJob):
         assert copy_index.history_dataset is copy
         assert copy_index.id != source_index.id
         assert copy_index.get_file_name() != source_index.get_file_name()
-        with open(source_index.get_file_name(), "rb") as fh:
-            source_bytes = fh.read()
-        with open(copy_index.get_file_name(), "rb") as fh:
-            assert fh.read() == source_bytes
+        assert Path(copy_index.get_file_name()).read_bytes() == Path(source_index.get_file_name()).read_bytes()
