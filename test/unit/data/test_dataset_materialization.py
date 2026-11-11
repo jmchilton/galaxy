@@ -1,3 +1,5 @@
+import os
+
 from pkg_resources import resource_string
 from sqlalchemy import select
 
@@ -89,6 +91,9 @@ def test_in_place_materialization_from_replacement_owns_metadata_files(tmpdir):
     materialized_index = materialized.metadata.bam_index
     assert materialized_index.history_dataset is materialized
     assert materialized_index.id != replacement_index.id
+    assert materialized.metadata_deferred is False
+    # Purging the replacement removes the files its rows name; the materialized input keeps its own.
+    os.remove(replacement_index.get_file_name())
     with open(materialized_index.get_file_name()) as fh:
         assert fh.read() == "moo"
 
