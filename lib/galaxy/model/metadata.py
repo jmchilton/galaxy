@@ -669,12 +669,7 @@ class FileParameter(MetadataParameter):
             session.add(new_value)
             # Give the row its id now: under store_by id, get_file_name() would commit the session to get one.
             session.flush()
-            try:
-                new_value.update_from_file(value.get_file_name())
-            except AssertionError:
-                tmp_session = session(target_context.parent)
-                tmp_session.commit()
-                new_value.update_from_file(value.get_file_name())
+            new_value.update_from_file(value.get_file_name())
             return self.unwrap(new_value)
         return None
 
