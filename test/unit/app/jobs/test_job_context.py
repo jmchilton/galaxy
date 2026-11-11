@@ -141,30 +141,29 @@ def test_collection_element_pattern_with_unmatched_ext_group():
     # the match (e.g. files without an extension) yields ``ext=None`` in the
     # groupdict and used to crash ``populate_collection_elements`` with
     # ``AttributeError: 'NoneType' object has no attribute 'lower'``.
-    job_working_directory = tempfile.mkdtemp()
-    with open(os.path.join(job_working_directory, "yelp"), "w") as out:
-        out.write("no extension")
-    _app, sa_session, job_context, collection = job_context_for_directory(job_working_directory)
-    pattern = r"^(?P<designation>\.*[^\.]+(?:\.(?P<ext>.*))?)$"
-    collection_description = FilePatternDatasetCollectionDescription(pattern=pattern)
-    collection_builder = builder.BoundCollectionBuilder(collection)
-    dataset_collectors = [dataset_collector(collection_description)]
-    output_name = "output"
-    filenames = job_context.find_files(output_name, collection, dataset_collectors)
-    assert len(filenames) == 1
-    assert filenames[0].match.ext == "data"
-    job_context.populate_collection_elements(
-        collection,
-        collection_builder,
-        filenames,
-        name=output_name,
-        metadata_source_name="",
-        final_job_state=job_context.final_job_state,
-    )
-    collection_builder.populate()
-    sa_session.commit()
-    assert len(collection.dataset_instances) == 1
-    assert collection.dataset_instances[0].extension == "data"
+    with tempfile.TemporaryDirectory() as job_working_directory:
+        with open(os.path.join(job_working_directory, "yelp"), "w") as out:
+            out.write("no extension")
+        _app, sa_session, job_context, collection = job_context_for_directory(job_working_directory)
+        pattern = r"^(?P<designation>\.*[^\.]+(?:\.(?P<ext>.*))?)$"
+        collection_description = FilePatternDatasetCollectionDescription(pattern=pattern)
+        collection_builder = builder.BoundCollectionBuilder(collection)
+        dataset_collectors = [dataset_collector(collection_description)]
+        output_name = "output"
+        filenames = job_context.find_files(output_name, collection, dataset_collectors)
+        assert len(filenames) == 1
+        job_context.populate_collection_elements(
+            collection,
+            collection_builder,
+            filenames,
+            name=output_name,
+            metadata_source_name="",
+            final_job_state=job_context.final_job_state,
+        )
+        collection_builder.populate()
+        sa_session.commit()
+        assert len(collection.dataset_instances) == 1
+        assert collection.dataset_instances[0].extension == "data"
 
 
 def test_collection_element_pattern_without_identifier_is_skipped():
@@ -173,32 +172,32 @@ def test_collection_element_pattern_without_identifier_is_skipped():
     # group does not participate in the match (e.g. because the group is
     # optional) are skipped instead of crashing ``populate_collection_elements``
     # when the (None) element identifiers are joined for the association name.
-    job_working_directory = tempfile.mkdtemp()
-    with open(os.path.join(job_working_directory, ".txt"), "w") as out:
-        out.write("no designation")
-    with open(os.path.join(job_working_directory, "kept.txt"), "w") as out:
-        out.write("kept")
-    _app, sa_session, job_context, collection = job_context_for_directory(job_working_directory)
-    pattern = r"^(?P<designation>\w+)?\.(?P<ext>\w+)$"
-    collection_description = FilePatternDatasetCollectionDescription(pattern=pattern)
-    collection_builder = builder.BoundCollectionBuilder(collection)
-    dataset_collectors = [dataset_collector(collection_description)]
-    output_name = "output"
-    filenames = job_context.find_files(output_name, collection, dataset_collectors)
-    # ".txt" matches the pattern but captures no designation -> skipped
-    assert [os.path.basename(discovered_file.path) for discovered_file in filenames] == ["kept.txt"]
-    job_context.populate_collection_elements(
-        collection,
-        collection_builder,
-        filenames,
-        name=output_name,
-        metadata_source_name="",
-        final_job_state=job_context.final_job_state,
-    )
-    collection_builder.populate()
-    sa_session.commit()
-    assert len(collection.dataset_instances) == 1
-    assert collection.dataset_instances[0].designation == "kept"
+    with tempfile.TemporaryDirectory() as job_working_directory:
+        with open(os.path.join(job_working_directory, ".txt"), "w") as out:
+            out.write("no designation")
+        with open(os.path.join(job_working_directory, "kept.txt"), "w") as out:
+            out.write("kept")
+        _app, sa_session, job_context, collection = job_context_for_directory(job_working_directory)
+        pattern = r"^(?P<designation>\w+)?\.(?P<ext>\w+)$"
+        collection_description = FilePatternDatasetCollectionDescription(pattern=pattern)
+        collection_builder = builder.BoundCollectionBuilder(collection)
+        dataset_collectors = [dataset_collector(collection_description)]
+        output_name = "output"
+        filenames = job_context.find_files(output_name, collection, dataset_collectors)
+        # ".txt" matches the pattern but captures no designation -> skipped
+        assert [os.path.basename(discovered_file.path) for discovered_file in filenames] == ["kept.txt"]
+        job_context.populate_collection_elements(
+            collection,
+            collection_builder,
+            filenames,
+            name=output_name,
+            metadata_source_name="",
+            final_job_state=job_context.final_job_state,
+        )
+        collection_builder.populate()
+        sa_session.commit()
+        assert len(collection.dataset_instances) == 1
+        assert collection.dataset_instances[0].designation == "kept"
 
 
 def test_pattern_with_unmatched_designation_and_matched_name_is_skipped():
