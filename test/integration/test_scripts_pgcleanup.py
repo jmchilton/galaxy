@@ -8,8 +8,6 @@ SCRIPT = "cleanup_datasets/pgcleanup.py"
 
 
 class TestScriptsPgCleanupIntegration(RunsCachedBamJob, BaseScriptsIntegrationTestCase):
-    framework_tool_and_types = True
-
     def test_help(self):
         self._skip_unless_postgres()
         self._scripts_check_argparse_help(SCRIPT)
@@ -233,9 +231,7 @@ class TestScriptsPgCleanupIntegration(RunsCachedBamJob, BaseScriptsIntegrationTe
 
         assert self.is_purged(history_id, source_id)
         assert not self.is_purged(history_id, cached_id)
-        # Current behavior: purging the source removes the index the cached output reads. Reading
-        # the cached output's metadata through the API may recreate the file, empty.
-        assert _read(cached_index_path) != cached_index
+        assert _read(cached_index_path) == cached_index
 
     def is_purged(self, history_id: str, dataset) -> bool:
         # set wait=False to prevent errored dataset from erroring out

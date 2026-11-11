@@ -5891,8 +5891,6 @@ class HistoryDatasetAssociation(DatasetInstance, HasTags, Dictifiable, UsesAnnot
         # in the history (e.g. during job finishing).
         old_dataset = self.dataset
         copies = self._lock_and_load_copies()
-        if include_metadata:
-            self._metadata = other_hda._metadata
         self.metadata_deferred = other_hda.metadata_deferred
         self.info = other_hda.info
         self.blurb = other_hda.blurb
@@ -5906,6 +5904,10 @@ class HistoryDatasetAssociation(DatasetInstance, HasTags, Dictifiable, UsesAnnot
         if include_tags and self.history:
             self.copy_tags_from(self.user, other_hda)
         self.dataset = new_dataset or other_hda.dataset
+        if include_metadata:
+            # Copy metadata files into rows this HDA owns, as HDA.copy() does: purging other_hda removes
+            # the files its rows name. Copying needs the extension and dataset set above.
+            self.metadata = other_hda.metadata
         self.copied_from_history_dataset_association_id = other_hda.id
         for copied_hda in copies:
             # A copy made by a database operation tool is usually a hidden collection element.
