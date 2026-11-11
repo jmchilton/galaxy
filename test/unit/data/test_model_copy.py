@@ -3,6 +3,10 @@ import os
 import threading
 from typing import Union
 
+from sqlalchemy import (
+    func,
+    select,
+)
 from sqlalchemy.orm.scoping import scoped_session
 
 import galaxy.datatypes.registry
@@ -11,6 +15,7 @@ import galaxy.model.mapping as mapping
 from galaxy.model import (
     History,
     HistoryDatasetAssociation,
+    MetadataFile,
     setup_global_object_store_for_models,
     User,
 )
@@ -126,6 +131,48 @@ def test_history_collection_copy(list_size=NUM_DATASETS):
         for hdca in new_history.active_dataset_collections:
             annotation_str = hdca.get_item_annotation_str(session, old_history.user, hdca)
             assert annotation_str == f"annotation #{hdca.hid}", annotation_str
+
+
+def test_copy_from_gives_target_and_its_copies_their_own_metadata_files():
+    with _setup_mapping_and_user() as (test_config, object_store, model, history):
+        session = model.context
+        source = _create_hda(
+            model, object_store, history, test_config.write("moo", "source"), include_metadata_file=True
+        )
+        # A queued output that a job cache hit fills in, and a copy of it made while it was queued.
+        target = _create_hda(model, object_store, history, test_config.write("cow", "target"))
+        target_copy = target.copy(flush=False)
+        history.add_dataset(target_copy)
+        session.commit()
+
+        target.copy_from(source, include_metadata=True)
+        session.commit()
+
+        index_ids = set()
+        for hda in (source, target, target_copy):
+            index = hda.metadata.bam_index
+            assert index.history_dataset is hda
+            with open(index.get_file_name()) as f:
+                assert f.read() == "moo"
+            index_ids.add(index.id)
+        assert len(index_ids) == 3
+
+
+def test_copy_from_leaves_the_transaction_to_the_caller():
+    # Job.copy_from_job holds row locks until it commits; the default disk object store stores by id.
+    with _setup_mapping_and_user() as (test_config, object_store, model, history):
+        session = model.context
+        source = _create_hda(
+            model, object_store, history, test_config.write("moo", "source"), include_metadata_file=True
+        )
+        target = _create_hda(model, object_store, history, test_config.write("cow", "target"))
+        session.commit()
+
+        target.copy_from(source, include_metadata=True)
+        assert target.metadata.bam_index.id != source.metadata.bam_index.id
+        session.rollback()
+
+        assert session.scalar(select(func.count(MetadataFile.id))) == 1
 
 
 @contextlib.contextmanager

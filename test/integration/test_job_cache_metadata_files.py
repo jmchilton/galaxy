@@ -1,4 +1,4 @@
-"""Metadata files of outputs copied from a cached job."""
+"""Metadata files of outputs copied from another output: job cache hits and expression tool passthroughs."""
 
 from galaxy import model
 from galaxy_test.base.populators import DatasetPopulator
@@ -48,25 +48,34 @@ class RunsCachedBamJob(integration_util.IntegrationTestCase):
 class TestJobCacheMetadataFiles(RunsCachedBamJob):
     def test_cache_hit_at_submission(self):
         history_id = self.dataset_populator.new_history()
-        self._check_cached_output_metadata_file(*self._run_cached_bam_job(history_id))
+        self._check_owns_copied_metadata_file(*self._run_cached_bam_job(history_id))
 
     def test_cache_hit_at_job_preparation(self):
         history_id = self.dataset_populator.new_history()
-        self._check_cached_output_metadata_file(*self._run_cached_bam_job(history_id, rename_input=True))
+        self._check_owns_copied_metadata_file(*self._run_cached_bam_job(history_id, rename_input=True))
 
-    def _check_cached_output_metadata_file(self, source_id: str, cached_id: str) -> None:
+    def test_expression_tool_output_copied_from_input(self):
+        history_id = self.dataset_populator.new_history()
+        bam = self.dataset_populator.new_bam_dataset(history_id, self.test_data_resolver)
+        run = self.dataset_populator.run_tool(
+            "expression_pick_larger_file", {"input1": {"src": "hda", "id": bam["id"]}}, history_id
+        )
+        self.dataset_populator.wait_for_job(run["jobs"][0]["id"], assert_ok=True)
+        self._check_owns_copied_metadata_file(bam["id"], run["outputs"][0]["id"])
+
+    def _check_owns_copied_metadata_file(self, source_id: str, copy_id: str) -> None:
         # Hold the HDAs: metadata keeps only a weak reference to its parent.
         source = self._hda(source_id)
-        cached = self._hda(cached_id)
+        copy = self._hda(copy_id)
         source_index = source.metadata.bam_index
-        cached_index = cached.metadata.bam_index
+        copy_index = copy.metadata.bam_index
         assert isinstance(source_index, model.MetadataFile)
-        assert isinstance(cached_index, model.MetadataFile)
+        assert isinstance(copy_index, model.MetadataFile)
         assert source_index.history_dataset is source
-        assert cached_index.history_dataset is cached
-        assert cached_index.id != source_index.id
-        assert cached_index.get_file_name() != source_index.get_file_name()
+        assert copy_index.history_dataset is copy
+        assert copy_index.id != source_index.id
+        assert copy_index.get_file_name() != source_index.get_file_name()
         with open(source_index.get_file_name(), "rb") as fh:
             source_bytes = fh.read()
-        with open(cached_index.get_file_name(), "rb") as fh:
+        with open(copy_index.get_file_name(), "rb") as fh:
             assert fh.read() == source_bytes
