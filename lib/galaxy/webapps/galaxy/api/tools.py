@@ -1,9 +1,5 @@
 import logging
 import os
-from datetime import (
-    datetime,
-    timezone,
-)
 from json import (
     dumps,
     loads,
@@ -82,10 +78,6 @@ from galaxy.tools.fetch.workbooks import (
     ParseFetchWorkbook,
 )
 from galaxy.tools.parameters.pagination import OptionsPaginationT
-from galaxy.util.hash_util import (
-    HashFunctionNameEnum,
-    memory_bound_hexdigest,
-)
 from galaxy.util.zipstream import ZipstreamWrapper
 from galaxy.web import (
     expose_api,
@@ -93,6 +85,7 @@ from galaxy.web import (
     expose_api_anonymous_and_sessionless,
     expose_api_raw_anonymous_and_sessionless,
 )
+from galaxy.webapps.base.api import cached_file_response
 from galaxy.webapps.base.controller import UsesVisualizationMixin
 from galaxy.webapps.base.webapp import GalaxyWebTransaction
 from galaxy.webapps.galaxy.api.common import (
@@ -122,6 +115,7 @@ log = logging.getLogger(__name__)
 SEARCH_RESERVED_TERMS_FAVORITES = ["#favs", "#favorites", "#favourites"]
 
 ICON_CACHE_MAX_AGE = 2592000  # 30 days
+ICON_CACHE_CONTROL = f"public, max-age={ICON_CACHE_MAX_AGE}, immutable"
 
 
 class FormDataApiRoute(APIContentTypeRoute):
@@ -267,30 +261,7 @@ class FetchTools:
         if tool_icon_path is None:
             raise exceptions.ObjectNotFound(f"Tool icon file not found or not provided by the tool: {tool_id}")
 
-        # Get file modification time
-        file_stat = os.stat(tool_icon_path)
-        last_modified = datetime.fromtimestamp(file_stat.st_mtime, tz=timezone.utc).strftime(
-            "%a, %d %b %Y %H:%M:%S GMT"
-        )
-
-        # Generate ETag based on file content
-        file_hash = memory_bound_hexdigest(hash_func_name=HashFunctionNameEnum.md5, path=tool_icon_path)
-        etag = f'"{file_hash}"'
-
-        # If-Modified-Since is ignored when If-None-Match is sent (RFC 9110 13.1.3).
-        if_none_match = request.headers.get("If-None-Match")
-        if if_none_match is not None:
-            if any(e.strip().removeprefix("W/").strip('"') == file_hash for e in if_none_match.split(",")):
-                return Response(status_code=304)
-        elif request.headers.get("If-Modified-Since") == last_modified:
-            return Response(status_code=304)
-
-        # Serve the file with caching headers
-        response = PNGIconResponse(tool_icon_path)
-        response.headers["Cache-Control"] = f"public, max-age={ICON_CACHE_MAX_AGE}, immutable"
-        response.headers["ETag"] = etag
-        response.headers["Last-Modified"] = last_modified
-        return response
+        return cached_file_response(request, tool_icon_path, PNGIconResponse.media_type, ICON_CACHE_CONTROL)
 
     @router.post("/api/file_landings", public=True, allow_cors=True)
     def create_file_landing(
