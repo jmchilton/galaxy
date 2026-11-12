@@ -55,19 +55,23 @@ class TestJobCompletionEmails(integration_util.IntegrationTestCase):
                 history_id, contents=["a\n", "b\n", "c\n"], wait=True
             ).json()["outputs"][0]
 
-            self._run_cat1_with_email(history_id, {"batch": True, "values": [{"src": "hdca", "id": hdca["id"]}]})
+            response = self._run_cat1_with_email(
+                history_id, {"batch": True, "values": [{"src": "hdca", "id": hdca["id"]}]}
+            )
 
             [email] = self._wait_for_emails()
             assert email["to"] == self._current_user_email()
-            assert email["body"].startswith("Your 3 Galaxy jobs generating collection(s):")
+            output_name = response["implicit_collections"][0]["name"]
+            assert email["body"].startswith(f"Your 3 Galaxy jobs generating collection(s):\n\n{output_name}\n\n")
             assert "are complete (3 ok) as of " in email["body"]
 
-    def _run_cat1_with_email(self, history_id: str, input1: dict) -> None:
+    def _run_cat1_with_email(self, history_id: str, input1: dict) -> dict:
         response = self.dataset_populator.run_tool(
             "cat1", {"input1": input1, "send_email_notification": True}, history_id
         )
         for job in response["jobs"]:
             self.dataset_populator.wait_for_job(job["id"], assert_ok=True)
+        return response
 
     def _wait_for_emails(self) -> list[dict]:
         # Emails are sent right after the commit that finishes a job, so they may lag its state.
