@@ -20,6 +20,7 @@ from galaxy.model import (
     setup_global_object_store_for_models,
     User,
 )
+from galaxy.model.base import get_before_flush_handler
 from galaxy.model.metadata import MetadataTempFile
 from galaxy.objectstore.unittest_utils import (
     Config as TestConfig,
@@ -204,9 +205,31 @@ def test_copy_from_inserts_each_metadata_file_row_once():
         assert target.metadata.bam_index.object_store_id == target.dataset.object_store_id
 
 
+def test_copying_metadata_files_onto_an_output_not_yet_in_a_history(monkeypatch):
+    # A job cache hit at submission fills the output before it joins the history; Galaxy's tests reject flushing it.
+    with _setup_mapping_and_user(store_by="uuid") as (test_config, object_store, model, history):
+        session = model.context
+        source = _create_hda(
+            model, object_store, history, test_config.write("moo", "source"), include_metadata_file=True
+        )
+        session.commit()
+        monkeypatch.setenv("GALAXY_TEST_RAISE_EXCEPTION_ON_HISTORYLESS_HDA", "1")
+        event.listen(session, "before_flush", get_before_flush_handler())
+
+        output = HistoryDatasetAssociation(extension="bam", dataset=source.dataset, sa_session=session, flush=False)
+        session.add(output)
+        output.metadata = source.metadata
+        history.add_dataset(output)
+        session.commit()
+
+        assert output.metadata.bam_index.id != source.metadata.bam_index.id
+        with open(output.metadata.bam_index.get_file_name()) as fh:
+            assert fh.read() == "moo"
+
+
 @contextlib.contextmanager
-def _setup_mapping_and_user():
-    with TestConfig(DISK_TEST_CONFIG) as (test_config, object_store):
+def _setup_mapping_and_user(store_by="id"):
+    with TestConfig(DISK_TEST_CONFIG, store_by=store_by) as (test_config, object_store):
         # Start the database and connect the mapping
         model = mapping.init(
             "/tmp",
@@ -241,7 +264,7 @@ def _create_hda(
     hda.visible = visible
     sa_session.add(hda)
     sa_session.commit()
-    object_store.update_from_file(hda, file_name=path, create=True)
+    object_store.update_from_file(hda.dataset, file_name=path, create=True)
     if include_metadata_file:
         hda.metadata.from_JSON_dict(json_dict={"bam_index": MetadataTempFile.from_JSON({"kwds": {}, "filename": path})})
         _check_metadata_file(hda)
@@ -257,4 +280,5 @@ def _check_metadata_file(hda):
     assert os.path.exists(copied_index)
     with open(copied_index) as f:
         assert f.read() == "moo"
-    assert copied_index.endswith(f"metadata_{hda.id}.dat")
+    store_by = hda.dataset.object_store.get_store_by(hda.dataset)
+    assert copied_index.endswith(f"metadata_{getattr(hda.metadata.bam_index, store_by)}.dat")
