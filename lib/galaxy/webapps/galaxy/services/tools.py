@@ -69,6 +69,10 @@ from galaxy.tool_util_models.parameters import (
 from galaxy.tools import Tool
 from galaxy.tools._types import InputFormatT
 from galaxy.tools.cached_toolbox import CachedToolBox
+from galaxy.tools.help_images import (
+    find_tool_asset,
+    help_image_media_type,
+)
 from galaxy.tools.search import ToolBoxSearch
 from galaxy.util.path import safe_contains
 from galaxy.util.tool_version import remove_version_from_guid
@@ -624,6 +628,23 @@ class ToolsService(ServiceBase):
                 if os.path.exists(file_path):
                     return file_path
         return None
+
+    def get_tool_help_image(
+        self, trans: ProvidesUserContext, tool_id: str, image_path: str, tool_version: str | None = None
+    ) -> tuple[str, str]:
+        """Return the file and media type of an image the tool's help references by a relative path."""
+        tool = self._get_tool(trans, tool_id, tool_version, user=trans.user)
+        media_type = help_image_media_type(image_path)
+        if media_type:
+            materialized_tool = trans.app.toolbox.materialize_tool(tool, reason="detail")
+            # A Tool Shed tool's images may sit at the root of its repository rather than beside the tool.
+            base_dirs = dict.fromkeys(
+                os.path.abspath(d) for d in (materialized_tool.tool_dir, materialized_tool._repository_dir) if d
+            )
+            for base_dir in base_dirs:
+                if found_path := find_tool_asset(base_dir, image_path):
+                    return found_path, media_type
+        raise exceptions.ObjectNotFound(f"Help image '{image_path}' not found for tool '{tool_id}'.")
 
     # === Batch Endpoint Methods (use cached toolbox index when available) ===
 

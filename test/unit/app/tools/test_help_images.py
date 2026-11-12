@@ -2,7 +2,10 @@ import os
 
 import pytest
 
-from galaxy.tools.help_images import find_tool_asset
+from galaxy.tools.help_images import (
+    find_tool_asset,
+    help_image_media_type,
+)
 
 
 @pytest.fixture
@@ -43,3 +46,19 @@ def test_missing_and_escaping_paths_not_found(tool_dir):
 def test_symlink_out_of_tool_dir_not_found(tool_dir):
     os.symlink(os.path.join(os.path.dirname(tool_dir), "outside.png"), os.path.join(tool_dir, "link.png"))
     assert find_tool_asset(tool_dir, "link.png") is None
+
+
+@pytest.mark.parametrize(
+    "path,expected",
+    [
+        ("a.png", "image/png"),
+        ("a.JPG", "image/jpeg"),
+        ("a.gif", "image/gif"),
+        ("a.svg", None),
+        ("tool.xml", None),
+        ("script.py", None),
+        ("noextension", None),
+    ],
+)
+def test_help_image_media_type(path, expected):
+    assert help_image_media_type(path) == expected
