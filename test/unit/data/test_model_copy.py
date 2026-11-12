@@ -1,7 +1,9 @@
 import contextlib
 import os
+import shutil
 import threading
 from typing import Union
+from unittest.mock import patch
 
 from sqlalchemy import (
     event,
@@ -22,6 +24,7 @@ from galaxy.model import (
 )
 from galaxy.model.base import get_before_flush_handler
 from galaxy.model.metadata import MetadataTempFile
+from galaxy.objectstore.s3_boto3 import S3ObjectStore as Boto3ObjectStore
 from galaxy.objectstore.unittest_utils import (
     Config as TestConfig,
     DISK_TEST_CONFIG,
@@ -205,6 +208,85 @@ def test_copy_from_inserts_each_metadata_file_row_once():
         assert target.metadata.bam_index.object_store_id == target.dataset.object_store_id
 
 
+class InMemoryRemoteBoto3ObjectStore(Boto3ObjectStore):
+    """A boto3 object store whose bucket is a dict; records downloads."""
+
+    def _initialize(self):
+        self.remote: dict[str, bytes] = {}
+        self.downloads: list[str] = []
+
+    def _exists_remotely(self, rel_path: str) -> bool:
+        return rel_path in self.remote
+
+    def _get_remote_size(self, rel_path: str) -> int:
+        return len(self.remote[rel_path])
+
+    def _download(self, rel_path: str) -> bool:
+        self.downloads.append(rel_path)
+        cache_path = self._get_cache_path(rel_path)
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+        with open(cache_path, "wb") as fh:
+            fh.write(self.remote[rel_path])
+        return True
+
+    def _push_string_to_path(self, rel_path: str, from_string: str) -> bool:
+        self.remote[rel_path] = from_string.encode()
+        return True
+
+    def _push_file_to_path(self, rel_path: str, source_file: str) -> bool:
+        with open(source_file, "rb") as fh:
+            self.remote[rel_path] = fh.read()
+        return True
+
+    def _delete_existing_remote(self, rel_path: str) -> bool:
+        return self.remote.pop(rel_path, None) is not None
+
+
+BOTO3_TEST_CONFIG = """
+type: boto3
+auth:
+  access_key: access_moo
+  secret_key: secret_cow
+bucket:
+  name: unique_bucket_name_all_lowercase
+cache:
+  path: "${temp_directory}/object_store_cache"
+  size: 1000
+extra_dirs:
+- type: job_work
+  path: "${temp_directory}/job_working_directory"
+- type: temp
+  path: "${temp_directory}/tmp"
+"""
+
+
+@patch("galaxy.objectstore.s3_boto3.S3ObjectStore", InMemoryRemoteBoto3ObjectStore)
+def test_copy_from_writes_metadata_files_without_downloading_them():
+    # A synced get_filename() would download the new, empty object only for update_from_file to replace it.
+    with _setup_mapping_and_user(BOTO3_TEST_CONFIG) as (test_config, object_store, model, history):
+        session = model.context
+        source = _create_hda(
+            model, object_store, history, test_config.write("moo", "source"), include_metadata_file=True
+        )
+        target = _create_hda(model, object_store, history, test_config.write("cow", "target"))
+        session.commit()
+
+        target.copy_from(source, include_metadata=True)
+        session.commit()
+        assert not object_store.downloads
+
+        # Re-set metadata on a node whose cache lacks the copied file's directory.
+        copied = target.metadata.bam_index
+        cache_path = copied.get_file_name(sync_cache=False)
+        shutil.rmtree(os.path.dirname(cache_path))
+        copied.update_from_file(test_config.write("oink", "regenerated_index"))
+
+        assert not object_store.downloads
+        assert os.path.exists(cache_path)
+        with open(cache_path) as fh:
+            assert fh.read() == "oink"
+
+
 def test_copying_metadata_files_onto_an_output_not_yet_in_a_history(monkeypatch):
     # A job cache hit at submission fills the output before it joins the history; Galaxy's tests reject flushing it.
     with _setup_mapping_and_user(store_by="uuid") as (test_config, object_store, model, history):
@@ -228,8 +310,8 @@ def test_copying_metadata_files_onto_an_output_not_yet_in_a_history(monkeypatch)
 
 
 @contextlib.contextmanager
-def _setup_mapping_and_user(store_by="id"):
-    with TestConfig(DISK_TEST_CONFIG, store_by=store_by) as (test_config, object_store):
+def _setup_mapping_and_user(config_str=DISK_TEST_CONFIG, store_by="id"):
+    with TestConfig(config_str, store_by=store_by) as (test_config, object_store):
         # Start the database and connect the mapping
         model = mapping.init(
             "/tmp",

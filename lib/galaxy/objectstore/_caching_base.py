@@ -355,6 +355,8 @@ class CachingConcreteObjectStore(ConcreteObjectStore):
                 cache_file = self._get_cache_path(rel_path)
                 try:
                     if source_file != cache_file and self.cache_updated_data:
+                        # Callers may not have synced this object into the cache, so its directory may be missing.
+                        os.makedirs(os.path.dirname(cache_file), exist_ok=True)
                         # FIXME? Should this be a `move`?
                         shutil.copy(source_file, cache_file)
                     fix_permissions(self.config, cache_file)
