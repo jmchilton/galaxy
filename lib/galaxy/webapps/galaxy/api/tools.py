@@ -114,12 +114,11 @@ log = logging.getLogger(__name__)
 # Tool search bypasses the fulltext for the following list of terms
 SEARCH_RESERVED_TERMS_FAVORITES = ["#favs", "#favorites", "#favourites"]
 
-ICON_CACHE_MAX_AGE = 2592000  # 30 days
-ICON_CACHE_CONTROL = f"public, max-age={ICON_CACHE_MAX_AGE}, immutable"
-# Private: the tool may be access controlled.
-HELP_IMAGE_CACHE_CONTROL = "private, max-age=3600"
-# SVG can carry script; keep it from running if a help image is opened directly.
-HELP_IMAGE_SECURITY_HEADERS = {
+ICON_HEADERS = {"Cache-Control": "public, max-age=2592000, immutable"}  # 30 days
+HELP_IMAGE_HEADERS = {
+    # Private: the tool may be access controlled.
+    "Cache-Control": "private, max-age=3600",
+    # SVG can carry script; keep it from running if a help image is opened directly.
     "Content-Security-Policy": "default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'; sandbox",
     "X-Content-Type-Options": "nosniff",
 }
@@ -265,7 +264,7 @@ class FetchTools:
         client-side caching. The icon image is expected to be in PNG format.
         """
         tool_icon_path = self.service.get_tool_icon_path(trans=trans, tool_id=tool_id)
-        return cached_file_response(request, tool_icon_path, PNGIconResponse.media_type, ICON_CACHE_CONTROL)
+        return cached_file_response(request, tool_icon_path, PNGIconResponse.media_type, ICON_HEADERS)
 
     @router.get(
         "/api/tools/{tool_id:path}/help_image",
@@ -290,9 +289,7 @@ class FetchTools:
     ):
         """Return an image shipped with a tool that its help references by a relative path."""
         image_path, media_type = self.service.get_tool_help_image(trans, tool_id, path, tool_version)
-        response = cached_file_response(request, image_path, media_type, HELP_IMAGE_CACHE_CONTROL)
-        response.headers.update(HELP_IMAGE_SECURITY_HEADERS)
-        return response
+        return cached_file_response(request, image_path, media_type, HELP_IMAGE_HEADERS)
 
     @router.post("/api/file_landings", public=True, allow_cors=True)
     def create_file_landing(
