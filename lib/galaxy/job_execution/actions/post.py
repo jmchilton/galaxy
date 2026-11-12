@@ -649,6 +649,11 @@ class ActionBox:
         reported_map_over_ids = set()
         for job in jobs:
             try:
+                map_over_id = None
+                if implicit_collection_jobs_association := job.implicit_collection_jobs_association:
+                    map_over_id = implicit_collection_jobs_association.implicit_collection_jobs_id
+                    if map_over_id in reported_map_over_ids:
+                        continue
                 actions = [
                     pjaa.post_job_action
                     for pjaa in job.post_job_actions
@@ -656,10 +661,7 @@ class ActionBox:
                 ]
                 if not actions:
                     continue
-                if implicit_collection_jobs_association := job.implicit_collection_jobs_association:
-                    map_over_id = implicit_collection_jobs_association.implicit_collection_jobs_id
-                    if map_over_id in reported_map_over_ids:
-                        continue
+                if map_over_id is not None:
                     reported_map_over_ids.add(map_over_id)
                 for action in actions:
                     cls.execute(app, sa_session, action, job)
