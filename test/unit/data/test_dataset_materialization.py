@@ -19,6 +19,7 @@ from galaxy.model.deferred import (
     materialize_collection_instance,
     materializer_factory,
 )
+from galaxy.model.dereference import get_replacement_dataset
 from galaxy.model.unittest_utils.store_fixtures import (
     deferred_hda_model_store_dict,
     deferred_hda_model_store_dict_space_to_tab,
@@ -84,6 +85,29 @@ def test_materialization_from_replacement_owns_metadata_files(tmpdir):
 
     assert materialized is not deferred
     _assert_materialized_from_replacement_owns_its_index(materialized, replacement)
+
+
+def test_purged_hda_is_not_a_replacement(tmpdir):
+    app, replacement, deferred = _deferred_bam_with_replacement(tmpdir)
+    session = app.model.session
+
+    def find_replacement():
+        return get_replacement_dataset(
+            session=session,
+            user=deferred.history.user,
+            dataset_sources=deferred.dataset.sources,
+            dataset_hashes=deferred.dataset.hashes,
+            extension=deferred.extension,
+            object_store_id=replacement.dataset.object_store_id,
+        )
+
+    assert find_replacement() is replacement
+    # pgcleanup's purge_deleted_hdas purges the HDA and removes its metadata files, but keeps a Dataset other HDAs use.
+    replacement.deleted = True
+    replacement.purged = True
+    session.commit()
+    assert not replacement.dataset.purged
+    assert find_replacement() is None
 
 
 def _deferred_bam_with_replacement(tmpdir):
