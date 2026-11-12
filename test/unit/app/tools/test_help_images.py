@@ -48,6 +48,13 @@ def test_symlink_out_of_tool_dir_not_found(tool_dir):
     assert find_tool_asset(tool_dir, "link.png") is None
 
 
+def test_tool_dir_reached_through_symlink(tool_dir, tmp_path_factory):
+    linked_dir = os.path.join(tmp_path_factory.mktemp("links"), "tool")
+    os.symlink(tool_dir, linked_dir)
+    found = find_tool_asset(linked_dir, "in_static.png")
+    assert found == os.path.realpath(os.path.join(tool_dir, "static", "images", "in_static.png"))
+
+
 @pytest.mark.parametrize(
     "path,expected",
     [
