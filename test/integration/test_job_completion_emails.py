@@ -119,6 +119,53 @@ test_data:
             assert "are complete (2 ok) as of " in email["body"]
             assert f"/workflows/invocations/report?id={summary.invocation_id}" in email["body"]
 
+    def test_failed_element_sends_error_and_paused_summaries(self):
+        with self.dataset_populator.test_history() as history_id:
+            self.workflow_populator.run_workflow(
+                """
+class: GalaxyWorkflow
+inputs:
+  input_list: collection
+steps:
+  fail:
+    tool_id: fail_identifier
+    state:
+      failbool: true
+    in:
+      input1: input_list
+    post_job_actions:
+      EmailActionout_file1:
+        action_type: EmailAction
+        output_name: out_file1
+        action_arguments: {}
+  cat:
+    tool_id: cat1
+    in:
+      input1: fail/out_file1
+    post_job_actions:
+      EmailActionout_file1:
+        action_type: EmailAction
+        output_name: out_file1
+        action_arguments: {}
+test_data:
+  input_list:
+    collection_type: list
+    elements:
+      - identifier: fail
+        content: "a"
+      - identifier: b
+        content: "b"
+      - identifier: c
+        content: "c"
+""",
+                history_id=history_id,
+                assert_ok=False,
+            )
+
+            emails = self._wait_for_emails(count=2)
+            states = sorted(email["body"].split(" complete (")[1].split(")")[0] for email in emails)
+            assert states == ["1 error, 2 ok", "2 ok, 1 paused"]
+
     def _run_cat1_with_email(self, history_id: str, input1: dict, use_cached_job: bool = False) -> dict:
         response = self.dataset_populator.run_tool(
             "cat1", {"input1": input1, "send_email_notification": True}, history_id, use_cached_job=use_cached_job
@@ -127,9 +174,11 @@ test_data:
             self.dataset_populator.wait_for_job(job["id"], assert_ok=True)
         return response
 
-    def _wait_for_emails(self) -> list[dict]:
+    def _wait_for_emails(self, count: int = 1) -> list[dict]:
         # Emails are sent right after the commit that finishes a job, so they may lag its state.
-        return wait_on(lambda: read_mock_emails(self.email_dir) or None, "job completion email")
+        return wait_on(
+            lambda: emails if len(emails := read_mock_emails(self.email_dir)) >= count else None, "job completion email"
+        )
 
     def _current_user_email(self) -> str:
         return self._get("users/current").json()["email"]
