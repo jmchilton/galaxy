@@ -2139,8 +2139,8 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
                 if self.repository_id:
                     if help_text.find(".. image:: ") >= 0:
                         help_text = set_image_paths(self.app, help_text, encoded_repository_id=self.repository_id)
-                elif self.tool_shed_repository:
-                    # The client serves relative image paths from the tool's help_image endpoint.
+                elif (".. image:: " in help_text or ".. figure:: " in help_text) and self.tool_shed_repository:
+                    # Text check first: after startup tool_shed_repository may query the install database.
                     help_text = make_image_paths_relative(help_text)
             except Exception:
                 log.exception(
