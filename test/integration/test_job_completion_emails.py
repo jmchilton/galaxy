@@ -65,9 +65,27 @@ class TestJobCompletionEmails(integration_util.IntegrationTestCase):
             assert email["body"].startswith(f"Your 3 Galaxy jobs generating collection(s):\n\n{output_name}\n\n")
             assert "are complete (3 ok) as of " in email["body"]
 
-    def _run_cat1_with_email(self, history_id: str, input1: dict) -> dict:
+    def test_cached_map_over_sends_one_summary_email(self):
+        with self.dataset_populator.test_history() as history_id:
+            hdca = self.dataset_collection_populator.create_list_in_history(
+                history_id, contents=["a\n", "b\n", "c\n"], wait=True
+            ).json()["outputs"][0]
+            input1 = {"batch": True, "values": [{"src": "hdca", "id": hdca["id"]}]}
+            self._run_cat1_with_email(history_id, input1)
+            self._wait_for_emails()
+            for path in Path(self.email_dir).iterdir():
+                path.unlink()
+
+            response = self._run_cat1_with_email(history_id, input1, use_cached_job=True)
+
+            for job in response["jobs"]:
+                assert self.dataset_populator.get_job_details(job["id"], full=True).json()["copied_from_job_id"]
+            [email] = self._wait_for_emails()
+            assert "are complete (3 ok) as of " in email["body"]
+
+    def _run_cat1_with_email(self, history_id: str, input1: dict, use_cached_job: bool = False) -> dict:
         response = self.dataset_populator.run_tool(
-            "cat1", {"input1": input1, "send_email_notification": True}, history_id
+            "cat1", {"input1": input1, "send_email_notification": True}, history_id, use_cached_job=use_cached_job
         )
         for job in response["jobs"]:
             self.dataset_populator.wait_for_job(job["id"], assert_ok=True)
