@@ -1,4 +1,4 @@
-"""Job completion emails requested with the tool form's email notification option."""
+"""Job completion emails requested with the tool form's email notification option or a workflow EmailAction."""
 
 from pathlib import Path
 from typing import ClassVar
@@ -8,6 +8,7 @@ from galaxy_test.base.populators import (
     DatasetCollectionPopulator,
     DatasetPopulator,
     wait_on,
+    WorkflowPopulator,
 )
 from galaxy_test.driver import integration_util
 
@@ -23,6 +24,7 @@ class TestJobCompletionEmails(integration_util.IntegrationTestCase):
     email_dir: ClassVar[str]
     dataset_populator: DatasetPopulator
     dataset_collection_populator: DatasetCollectionPopulator
+    workflow_populator: WorkflowPopulator
 
     @classmethod
     def handle_galaxy_config_kwds(cls, config):
@@ -36,6 +38,7 @@ class TestJobCompletionEmails(integration_util.IntegrationTestCase):
         super().setUp()
         self.dataset_populator = DatasetPopulator(self.galaxy_interactor)
         self.dataset_collection_populator = DatasetCollectionPopulator(self.galaxy_interactor)
+        self.workflow_populator = WorkflowPopulator(self.galaxy_interactor)
         for email in Path(self.email_dir).iterdir():
             email.unlink()
 
@@ -82,6 +85,39 @@ class TestJobCompletionEmails(integration_util.IntegrationTestCase):
                 assert self.dataset_populator.get_job_details(job["id"], full=True).json()["copied_from_job_id"]
             [email] = self._wait_for_emails()
             assert "are complete (3 ok) as of " in email["body"]
+
+    def test_workflow_map_over_summary_links_invocation(self):
+        with self.dataset_populator.test_history() as history_id:
+            summary = self.workflow_populator.run_workflow(
+                """
+class: GalaxyWorkflow
+inputs:
+  input_list: collection
+steps:
+  cat:
+    tool_id: cat1
+    in:
+      input1: input_list
+    post_job_actions:
+      EmailActionout_file1:
+        action_type: EmailAction
+        output_name: out_file1
+        action_arguments: {}
+test_data:
+  input_list:
+    collection_type: list
+    elements:
+      - identifier: a
+        content: "a"
+      - identifier: b
+        content: "b"
+""",
+                history_id=history_id,
+            )
+
+            [email] = self._wait_for_emails()
+            assert "are complete (2 ok) as of " in email["body"]
+            assert f"/workflows/invocations/report?id={summary.invocation_id}" in email["body"]
 
     def _run_cat1_with_email(self, history_id: str, input1: dict, use_cached_job: bool = False) -> dict:
         response = self.dataset_populator.run_tool(
