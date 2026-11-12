@@ -4,11 +4,13 @@ immediate_actions listed below.
 """
 
 import datetime
+from collections.abc import Iterable
 from typing import Optional
 
 from markupsafe import escape
 
 from galaxy.model import (
+    ImplicitCollectionJobs,
     Job,
     PostJobActionAssociation,
 )
@@ -71,7 +73,7 @@ class EmailAction(DefaultJobAction):
             log.exception("EmailAction PJA Failed")
 
     @staticmethod
-    def _job_completed(job) -> Optional[str]:
+    def _job_completed(job: Job) -> Optional[str]:
         """What completed, for a job not mapped over; None while it waits for the user to resume it."""
         if job.state == job.states.PAUSED:
             return None
@@ -79,7 +81,7 @@ class EmailAction(DefaultJobAction):
         return f"Your Galaxy job generating dataset(s):\n\n{outdata}\n\nis complete"
 
     @staticmethod
-    def _map_over_completed(job, implicit_collection_jobs) -> Optional[str]:
+    def _map_over_completed(job: Job, implicit_collection_jobs: ImplicitCollectionJobs) -> Optional[str]:
         """What completed, for the map-over of ``job``; None while some of its jobs still have to run.
 
         Every job checks after its own settled state is committed, so the last one to commit
@@ -106,7 +108,8 @@ class EmailAction(DefaultJobAction):
         return f"Your {job_count} Galaxy {jobs} generating collection(s):\n\n{collections}\n\n{are} complete ({states})"
 
     @staticmethod
-    def _send(app, job, completed):
+    def _send(app, job: Job, completed: str) -> None:
+        assert job.history
         history_id_encoded = app.security.encode_id(job.history_id)
         link = f"{app.config.galaxy_infrastructure_url}/histories/view?id={history_id_encoded}"
         subject = f"Galaxy job completion notification from history '{job.history.name}'"
@@ -632,12 +635,12 @@ class ActionBox:
             )
 
     @classmethod
-    def has_after_commit_actions(cls, job) -> bool:
+    def has_after_commit_actions(cls, job: Job) -> bool:
         """Whether ``job`` has ``after_commit_actions``; check before the commit, while they are loaded."""
         return any(pjaa.post_job_action.action_type in cls.after_commit_actions for pjaa in job.post_job_actions)
 
     @classmethod
-    def execute_after_commit(cls, app, sa_session, jobs):
+    def execute_after_commit(cls, app, sa_session, jobs: Iterable[Job]) -> None:
         """Run the ``after_commit_actions`` of ``jobs``, whose settled states must be committed.
 
         For mapped over jobs they report on the whole map-over, so they run for one job of each map-over.
