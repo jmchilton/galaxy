@@ -242,16 +242,16 @@ def cached_file_response(request: Request, path: str, media_type: str, cache_con
     """Serve a small static file with a content ETag, or a 304 if the client's copy is current."""
     last_modified = formatdate(os.stat(path).st_mtime, usegmt=True)
     file_hash = memory_bound_hexdigest(hash_func_name=HashFunctionNameEnum.md5, path=path)
+    headers = {"Cache-Control": cache_control, "ETag": f'"{file_hash}"', "Last-Modified": last_modified}
 
     # If-Modified-Since is ignored when If-None-Match is sent (RFC 9110 13.1.3).
     if_none_match = request.headers.get("If-None-Match")
     if if_none_match is not None:
         if any(e.strip().removeprefix("W/").strip('"') == file_hash for e in if_none_match.split(",")):
-            return Response(status_code=304)
+            return Response(status_code=304, headers=headers)
     elif request.headers.get("If-Modified-Since") == last_modified:
-        return Response(status_code=304)
+        return Response(status_code=304, headers=headers)
 
-    headers = {"Cache-Control": cache_control, "ETag": f'"{file_hash}"', "Last-Modified": last_modified}
     return FileResponse(path, media_type=media_type, headers=headers)
 
 
