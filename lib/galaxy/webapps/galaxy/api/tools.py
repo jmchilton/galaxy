@@ -273,18 +273,16 @@ class FetchTools:
             "%a, %d %b %Y %H:%M:%S GMT"
         )
 
-        # Check If-Modified-Since
-        if_modified_since = request.headers.get("If-Modified-Since")
-        if if_modified_since == last_modified:
-            return Response(status_code=304)
-
         # Generate ETag based on file content
         file_hash = memory_bound_hexdigest(hash_func_name=HashFunctionNameEnum.md5, path=tool_icon_path)
         etag = f'"{file_hash}"'
 
-        # Check If-None-Match (ETag)
-        if_none_match = request.headers.get("If-None-Match", "").split(",")
-        if any(etag.strip() == e.strip(' W/"') for e in if_none_match):  # Handle weak ETags
+        # If-Modified-Since is ignored when If-None-Match is sent (RFC 9110 13.1.3).
+        if_none_match = request.headers.get("If-None-Match")
+        if if_none_match is not None:
+            if any(e.strip().removeprefix("W/").strip('"') == file_hash for e in if_none_match.split(",")):
+                return Response(status_code=304)
+        elif request.headers.get("If-Modified-Since") == last_modified:
             return Response(status_code=304)
 
         # Serve the file with caching headers
