@@ -1773,6 +1773,7 @@ class Job(Base, JobLike, UsesCreateAndUpdateTime, Dictifiable, Serializable):
     # deleting state should not turn back into any of the non-ready states
     finished_states = terminal_states + [states.DELETING]
     # States a job won't leave without outside action, such as the user resuming a paused job.
+    # is_terminal checks these, not terminal_states.
     settled_states = (states.OK, states.ERROR, states.DELETED, states.SKIPPED, states.PAUSED, states.STOPPED)
     #: job states where the job hasn't finished and the model may still change
     non_ready_states = [
