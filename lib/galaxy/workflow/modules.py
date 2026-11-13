@@ -2714,7 +2714,7 @@ def _log_workflow_tool_request_state(
             step_index,
             tool_id,
             mapped_over,
-            _single_line_reason(validation_error) or request_state.value,
+            _single_line_reason(validation_error) or "no reason given",
         )
     execution_timer_factory = getattr(trans.app, "execution_timer_factory", None)
     statsd_client = getattr(execution_timer_factory, "galaxy_statsd_client", None)

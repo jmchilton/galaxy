@@ -1210,17 +1210,17 @@ def test_capture_validation_failed_info_log_is_not_a_step_verdict(caplog):
     assert "errors.pydantic.dev" not in message
 
 
-def test_single_line_reason():
-    assert modules._single_line_reason(None) is None
-    assert modules._single_line_reason("") is None
-    assert (
-        modules._single_line_reason(
-            "1 validation error for t\nparameter\n  Input should be a valid integer\n"
-            "    For further information visit https://errors.pydantic.dev/2/v/int_type"
+def test_capture_log_without_reason(caplog):
+    tool = bunch.Bunch(id="gx_int")
+    with caplog.at_level(logging.INFO, logger=modules.log.name):
+        modules._log_workflow_tool_request_state(
+            MockTrans(), tool, bunch.Bunch(order_index=7), None, modules.WorkflowToolRequestState.VALIDATION_FAILED, ""
         )
-        == "1 validation error for t; parameter; Input should be a valid integer"
-    )
-    assert modules._single_line_reason("bad state") == "bad state"
+    messages = [r.getMessage() for r in caplog.records if r.name == modules.log.name and r.levelno == logging.INFO]
+    assert messages == [
+        "tool request capture for step 7 (gx_int): not validated, execution unaffected, mapped_over=False: "
+        "no reason given"
+    ]
 
 
 def test_to_decoded_json_lowers_connected_value_in_repeat():
