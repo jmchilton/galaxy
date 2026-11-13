@@ -2569,7 +2569,8 @@ def _capture_workflow_tool_request_state(
     sees input refs):
       - skipped conditional step -> no ToolRequest minted (no request to record)
       - converter guard or meta-model rejection -> minted with
-        ``request_state="validation_failed"`` and the structural payload, quiet
+        ``request_state="validation_failed"`` and the structural payload;
+        INFO log says not validated, with the reason (execution unaffected)
       - anything else -> minted with ``request_state="validation_failed"``,
         log.warning (capture-code defect, surfaced rather than swallowed)
     """
