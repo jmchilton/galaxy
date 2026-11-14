@@ -16,6 +16,7 @@ from urllib.parse import (
     urlparse,
 )
 
+import requests
 from pydantic import ValidationError
 
 if TYPE_CHECKING:
@@ -103,6 +104,19 @@ def http_status_code(exception: BaseException) -> int | None:
         status_code = getattr(getattr(candidate, "response", None), "status_code", None)
         if isinstance(status_code, int):
             return status_code
+    return None
+
+
+def tes_server_unreachable_reason(exception: BaseException) -> str | None:
+    """Name the error if it means the TES server can't be reached (no connection, a timeout or a 5xx), else ``None``.
+
+    Other errors come from a server that answered, such as a 401 for wrong credentials.
+    """
+    if isinstance(exception, (requests.exceptions.ConnectionError, requests.exceptions.Timeout)):
+        return type(exception).__name__
+    status_code = http_status_code(exception)
+    if status_code is not None and status_code >= 500:
+        return f"HTTP {status_code}"
     return None
 
 

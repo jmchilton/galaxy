@@ -73,6 +73,7 @@ from galaxy.jobs.runners.util.tes_task import (
     TES_FINISHED_STATES,
     tes_known_secrets,
     TES_NOTHING_TO_CANCEL_STATES,
+    tes_server_unreachable_reason,
     TES_TASK_NOT_FOUND,
 )
 from galaxy.model.base import check_database_connection
@@ -1418,6 +1419,11 @@ PULSAR_TES_PARAM_SPECS: dict[str, Any] = dict(
         valid=lambda x: float(x) >= 0,
         default=120.0,
     ),
+    tes_unreachable_timeout=dict(
+        map=float,
+        valid=lambda x: float(x) >= 0,
+        default=3600.0,
+    ),
 )
 
 PULSAR_FINAL_STATUSES = ("complete", "cancelled", "failed", "lost")
@@ -1440,6 +1446,7 @@ class TesTaskWatch:
     # Set by the thread receiving Pulsar's messages: finishing the job can outlast
     # the grace period, and the job stays running meanwhile.
     pulsar_reported: bool = False
+    unreachable_since: float | None = None
 
 
 class PulsarTesJobRunner(PulsarCoexecutionJobRunner):
@@ -1451,7 +1458,9 @@ class PulsarTesJobRunner(PulsarCoexecutionJobRunner):
     that fails to start, an image pull failure, a cancelled or lost task, an
     in-task Pulsar that can't reach the broker) fails the job after
     ``tes_status_grace_period`` seconds instead of leaving it queued or running
-    forever.
+    forever. A job whose TES server can't be reached (no connection, a timeout or
+    a 5xx answer) at every check for ``tes_unreachable_timeout`` seconds (0 never
+    gives up) fails too.
     """
 
     destination_defaults = TES_DESTINATION_DEFAULTS
@@ -1463,6 +1472,7 @@ class PulsarTesJobRunner(PulsarCoexecutionJobRunner):
         super().__init__(app, nworkers, **kwds)
         self.tes_status_check_interval: float = self.runner_params.tes_status_check_interval
         self.tes_status_grace_period: float = self.runner_params.tes_status_grace_period
+        self.tes_unreachable_timeout: float = self.runner_params.tes_unreachable_timeout
         self.poll = self.tes_status_check_interval > 0
         # Only the monitor thread removes watches. A final status can arrive before the
         # task's first check, so the thread receiving Pulsar's messages adds the watch
@@ -1521,7 +1531,12 @@ class PulsarTesJobRunner(PulsarCoexecutionJobRunner):
                 task_id,
                 describe_tes_error(e),
             )
-            return True
+            unreachable_reason = tes_server_unreachable_reason(e)
+            if unreachable_reason is None:
+                watch.unreachable_since = None
+                return True
+            return self._check_tes_server_unreachable(job_state, watch, now, unreachable_reason)
+        watch.unreachable_since = None
         if task_state not in TES_FINISHED_STATES:
             watch.finished_since = None
             return True
@@ -1542,6 +1557,26 @@ class PulsarTesJobRunner(PulsarCoexecutionJobRunner):
             # The task is finished or gone, so there is nothing to cancel.
             job_state.stop_job = False
             self.fail_job(job_state, message=message, full_status=full_status)
+        return False
+
+    def _check_tes_server_unreachable(
+        self, job_state: AsynchronousJobState, watch: TesTaskWatch, now: float, reason: str
+    ) -> bool:
+        """Fail the job once its TES server has been unreachable for too long. Return whether to keep watching."""
+        if watch.unreachable_since is None:
+            watch.unreachable_since = now
+        if not self.tes_unreachable_timeout or now - watch.unreachable_since < self.tes_unreachable_timeout:
+            return True
+        if self._waits_for_pulsar(job_state, watch):
+            # The task may still be running; fail_job tries to cancel it, and that never raises.
+            self.fail_job(
+                job_state,
+                message=(
+                    f"Galaxy could not reach the TES server to check task {job_state.job_id} for "
+                    f"{self.tes_unreachable_timeout:.0f} seconds, and Pulsar never reported a final job status. "
+                    f"Last error: {reason}."
+                ),
+            )
         return False
 
     def _waits_for_pulsar(self, job_state: AsynchronousJobState, watch: TesTaskWatch) -> bool:

@@ -47,6 +47,8 @@ GALAXY_JOB_ID = 42
 # The runner's defaults, which the harness relies on.
 INTERVAL = 60.0
 GRACE = 120.0
+UNREACHABLE_TIMEOUT = 600.0
+DEFAULT_UNREACHABLE_TIMEOUT = 3600.0
 SERVER_NAME = "main.handler0"
 AMQP_PASSWORD = "Br0kerPassword"
 STAGING_IMAGE = "galaxy/pulsar-pod-staging:0.15.0.2"
@@ -259,10 +261,12 @@ class FakeJobWrapper:
 class Harness:
     """A TES runner watching one job."""
 
-    def __init__(self, tes_server, clock):
+    def __init__(self, tes_server, clock, **runner_params):
         self.tes_server = tes_server
         self.clock = clock
-        self.runner = _runner(PulsarTesJobRunner, amqp_url=f"amqp://galaxy:{AMQP_PASSWORD}@broker:5672//")
+        self.runner = _runner(
+            PulsarTesJobRunner, amqp_url=f"amqp://galaxy:{AMQP_PASSWORD}@broker:5672//", **runner_params
+        )
         self.runner.work_queue = Queue()
         self.runner._init_client_manager()
         self.job_wrapper = FakeJobWrapper(self.runner.app)
@@ -652,14 +656,74 @@ def test_task_back_to_running_restarts_the_grace_period(harness, tes_server):
     assert not harness.watch_for(INTERVAL)
 
 
-def test_tes_server_errors_never_fail_the_job(harness, tes_server):
-    tes_server.error_status = 500
-    harness.check()
-    assert harness.watch_for(INTERVAL + 3 * GRACE)
-    assert set(tes_server.views_requested()) == {"BASIC"}
+def _take_down(tes_server, how):
+    """Make the TES server unreachable for every request, as when it is stopped or behind a failing proxy."""
+    if how == "connection refused":
+        tes_server.stop()
+    else:
+        tes_server.error_status = tes_server.cancel_status = how
 
+
+@pytest.mark.parametrize(
+    "how, last_error", [("connection refused", "ConnectionError"), (500, "HTTP 500"), (503, "HTTP 503")]
+)
+def test_unreachable_tes_server_fails_the_job_after_the_timeout(harness, tes_server, how, last_error):
+    tes_server.tasks[TASK_ID] = _task("RUNNING")
+    harness.job.state = model.Job.states.RUNNING
+    harness.check()
+    _take_down(tes_server, how)
+    # Unreachable from the first check, one interval in.
+    assert harness.watch_for(INTERVAL + DEFAULT_UNREACHABLE_TIMEOUT - 1)
+    assert harness.failures == []
+    assert not harness.watch_for(INTERVAL)
+
+    [failure] = harness.failures
+    assert failure == {
+        "message": (
+            f"Galaxy could not reach the TES server to check task {TASK_ID} for 3600 seconds, "
+            f"and Pulsar never reported a final job status. Last error: {last_error}."
+        ),
+        "tool_stderr": None,
+    }
+    assert len(failure["message"]) <= JOB_INFO_LENGTH
+    # An error is no finished task, so it never asks for the FULL view.
+    assert "FULL" not in tes_server.views_requested()
+
+
+@pytest.mark.parametrize("answer", [None, 400, 401, 403])
+def test_tes_server_answering_again_restarts_the_unreachable_clock(harness, tes_server, answer):
+    # A refusal is an answer too: the server is reachable, and a 401 or 403 is a
+    # configuration problem for an admin while the task may still finish and Pulsar report.
+    tes_server.tasks[TASK_ID] = _task("RUNNING")
+    harness.check()
+    tes_server.error_status = 502
+    assert harness.watch_for(INTERVAL + DEFAULT_UNREACHABLE_TIMEOUT - 1)
+    tes_server.error_status = answer
+    assert harness.watch_for(INTERVAL)
+    tes_server.error_status = 502
+    assert harness.watch_for(DEFAULT_UNREACHABLE_TIMEOUT)
+    assert harness.failures == []
+    assert not harness.watch_for(INTERVAL)
+    assert len(harness.failures) == 1
+
+
+def test_unreachable_timeout_is_configurable(tes_server, clock):
+    harness = Harness(tes_server, clock, tes_unreachable_timeout=str(UNREACHABLE_TIMEOUT))
+    harness.check()
     tes_server.stop()
-    assert harness.watch_for(3 * GRACE)
+    assert harness.watch_for(INTERVAL + UNREACHABLE_TIMEOUT - 1)
+    assert harness.failures == []
+    assert not harness.watch_for(INTERVAL)
+    [failure] = harness.failures
+    assert "could not reach the TES server to check task" in failure["message"]
+    assert "for 600 seconds" in failure["message"]
+
+
+def test_unreachable_timeout_of_zero_retries_forever(tes_server, clock):
+    harness = Harness(tes_server, clock, tes_unreachable_timeout="0")
+    harness.check()
+    tes_server.stop()
+    assert harness.watch_for(2 * DEFAULT_UNREACHABLE_TIMEOUT)
     assert harness.failures == []
 
 
@@ -919,16 +983,25 @@ def test_tes_checks_are_on_by_default():
     assert runner.use_mq
     assert runner.tes_status_check_interval == INTERVAL
     assert runner.tes_status_grace_period == GRACE
+    assert runner.tes_unreachable_timeout == DEFAULT_UNREACHABLE_TIMEOUT
 
 
 def test_tes_checks_are_configurable():
-    runner = _runner(PulsarTesJobRunner, tes_status_check_interval="15", tes_status_grace_period="0")
+    runner = _runner(
+        PulsarTesJobRunner,
+        tes_status_check_interval="15",
+        tes_status_grace_period="0",
+        tes_unreachable_timeout="60",
+    )
     assert runner.poll
     assert runner.tes_status_check_interval == 15.0
     assert runner.tes_status_grace_period == 0.0
+    assert runner.tes_unreachable_timeout == 60.0
     assert not _runner(PulsarTesJobRunner, tes_status_check_interval="0").poll
     with pytest.raises(Exception, match="tes_status_grace_period"):
         _runner(PulsarTesJobRunner, tes_status_grace_period="-1")
+    with pytest.raises(Exception, match="tes_unreachable_timeout"):
+        _runner(PulsarTesJobRunner, tes_unreachable_timeout="-1")
 
 
 def test_tes_options_are_rejected_by_other_pulsar_runners():
