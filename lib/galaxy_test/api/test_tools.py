@@ -265,6 +265,13 @@ class TestToolsApi(ApiTestCase, TestsTools):
         response = self._get_tool_icon("icon_outside_tool_dir")
         self._assert_status_code_is(response, 404)
 
+    @skip_without_tool("help_images_require_login")
+    def test_tool_icon_require_login(self):
+        response = self._get_tool_icon("help_images_require_login")
+        self._assert_status_code_is(response, 200)
+        assert response.headers["Content-Type"] == "image/png"
+        self._assert_status_code_is(self._get_tool_icon("help_images_require_login", anon=True), 401)
+
     def test_tool_icon_endpoint_with_toolshed_id(self):
         # Test complex toolshed tool ID with slashes
         toolshed_tool_id = "toolshed.g2.bx.psu.edu/repos/devteam/fastqc/fastqc/0.74+galaxy0"
@@ -931,8 +938,8 @@ class TestToolsApi(ApiTestCase, TestsTools):
     def _show_tool(self, tool_id, **params):
         return self._get(f"tools/{tool_id}", data=params)
 
-    def _get_tool_icon(self, tool_id, headers=None):
-        return self._get(f"tools/{tool_id}/icon", headers=headers)
+    def _get_tool_icon(self, tool_id, headers=None, anon=False):
+        return self._get(f"tools/{tool_id}/icon", headers=headers, anon=anon)
 
     def _get_tool_help_image(self, tool_id, path, tool_version=None, headers=None):
         params = {"path": path}
