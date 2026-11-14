@@ -13,7 +13,10 @@ from uuid import uuid4
 import pytest
 import requests
 
-from galaxy_test.base.api_asserts import assert_status_code_is
+from galaxy_test.base.api_asserts import (
+    assert_error_message_contains,
+    assert_status_code_is,
+)
 from galaxy_test.base.workflow_fixtures import (
     WORKFLOW_NESTED_OUTPUT,
     WORKFLOW_WITH_MAPPED_OUTPUT_COLLECTION,
@@ -379,6 +382,37 @@ steps:
             response = self._wes_post(f"ga4gh/wes/v1/runs/{invocation_id}/cancel")
             self._assert_status_code_is(response, 200)
 
+    def test_wes_run_endpoints_require_authentication(self):
+        """Run endpoints answer 403 without credentials, and to users who don't own the run."""
+        with self.dataset_populator.test_history() as history_id:
+            run_id = self._submit_wes_workflow_and_get_invocation_id(
+                workflow_content=WORKFLOW_SIMPLE,
+                workflow_type="gx_workflow_format2",
+                input1=self._get_test_dataset_id(history_id),
+                history_id=history_id,
+            )
+            for endpoint in (
+                f"ga4gh/wes/v1/runs/{run_id}",
+                f"ga4gh/wes/v1/runs/{run_id}/status",
+                f"ga4gh/wes/v1/runs/{run_id}/tasks",
+                f"ga4gh/wes/v1/runs/{run_id}/tasks/0",
+            ):
+                response = self._wes_get(endpoint, authenticated=False)
+                self._assert_status_code_is(response, 403)
+            response = self._cancel_wes_run(run_id, authenticated=False)
+            self._assert_status_code_is(response, 403)
+            assert self._get_run_status_validated(run_id)["state"] not in ("CANCELING", "CANCELED")
+
+            # Authentication is checked before the page token is decoded.
+            response = self._wes_get("ga4gh/wes/v1/runs", params={"page_token": "junk"}, authenticated=False)
+            self._assert_status_code_is(response, 403)
+
+            # The message names the run id the client sent, not the database id.
+            with self._different_user():
+                response = self._wes_get(f"ga4gh/wes/v1/runs/{run_id}")
+            self._assert_status_code_is(response, 403)
+            assert_error_message_contains(response, f"Invocation {run_id} not accessible")
+
     def test_wes_state_mapping(self):
         """Test state mapping between Galaxy invocation states and WES states."""
         with self.dataset_populator.test_history() as history_id:
@@ -685,6 +719,8 @@ steps:
             # Request nonexistent task
             response = self._wes_get(f"ga4gh/wes/v1/runs/{invocation_id}/tasks/999999")
             assert response.status_code == 404
+            # The message names the run id the client sent, not the database id.
+            assert_error_message_contains(response, f"not found in run {invocation_id}")
 
     @workflow_types_parametrize
     def test_wes_run_workflow_with_subworkflow_and_validate_output_content(self, workflow_type: str):

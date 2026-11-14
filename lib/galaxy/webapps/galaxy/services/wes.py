@@ -617,11 +617,11 @@ class WesService(ServiceBase):
         Returns:
             RunListResponse with paginated list of runs and next_page_token if more results exist
         """
+        user = _require_user(trans, "Listing WES runs requires authentication.")
+
         # Decode keyset token to get last seen ID
         token = self._keyset_pagination.decode_token(page_token, token_class=SingleKeysetToken)
         last_id = token.last_id if token else None
-
-        user = _require_user(trans, "Listing WES runs requires authentication.")
 
         # Build query with keyset filtering
         query = trans.sa_session.query(WorkflowInvocation).join(History).where(History.user_id == user.id)
@@ -995,7 +995,7 @@ class WesService(ServiceBase):
         )
 
         if not step:
-            raise exceptions.ObjectNotFound(f"Task {task_id} not found in run {run_id}")
+            raise exceptions.ObjectNotFound(f"Task {task_id} not found in run {self._security.encode_id(run_id)}")
 
         # Get step name
         workflow_step = step.workflow_step
@@ -1088,13 +1088,15 @@ class WesService(ServiceBase):
             exceptions.ObjectNotFound: If invocation not found
             exceptions.AuthenticationRequired: If user cannot access invocation
         """
+        user = _require_user(trans, "Accessing WES runs requires authentication.")
+
         invocation = trans.sa_session.query(WorkflowInvocation).filter_by(id=run_id).one_or_none()
 
         if not invocation:
-            raise exceptions.ObjectNotFound(f"Invocation {run_id} not found")
+            raise exceptions.ObjectNotFound(f"Invocation {self._security.encode_id(run_id)} not found")
 
-        if invocation.history.user_id != trans.user.id:
-            raise exceptions.AuthenticationRequired(f"Invocation {run_id} not accessible")
+        if invocation.history.user_id != user.id:
+            raise exceptions.AuthenticationRequired(f"Invocation {self._security.encode_id(run_id)} not accessible")
 
         return invocation
 
