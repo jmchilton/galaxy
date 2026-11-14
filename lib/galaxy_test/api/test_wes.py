@@ -136,6 +136,67 @@ class TestWesApi(BaseWorkflowsApiTestCase):
             run_details = self._get_run_details(run_id)
             assert run_details is not None
 
+    def test_wes_submit_run_use_cached_job_boolean(self):
+        """use_cached_job is advertised as a boolean: accept JSON booleans and "true"/"false" strings."""
+        with self.dataset_populator.test_history() as history_id:
+            for value in (True, False, "true", "False"):
+                response = self._submit_wes_workflow(
+                    workflow_content=WORKFLOW_SIMPLE,
+                    workflow_type="gx_workflow_format2",
+                    engine_parameters={"use_cached_job": value},
+                    history_id=history_id,
+                    input1=self._get_test_dataset_id(history_id),
+                )
+                self._assert_status_code_is(response, 200)
+
+            response = self._submit_wes_workflow(
+                workflow_content=WORKFLOW_SIMPLE,
+                workflow_type="gx_workflow_format2",
+                engine_parameters={"use_cached_job": "maybe"},
+                history_id=history_id,
+                input1=self._get_test_dataset_id(history_id),
+            )
+            self._assert_status_code_is(response, 400)
+
+    def test_wes_failed_submission_leaves_no_workflow_or_history(self):
+        """A rejected submission must not leave an imported workflow or a new history behind."""
+        token = uuid4().hex
+        workflow_content = WORKFLOW_SIMPLE.replace("name: Simple Workflow", f"name: WES rejected {token}")
+        history_name = f"WES rejected {token}"
+        with self.dataset_populator.test_history() as history_id:
+            dataset = self._get_test_dataset_id(history_id)
+            with self._different_user():
+                other_users_history_id = self.dataset_populator.new_history()
+
+            response = self._submit_wes_workflow(
+                workflow_content=workflow_content,
+                workflow_type="gx_workflow_format2",
+                engine_parameters={"history_name": history_name, "use_cached_job": "maybe"},
+                input1=dataset,
+            )
+            self._assert_status_code_is(response, 400)
+
+            # Required input missing - only detected when invoking.
+            response = self._submit_wes_workflow(
+                workflow_content=workflow_content,
+                workflow_type="gx_workflow_format2",
+                engine_parameters={"history_name": history_name},
+            )
+            self._assert_status_code_is(response, 400)
+
+            response = self._submit_wes_workflow(
+                workflow_content=workflow_content,
+                workflow_type="gx_workflow_format2",
+                history_id=other_users_history_id,
+                input1=dataset,
+            )
+            self._assert_status_code_is(response, 404)
+
+        workflows = self._get("workflows").json()
+        assert [w["name"] for w in workflows if token in w["name"]] == []
+        histories = self._get("histories").json()
+        assert [h["name"] for h in histories if h["name"] == history_name] == []
+
     def test_wes_submit_run_format2_workflow(self):
         """Test workflow submission with Format2 (CWL-style) workflow."""
         format2_workflow = """class: GalaxyWorkflow
@@ -371,9 +432,36 @@ steps:
             invocation = self.workflow_populator.get_invocation(invocation_id)
             assert invocation["state"] == "completed"
 
-            # Try to cancel (should succeed but workflow already complete)
+            # Cancelling a finished run is accepted but must not rewrite its terminal state.
             response = self._wes_post(f"ga4gh/wes/v1/runs/{invocation_id}/cancel")
             self._assert_status_code_is(response, 200)
+            assert response.json()["run_id"] == invocation_id
+
+            status = self._get_run_status_validated(invocation_id)
+            assert status["state"] == "COMPLETE"
+            invocation = self.workflow_populator.get_invocation(invocation_id)
+            assert invocation["state"] == "completed"
+
+    def test_wes_run_endpoints_require_authentication(self):
+        """Run-scoped endpoints answer 403 without credentials, like GET /runs."""
+        with self.dataset_populator.test_history() as history_id:
+            run_id = self._submit_wes_workflow_and_get_invocation_id(
+                workflow_content=WORKFLOW_SIMPLE,
+                workflow_type="gx_workflow_format2",
+                input1=self._get_test_dataset_id(history_id),
+                history_id=history_id,
+            )
+            for endpoint in (
+                f"ga4gh/wes/v1/runs/{run_id}",
+                f"ga4gh/wes/v1/runs/{run_id}/status",
+                f"ga4gh/wes/v1/runs/{run_id}/tasks",
+                f"ga4gh/wes/v1/runs/{run_id}/tasks/0",
+            ):
+                response = self._wes_get(endpoint, authenticated=False)
+                self._assert_status_code_is(response, 403)
+            response = self._wes_post(f"ga4gh/wes/v1/runs/{run_id}/cancel", authenticated=False)
+            self._assert_status_code_is(response, 403)
+            assert self._get_run_status_validated(run_id)["state"] not in ("CANCELING", "CANCELED")
 
     def test_wes_state_mapping(self):
         """Test state mapping between Galaxy invocation states and WES states."""
@@ -466,6 +554,37 @@ steps:
             # Validate outputs
             assert "outputs" in run_log
             assert isinstance(run_log["outputs"], dict)
+
+    def test_wes_run_log_omitted_optional_parameter_is_null(self):
+        """An omitted optional parameter is reported as null, not as Galaxy's internal NoReplacement marker."""
+        workflow_yaml = """class: GalaxyWorkflow
+inputs:
+  input1: data
+  optional_text:
+    type: text
+    optional: true
+outputs:
+  wf_output_1:
+    outputSource: first_cat/out_file1
+  optional_text_output:
+    outputSource: optional_text
+steps:
+  first_cat:
+    tool_id: cat1
+    in:
+      input1: input1
+"""
+        with self.dataset_populator.test_history() as history_id:
+            run_id = self._submit_wes_workflow_and_get_invocation_id(
+                workflow_content=workflow_yaml,
+                workflow_type="gx_workflow_format2",
+                history_id=history_id,
+                input1=self._get_test_dataset_id(history_id),
+            )
+            self.workflow_populator.wait_for_invocation_and_completion(run_id, assert_ok=True)
+            outputs = self._get_run_details(run_id)["outputs"]
+            assert "optional_text_output" in outputs
+            assert outputs["optional_text_output"] is None
 
     def test_wes_cannot_run_against_other_users_history(self):
         """Test that WES prevents submitting workflows to other users' histories."""

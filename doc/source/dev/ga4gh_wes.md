@@ -168,7 +168,7 @@ A JSON object. Recognized keys (also advertised in `service-info`):
 | `history_id`                | Run into this existing history (encoded id). Otherwise a new history is created. |
 | `history_name`              | Name for the auto-created history (default `"WES Run"`).                         |
 | `preferred_object_store_id` | Object store for the run's outputs.                                              |
-| `use_cached_job`            | `"true"`/`"false"` string — reuse equivalent prior job results.                  |
+| `use_cached_job`            | Boolean (`true`/`false`, or the strings `"true"`/`"false"`) — reuse equivalent prior job results. |
 
 ### Referencing a workflow already in Galaxy: `gxworkflow://`
 
@@ -382,12 +382,14 @@ curl -s -X POST "$BASE/ga4gh/wes/v1/runs/33b43b4e7093c91f/cancel" -H "x-api-key:
 ```
 
 This requests cancellation of the underlying invocation; the run then transitions through
-`CANCELING` to `CANCELED`.
+`CANCELING` to `CANCELED`. Cancelling a run that is already in a terminal state (`COMPLETE`,
+`EXECUTOR_ERROR` or `CANCELED`) returns its `run_id` and leaves its state unchanged.
 
 ## Errors
 
 Errors come back as Galaxy's standard JSON error body (`{"err_msg": ..., "err_code": ...}`)
-with a matching HTTP status. The ones a client is most likely to hit:
+with a matching HTTP status. A rejected submission leaves no imported workflow or new history
+behind. The ones a client is most likely to hit:
 
 | Situation                                                                        | Status |
 | -------------------------------------------------------------------------------- | ------ |
@@ -395,6 +397,7 @@ with a matching HTTP status. The ones a client is most likely to hit:
 | `workflow_type` disagrees with the auto-detected type (attachment / fetched URL) | 400    |
 | Malformed `gxworkflow://` URI                                                    | 400    |
 | Submit while anonymous                                                           | 403    |
+| Read, list or cancel runs while anonymous                                        | 403    |
 | Submit while logged in but inactive (unactivated account)                        | 403    |
 | Run / task id does not exist                                                     | 404    |
 | Invalid `task_id` format                                                         | 404    |

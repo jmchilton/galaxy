@@ -37,6 +37,7 @@ from galaxy.model import (
     ImplicitCollectionJobs,
     ImplicitCollectionJobsJobAssociation,
     Job,
+    StoredWorkflow,
     WorkflowInvocation,
     WorkflowInvocationStep,
 )
@@ -81,6 +82,12 @@ GALAXY_TO_WES_STATE = {
 }
 
 WES_TO_GALAXY_STATE = {v: k for k, v in GALAXY_TO_WES_STATE.items()}
+
+# How Galaxy records a workflow output for an omitted optional parameter.
+NO_REPLACEMENT_VALUE = {"__class__": "NoReplacement"}
+
+# Galaxy invocation states whose WES state (COMPLETE, EXECUTOR_ERROR, CANCELED) is terminal.
+TERMINAL_GALAXY_STATES = ("completed", "failed", "cancelled")
 
 
 @dataclass
@@ -277,7 +284,7 @@ def _normalize_run_request(
 def _get_or_create_history(
     trans: ProvidesUserContext,
     engine_params: dict[str, Any],
-) -> History:
+) -> tuple[History, bool]:
     """Get or create a history for the WES run.
 
     If history_id is provided in engine_params, use existing history.
@@ -288,7 +295,7 @@ def _get_or_create_history(
         engine_params: Workflow engine parameters from RunRequest
 
     Returns:
-        History object for the workflow invocation
+        History object for the workflow invocation, and whether it was created here
 
     Raises:
         exceptions.ObjectNotFound: If specified history_id does not exist
@@ -307,7 +314,7 @@ def _get_or_create_history(
         history = trans.sa_session.query(History).filter_by(id=decoded_id, user_id=trans.user.id).one_or_none()
         if not history:
             raise exceptions.ObjectNotFound(f"History {history_id} not found or not accessible")
-        return history
+        return history, False
 
     # Create new history
     history = History(user=trans.user, name=_generate_history_name(engine_params))
@@ -315,7 +322,7 @@ def _get_or_create_history(
     trans.sa_session.flush()
     # Postgres tests in CI fail without this commit.
     trans.sa_session.commit()
-    return history
+    return history, True
 
 
 def _generate_history_name(engine_params: dict[str, Any]) -> str:
@@ -333,6 +340,68 @@ def _generate_history_name(engine_params: dict[str, Any]) -> str:
         return engine_params["history_name"]
 
     return "WES Run"
+
+
+def _parse_engine_parameters(workflow_engine_parameters: Optional[str]) -> dict[str, Any]:
+    """Parse and validate the workflow_engine_parameters JSON object."""
+    if not workflow_engine_parameters:
+        return {}
+    try:
+        engine_params = json.loads(workflow_engine_parameters)
+    except json.JSONDecodeError:
+        raise exceptions.MessageException("Invalid JSON in workflow_engine_parameters")
+    if engine_params is None:
+        return {}
+    if not isinstance(engine_params, dict):
+        raise exceptions.RequestParameterInvalidException("workflow_engine_parameters must be a JSON object")
+    if "use_cached_job" in engine_params:
+        engine_params["use_cached_job"] = _parse_boolean_engine_parameter(
+            "use_cached_job", engine_params["use_cached_job"]
+        )
+    return engine_params
+
+
+def _parse_workflow_params(workflow_params: Optional[str]) -> Optional[dict[str, Any]]:
+    """Parse the workflow_params JSON object (workflow inputs by label)."""
+    if not workflow_params:
+        return None
+    try:
+        params = json.loads(workflow_params)
+    except json.JSONDecodeError:
+        raise exceptions.MessageException("Invalid JSON in workflow_params")
+    if params is not None and not isinstance(params, dict):
+        raise exceptions.RequestParameterInvalidException("workflow_params must be a JSON object")
+    return params
+
+
+def _discard_rejected_submission(
+    trans: ProvidesUserContext,
+    imported_workflow: Optional[StoredWorkflow],
+    created_history: Optional[History],
+) -> None:
+    """Delete the workflow and history a rejected WES submission created."""
+    if imported_workflow is None and created_history is None:
+        return
+    try:
+        trans.sa_session.rollback()
+        if imported_workflow is not None:
+            imported_workflow.deleted = True
+        if created_history is not None:
+            created_history.deleted = True
+        trans.sa_session.commit()
+    except Exception:
+        log.exception("Failed to clean up after rejected WES submission")
+
+
+def _parse_boolean_engine_parameter(name: str, value: Any) -> bool:
+    """Accept a JSON boolean (as advertised in service-info) or the strings "true"/"false"."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str) and value.lower() in ("true", "false"):
+        return value.lower() == "true"
+    raise exceptions.RequestParameterInvalidException(
+        f"Workflow engine parameter '{name}' must be a boolean, got {json.dumps(value)}"
+    )
 
 
 class WesService(ServiceBase):
@@ -474,9 +543,15 @@ class WesService(ServiceBase):
 
         trans.check_user_activation()
 
+        # Validate request parameters before importing the workflow or creating a history,
+        # so a malformed request leaves nothing behind.
+        engine_params = _parse_engine_parameters(workflow_engine_parameters)
+        workflow_inputs = _parse_workflow_params(workflow_params)
+
         # Step 1: Load workflow content from URL or attachment
         workflow_dict = _load_workflow_content(trans, workflow_attachment, workflow_url)
 
+        imported_workflow: Optional[StoredWorkflow] = None
         # Check if this is a gxworkflow:// URI reference
         if "workflow_uri" in workflow_dict:
             # Load workflow from Galaxy database using gxworkflow:// URI
@@ -524,46 +599,44 @@ class WesService(ServiceBase):
                 source="WES API",
             )
             stored_workflow = created_workflow.stored_workflow
+            imported_workflow = stored_workflow
             invoke_workflow_id = stored_workflow.id
             instance = False
 
-        # Step 5: Parse engine parameters and create/select history
-        engine_params = {}
-        if workflow_engine_parameters:
-            try:
-                engine_params = json.loads(workflow_engine_parameters)
-            except json.JSONDecodeError:
-                raise exceptions.MessageException("Invalid JSON in workflow_engine_parameters")
+        # Invocation-time validation (target history, required inputs, ...) happens below,
+        # after the workflow import; undo the import and any new history if it fails.
+        created_history: Optional[History] = None
+        try:
+            # Step 5: Select or create history
+            history, history_created = _get_or_create_history(trans, engine_params)
+            if history_created:
+                created_history = history
 
-        history = _get_or_create_history(trans, engine_params)
+            # Step 6: Build invocation parameters
+            invoke_params: dict[str, Any] = {
+                "history_id": trans.security.encode_id(history.id),
+                "inputs_by": "name",
+                "instance": instance,
+            }
+            if workflow_inputs is not None:
+                invoke_params["inputs"] = workflow_inputs
 
-        # Step 6: Parse workflow parameters
-        invoke_params: dict[str, Any] = {
-            "history_id": trans.security.encode_id(history.id),
-            "inputs_by": "name",
-            "instance": instance,
-        }
+            # Step 7: Apply workflow engine parameters
+            if "preferred_object_store_id" in engine_params:
+                invoke_params["preferred_object_store_id"] = engine_params["preferred_object_store_id"]
+            if "use_cached_job" in engine_params:
+                invoke_params["use_cached_job"] = engine_params["use_cached_job"]
 
-        if workflow_params:
-            try:
-                params = json.loads(workflow_params)
-                invoke_params["inputs"] = params
-            except json.JSONDecodeError:
-                raise exceptions.MessageException("Invalid JSON in workflow_params")
-
-        # Step 7: Apply workflow engine parameters
-        if "preferred_object_store_id" in engine_params:
-            invoke_params["preferred_object_store_id"] = engine_params["preferred_object_store_id"]
-        if "use_cached_job" in engine_params:
-            invoke_params["use_cached_job"] = engine_params["use_cached_job"].lower() == "true"
-
-        # Step 8: Invoke workflow
-        invoke_payload = InvokeWorkflowPayload(**invoke_params)
-        workflow_invocation_response = self._workflows_service.invoke_workflow(
-            trans,
-            invoke_workflow_id,
-            invoke_payload,
-        )
+            # Step 8: Invoke workflow
+            invoke_payload = InvokeWorkflowPayload(**invoke_params)
+            workflow_invocation_response = self._workflows_service.invoke_workflow(
+                trans,
+                invoke_workflow_id,
+                invoke_payload,
+            )
+        except Exception:
+            _discard_rejected_submission(trans, imported_workflow, created_history)
+            raise
 
         # Handle both single and batch responses
         if isinstance(workflow_invocation_response, list):
@@ -673,10 +746,17 @@ class WesService(ServiceBase):
             trans: Galaxy transaction/context
             run_id: The WES run ID (Galaxy invocation ID)
 
+        Runs already in a terminal state are left unchanged.
+
         Returns:
             RunId of the cancelled run
         """
         invocation = self._get_invocation(trans, run_id)
+
+        # WES terminal states are final: cancelling a finished run is a no-op rather than
+        # rewriting COMPLETE or EXECUTOR_ERROR into CANCELED.
+        if invocation.state in TERMINAL_GALAXY_STATES:
+            return self._invocation_to_run_id(invocation)
 
         # Request cancellation through Galaxy's workflows manager
         cancelled_invocation = self._workflows_service._workflows_manager.request_invocation_cancellation(
@@ -1064,6 +1144,9 @@ class WesService(ServiceBase):
             exceptions.ObjectNotFound: If invocation not found
             exceptions.AuthenticationRequired: If user cannot access invocation
         """
+        if trans.user is None:
+            raise exceptions.AuthenticationRequired("Accessing WES runs requires authentication.")
+
         invocation = trans.sa_session.query(WorkflowInvocation).filter_by(id=run_id).one_or_none()
 
         if not invocation:
@@ -1148,9 +1231,13 @@ class WesService(ServiceBase):
                         output_info["id"] = output_id_encoded
                 outputs_dict[output_name] = output_info
 
-        # Add value outputs as-is
+        # Add value outputs; an omitted optional parameter is stored as Galaxy's internal
+        # NoReplacement marker, which WES clients should see as null.
         if "output_values" in invocation_dict:
-            outputs_dict.update(invocation_dict["output_values"])
+            for output_name, output_value in invocation_dict["output_values"].items():
+                if output_value == NO_REPLACEMENT_VALUE:
+                    output_value = None
+                outputs_dict[output_name] = output_value
 
         # Build task logs URL
         encoded_run_id = self._security.encode_id(invocation.id)
