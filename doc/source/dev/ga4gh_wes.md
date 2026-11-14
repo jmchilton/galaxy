@@ -382,7 +382,8 @@ curl -s -X POST "$BASE/ga4gh/wes/v1/runs/33b43b4e7093c91f/cancel" -H "x-api-key:
 ```
 
 This requests cancellation of the underlying invocation; the run then transitions through
-`CANCELING` to `CANCELED`.
+`CANCELING` to `CANCELED`. Cancelling a run that is already in a terminal state (`COMPLETE`,
+`EXECUTOR_ERROR` or `CANCELED`) returns its `run_id` and leaves its state unchanged.
 
 ## Errors
 

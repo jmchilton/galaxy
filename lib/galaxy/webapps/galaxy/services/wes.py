@@ -83,6 +83,9 @@ GALAXY_TO_WES_STATE = {
 
 WES_TO_GALAXY_STATE = {v: k for k, v in GALAXY_TO_WES_STATE.items()}
 
+# Galaxy invocation states whose WES state (COMPLETE, EXECUTOR_ERROR, CANCELED) is terminal.
+TERMINAL_GALAXY_STATES = ("completed", "failed", "cancelled")
+
 
 @dataclass
 class TaskKeysetToken:
@@ -693,6 +696,8 @@ class WesService(ServiceBase):
     ) -> RunId:
         """Cancel a running workflow.
 
+        Runs already in a terminal state are left unchanged.
+
         Args:
             trans: Galaxy transaction/context
             run_id: The WES run ID (Galaxy invocation ID)
@@ -701,6 +706,11 @@ class WesService(ServiceBase):
             RunId of the cancelled run
         """
         invocation = self._get_invocation(trans, run_id)
+
+        # WES terminal states are final: cancelling a finished run is a no-op rather than
+        # rewriting COMPLETE or EXECUTOR_ERROR into CANCELED.
+        if invocation.state in TERMINAL_GALAXY_STATES:
+            return self._invocation_to_run_id(invocation)
 
         # Request cancellation through Galaxy's workflows manager
         cancelled_invocation = self._workflows_service._workflows_manager.request_invocation_cancellation(

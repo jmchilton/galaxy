@@ -17,6 +17,7 @@ from galaxy_test.base.api_asserts import (
     assert_error_message_contains,
     assert_status_code_is,
 )
+from galaxy_test.base.populators import wait_on
 from galaxy_test.base.workflow_fixtures import (
     WORKFLOW_NESTED_OUTPUT,
     WORKFLOW_WITH_MAPPED_OUTPUT_COLLECTION,
@@ -378,9 +379,23 @@ steps:
             invocation = self.workflow_populator.get_invocation(invocation_id)
             assert invocation["state"] == "completed"
 
-            # Try to cancel (should succeed but workflow already complete)
-            response = self._wes_post(f"ga4gh/wes/v1/runs/{invocation_id}/cancel")
-            self._assert_status_code_is(response, 200)
+            self._assert_cancel_leaves_state(invocation_id, wes_state="COMPLETE", galaxy_state="completed")
+
+    def test_wes_cancel_run_failed_workflow(self):
+        """Cancelling a run that ended in EXECUTOR_ERROR leaves it there."""
+        with self.dataset_populator.test_history() as history_id:
+            run_id = self._submit_wes_workflow_and_get_invocation_id(
+                workflow_content=WORKFLOW_SIMPLE,
+                workflow_type="gx_workflow_format2",
+                history_id=history_id,
+                input1={"src": "url", "url": "gxfiles://thisurl/doesnt/work", "ext": "txt"},
+            )
+            wait_on(
+                lambda: self._get_run_status_validated(run_id)["state"] == "EXECUTOR_ERROR" or None,
+                "run to reach EXECUTOR_ERROR",
+            )
+
+            self._assert_cancel_leaves_state(run_id, wes_state="EXECUTOR_ERROR", galaxy_state="failed")
 
     def test_wes_run_endpoints_require_authentication(self):
         """Run endpoints answer 403 without credentials, and to users who don't own the run."""
@@ -1001,6 +1016,14 @@ steps:
     def _cancel_wes_run(self, run_id: str, authenticated: bool = True) -> requests.Response:
         """POST to a run's cancel endpoint and return the raw response."""
         return self._wes_post(f"ga4gh/wes/v1/runs/{run_id}/cancel", authenticated=authenticated)
+
+    def _assert_cancel_leaves_state(self, run_id: str, wes_state: str, galaxy_state: str) -> None:
+        """Cancel a finished run and check it is accepted without rewriting the terminal state."""
+        response = self._cancel_wes_run(run_id)
+        self._assert_status_code_is(response, 200)
+        assert response.json()["run_id"] == run_id
+        assert self._get_run_status_validated(run_id)["state"] == wes_state
+        assert self.workflow_populator.get_invocation(run_id)["state"] == galaxy_state
 
     def _get_task_list_and_extract_first_id(self, run_id: str) -> str:
         """GET task list, validate 200, extract and return first task ID."""
