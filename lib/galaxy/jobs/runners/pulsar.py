@@ -1359,9 +1359,11 @@ class PulsarTesJobRunner(PulsarCoexecutionJobRunner):
                 None,
             )
         if task_state == "COMPLETE":
-            message = f"TES task {task_id} completed, but Pulsar never reported a final job status, so Galaxy could not collect the job's results."
+            message = f"TES task {task_id} completed, but Pulsar never reported a final job status."
         else:
             message = f"TES task {task_id} ended in state {task_state} before Pulsar reported a final job status."
+        # The message becomes Job.info, which is cut at 255 characters, so it names
+        # the executor without its image; the image is in the stderr details.
         full_status = None
         try:
             failure = describe_tes_task_failure(
