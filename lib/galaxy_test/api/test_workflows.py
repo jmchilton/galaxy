@@ -4665,6 +4665,24 @@ some_file:
             )
             assert output_content == "hello world\n"
 
+    def test_workflow_omitted_optional_parameter_output_is_null(self, history_id):
+        summary = self._run_workflow(
+            """
+class: GalaxyWorkflow
+inputs:
+  optional_text:
+    type: text
+    optional: true
+outputs:
+  optional_text_output:
+    outputSource: optional_text
+steps: {}
+""",
+            history_id=history_id,
+        )
+        invocation = self.workflow_populator.get_invocation(summary.invocation_id)
+        assert invocation["output_values"] == {"optional_text_output": None}
+
     def test_subworkflow_output_as_output(self):
         with self.dataset_populator.test_history() as history_id:
             summary = self._run_workflow(

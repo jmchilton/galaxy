@@ -557,6 +557,27 @@ steps:
             assert "outputs" in run_log
             assert isinstance(run_log["outputs"], dict)
 
+    def test_wes_run_log_omitted_optional_parameter_is_null(self):
+        """An omitted optional parameter is reported as null, not as Galaxy's internal NoReplacement marker."""
+        workflow_yaml = """class: GalaxyWorkflow
+inputs:
+  optional_text:
+    type: text
+    optional: true
+outputs:
+  optional_text_output:
+    outputSource: optional_text
+steps: {}
+"""
+        with self.dataset_populator.test_history() as history_id:
+            run_id = self._submit_wes_workflow_and_get_invocation_id(
+                workflow_content=workflow_yaml,
+                workflow_type="gx_workflow_format2",
+                history_id=history_id,
+            )
+            self.workflow_populator.wait_for_invocation_and_completion(run_id, assert_ok=True)
+            assert self._get_run_details(run_id)["outputs"] == {"optional_text_output": None}
+
     def test_wes_cannot_run_against_other_users_history(self):
         """Test that WES prevents submitting workflows to other users' histories."""
         # Create workflow with current user

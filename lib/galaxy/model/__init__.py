@@ -10275,7 +10275,11 @@ class WorkflowInvocation(Base, UsesCreateAndUpdateTime, Dictifiable, Serializabl
                 label = output_param.workflow_output.label
                 if not label:
                     continue
-                output_values[label] = output_param.value
+                value = output_param.value
+                # An omitted optional parameter is stored as the NoReplacement marker; report it as null.
+                if isinstance(value, dict) and value.get("__class__") == "NoReplacement":
+                    value = None
+                output_values[label] = value
             rval["output_values"] = output_values
 
         return rval
