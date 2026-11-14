@@ -26,6 +26,9 @@ TES_FINISHED_STATES = frozenset(
 )
 """States after which nothing in the task can report to Galaxy anymore."""
 
+TES_NOTHING_TO_CANCEL_STATES = TES_FINISHED_STATES | {"CANCELING"}
+"""States in which cancelling the task has nothing left to do."""
+
 STDERR_TAIL_LINES = 20
 SYSTEM_LOG_TAIL_LINES = 10
 TAIL_MAX_CHARACTERS = 4000
