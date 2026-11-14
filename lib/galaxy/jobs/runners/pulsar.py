@@ -9,12 +9,20 @@ import logging
 import os
 import re
 import subprocess
-from time import sleep
+from dataclasses import dataclass
+from time import (
+    monotonic,
+    sleep,
+)
 from typing import (
     Any,
     Optional,
     TYPE_CHECKING,
     Union,
+)
+from urllib.parse import (
+    unquote,
+    urlparse,
 )
 
 import pulsar.core
@@ -37,6 +45,10 @@ from pulsar.client import (
 )
 
 # TODO: Perform pulsar release with this included in the client package
+from pulsar.client.container_job_config import (
+    parse_tes_job_params,
+    tes_client_from_params,
+)
 from pulsar.client.staging import DEFAULT_DYNAMIC_COLLECTION_PATTERN
 from sqlalchemy import select
 
@@ -53,6 +65,13 @@ from galaxy.jobs.runners import (
     AsynchronousJobState,
     JobState,
 )
+from galaxy.jobs.runners.util.tes_task import (
+    describe_tes_error,
+    describe_tes_task_failure,
+    fetch_tes_task_state,
+    TES_FINISHED_STATES,
+    TES_TASK_NOT_FOUND,
+)
 from galaxy.model.base import check_database_connection
 from galaxy.model.store.discover import safe_path_from_directory
 from galaxy.tool_util.deps import dependencies
@@ -68,6 +87,8 @@ from galaxy.util import (
 
 if TYPE_CHECKING:
     from pulsar.client.client import BaseJobClient
+    from pulsar.client.container_job_config import TesJobParams
+    from pydantictes.api import TesClient
 
     from galaxy.jobs import MinimalJobWrapper
     from galaxy.tools import Tool
@@ -252,10 +273,11 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
     use_mq = False
     poll = True
     client_manager_kwargs: dict[str, Any] = {}
+    pulsar_param_specs: dict[str, Any] = PULSAR_PARAM_SPECS
 
     def __init__(self, app, nworkers, **kwds):
         """Start the job runner."""
-        super().__init__(app, nworkers, runner_param_specs=PULSAR_PARAM_SPECS, **kwds)
+        super().__init__(app, nworkers, runner_param_specs=self.pulsar_param_specs, **kwds)
         galaxy_url = self.runner_params.galaxy_url
         if not galaxy_url:
             galaxy_url = app.config.galaxy_infrastructure_url
@@ -1185,11 +1207,197 @@ TES_DESTINATION_DEFAULTS: dict[str, Any] = {
 TES_CLIENT_MANAGER_KWARGS = {"tes_enabled": True}
 
 
+PULSAR_TES_PARAM_SPECS: dict[str, Any] = dict(
+    PULSAR_PARAM_SPECS,
+    tes_status_check_interval=dict(
+        map=float,
+        valid=lambda x: float(x) >= 0,
+        default=60.0,
+    ),
+    tes_status_grace_period=dict(
+        map=float,
+        valid=lambda x: float(x) >= 0,
+        default=120.0,
+    ),
+)
+
+PULSAR_FINAL_STATUSES = ("complete", "cancelled", "failed", "lost")
+
+
+@dataclass
+class TesTaskWatch:
+    next_check: float
+    finished_since: float | None = None
+
+
 class PulsarTesJobRunner(PulsarCoexecutionJobRunner):
+    """Run jobs as GA4GH TES tasks, with Pulsar in the task staging and reporting.
+
+    Pulsar's message queue updates drive the job. The runner also checks each
+    job's TES task every ``tes_status_check_interval`` seconds (0 disables), so a
+    task that finishes or vanishes without Pulsar reporting (a staging container
+    that fails to start, an image pull failure, a cancelled or lost task, an
+    in-task Pulsar that can't reach the broker) fails the job after
+    ``tes_status_grace_period`` seconds instead of leaving it queued or running
+    forever.
+    """
+
     destination_defaults = TES_DESTINATION_DEFAULTS
     client_manager_kwargs = TES_CLIENT_MANAGER_KWARGS
+    pulsar_param_specs = PULSAR_TES_PARAM_SPECS
     use_mq = True
-    poll = False
+
+    def __init__(self, app, nworkers, **kwds):
+        super().__init__(app, nworkers, **kwds)
+        self.tes_status_check_interval: float = self.runner_params.tes_status_check_interval
+        self.tes_status_grace_period: float = self.runner_params.tes_status_grace_period
+        self.poll = self.tes_status_check_interval > 0
+        # Keyed by TES task id. Only the monitor thread touches the watches; the
+        # thread receiving Pulsar's messages also adds to the reported tasks.
+        self._tes_task_watches: dict[str, TesTaskWatch] = {}
+        self._tes_tasks_reported: set[str] = set()
+
+    def _update_job_state_for_status(
+        self,
+        job_state: AsynchronousJobState,
+        pulsar_status: str | None,
+        full_status: dict[str, Any] | None = None,
+    ) -> AsynchronousJobState | None:
+        if pulsar_status in PULSAR_FINAL_STATUSES and job_state.job_id in self._tes_task_watches:
+            # Finishing the job can outlast the grace period, and the job stays
+            # running meanwhile, so remember that Pulsar did report.
+            self._tes_tasks_reported.add(job_state.job_id)
+        return super()._update_job_state_for_status(job_state, pulsar_status, full_status=full_status)
+
+    def check_watched_item(self, job_state: AsynchronousJobState) -> AsynchronousJobState | None:
+        task_id = job_state.job_id
+        assert task_id
+        now = monotonic()
+        watch = self._tes_task_watches.get(task_id)
+        if watch is None:
+            watch = TesTaskWatch(next_check=now + self.tes_status_check_interval)
+            self._tes_task_watches[task_id] = watch
+        if now < watch.next_check:
+            return job_state
+        watch.next_check = now + self.tes_status_check_interval
+        try:
+            keep_watching = self._check_tes_task(job_state, watch, now)
+        except Exception:
+            log.exception("(%s/%s) Failed to check TES task, will retry", job_state.job_wrapper.job_id, task_id)
+            keep_watching = True
+        if keep_watching:
+            return job_state
+        del self._tes_task_watches[task_id]
+        self._tes_tasks_reported.discard(task_id)
+        return None
+
+    def _check_tes_task(self, job_state: AsynchronousJobState, watch: TesTaskWatch, now: float) -> bool:
+        """Check a job's TES task, failing the job if it died silently. Return whether to keep watching."""
+        task_id = job_state.job_id
+        assert task_id
+        if not self._waits_for_pulsar(job_state):
+            return False
+        try:
+            tes_params = parse_tes_job_params(job_state.job_destination.params)
+            tes_client = tes_client_from_params(tes_params)
+            task_state = fetch_tes_task_state(tes_client, task_id)
+        except Exception as e:
+            log.warning(
+                "(%s/%s) Could not check TES task state, will retry: %s",
+                job_state.job_wrapper.job_id,
+                task_id,
+                describe_tes_error(e),
+            )
+            return True
+        if task_state not in TES_FINISHED_STATES:
+            watch.finished_since = None
+            return True
+        if watch.finished_since is None:
+            watch.finished_since = now
+            log.info(
+                "(%s/%s) TES task is %s but Pulsar has not reported a final status, failing the job in %s seconds unless it does",
+                job_state.job_wrapper.job_id,
+                task_id,
+                task_state,
+                self.tes_status_grace_period,
+            )
+        if now - watch.finished_since < self.tes_status_grace_period:
+            return True
+        message, full_status = self._tes_task_failure(tes_client, tes_params, job_state, task_id, task_state)
+        # Pulsar may have reported while the TES server was being asked.
+        if self._waits_for_pulsar(job_state):
+            # The task is finished or gone, so there is nothing to cancel.
+            job_state.stop_job = False
+            self.fail_job(job_state, message=message, full_status=full_status)
+        return False
+
+    def _waits_for_pulsar(self, job_state: AsynchronousJobState) -> bool:
+        """Whether the job is still this handler's, queued or running as the watched task, and unreported."""
+        task_id = job_state.job_id
+        if task_id in self._tes_tasks_reported:
+            return False
+        job_wrapper = job_state.job_wrapper
+        if job_wrapper.get_state() not in (model.Job.states.QUEUED, model.Job.states.RUNNING):
+            # Pulsar reported a final status, or the job was stopped or deleted.
+            return False
+        job = job_wrapper.get_job()
+        # A resubmitted job runs as another task; another handler may have claimed the job to finish it.
+        return job.job_runner_external_id == task_id and job.handler == self.app.config.server_name
+
+    def _tes_task_failure(
+        self,
+        tes_client: "TesClient",
+        tes_params: "TesJobParams",
+        job_state: AsynchronousJobState,
+        task_id: str,
+        task_state: str,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """The job's failure message and, when the task logs have it, the failing executor's stderr."""
+        if task_state == TES_TASK_NOT_FOUND:
+            return (
+                f"The TES server has no record of task {task_id}, and Pulsar never reported a final job status.",
+                None,
+            )
+        if task_state == "COMPLETE":
+            message = f"TES task {task_id} completed, but Pulsar never reported a final job status, so Galaxy could not collect the job's results."
+        else:
+            message = f"TES task {task_id} ended in state {task_state} before Pulsar reported a final job status."
+        full_status = None
+        try:
+            failure = describe_tes_task_failure(
+                tes_client.get_task(task_id, "FULL"), secrets=self._tes_known_secrets(tes_params)
+            )
+        except Exception as e:
+            log.warning(
+                "(%s/%s) Could not read TES task logs: %s", job_state.job_wrapper.job_id, task_id, describe_tes_error(e)
+            )
+            return message, None
+        if failure.summary:
+            message = f"{message} {failure.summary}"
+        if failure.executor_stderr:
+            full_status = {"stderr": failure.executor_stderr}
+        if failure.system_logs:
+            # They describe the TES server's hosts and container setup, so they go
+            # to the Galaxy log for admins rather than to the job's user.
+            log.info(
+                "(%s/%s) %s\nTES system logs, last lines:\n%s",
+                job_state.job_wrapper.job_id,
+                task_id,
+                message,
+                failure.system_logs,
+            )
+        return message, full_status
+
+    def _tes_known_secrets(self, tes_params: "TesJobParams") -> list[str]:
+        secrets = []
+        if self.runner_params.amqp_url:
+            amqp_password = urlparse(self.runner_params.amqp_url).password
+            if amqp_password:
+                secrets.append(unquote(amqp_password))
+                secrets.append(amqp_password)
+        if tes_params.basic_auth:
+            secrets.append(tes_params.basic_auth.password)
+        return secrets
 
 
 GCP_DESTINATION_DEFAULTS: dict[str, Any] = {

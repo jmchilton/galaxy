@@ -363,6 +363,12 @@ runners:
     amqp_url: <amqp_url>
     # If Pulsar needs to talk to Galaxy at a particular host and port, set that here.
     #galaxy_url: <galaxy_url>  
+    # Pulsar inside each TES task reports job state over the message queue. Galaxy also
+    # checks each job's TES task this often (seconds, 0 disables) and fails the job once
+    # the task has finished, or is unknown to the TES server, for tes_status_grace_period
+    # seconds without Pulsar reporting a final status.
+    #tes_status_check_interval: 60
+    #tes_status_grace_period: 120
 
   # Using Pulsar and co-execution to run jobs against Google Cloud Platform's Batch service.
   # - https://cloud.google.com/batch/docs/get-started
