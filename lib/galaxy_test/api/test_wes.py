@@ -393,9 +393,15 @@ steps:
             invocation = self.workflow_populator.get_invocation(invocation_id)
             assert invocation["state"] == "completed"
 
-            # Try to cancel (should succeed but workflow already complete)
+            # Cancelling a finished run is accepted but must not rewrite its terminal state.
             response = self._wes_post(f"ga4gh/wes/v1/runs/{invocation_id}/cancel")
             self._assert_status_code_is(response, 200)
+            assert response.json()["run_id"] == invocation_id
+
+            status = self._get_run_status_validated(invocation_id)
+            assert status["state"] == "COMPLETE"
+            invocation = self.workflow_populator.get_invocation(invocation_id)
+            assert invocation["state"] == "completed"
 
     def test_wes_run_endpoints_require_authentication(self):
         """Run-scoped endpoints answer 403 without credentials, like GET /runs."""
