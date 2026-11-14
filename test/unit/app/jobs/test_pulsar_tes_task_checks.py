@@ -492,9 +492,11 @@ def test_errors_while_checking_do_not_stop_the_monitor(harness, tes_server, monk
     def broken_state():
         raise RuntimeError("database went away")
 
+    working_state = harness.job_wrapper.get_state
+    # Not monkeypatch.undo(): that would also undo the clock fixture's patch.
     monkeypatch.setattr(harness.job_wrapper, "get_state", broken_state)
     assert harness.check_after(INTERVAL) is harness.job_state
-    monkeypatch.undo()
+    monkeypatch.setattr(harness.job_wrapper, "get_state", working_state)
     assert harness.check_after(INTERVAL) is harness.job_state
     assert tes_server.views_requested() == ["BASIC"]
 
