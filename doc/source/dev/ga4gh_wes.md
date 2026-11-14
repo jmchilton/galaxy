@@ -293,7 +293,8 @@ whose state is mapped onto that enum (`GALAXY_TO_WES_STATE` in `services/wes.py`
 | `requires_materialization` | `INITIALIZING`   | Deferred inputs are being materialized.                 |
 | `ready`                    | `INITIALIZING`   | Ready for a scheduling iteration.                       |
 | `scheduled`                | `RUNNING`        | Fully scheduled; jobs are running/queued.               |
-| `completed`                | `COMPLETE`       | Scheduling done and every job reached a terminal state. |
+| `completed`                | `COMPLETE`       | Scheduling done and no job failed or is paused.         |
+| `completed`                | `EXECUTOR_ERROR` | Scheduling done, but a job failed or is paused.         |
 | `failed`                   | `EXECUTOR_ERROR` | The invocation itself failed to schedule.               |
 | `cancelled`                | `CANCELED`       | Invocation was cancelled.                               |
 | `cancelling`               | `CANCELING`      | Cancellation requested, in progress.                    |
@@ -303,25 +304,24 @@ Poll `status` (or the run log `state`) until the state is terminal: `COMPLETE` (
 `EXECUTOR_ERROR` (failure), or `CANCELED` (cancelled). Keep polling while it is any of the
 non-terminal states (`QUEUED`, `INITIALIZING`, `RUNNING`, `CANCELING`).
 
-#### Why `completed` ⇒ `COMPLETE`, even when a job failed
+#### Failed and paused jobs ⇒ `EXECUTOR_ERROR`
 
-This is intentional and important: **a failed job does not make the run unsuccessful.**
-WES `state` describes the run (the invocation), not individual jobs. Galaxy's `completed`
-means scheduling finished and all jobs reached a terminal state (`ok`, `error`, `skipped`,
-`paused`, ...) — and a job ending in `error` is frequently part of a perfectly normal,
-valid execution path. For example, a workflow can route a step through a _filter-failed_
-collection operation precisely so that some jobs are allowed to fail and the failures are
-filtered out downstream; the invocation still completes successfully.
+Galaxy's `completed` means scheduling finished and every job reached a terminal state (`ok`,
+`error`, `skipped`, `paused`, ...). WES defines `COMPLETE` as "executors have exited without
+error", and `EXECUTOR_ERROR` as an executor failure. So a `completed` invocation is reported
+as:
 
-So:
+- `COMPLETE` when its completion record (including subworkflows) counts no job in `error`,
+  `failed` or `paused`;
+- `EXECUTOR_ERROR` otherwise. A paused job is one Galaxy will not run on its own, usually
+  because an upstream job failed.
 
-- The only invocation state that maps to `EXECUTOR_ERROR` is Galaxy's own `failed` — i.e.
-  the invocation could not be scheduled — **not** "some job errored."
-- Clients should **not** infer run failure from a non-zero per-task `exit_code`. Per-task
-  `exit_code`s (from the tasks endpoint) are for inspecting individual steps, not for
-  deciding whether the run as a whole succeeded.
-- Determine run success from the run `state` (`COMPLETE`); inspect outputs and per-task
-  detail for finer-grained results.
+Galaxy's own `failed` (the invocation could not be scheduled) also maps to `EXECUTOR_ERROR`.
+
+A workflow that tolerates failures on purpose, for example by routing a mapped step through
+a _filter failed datasets_ collection operation, still reports `EXECUTOR_ERROR` when one of
+its jobs fails. Inspect the tasks and outputs, or use Galaxy's invocation API, to tell such
+runs apart.
 
 ## 5. Tasks (per-step / per-job detail)
 
@@ -429,10 +429,10 @@ someone else"; don't assume `404` always means the object is absent.
 
 ## Known limitations and gotchas
 
-- **Run `COMPLETE` reflects the invocation, not individual jobs** — by design, a failed
-  job does not make the run fail (a failed job can be a normal, valid path, e.g.
-  filter-failed). Only an invocation that fails to schedule maps to `EXECUTOR_ERROR`. Do
-  not infer run failure from a per-task `exit_code`. See §4.
+- **Any failed or paused job makes the run `EXECUTOR_ERROR`** — even in a workflow that
+  tolerates failures on purpose (e.g. filter-failed), whose Galaxy invocation still
+  completes normally. Use the tasks, the outputs or Galaxy's invocation API to tell such
+  runs apart. See §4.
 - **Inputs must be pre-staged** — there is no WES upload endpoint; stage datasets via the
   Galaxy API and reference them by `{src, id}` in `workflow_params`.
 - **`request` is never returned** in the run log — the original `RunRequest` is not stored.

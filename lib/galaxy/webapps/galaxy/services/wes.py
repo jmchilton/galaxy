@@ -84,10 +84,24 @@ GALAXY_TO_WES_STATE = {
 
 WES_TO_GALAXY_STATE = {v: k for k, v in GALAXY_TO_WES_STATE.items()}
 
+# Job states that mean a job did not finish successfully. A Galaxy invocation is "completed" once all
+# of its jobs are terminal, whether they succeeded or not; WES COMPLETE means executors exited without error.
+UNSUCCESSFUL_JOB_STATES = (Job.states.ERROR, Job.states.FAILED, Job.states.PAUSED)
+
 
 def _invocation_wes_state(invocation: WorkflowInvocation) -> State:
-    """Map a Galaxy invocation to a WES run state."""
-    return GALAXY_TO_WES_STATE.get(invocation.state or "", State.UNKNOWN)
+    """Map a Galaxy invocation to a WES run state.
+
+    A completed invocation whose completion record counts failed or paused jobs is
+    reported as EXECUTOR_ERROR rather than COMPLETE.
+    """
+    galaxy_state = invocation.state or ""
+    if galaxy_state == "completed":
+        completion = invocation.completion
+        job_state_summary = (completion.job_state_summary if completion else None) or {}
+        if any(job_state_summary.get(state) for state in UNSUCCESSFUL_JOB_STATES):
+            return State.EXECUTOR_ERROR
+    return GALAXY_TO_WES_STATE.get(galaxy_state, State.UNKNOWN)
 
 
 # Galaxy invocation states whose WES state (COMPLETE, EXECUTOR_ERROR, CANCELED) is terminal.
@@ -677,7 +691,12 @@ class WesService(ServiceBase):
         last_id = token.last_id if token else None
 
         # Build query with keyset filtering
-        query = trans.sa_session.query(WorkflowInvocation).join(History).where(History.user_id == user.id)
+        query = (
+            trans.sa_session.query(WorkflowInvocation)
+            .join(History)
+            .where(History.user_id == user.id)
+            .options(joinedload(WorkflowInvocation.completion))
+        )
 
         # Apply keyset filter if we have a cursor
         if last_id is not None:

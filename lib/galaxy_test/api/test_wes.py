@@ -493,6 +493,75 @@ steps:
             status = self._get_run_status_validated(invocation_id)
             assert status["state"] == "COMPLETE"
 
+    def test_wes_state_mapping_failed_job(self):
+        """A completed invocation with a failed (and a paused downstream) job is EXECUTOR_ERROR, not COMPLETE."""
+        workflow_yaml = """class: GalaxyWorkflow
+inputs: {}
+steps:
+  job_props:
+    tool_id: job_properties
+    state:
+      thebool: true
+      failbool: true
+  downstream:
+    tool_id: cat1
+    in:
+      input1: job_props/out_file1
+"""
+        with self.dataset_populator.test_history() as history_id:
+            run_id = self._submit_wes_workflow_and_get_invocation_id(
+                workflow_content=workflow_yaml,
+                workflow_type="gx_workflow_format2",
+                history_id=history_id,
+            )
+            self.workflow_populator.wait_for_invocation_and_completion(run_id)
+            self._assert_wes_run_state(run_id, "EXECUTOR_ERROR")
+
+    def test_wes_state_mapping_failed_job_in_subworkflow(self):
+        """A job that failed inside a subworkflow makes the outer run EXECUTOR_ERROR."""
+        workflow_yaml = """class: GalaxyWorkflow
+inputs: {}
+steps:
+  nested:
+    run:
+      class: GalaxyWorkflow
+      inputs: {}
+      steps:
+        job_props:
+          tool_id: job_properties
+          state:
+            thebool: true
+            failbool: true
+"""
+        with self.dataset_populator.test_history() as history_id:
+            run_id = self._submit_wes_workflow_and_get_invocation_id(
+                workflow_content=workflow_yaml,
+                workflow_type="gx_workflow_format2",
+                history_id=history_id,
+            )
+            self.workflow_populator.wait_for_invocation_and_completion(run_id)
+            self._assert_wes_run_state(run_id, "EXECUTOR_ERROR")
+
+    def test_wes_state_mapping_paused_job(self):
+        """A completed invocation whose only unsuccessful job is paused is EXECUTOR_ERROR, not COMPLETE."""
+        with self.dataset_populator.test_history() as history_id:
+            fetch_response = self.dataset_collection_populator.create_list_in_history(
+                history_id, contents=[("sample1", "1 2 3")], wait=True
+            ).json()
+            hdca = self.dataset_collection_populator.wait_for_fetched_collection(fetch_response)
+            # Galaxy pauses, rather than fails, a job whose input was deleted but not purged.
+            self.dataset_populator.delete_dataset(history_id, hdca["elements"][0]["object"]["id"])
+            run_id = self._submit_wes_workflow_and_get_invocation_id(
+                workflow_content=WORKFLOW_WITH_MAPPED_OUTPUT_COLLECTION,
+                workflow_type="gx_workflow_format2",
+                history_id=history_id,
+                input1=self._ds_entry(hdca),
+            )
+            self.workflow_populator.wait_for_invocation_and_completion(run_id)
+            jobs = self.workflow_populator.get_invocation_jobs(run_id)
+            assert [job["state"] for job in jobs] == ["paused"]
+            self._assert_wes_run_state(run_id, "EXECUTOR_ERROR")
+
     def test_wes_error_handling_missing_workflow_type(self):
         """Test error handling when workflow_type is missing."""
         with self.dataset_populator.test_history() as history_id:
@@ -1069,6 +1138,14 @@ steps: {}
         response = self._wes_get(f"ga4gh/wes/v1/runs/{run_id}/status")
         self._assert_status_code_is(response, 200)
         return response.json()
+
+    def _assert_wes_run_state(self, run_id: str, wes_state: str) -> None:
+        """Assert the run's state in its status, its run log and the first page of GET /runs."""
+        assert self._get_run_status_validated(run_id)["state"] == wes_state
+        assert self._get_run_details(run_id)["state"] == wes_state
+        # Runs are listed newest first, so a run this test just finished is on the first page.
+        listed_states = [run["state"] for run in self._list_wes_runs(10)["runs"] if run["run_id"] == run_id]
+        assert listed_states == [wes_state]
 
     def _list_wes_runs(self, page_size: int, page_token: Optional[str] = None) -> dict[str, Any]:
         """GET a page of runs, validate 200, return JSON."""
