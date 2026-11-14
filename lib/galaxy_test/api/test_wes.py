@@ -159,6 +159,43 @@ class TestWesApi(BaseWorkflowsApiTestCase):
             )
             self._assert_status_code_is(response, 400)
 
+    def test_wes_failed_submission_leaves_no_workflow_or_history(self):
+        """A rejected submission must not leave an imported workflow or a new history behind."""
+        token = uuid4().hex
+        workflow_content = WORKFLOW_SIMPLE.replace("name: Simple Workflow", f"name: WES rejected {token}")
+        history_name = f"WES rejected {token}"
+        with self.dataset_populator.test_history() as history_id:
+            dataset = self._get_test_dataset_id(history_id)
+            with self._different_user():
+                other_users_history_id = self.dataset_populator.new_history()
+
+            response = self._submit_wes_workflow(
+                workflow_content=workflow_content,
+                workflow_type="gx_workflow_format2",
+                engine_parameters={"history_name": history_name, "use_cached_job": "maybe"},
+                input1=dataset,
+            )
+            self._assert_status_code_is(response, 400)
+
+            # Required input missing - only detected when invoking.
+            response = self._submit_wes_workflow(
+                workflow_content=workflow_content,
+                workflow_type="gx_workflow_format2",
+                engine_parameters={"history_name": history_name},
+            )
+            self._assert_status_code_is(response, 400)
+
+            response = self._submit_wes_workflow(
+                workflow_content=workflow_content,
+                workflow_type="gx_workflow_format2",
+                history_id=other_users_history_id,
+                input1=dataset,
+            )
+            self._assert_status_code_is(response, 404)
+
+        assert [w["name"] for w in self.workflow_populator.index() if token in w["name"]] == []
+        assert history_name not in self.dataset_populator.history_names()
+
     def test_wes_submit_run_format2_workflow(self):
         """Test workflow submission with Format2 (CWL-style) workflow."""
         format2_workflow = """class: GalaxyWorkflow
