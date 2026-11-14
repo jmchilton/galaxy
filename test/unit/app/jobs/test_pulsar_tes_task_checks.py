@@ -46,6 +46,8 @@ GRACE = 120.0
 SERVER_NAME = "main.handler0"
 AMQP_PASSWORD = "Br0kerPassword"
 STAGING_IMAGE = "galaxy/pulsar-pod-staging:0.15.0.2"
+# Job.info is cut at this length, so failure messages must fit.
+JOB_INFO_LENGTH = model.Job.__table__.c.info.type.length
 # Stand-ins for the base64 job description and app configuration Pulsar passes
 # its executors; the real ones carry the message queue credentials.
 JOB_BASE64 = "eyJqb2JfaWQiOiAiNDIiLCAibWVzc2FnZV9xdWV1ZV91cmwiOiAiYW1xcDovL2d1ZXN0OnMzY3IzdEBicm9rZXIifQ=="
@@ -299,8 +301,9 @@ def test_task_dying_before_pulsar_reports_fails_the_job(harness, tes_server, cap
     [failure] = harness.failures
     assert failure["message"] == (
         f"TES task {TASK_ID} ended in state EXECUTOR_ERROR before Pulsar reported a final job status. "
-        f"Executor 0 (pulsar-submit, image {STAGING_IMAGE}) exited with code 1."
+        "Executor 0 (pulsar-submit) exited with code 1."
     )
+    assert len(failure["message"]) <= JOB_INFO_LENGTH
     details = failure["tool_stderr"]
     assert f"Executor 0 (pulsar-submit, image {STAGING_IMAGE}) stderr, last lines:" in details
     assert "OSError: [Errno 30] Read-only file system: '/dependencies'" in details
@@ -361,10 +364,33 @@ def test_completed_task_without_a_final_status_fails_the_job(harness, tes_server
 
     [failure] = harness.failures
     assert failure["message"] == (
-        f"TES task {TASK_ID} completed, but Pulsar never reported a final job status, so Galaxy could not "
-        f"collect the job's results. Executor 2 (pulsar-finish, image {STAGING_IMAGE}) ran last and exited with code 0."
+        f"TES task {TASK_ID} completed, but Pulsar never reported a final job status. "
+        "Executor 2 (pulsar-finish) ran last and exited with code 0."
     )
+    assert len(failure["message"]) <= JOB_INFO_LENGTH
+    assert f"Executor 2 (pulsar-finish, image {STAGING_IMAGE}) stderr, last lines:" in failure["tool_stderr"]
     assert "Failed to publish status: [Errno 111] Connection refused" in failure["tool_stderr"]
+
+
+def test_failure_message_fits_job_info_with_long_image_names(harness, tes_server):
+    long_image = (
+        "quay.io/biocontainers/mulled-v2-8374e50c663bfd36021a9219b02d97e9c4baaad5:"
+        "783e4c36591c28e0c25d1c1084e0a4a5ca32fd17-0"
+    )
+    executors = _executors()
+    executors[1]["image"] = long_image
+    tes_server.tasks[TASK_ID] = _task(
+        "EXECUTOR_ERROR",
+        executors=executors,
+        executor_logs=[{"exit_code": 0}, {"exit_code": 137, "stderr": "Killed"}],
+    )
+    harness.check()
+    assert not harness.watch_for(INTERVAL + GRACE + INTERVAL)
+
+    [failure] = harness.failures
+    assert failure["message"].endswith("Executor 1 exited with code 137.")
+    assert len(failure["message"]) <= JOB_INFO_LENGTH
+    assert f"Executor 1 (image {long_image}) stderr, last lines:\nKilled" in failure["tool_stderr"]
 
 
 def test_task_unknown_to_the_tes_server_fails_the_job(harness, tes_server):

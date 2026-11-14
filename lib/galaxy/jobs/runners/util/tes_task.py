@@ -82,7 +82,7 @@ def http_status_code(exception: BaseException) -> int | None:
 
 class TesTaskFailure(NamedTuple):
     summary: str
-    """Names the executor that failed, or ran last, and its exit code."""
+    """Names the executor that failed, or ran last, and its exit code. Short enough for ``Job.info``."""
     executor_stderr: str
     """Redacted tail of that executor's stderr."""
     system_logs: str
@@ -110,13 +110,14 @@ def describe_tes_task_failure(task: "TesTask", secrets: Iterable[str] = ()) -> T
                 break
         executor_log = executor_logs[index]
         label = _executor_label(task, index)
+        short_label = _executor_label(task, index, with_image=False)
         if executor_log.exit_code in (None, -255):
             # pydantic-tes fills in -255 when the server reports no exit code.
-            summary = f"{label} reported no exit code."
+            summary = f"{short_label} reported no exit code."
         elif executor_log.exit_code == 0:
-            summary = f"{label} ran last and exited with code 0."
+            summary = f"{short_label} ran last and exited with code 0."
         else:
-            summary = f"{label} exited with code {executor_log.exit_code}."
+            summary = f"{short_label} exited with code {executor_log.exit_code}."
         stderr = _tail(executor_log.stderr, STDERR_TAIL_LINES, secrets)
         if stderr:
             executor_stderr = f"{label} stderr, last lines:\n{stderr}"
@@ -152,7 +153,7 @@ def _pulsar_executor_arguments(task: "TesTask") -> list[str]:
     ]
 
 
-def _executor_label(task: "TesTask", index: int) -> str:
+def _executor_label(task: "TesTask", index: int, with_image: bool = True) -> str:
     executors = task.executors or []
     details = []
     if index < len(executors):
@@ -162,7 +163,7 @@ def _executor_label(task: "TesTask", index: int) -> str:
         # program name is shown; the arguments carry credentials.
         if command and command[0].startswith("pulsar-"):
             details.append(command[0])
-        if executor.image:
+        if with_image and executor.image:
             details.append(f"image {executor.image}")
     detail = f" ({', '.join(details)})" if details else ""
     return f"Executor {index}{detail}"
