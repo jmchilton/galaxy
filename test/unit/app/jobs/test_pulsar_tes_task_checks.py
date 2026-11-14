@@ -1,57 +1,121 @@
-"""PulsarTesJobRunner against a fake TES server.
+"""PulsarTesJobRunner fails jobs whose TES task dies before Pulsar reports.
 
-The runner talks to the fake TES server over HTTP through pydantic-tes, the
+The runner talks to a fake TES server over HTTP through pydantic-tes, the
 client Pulsar uses to submit the tasks.
 """
 
+import copy
 import json
 import logging
 import threading
-from dataclasses import (
-    dataclass,
-    field,
-)
 from http.server import (
     BaseHTTPRequestHandler,
     ThreadingHTTPServer,
 )
 from queue import Queue
+from types import SimpleNamespace
 from typing import (
     Any,
     cast,
 )
 from unittest.mock import Mock
-from urllib.parse import urlparse
+from urllib.parse import (
+    parse_qs,
+    urlparse,
+)
 
 import pytest
 
 from galaxy import model
 from galaxy.jobs import MinimalJobWrapper
 from galaxy.jobs.job_destination import JobDestination
-from galaxy.jobs.runners import AsynchronousJobState
+from galaxy.jobs.runners import (
+    AsynchronousJobState,
+    pulsar as pulsar_runner,
+)
 from galaxy.jobs.runners.pulsar import (
     PulsarMQJobRunner,
     PulsarTesJobRunner,
 )
+from galaxy.jobs.runners.util.tes_task import redact
 
 TASK_ID = "d4rk5c3bf5d1q0abcdef"
 GALAXY_JOB_ID = 42
+INTERVAL = 60.0
+GRACE = 120.0
 SERVER_NAME = "main.handler0"
 AMQP_PASSWORD = "Br0kerPassword"
 STAGING_IMAGE = "galaxy/pulsar-pod-staging:0.15.0.2"
+# Stand-ins for the base64 job description and app configuration Pulsar passes
+# its executors; the real ones carry the message queue credentials.
+JOB_BASE64 = "eyJqb2JfaWQiOiAiNDIiLCAibWVzc2FnZV9xdWV1ZV91cmwiOiAiYW1xcDovL2d1ZXN0OnMzY3IzdEBicm9rZXIifQ=="
+APP_CONF_BASE64 = "eyJtZXNzYWdlX3F1ZXVlX3VybCI6ICJhbXFwOi8vZ3Vlc3Q6czNjcjN0QGJyb2tlciJ9"
+
+
+def _executors():
+    return [
+        {
+            "image": STAGING_IMAGE,
+            "command": ["pulsar-submit", "--base64", JOB_BASE64, "--app_conf_base64", APP_CONF_BASE64],
+        },
+        {"image": "quay.io/biocontainers/samtools:1.21", "command": ["bash", "/pulsar_staging/42/tool_script.sh"]},
+        {
+            "image": STAGING_IMAGE,
+            "command": ["pulsar-finish", "--base64", JOB_BASE64, "--app_conf_base64", APP_CONF_BASE64],
+        },
+    ]
+
+
+def _task(state, executor_logs=None, system_logs=None, executors=None):
+    task: dict[str, Any] = {"id": TASK_ID, "state": state, "name": "pulsar-42", "executors": executors or _executors()}
+    if executor_logs is not None:
+        task["logs"] = [{"logs": executor_logs, "system_logs": system_logs or []}]
+    return task
+
+
+RUNNING_COMMAND = (
+    f"docker run -i {STAGING_IMAGE} pulsar-submit --base64 {JOB_BASE64} --app_conf_base64 {APP_CONF_BASE64}"
+)
+RUNNING_COMMAND_LOG = f"level='info' msg='Running command' cmd='{RUNNING_COMMAND}'"
+STAGING_FAILURE_STDERR = "\n".join(
+    [f"noise line {i}" for i in range(40)]
+    + [
+        f"pulsar-submit --base64 {JOB_BASE64}",
+        "Traceback (most recent call last):",
+        '  File "/usr/local/lib/python3.12/site-packages/galaxy/tool_util/deps/installable.py", line 63, in ensure_installed',
+        "    os.mkdir(parent_path)",
+        "OSError: [Errno 30] Read-only file system: '/dependencies'",
+    ]
+)
 
 
 class FakeTesServer:
-    """Answers ``POST /v1/tasks/{id}:cancel`` with ``cancel_status`` and ``cancel_body`` for known tasks."""
+    """Serves ``GET /v1/tasks/{id}`` the way Funnel does: BASIC drops stdout, stderr and system logs.
+
+    ``POST /v1/tasks/{id}:cancel`` answers ``cancel_status`` with ``cancel_body`` for known tasks.
+    """
 
     def __init__(self):
         self.tasks: dict[str, dict[str, Any]] = {}
         self.requests: list[tuple[str, str]] = []
+        self.error_status: int | None = None
         self.cancel_status = 200
         self.cancel_body: dict[str, Any] = {}
         server = self
 
         class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                url = urlparse(self.path)
+                task_id = url.path.rsplit("/", 1)[-1]
+                view = parse_qs(url.query).get("view", ["MINIMAL"])[0]
+                server.requests.append((task_id, view))
+                if server.error_status:
+                    self._send(server.error_status, {"error": "backend unavailable"})
+                elif task_id not in server.tasks:
+                    self._send(404, {"error": f"task not found: taskID: {task_id}"})
+                else:
+                    self._send(200, server.view(server.tasks[task_id], view))
+
             def do_POST(self):
                 task_id = urlparse(self.path).path.rsplit("/", 1)[-1].removesuffix(":cancel")
                 server.requests.append((task_id, "POST"))
@@ -76,6 +140,20 @@ class FakeTesServer:
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self.thread.start()
 
+    @staticmethod
+    def view(task, view):
+        task = copy.deepcopy(task)
+        if view != "FULL":
+            for attempt in task.get("logs", []):
+                attempt.pop("system_logs", None)
+                for executor_log in attempt["logs"]:
+                    executor_log.pop("stdout", None)
+                    executor_log.pop("stderr", None)
+        return task
+
+    def views_requested(self):
+        return [view for _, view in self.requests]
+
     def stop(self):
         self.httpd.shutdown()
         self.httpd.server_close()
@@ -88,25 +166,35 @@ def tes_server():
     server.stop()
 
 
-@dataclass
+class Clock:
+    def __init__(self):
+        self.now = 1000.0
+
+    def __call__(self):
+        return self.now
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    clock = Clock()
+    monkeypatch.setattr(pulsar_runner, "monotonic", clock, raising=False)
+    return clock
+
+
 class FakeJob:
-    id: int = GALAXY_JOB_ID
-    state: str = model.Job.states.QUEUED
-    job_runner_external_id: str = TASK_ID
-    job_runner_name: str = "pulsar_tes://"
-    handler: str = SERVER_NAME
-    destination_params: dict[str, Any] = field(default_factory=dict)
+    def __init__(self):
+        self.id = GALAXY_JOB_ID
+        self.state = model.Job.states.QUEUED
+        self.job_runner_external_id = TASK_ID
+        self.job_runner_name = "pulsar_tes://"
+        self.handler = SERVER_NAME
+        self.destination_params: dict[str, Any] = {}
 
     def get_job_runner_external_id(self):
         return self.job_runner_external_id
 
     def get_external_output_metadata(self):
         return []
-
-
-@dataclass
-class FakeTool:
-    old_id: str = "cat1"
 
 
 class FakeJobWrapper:
@@ -116,9 +204,8 @@ class FakeJobWrapper:
         self.app = app
         self.job = FakeJob()
         self.job_id = GALAXY_JOB_ID
-        self.tool = FakeTool()
+        self.tool = SimpleNamespace(old_id="cat1")
         self.user = None
-        self.guest_ports: list[int] = []
         self.failures: list[dict[str, Any]] = []
 
     def get_id_tag(self):
@@ -139,11 +226,17 @@ class FakeJobWrapper:
 
 
 class Harness:
-    """A TES runner with one job."""
+    """A TES runner watching one job."""
 
-    def __init__(self, tes_server):
+    def __init__(self, tes_server, clock):
         self.tes_server = tes_server
-        self.runner = _runner(PulsarTesJobRunner, amqp_url=f"amqp://galaxy:{AMQP_PASSWORD}@broker:5672//")
+        self.clock = clock
+        self.runner = _runner(
+            PulsarTesJobRunner,
+            tes_status_check_interval=str(INTERVAL),
+            tes_status_grace_period=str(GRACE),
+            amqp_url=f"amqp://galaxy:{AMQP_PASSWORD}@broker:5672//",
+        )
         self.runner.work_queue = Queue()
         self.runner._init_client_manager()
         self.job_wrapper = FakeJobWrapper(self.runner.app)
@@ -164,18 +257,240 @@ class Harness:
     def failures(self):
         return self.job_wrapper.failures
 
+    def check(self):
+        return self.runner.check_watched_item(self.job_state)
+
+    def check_after(self, seconds):
+        self.clock.now += seconds
+        return self.check()
+
+    def watch_for(self, seconds):
+        """Check every monitor loop iteration (one second) for this long; return whether still watched."""
+        for _ in range(int(seconds)):
+            if self.check_after(1) is None:
+                return False
+        return True
+
 
 @pytest.fixture
-def harness(tes_server):
-    return Harness(tes_server)
+def harness(tes_server, clock):
+    return Harness(tes_server, clock)
+
+
+def test_task_dying_before_pulsar_reports_fails_the_job(harness, tes_server, caplog):
+    caplog.set_level(logging.INFO, logger=pulsar_runner.__name__)
+    tes_server.tasks[TASK_ID] = _task(
+        "EXECUTOR_ERROR",
+        executor_logs=[{"exit_code": 1, "stdout": "", "stderr": STAGING_FAILURE_STDERR}],
+        system_logs=[
+            RUNNING_COMMAND_LOG,
+            "level='error' msg='Exec failed' error='exit status 1'",
+        ],
+    )
+
+    assert harness.check() is harness.job_state
+    assert tes_server.requests == [], "the first TES check waits one interval"
+    # Detected on the first check, then given the grace period to report.
+    assert harness.watch_for(INTERVAL + GRACE - 1)
+    assert harness.failures == []
+    assert not harness.watch_for(INTERVAL)
+
+    assert tes_server.views_requested() == ["BASIC", "BASIC", "BASIC", "FULL"]
+    [failure] = harness.failures
+    assert failure["message"] == (
+        f"TES task {TASK_ID} ended in state EXECUTOR_ERROR before Pulsar reported a final job status. "
+        f"Executor 0 (pulsar-submit, image {STAGING_IMAGE}) exited with code 1."
+    )
+    details = failure["tool_stderr"]
+    assert f"Executor 0 (pulsar-submit, image {STAGING_IMAGE}) stderr, last lines:" in details
+    assert "OSError: [Errno 30] Read-only file system: '/dependencies'" in details
+    assert "galaxy/tool_util/deps/installable.py" in details
+    assert "noise line 19" not in details
+    assert "pulsar-submit --base64 [redacted]" in details
+    assert "Exec failed" not in details
+    # System logs describe the TES hosts; they go to admins only, redacted like stderr.
+    [log_message] = [record.getMessage() for record in caplog.records if "TES system logs" in record.getMessage()]
+    assert failure["message"] in log_message
+    assert "level='error' msg='Exec failed' error='exit status 1'" in log_message
+    assert "pulsar-submit --base64 [redacted] --app_conf_base64 [redacted]" in log_message
+    for text in (details, *(record.getMessage() for record in caplog.records)):
+        assert JOB_BASE64[:32] not in text
+        assert APP_CONF_BASE64[:32] not in text
+    assert harness.runner._tes_task_watches == {}
+
+
+def test_job_finished_by_pulsar_stops_the_checks(harness, tes_server):
+    tes_server.tasks[TASK_ID] = _task("EXECUTOR_ERROR", executor_logs=[{"exit_code": 1}])
+    harness.check()
+    harness.check_after(INTERVAL)
+    harness.job.state = model.Job.states.ERROR  # Pulsar's "failed" message arrived.
+
+    assert harness.check_after(INTERVAL) is None
+    assert tes_server.views_requested() == ["BASIC"]
+    assert harness.failures == []
+    assert harness.runner._tes_task_watches == {}
+
+
+@pytest.mark.parametrize("state", [model.Job.states.DELETING, model.Job.states.STOPPED, model.Job.states.OK])
+def test_jobs_no_longer_queued_or_running_are_not_checked(harness, tes_server, state):
+    harness.job.state = state
+    harness.check()
+    assert harness.check_after(INTERVAL) is None
+    assert tes_server.requests == []
+
+
+def test_running_task_is_checked_once_per_interval_and_left_alone(harness, tes_server):
+    tes_server.tasks[TASK_ID] = _task("RUNNING", executor_logs=[{"exit_code": 0}])
+    harness.check()
+    assert harness.watch_for(10 * INTERVAL)
+    assert tes_server.views_requested() == ["BASIC"] * 10
+    assert harness.failures == []
+
+
+def test_completed_task_without_a_final_status_fails_the_job(harness, tes_server):
+    tes_server.tasks[TASK_ID] = _task(
+        "COMPLETE",
+        executor_logs=[
+            {"exit_code": 0, "stderr": "staged"},
+            {"exit_code": 0, "stderr": "tool ran"},
+            {"exit_code": 0, "stderr": "Failed to publish status: [Errno 111] Connection refused"},
+        ],
+    )
+    harness.check()
+    assert not harness.watch_for(INTERVAL + GRACE + INTERVAL)
+
+    [failure] = harness.failures
+    assert failure["message"] == (
+        f"TES task {TASK_ID} completed, but Pulsar never reported a final job status, so Galaxy could not "
+        f"collect the job's results. Executor 2 (pulsar-finish, image {STAGING_IMAGE}) ran last and exited with code 0."
+    )
+    assert "Failed to publish status: [Errno 111] Connection refused" in failure["tool_stderr"]
+
+
+def test_task_unknown_to_the_tes_server_fails_the_job(harness, tes_server):
+    harness.check()
+    assert not harness.watch_for(INTERVAL + GRACE + INTERVAL)
+
+    # A lost task can't be cancelled; trying would raise before the job fails.
+    assert tes_server.views_requested() == ["BASIC", "BASIC", "BASIC"]
+    [failure] = harness.failures
+    assert failure == {
+        "message": f"The TES server has no record of task {TASK_ID}, and Pulsar never reported a final job status.",
+        "tool_stderr": None,
+    }
+
+
+def test_tes_states_newer_than_pydantic_tes_are_recognized(harness, tes_server):
+    tes_server.tasks[TASK_ID] = _task("PREEMPTED", executor_logs=[{"exit_code": 0}])
+    harness.check()
+    assert not harness.watch_for(INTERVAL + GRACE + INTERVAL)
+
+    [failure] = harness.failures
+    # The FULL view doesn't parse either, so there is nothing to add.
+    assert failure == {
+        "message": f"TES task {TASK_ID} ended in state PREEMPTED before Pulsar reported a final job status.",
+        "tool_stderr": None,
+    }
+
+
+def test_task_back_to_running_restarts_the_grace_period(harness, tes_server):
+    tes_server.tasks[TASK_ID] = _task("SYSTEM_ERROR")
+    harness.check()
+    assert harness.watch_for(INTERVAL + GRACE - 1)
+    tes_server.tasks[TASK_ID] = _task("RUNNING")
+    assert harness.watch_for(INTERVAL)
+    tes_server.tasks[TASK_ID] = _task("SYSTEM_ERROR")
+    assert harness.watch_for(GRACE)
+    assert harness.failures == []
+    assert not harness.watch_for(INTERVAL)
+
+
+def test_tes_server_errors_never_fail_the_job(harness, tes_server):
+    tes_server.error_status = 500
+    harness.check()
+    assert harness.watch_for(INTERVAL + 3 * GRACE)
+    assert set(tes_server.views_requested()) == {"BASIC"}
+
+    tes_server.stop()
+    assert harness.watch_for(3 * GRACE)
+    assert harness.failures == []
+
+
+def test_resubmitted_job_stops_the_checks_of_its_old_task(harness, tes_server):
+    tes_server.tasks[TASK_ID] = _task("EXECUTOR_ERROR")
+    harness.job.job_runner_external_id = "a-newer-task"
+    harness.check()
+    assert harness.check_after(INTERVAL) is None
+    assert tes_server.requests == []
+    assert harness.failures == []
+
+
+def test_final_status_from_pulsar_outlasting_the_grace_period_keeps_the_job(harness, tes_server):
+    tes_server.tasks[TASK_ID] = _task("COMPLETE", executor_logs=[{"exit_code": 0}])
+    harness.job.state = model.Job.states.RUNNING
+    harness.check()
+    assert harness.watch_for(INTERVAL)
+    # Pulsar's message arrives; Galaxy finishes the job on a worker thread, and the job
+    # stays running until that is done.
+    harness.runner._update_job_state_for_status(harness.job_state_for(harness.job_wrapper), "complete")
+    method, _ = harness.runner.work_queue.get_nowait()
+    assert method == harness.runner.finish_job
+
+    assert not harness.watch_for(INTERVAL + GRACE + INTERVAL)
+    assert harness.failures == []
+    assert harness.runner._tes_tasks_reported == set()
+
+
+def test_job_claimed_by_another_handler_is_left_to_it(harness, tes_server):
+    tes_server.tasks[TASK_ID] = _task("COMPLETE")
+    harness.job.handler = "main.handler1"
+    harness.check()
+    assert harness.check_after(INTERVAL) is None
+    assert tes_server.requests == []
+
+
+def test_errors_while_checking_do_not_stop_the_monitor(harness, tes_server, monkeypatch):
+    tes_server.tasks[TASK_ID] = _task("RUNNING")
+    harness.check()
+
+    def broken_state():
+        raise RuntimeError("database went away")
+
+    monkeypatch.setattr(harness.job_wrapper, "get_state", broken_state)
+    assert harness.check_after(INTERVAL) is harness.job_state
+    monkeypatch.undo()
+    assert harness.check_after(INTERVAL) is harness.job_state
+    assert tes_server.views_requested() == ["BASIC"]
+
+
+def test_known_secrets_are_redacted_exactly(harness, tes_server):
+    no_digits_argument = "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVphYmNkZWZn"
+    executors = _executors()
+    executors[2]["command"] = ["pulsar-finish", "--app_conf_base64", no_digits_argument]
+    tes_server.tasks[TASK_ID] = _task(
+        "COMPLETE",
+        executors=executors,
+        executor_logs=[
+            {"exit_code": 0},
+            {"exit_code": 0},
+            {
+                "exit_code": 0,
+                "stderr": f"argv {no_digits_argument}\nconnecting with {AMQP_PASSWORD}\n{{'password': 'hunter2'}}",
+            },
+        ],
+    )
+    harness.check()
+    assert not harness.watch_for(INTERVAL + GRACE + INTERVAL)
+
+    [failure] = harness.failures
+    stderr = failure["tool_stderr"]
+    assert "argv [redacted]" in stderr
+    assert "connecting with [redacted]" in stderr
+    assert "{'password': '[redacted]'}" in stderr
 
 
 def _log_messages(caplog, level):
     return [record.getMessage() for record in caplog.records if record.levelno == level]
-
-
-def _task(state):
-    return {"id": TASK_ID, "state": state, "name": "pulsar-42", "executors": []}
 
 
 def test_stopping_a_job_cancels_its_tes_task(harness, tes_server, caplog):
@@ -216,6 +531,44 @@ def _runner(runner_class, **params):
     return runner_class(app, 1, **params)
 
 
+def test_tes_checks_are_on_by_default():
+    runner = _runner(PulsarTesJobRunner)
+    assert runner.poll
+    assert runner.use_mq
+    assert runner.tes_status_check_interval == INTERVAL
+    assert runner.tes_status_grace_period == GRACE
+
+
+def test_tes_checks_are_configurable():
+    runner = _runner(PulsarTesJobRunner, tes_status_check_interval="15", tes_status_grace_period="0")
+    assert runner.poll
+    assert runner.tes_status_check_interval == 15.0
+    assert runner.tes_status_grace_period == 0.0
+    assert not _runner(PulsarTesJobRunner, tes_status_check_interval="0").poll
+    with pytest.raises(Exception, match="tes_status_grace_period"):
+        _runner(PulsarTesJobRunner, tes_status_grace_period="-1")
+
+
+def test_other_message_queue_runners_still_do_not_poll():
+    assert not _runner(PulsarMQJobRunner).poll
+
+
 def test_tes_options_are_rejected_by_other_pulsar_runners():
     with pytest.raises(Exception, match="tes_status_check_interval"):
         _runner(PulsarMQJobRunner, amqp_url="amqp://", tes_status_check_interval="15")
+
+
+def test_redact_hides_credentials_but_keeps_paths_and_digests():
+    digest = "sha256:" + "0123456789abcdef" * 4
+    text = (
+        f"pulsar-submit --base64 {JOB_BASE64} amqp://guest:s3cr3t@broker:5672// "
+        f"http://galaxy/api/jobs/1/files?job_key=abc123XYZ&path=x {digest} "
+        "/pulsar_staging/persisted_data/_default_-active-jobs"
+    )
+    redacted = redact(text)
+    assert JOB_BASE64[:32] not in redacted
+    assert "s3cr3t" not in redacted
+    assert "abc123XYZ" not in redacted
+    assert digest in redacted
+    assert "/pulsar_staging/persisted_data/_default_-active-jobs" in redacted
+    assert "amqp://[redacted]@broker:5672//" in redacted
