@@ -37,6 +37,7 @@ from galaxy.model import (
     ImplicitCollectionJobs,
     ImplicitCollectionJobsJobAssociation,
     Job,
+    StoredWorkflow,
     User,
     WorkflowInvocation,
     WorkflowInvocationStep,
@@ -349,6 +350,29 @@ def _generate_history_name(engine_params: dict[str, Any]) -> str:
     return "WES Run"
 
 
+def _parse_json_object(value: Optional[str], field_name: str) -> Optional[dict[str, Any]]:
+    """Parse a RunRequest field that holds a JSON object; empty or JSON null gives None."""
+    if not value:
+        return None
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        raise exceptions.MessageException(f"Invalid JSON in {field_name}")
+    if parsed is not None and not isinstance(parsed, dict):
+        raise exceptions.RequestParameterInvalidException(f"{field_name} must be a JSON object")
+    return parsed
+
+
+def _parse_engine_parameters(workflow_engine_parameters: Optional[str]) -> dict[str, Any]:
+    """Parse and validate the workflow_engine_parameters JSON object."""
+    engine_params = _parse_json_object(workflow_engine_parameters, "workflow_engine_parameters") or {}
+    if "use_cached_job" in engine_params:
+        engine_params["use_cached_job"] = _parse_boolean_engine_parameter(
+            "use_cached_job", engine_params["use_cached_job"]
+        )
+    return engine_params
+
+
 def _parse_boolean_engine_parameter(name: str, value: Any) -> bool:
     """Accept a JSON boolean (as advertised in service-info) or the strings "true"/"false"."""
     if isinstance(value, bool):
@@ -358,6 +382,25 @@ def _parse_boolean_engine_parameter(name: str, value: Any) -> bool:
     raise exceptions.RequestParameterInvalidException(
         f"Workflow engine parameter '{name}' must be a boolean, got {json.dumps(value)}"
     )
+
+
+def _discard_rejected_submission(
+    trans: ProvidesUserContext,
+    imported_workflow: Optional[StoredWorkflow],
+    created_history: Optional[History],
+) -> None:
+    """Delete the workflow and history a rejected WES submission created."""
+    if imported_workflow is None and created_history is None:
+        return
+    try:
+        trans.sa_session.rollback()
+        if imported_workflow is not None:
+            imported_workflow.deleted = True
+        if created_history is not None:
+            created_history.deleted = True
+        trans.sa_session.commit()
+    except Exception:
+        log.exception("Failed to clean up after rejected WES submission")
 
 
 class WesService(ServiceBase):
@@ -498,9 +541,16 @@ class WesService(ServiceBase):
 
         trans.check_user_activation()
 
+        # Validate request parameters before importing the workflow or creating a history,
+        # so a malformed request leaves nothing behind.
+        engine_params = _parse_engine_parameters(workflow_engine_parameters)
+        workflow_inputs = _parse_json_object(workflow_params, "workflow_params")
+        history = _get_requested_history(trans, engine_params)
+
         # Step 1: Load workflow content from URL or attachment
         workflow_dict = _load_workflow_content(trans, workflow_attachment, workflow_url)
 
+        imported_workflow: Optional[StoredWorkflow] = None
         # Check if this is a gxworkflow:// URI reference
         if "workflow_uri" in workflow_dict:
             # Load workflow from Galaxy database using gxworkflow:// URI
@@ -547,51 +597,43 @@ class WesService(ServiceBase):
                 workflow_create_options,
                 source="WES API",
             )
-            stored_workflow = created_workflow.stored_workflow
-            invoke_workflow_id = stored_workflow.id
+            imported_workflow = created_workflow.stored_workflow
+            invoke_workflow_id = imported_workflow.id
             instance = False
 
-        # Step 5: Parse engine parameters and create/select history
-        engine_params = {}
-        if workflow_engine_parameters:
-            try:
-                engine_params = json.loads(workflow_engine_parameters)
-            except json.JSONDecodeError:
-                raise exceptions.MessageException("Invalid JSON in workflow_engine_parameters")
+        # Invocation-time validation (required inputs, ...) happens below, after the
+        # workflow import; undo the import and any new history if it fails.
+        created_history: Optional[History] = None
+        try:
+            # Step 5: Create a history unless the request named one
+            if history is None:
+                history = created_history = _create_history(trans, engine_params)
 
-        history = _get_requested_history(trans, engine_params)
-        if history is None:
-            history = _create_history(trans, engine_params)
+            # Step 6: Build invocation parameters
+            invoke_params: dict[str, Any] = {
+                "history_id": trans.security.encode_id(history.id),
+                "inputs_by": "name",
+                "instance": instance,
+            }
+            if workflow_inputs is not None:
+                invoke_params["inputs"] = workflow_inputs
 
-        # Step 6: Parse workflow parameters
-        invoke_params: dict[str, Any] = {
-            "history_id": trans.security.encode_id(history.id),
-            "inputs_by": "name",
-            "instance": instance,
-        }
+            # Step 7: Apply workflow engine parameters
+            if "preferred_object_store_id" in engine_params:
+                invoke_params["preferred_object_store_id"] = engine_params["preferred_object_store_id"]
+            if "use_cached_job" in engine_params:
+                invoke_params["use_cached_job"] = engine_params["use_cached_job"]
 
-        if workflow_params:
-            try:
-                params = json.loads(workflow_params)
-                invoke_params["inputs"] = params
-            except json.JSONDecodeError:
-                raise exceptions.MessageException("Invalid JSON in workflow_params")
-
-        # Step 7: Apply workflow engine parameters
-        if "preferred_object_store_id" in engine_params:
-            invoke_params["preferred_object_store_id"] = engine_params["preferred_object_store_id"]
-        if "use_cached_job" in engine_params:
-            invoke_params["use_cached_job"] = _parse_boolean_engine_parameter(
-                "use_cached_job", engine_params["use_cached_job"]
+            # Step 8: Invoke workflow
+            invoke_payload = InvokeWorkflowPayload(**invoke_params)
+            workflow_invocation_response = self._workflows_service.invoke_workflow(
+                trans,
+                invoke_workflow_id,
+                invoke_payload,
             )
-
-        # Step 8: Invoke workflow
-        invoke_payload = InvokeWorkflowPayload(**invoke_params)
-        workflow_invocation_response = self._workflows_service.invoke_workflow(
-            trans,
-            invoke_workflow_id,
-            invoke_payload,
-        )
+        except Exception:
+            _discard_rejected_submission(trans, imported_workflow, created_history)
+            raise
 
         # Handle both single and batch responses
         if isinstance(workflow_invocation_response, list):
