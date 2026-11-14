@@ -1077,6 +1077,9 @@ class WesService(ServiceBase):
             exceptions.ObjectNotFound: If invocation not found
             exceptions.AuthenticationRequired: If user cannot access invocation
         """
+        if trans.user is None:
+            raise exceptions.AuthenticationRequired("Accessing WES runs requires authentication.")
+
         invocation = trans.sa_session.query(WorkflowInvocation).filter_by(id=run_id).one_or_none()
 
         if not invocation:

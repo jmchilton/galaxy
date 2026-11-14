@@ -395,6 +395,7 @@ with a matching HTTP status. The ones a client is most likely to hit:
 | `workflow_type` disagrees with the auto-detected type (attachment / fetched URL) | 400    |
 | Malformed `gxworkflow://` URI                                                    | 400    |
 | Submit while anonymous                                                           | 403    |
+| Read, list or cancel runs while anonymous                                        | 403    |
 | Submit while logged in but inactive (unactivated account)                        | 403    |
 | Run / task id does not exist                                                     | 404    |
 | Invalid `task_id` format                                                         | 404    |
