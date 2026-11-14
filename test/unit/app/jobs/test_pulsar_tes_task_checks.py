@@ -47,7 +47,8 @@ SERVER_NAME = "main.handler0"
 AMQP_PASSWORD = "Br0kerPassword"
 STAGING_IMAGE = "galaxy/pulsar-pod-staging:0.15.0.2"
 # Job.info is cut at this length, so failure messages must fit.
-JOB_INFO_LENGTH = model.Job.__table__.c.info.type.length
+# TrimmedString passes the length through from its String implementation.
+JOB_INFO_LENGTH: int = model.Job.__table__.c.info.type.length  # type: ignore[attr-defined]
 # Stand-ins for the base64 job description and app configuration Pulsar passes
 # its executors; the real ones carry the message queue credentials.
 JOB_BASE64 = "eyJqb2JfaWQiOiAiNDIiLCAibWVzc2FnZV9xdWV1ZV91cmwiOiAiYW1xcDovL2d1ZXN0OnMzY3IzdEBicm9rZXIifQ=="
