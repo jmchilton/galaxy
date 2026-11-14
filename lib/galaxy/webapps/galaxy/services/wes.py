@@ -346,6 +346,17 @@ def _generate_history_name(engine_params: dict[str, Any]) -> str:
     return "WES Run"
 
 
+def _parse_boolean_engine_parameter(name: str, value: Any) -> bool:
+    """Accept a JSON boolean (as advertised in service-info) or the strings "true"/"false"."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str) and value.lower() in ("true", "false"):
+        return value.lower() == "true"
+    raise exceptions.RequestParameterInvalidException(
+        f"Workflow engine parameter '{name}' must be a boolean, got {json.dumps(value)}"
+    )
+
+
 class WesService(ServiceBase):
     """Service for handling GA4GH WES API requests."""
 
@@ -567,7 +578,9 @@ class WesService(ServiceBase):
         if "preferred_object_store_id" in engine_params:
             invoke_params["preferred_object_store_id"] = engine_params["preferred_object_store_id"]
         if "use_cached_job" in engine_params:
-            invoke_params["use_cached_job"] = engine_params["use_cached_job"].lower() == "true"
+            invoke_params["use_cached_job"] = _parse_boolean_engine_parameter(
+                "use_cached_job", engine_params["use_cached_job"]
+            )
 
         # Step 8: Invoke workflow
         invoke_payload = InvokeWorkflowPayload(**invoke_params)

@@ -136,6 +136,28 @@ class TestWesApi(BaseWorkflowsApiTestCase):
             run_details = self._get_run_details(run_id)
             assert run_details is not None
 
+    def test_wes_submit_run_use_cached_job_boolean(self):
+        """use_cached_job is advertised as a boolean: accept JSON booleans and "true"/"false" strings."""
+        with self.dataset_populator.test_history() as history_id:
+            for value in (True, False, "true", "False"):
+                response = self._submit_wes_workflow(
+                    workflow_content=WORKFLOW_SIMPLE,
+                    workflow_type="gx_workflow_format2",
+                    engine_parameters={"use_cached_job": value},
+                    history_id=history_id,
+                    input1=self._get_test_dataset_id(history_id),
+                )
+                self._assert_status_code_is(response, 200)
+
+            response = self._submit_wes_workflow(
+                workflow_content=WORKFLOW_SIMPLE,
+                workflow_type="gx_workflow_format2",
+                engine_parameters={"use_cached_job": "maybe"},
+                history_id=history_id,
+                input1=self._get_test_dataset_id(history_id),
+            )
+            self._assert_status_code_is(response, 400)
+
     def test_wes_submit_run_format2_workflow(self):
         """Test workflow submission with Format2 (CWL-style) workflow."""
         format2_workflow = """class: GalaxyWorkflow

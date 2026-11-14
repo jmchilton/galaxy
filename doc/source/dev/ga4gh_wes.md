@@ -168,7 +168,7 @@ A JSON object. Recognized keys (also advertised in `service-info`):
 | `history_id`                | Run into this existing history (encoded id). Otherwise a new history is created. |
 | `history_name`              | Name for the auto-created history (default `"WES Run"`).                         |
 | `preferred_object_store_id` | Object store for the run's outputs.                                              |
-| `use_cached_job`            | `"true"`/`"false"` string — reuse equivalent prior job results.                  |
+| `use_cached_job`            | Boolean (`true`/`false`, or the strings `"true"`/`"false"`) — reuse equivalent prior job results. |
 
 ### Referencing a workflow already in Galaxy: `gxworkflow://`
 
