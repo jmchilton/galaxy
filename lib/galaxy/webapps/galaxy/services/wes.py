@@ -83,6 +83,9 @@ GALAXY_TO_WES_STATE = {
 
 WES_TO_GALAXY_STATE = {v: k for k, v in GALAXY_TO_WES_STATE.items()}
 
+# How Galaxy records a workflow output for an omitted optional parameter.
+NO_REPLACEMENT_VALUE = {"__class__": "NoReplacement"}
+
 # Galaxy invocation states whose WES state (COMPLETE, EXECUTOR_ERROR, CANCELED) is terminal.
 TERMINAL_GALAXY_STATES = ("completed", "failed", "cancelled")
 
@@ -1218,9 +1221,13 @@ class WesService(ServiceBase):
                         output_info["id"] = output_id_encoded
                 outputs_dict[output_name] = output_info
 
-        # Add value outputs as-is
+        # Add value outputs; an omitted optional parameter is stored as Galaxy's internal
+        # NoReplacement marker, which WES clients should see as null.
         if "output_values" in invocation_dict:
-            outputs_dict.update(invocation_dict["output_values"])
+            for output_name, output_value in invocation_dict["output_values"].items():
+                if output_value == NO_REPLACEMENT_VALUE:
+                    output_value = None
+                outputs_dict[output_name] = output_value
 
         # Build task logs URL
         encoded_run_id = self._security.encode_id(invocation.id)
