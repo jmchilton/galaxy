@@ -74,6 +74,7 @@ from galaxy.jobs.runners.util.tes_task import (
     describe_tes_task_failure,
     fetch_tes_task_state,
     TES_FINISHED_STATES,
+    TES_NOTHING_TO_CANCEL_STATES,
     TES_TASK_NOT_FOUND,
 )
 from galaxy.model.base import check_database_connection
@@ -1582,6 +1583,51 @@ class PulsarTesJobRunner(PulsarCoexecutionJobRunner):
                 failure.system_logs,
             )
         return message, full_status
+
+    def _kill_remote_job(
+        self, client: "BaseJobClient", job_wrapper: "MinimalJobWrapper", destination_params: dict[str, Any]
+    ) -> None:
+        """Cancel the job's TES task. Never raises.
+
+        Failures are logged instead: the stop queue rolls back and retries every
+        stop in its step when this raises, and ``fail_job`` stops the job before
+        failing it, so raising would leave jobs deleting or unfailed.
+        """
+        try:
+            client.kill()
+            return
+        except Exception as e:
+            cancel_error = describe_tes_error(e)
+        job_id_tag = job_wrapper.get_id_tag()
+        task_id = job_wrapper.get_job().job_runner_external_id
+        if not task_id:
+            log.error(
+                "(%s) Failed to cancel the job's TES task, which has no recorded id: %s", job_id_tag, cancel_error
+            )
+            return
+        # TESK answers 400 to cancelling a task that has ended, and servers answer 404 for a deleted one.
+        try:
+            task_state = fetch_tes_task_state(tes_client_from_params(parse_tes_job_params(destination_params)), task_id)
+        except Exception as e:
+            log.error(
+                "(%s/%s) Failed to cancel TES task and could not read its state, so it may still be running. "
+                "Cancel error: %s. State error: %s",
+                job_id_tag,
+                task_id,
+                cancel_error,
+                describe_tes_error(e),
+            )
+            return
+        if task_state in TES_NOTHING_TO_CANCEL_STATES:
+            log.info("(%s/%s) TES task is %s, nothing to cancel", job_id_tag, task_id, task_state)
+            return
+        log.error(
+            "(%s/%s) Failed to cancel TES task in state %s, it may still be running: %s",
+            job_id_tag,
+            task_id,
+            task_state,
+            cancel_error,
+        )
 
     def _tes_known_secrets(self, tes_params: "TesJobParams") -> list[str]:
         secrets = []
