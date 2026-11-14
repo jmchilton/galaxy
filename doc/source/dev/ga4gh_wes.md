@@ -388,7 +388,8 @@ This requests cancellation of the underlying invocation; the run then transition
 ## Errors
 
 Errors come back as Galaxy's standard JSON error body (`{"err_msg": ..., "err_code": ...}`)
-with a matching HTTP status. The ones a client is most likely to hit:
+with a matching HTTP status. A rejected submission leaves no imported workflow or new history
+behind. The ones a client is most likely to hit:
 
 | Situation                                                                        | Status |
 | -------------------------------------------------------------------------------- | ------ |
