@@ -369,6 +369,9 @@ runners:
     # seconds without Pulsar reporting a final status.
     #tes_status_check_interval: 60
     #tes_status_grace_period: 120
+    # Fail the job when every check of its TES task for this many seconds found the TES
+    # server unreachable (no connection, a timeout or a 5xx answer). 0 retries forever.
+    #tes_unreachable_timeout: 3600
 
   # Using Pulsar and co-execution to run jobs against Google Cloud Platform's Batch service.
   # - https://cloud.google.com/batch/docs/get-started
