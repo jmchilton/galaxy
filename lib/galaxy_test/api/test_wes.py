@@ -397,6 +397,27 @@ steps:
             response = self._wes_post(f"ga4gh/wes/v1/runs/{invocation_id}/cancel")
             self._assert_status_code_is(response, 200)
 
+    def test_wes_run_endpoints_require_authentication(self):
+        """Run-scoped endpoints answer 403 without credentials, like GET /runs."""
+        with self.dataset_populator.test_history() as history_id:
+            run_id = self._submit_wes_workflow_and_get_invocation_id(
+                workflow_content=WORKFLOW_SIMPLE,
+                workflow_type="gx_workflow_format2",
+                input1=self._get_test_dataset_id(history_id),
+                history_id=history_id,
+            )
+            for endpoint in (
+                f"ga4gh/wes/v1/runs/{run_id}",
+                f"ga4gh/wes/v1/runs/{run_id}/status",
+                f"ga4gh/wes/v1/runs/{run_id}/tasks",
+                f"ga4gh/wes/v1/runs/{run_id}/tasks/0",
+            ):
+                response = self._wes_get(endpoint, authenticated=False)
+                self._assert_status_code_is(response, 403)
+            response = self._wes_post(f"ga4gh/wes/v1/runs/{run_id}/cancel", authenticated=False)
+            self._assert_status_code_is(response, 403)
+            assert self._get_run_status_validated(run_id)["state"] not in ("CANCELING", "CANCELED")
+
     def test_wes_state_mapping(self):
         """Test state mapping between Galaxy invocation states and WES states."""
         with self.dataset_populator.test_history() as history_id:
