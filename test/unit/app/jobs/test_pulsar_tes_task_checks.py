@@ -47,7 +47,8 @@ SERVER_NAME = "main.handler0"
 AMQP_PASSWORD = "Br0kerPassword"
 STAGING_IMAGE = "galaxy/pulsar-pod-staging:0.15.0.2"
 # Job.info is cut at this length, so failure messages must fit.
-JOB_INFO_LENGTH = model.Job.__table__.c.info.type.length
+# TrimmedString passes the length through from its String implementation.
+JOB_INFO_LENGTH: int = model.Job.__table__.c.info.type.length  # type: ignore[attr-defined]
 # Stand-ins for the base64 job description and app configuration Pulsar passes
 # its executors; the real ones carry the message queue credentials.
 JOB_BASE64 = "eyJqb2JfaWQiOiAiNDIiLCAibWVzc2FnZV9xdWV1ZV91cmwiOiAiYW1xcDovL2d1ZXN0OnMzY3IzdEBicm9rZXIifQ=="
@@ -91,13 +92,27 @@ STAGING_FAILURE_STDERR = "\n".join(
 )
 
 
+# TESK's answer to cancelling a task that has already ended.
+TESK_CANCEL_ENDED_TASK_STATUS = 400
+TESK_CANCEL_ENDED_TASK_BODY = {
+    "title": "Bad Request",
+    "status": 400,
+    "detail": f"Job with ID={TASK_ID} has no pods in RUNNING status.",
+}
+
+
 class FakeTesServer:
-    """Serves ``GET /v1/tasks/{id}`` the way Funnel does: BASIC drops stdout, stderr and system logs."""
+    """Serves ``GET /v1/tasks/{id}`` the way Funnel does: BASIC drops stdout, stderr and system logs.
+
+    ``POST /v1/tasks/{id}:cancel`` answers ``cancel_status`` with ``cancel_body`` for known tasks.
+    """
 
     def __init__(self):
         self.tasks: dict[str, dict[str, Any]] = {}
         self.requests: list[tuple[str, str]] = []
         self.error_status: int | None = None
+        self.cancel_status = 200
+        self.cancel_body: dict[str, Any] = {}
         server = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -114,9 +129,12 @@ class FakeTesServer:
                     self._send(200, server.view(server.tasks[task_id], view))
 
             def do_POST(self):
-                task_id = urlparse(self.path).path.rsplit("/", 1)[-1]
+                task_id = urlparse(self.path).path.rsplit("/", 1)[-1].removesuffix(":cancel")
                 server.requests.append((task_id, "POST"))
-                self._send(404, {"error": f"task not found: taskID: {task_id}"})
+                if task_id not in server.tasks:
+                    self._send(404, {"error": f"task not found: taskID: {task_id}"})
+                else:
+                    self._send(server.cancel_status, server.cancel_body)
 
             def _send(self, status, body):
                 payload = json.dumps(body).encode()
@@ -177,9 +195,18 @@ def clock(monkeypatch):
 
 class FakeJob:
     def __init__(self):
+        self.id = GALAXY_JOB_ID
         self.state = model.Job.states.QUEUED
         self.job_runner_external_id = TASK_ID
+        self.job_runner_name = "pulsar_tes://"
         self.handler = SERVER_NAME
+        self.destination_params: dict[str, Any] = {}
+
+    def get_job_runner_external_id(self):
+        return self.job_runner_external_id
+
+    def get_external_output_metadata(self):
+        return []
 
 
 class FakeJobWrapper:
@@ -223,12 +250,17 @@ class Harness:
             amqp_url=f"amqp://galaxy:{AMQP_PASSWORD}@broker:5672//",
         )
         self.runner.work_queue = Queue()
+        self.runner._init_client_manager()
         self.job_wrapper = FakeJobWrapper(self.runner.app)
         self.job = self.job_wrapper.job
+        self.job.destination_params = self.destination_params()
         self.job_state = self.job_state_for(self.job_wrapper)
 
+    def destination_params(self):
+        return {"tes_url": self.tes_server.url, "pulsar_container_image": STAGING_IMAGE}
+
     def job_state_for(self, job_wrapper):
-        destination = JobDestination(params={"tes_url": self.tes_server.url, "pulsar_container_image": STAGING_IMAGE})
+        destination = JobDestination(params=self.destination_params())
         return AsynchronousJobState(
             job_wrapper=cast(MinimalJobWrapper, job_wrapper), job_destination=destination, job_id=TASK_ID
         )
@@ -493,11 +525,97 @@ def test_known_secrets_are_redacted_exactly(harness, tes_server):
     assert "{'password': '[redacted]'}" in stderr
 
 
+def _reject_cancel_like_tesk(tes_server):
+    tes_server.cancel_status = TESK_CANCEL_ENDED_TASK_STATUS
+    tes_server.cancel_body = TESK_CANCEL_ENDED_TASK_BODY
+
+
+def _log_messages(caplog, level):
+    return [record.getMessage() for record in caplog.records if record.levelno == level]
+
+
+def test_stopping_a_job_cancels_its_tes_task(harness, tes_server, caplog):
+    tes_server.tasks[TASK_ID] = _task("RUNNING")
+    harness.runner.stop_job(harness.job_wrapper)
+    assert tes_server.requests == [(TASK_ID, "POST")]
+    assert _log_messages(caplog, logging.ERROR) == []
+
+
+@pytest.mark.parametrize("state", ["COMPLETE", "EXECUTOR_ERROR", "SYSTEM_ERROR", "CANCELED", "PREEMPTED", "CANCELING"])
+def test_stopping_a_job_whose_task_already_ended_is_done(harness, tes_server, caplog, state):
+    # TESK refuses to cancel a task that has ended. Raising would roll back the stop
+    # queue's step, which then retries every second and leaves the job deleting.
+    caplog.set_level(logging.INFO, logger=pulsar_runner.__name__)
+    tes_server.tasks[TASK_ID] = _task(state)
+    _reject_cancel_like_tesk(tes_server)
+    harness.job.state = model.Job.states.DELETED
+
+    harness.runner.stop_job(harness.job_wrapper)
+
+    assert tes_server.views_requested() == ["POST", "BASIC"]
+    assert f"({GALAXY_JOB_ID}/{TASK_ID}) TES task is {state}, nothing to cancel" in _log_messages(caplog, logging.INFO)
+    assert _log_messages(caplog, logging.ERROR) == []
+
+
+def test_stopping_a_job_whose_task_is_gone_is_done(harness, tes_server, caplog):
+    caplog.set_level(logging.INFO, logger=pulsar_runner.__name__)
+    harness.runner.stop_job(harness.job_wrapper)
+    assert tes_server.views_requested() == ["POST", "BASIC"]
+    assert f"({GALAXY_JOB_ID}/{TASK_ID}) TES task is NOT_FOUND, nothing to cancel" in _log_messages(
+        caplog, logging.INFO
+    )
+
+
+@pytest.mark.parametrize("unreadable", [False, True])
+def test_failing_to_cancel_a_running_task_is_logged_not_raised(harness, tes_server, caplog, unreadable):
+    # Raising can't make a permanent error go away; it would only block the stop queue.
+    tes_server.tasks[TASK_ID] = _task("RUNNING")
+    tes_server.cancel_status = 401
+    tes_server.cancel_body = {"error": "unauthorized"}
+    if unreadable:
+        tes_server.error_status = 500
+
+    harness.runner.stop_job(harness.job_wrapper)
+
+    assert tes_server.views_requested() == ["POST", "BASIC"]
+    [message] = _log_messages(caplog, logging.ERROR)
+    assert message.startswith(f"({GALAXY_JOB_ID}/{TASK_ID}) Failed to cancel TES task")
+    assert "may still be running" in message
+    assert "unauthorized" in message
+    assert ("could not read its state" in message) is unreadable
+
+
+def test_failing_a_job_whose_task_already_ended_fails_the_job(harness, tes_server):
+    # fail_job stops the job before failing it, so a refused cancel must not escape.
+    tes_server.tasks[TASK_ID] = _task("EXECUTOR_ERROR")
+    _reject_cancel_like_tesk(tes_server)
+    harness.job.state = model.Job.states.RUNNING
+
+    harness.runner.fail_job(harness.job_state, message="Pulsar failed to stage out the outputs")
+
+    assert tes_server.views_requested() == ["POST", "BASIC"]
+    assert harness.failures == [{"message": "Pulsar failed to stage out the outputs", "tool_stderr": None}]
+
+
+def test_status_for_a_stopped_job_whose_task_already_ended_finishes_it(harness, tes_server):
+    tes_server.tasks[TASK_ID] = _task("COMPLETE")
+    _reject_cancel_like_tesk(tes_server)
+    harness.job.state = model.Job.states.STOPPED
+
+    assert harness.runner._update_job_state_for_status(harness.job_state, "failed") is None
+
+    assert tes_server.views_requested() == ["POST", "BASIC"]
+    method, _ = harness.runner.work_queue.get_nowait()
+    assert method == harness.runner.finish_job
+
+
 def _runner(runner_class, **params):
     app = Mock()
     app.config.redact_email_in_job_name = False
     app.config.galaxy_infrastructure_url = "http://galaxy.example"
     app.config.server_name = SERVER_NAME
+    app.config.nginx_upload_job_files_path = None
+    app.security.encode_id.side_effect = lambda id, kind=None: f"encoded{id}"
     return runner_class(app, 1, **params)
 
 
