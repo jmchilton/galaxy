@@ -18,13 +18,16 @@ API has gone too far.
 import http.client
 import io
 import os
+import re
 import tempfile
+import threading
 import time
 import uuid
 from collections.abc import (
     Callable,
     Iterator,
 )
+from contextlib import contextmanager
 from dataclasses import (
     dataclass,
     replace,
@@ -37,7 +40,11 @@ from urllib.parse import (
 )
 
 import requests
-from sqlalchemy import select
+from sqlalchemy import (
+    event,
+    select,
+)
+from sqlalchemy.engine import Engine
 from tusclient import client
 
 from galaxy import model
@@ -587,6 +594,34 @@ class TestJobFilesIntegration(integration_util.IntegrationTestCase):
         self._change_job_state(job.job, "ok")
         _assert_insufficient_permissions(put("late.txt", tool_working, job_token=token(tool_working)))
 
+    def test_token_requests_load_only_the_job(self):
+        """A TES task makes one request per staged file, below DIRECTORY outputs too: each loads only the job."""
+        job = self._running_job()
+        outputs = os.path.join(job.working_directory, "outputs")
+        output = os.path.join(outputs, "dataset_1.dat")
+        extra_files = os.path.join(outputs, "dataset_1_files")
+        requests_by_name = {
+            "GET": lambda: self._get_job_file(
+                job,
+                self.input_hda.get_file_name(),
+                job_token=self._job_files_token(job, self.input_hda.get_file_name(), JOB_FILES_READ),
+            ),
+            "PUT": lambda: self._put_job_file(
+                job, output, b"output", job_token=self._job_files_token(job, output, JOB_FILES_WRITE)
+            ),
+            "directory PUT": lambda: self._put_directory_file(
+                job,
+                extra_files,
+                "sub/index.html",
+                b"page",
+                job_token=self._job_files_token(job, extra_files, JOB_FILES_DIRECTORY_WRITE),
+            ),
+        }
+        for name, request in requests_by_name.items():
+            with _request_statements(self._app.model.engine) as statements:
+                api_asserts.assert_status_code_is_ok(request())
+            assert len(statements) == 1 and re.search(r"\bFROM job\s", statements[0]), (name, statements)
+
     def test_write_and_read_path_with_percent_escapes(self):
         job = self._running_job()
         path = os.path.join(job.working_directory, "a%2Fb%20c")
@@ -836,6 +871,22 @@ class TestJobFilesIntegration(integration_util.IntegrationTestCase):
         sa_session = self.sa_session
         sa_session.add(job)
         sa_session.commit()
+
+
+@contextmanager
+def _request_statements(engine: Engine) -> Iterator[list[str]]:
+    """SQL statements that API requests, run in the server's AnyIO worker threads, execute meanwhile."""
+    statements: list[str] = []
+
+    def capture(_conn, _cursor, statement, _parameters, _context, _executemany) -> None:
+        if threading.current_thread().name.startswith("AnyIO worker thread"):
+            statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        yield statements
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
 
 
 def _staging_dirs(directory):
