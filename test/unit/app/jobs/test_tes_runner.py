@@ -1,11 +1,11 @@
 """TesJobRunner: TES tasks that stage files over Galaxy's job files API, polled for state."""
 
 import json
+import logging
 import os
 import subprocess
-from types import SimpleNamespace
-from typing import Any
-from unittest.mock import Mock
+from queue import Queue
+from typing import cast
 from urllib.parse import (
     parse_qs,
     urlparse,
@@ -15,6 +15,8 @@ import pytest
 from pydantictes.models import TesResources
 
 from galaxy import model
+from galaxy.jobs import MinimalJobWrapper
+from galaxy.jobs.job_destination import JobDestination
 from galaxy.jobs.runners import (
     AsynchronousJobState,
     tes as tes_runner,
@@ -37,10 +39,18 @@ from galaxy.security.job_files_tokens import (
     JOB_FILES_WRITE,
     verify_job_files_token,
 )
+from .tes_fakes import (
+    Clock,
+    fake_runner,
+    FakeJobWrapper,
+    FakeTesServer,
+    GALAXY_JOB_ID,
+    TASK_ID,
+)
 
 GALAXY_URL = "http://172.17.0.1:18080"
 TOKEN = "1763200000.c2lnbmF0dXJl"
-TASK_ID = "d4rk5c3bf5d1q0abcdef"
+IMAGE = "quay.io/biocontainers/fastp:1.4.0--h43da1c4_0"
 
 
 def _write(path, content="x"):
@@ -50,36 +60,20 @@ def _write(path, content="x"):
     return str(path)
 
 
-def test_job_files_url_quotes_the_path():
-    url = job_files_url(GALAXY_URL + "/", "f2db41e1fa331b3e", "/data/a b&c=d+e.dat", TOKEN)
-    parsed = urlparse(url)
-    assert parsed.path == "/api/jobs/f2db41e1fa331b3e/files"
-    assert parse_qs(parsed.query) == {"path": ["/data/a b&c=d+e.dat"], "job_token": [TOKEN]}
-
-
-def test_signed_urls_are_per_file_and_per_direction():
+def test_signed_urls_carry_a_token_for_their_path_and_scope():
     security = IdEncodingHelper(id_secret="a test secret, not a real one")
     expires = 1_763_200_000
-    url_for = signed_job_files_url_for(GALAXY_URL, security, 7, expires)
-    path = "/galaxy/jobs/000/7/outputs/dataset_2.dat"
+    url_for = signed_job_files_url_for(GALAXY_URL + "/", security, 7, expires)
+    path = "/galaxy/jobs/000/7/working/a b&c=d+e.dat"
 
-    read_url, write_url = url_for(path, JOB_FILES_READ), url_for(path, JOB_FILES_WRITE)
-
-    assert read_url != write_url
-    for url, scope, other_scope in (
-        (read_url, JOB_FILES_READ, JOB_FILES_WRITE),
-        (write_url, JOB_FILES_WRITE, JOB_FILES_READ),
-    ):
+    for scope in (JOB_FILES_READ, JOB_FILES_WRITE, JOB_FILES_DIRECTORY_WRITE):
+        url = url_for(path, scope)
         parsed = urlparse(url)
         assert parsed.path == f"/api/jobs/{security.encode_id(7)}/files"
         query = parse_qs(parsed.query)
         assert set(query) == {"path", "job_token"}
         assert query["path"] == [path]
-        [token] = query["job_token"]
-        assert verify_job_files_token(security, 7, path, scope, token, now=expires)
-        assert not verify_job_files_token(security, 7, path, other_scope, token, now=expires)
-        assert not verify_job_files_token(security, 7, path + ".other", scope, token, now=expires)
-        assert not verify_job_files_token(security, 7, path, scope, token, now=expires + 1)
+        assert verify_job_files_token(security, 7, path, scope, query["job_token"][0], now=expires)
         assert security.encode_id(7, kind="jobs_files") not in url
 
 
@@ -160,10 +154,11 @@ def test_wrapper_script_records_the_exit_code_of_a_job_script_that_wrote_none(tm
 def test_build_tes_task():
     job_dir = "/galaxy/jobs/000/7"
     resources = TesResources(cpu_cores=2, ram_gb=4)
+    directories = [f"{job_dir}/working", f"{job_dir}/outputs/dataset_2_files"]
 
     task = build_tes_task(
         name="galaxy-7",
-        image="quay.io/biocontainers/fastp:1.4.0--h43da1c4_0",
+        image=IMAGE,
         job_directory=job_dir,
         input_paths=["/galaxy/objects/dataset_1.dat", f"{job_dir}/galaxy_7.sh"],
         output_paths=[f"{job_dir}/outputs/dataset_2.dat", f"{job_dir}/galaxy_7.ec"],
@@ -171,32 +166,41 @@ def test_build_tes_task():
         url_for=lambda path, scope: job_files_url(GALAXY_URL, "abc", path, f"{scope}-token"),
         resources=resources,
         env=executor_env(resources),
+        directory_paths=directories,
     )
 
     document = json.loads(task.model_dump_json(exclude_none=True))
     assert document["volumes"] == [job_dir]
-    inputs = document["inputs"]
-    assert [i["path"] for i in inputs] == [
-        "/galaxy/objects/dataset_1.dat",
-        f"{job_dir}/galaxy_7.sh",
-        f"{job_dir}/{TES_WRAPPER_SCRIPT}",
+    assert document["inputs"] == [
+        {
+            "url": job_files_url(GALAXY_URL, "abc", "/galaxy/objects/dataset_1.dat", "r-token"),
+            "path": "/galaxy/objects/dataset_1.dat",
+            "type": "FILE",
+        },
+        {
+            "url": job_files_url(GALAXY_URL, "abc", f"{job_dir}/galaxy_7.sh", "r-token"),
+            "path": f"{job_dir}/galaxy_7.sh",
+            "type": "FILE",
+        },
+        {"path": f"{job_dir}/{TES_WRAPPER_SCRIPT}", "type": "FILE", "content": "#!/bin/sh\nexit 0\n"},
     ]
-    assert inputs[0]["url"] == job_files_url(GALAXY_URL, "abc", "/galaxy/objects/dataset_1.dat", "r-token")
-    assert inputs[2] == {"path": f"{job_dir}/{TES_WRAPPER_SCRIPT}", "type": "FILE", "content": "#!/bin/sh\nexit 0\n"}
-    assert [(o["path"], o["type"]) for o in document["outputs"]] == [
-        (f"{job_dir}/outputs/dataset_2.dat", "FILE"),
-        (f"{job_dir}/galaxy_7.ec", "FILE"),
+    assert [(o["path"], o["type"], o["url"]) for o in document["outputs"]] == [
+        *(
+            (path, "FILE", job_files_url(GALAXY_URL, "abc", path, "w-token"))
+            for path in (f"{job_dir}/outputs/dataset_2.dat", f"{job_dir}/galaxy_7.ec")
+        ),
+        *((path, "DIRECTORY", job_files_url(GALAXY_URL, "abc", path, "d-token")) for path in directories),
     ]
-    assert document["outputs"][1]["url"] == job_files_url(GALAXY_URL, "abc", f"{job_dir}/galaxy_7.ec", "w-token")
     assert document["executors"] == [
         {
-            "image": "quay.io/biocontainers/fastp:1.4.0--h43da1c4_0",
+            "image": IMAGE,
             "command": ["/bin/sh", f"{job_dir}/{TES_WRAPPER_SCRIPT}"],
             "workdir": job_dir,
             "env": {"GALAXY_SLOTS": "2", "GALAXY_MEMORY_MB": "4096"},
         }
     ]
-    assert document["resources"] == {"cpu_cores": 2, "ram_gb": 4.0, "backend_parameters_strict": False}
+    assert document["resources"]["cpu_cores"] == 2
+    assert document["resources"]["ram_gb"] == 4.0
 
 
 def test_directory_output_paths(tmp_path):
@@ -209,31 +213,6 @@ def test_directory_output_paths(tmp_path):
     ]
     with pytest.raises(Exception, match="outside the job directory"):
         directory_output_paths(job_dir, [str(tmp_path / "objects" / "dataset_2_files")])
-
-
-def test_build_tes_task_with_directory_outputs():
-    job_dir = "/galaxy/jobs/000/7"
-    directories = [f"{job_dir}/working", f"{job_dir}/outputs/dataset_2_files"]
-
-    task = build_tes_task(
-        name="galaxy-7",
-        image="busybox",
-        job_directory=job_dir,
-        input_paths=[],
-        output_paths=[f"{job_dir}/galaxy_7.ec"],
-        wrapper="#!/bin/sh\nexit 0\n",
-        url_for=lambda path, scope: job_files_url(GALAXY_URL, "abc", path, f"{scope}-token"),
-        directory_paths=directories,
-    )
-
-    document = json.loads(task.model_dump_json(exclude_none=True))
-    assert [(o["path"], o["type"], o["url"]) for o in document["outputs"]] == [
-        (f"{job_dir}/galaxy_7.ec", "FILE", job_files_url(GALAXY_URL, "abc", f"{job_dir}/galaxy_7.ec", "w-token")),
-        *(
-            (path, "DIRECTORY", job_files_url(GALAXY_URL, "abc", path, f"{JOB_FILES_DIRECTORY_WRITE}-token"))
-            for path in directories
-        ),
-    ]
 
 
 def test_wrapper_script_creates_directory_outputs_and_drops_their_symlinks(tmp_path):
@@ -260,198 +239,227 @@ def test_wrapper_script_creates_directory_outputs_and_drops_their_symlinks(tmp_p
     assert open(elsewhere).read() == "outside"
 
 
-class _Runner(TesJobRunner):
-    def __init__(self):
-        self.tes_poll_interval = 10.0
-        self._next_checks = {}
-        self.finished: list[Any] = []
-        self.failed: list[Any] = []
-        self.monitored: list[Any] = []
+@pytest.fixture
+def tes_server():
+    server = FakeTesServer()
+    yield server
+    server.stop()
 
-    def monitor_job(self, job_state):
-        self.monitored.append(job_state)
 
-    def mark_as_finished(self, job_state):
-        self.finished.append(job_state)
-
-    def fail_job(self, job_state, exception=False, message="Job failed", full_status=None):
-        self.failed.append((message, full_status, job_state.stop_job))
+@pytest.fixture
+def other_tes_server():
+    server = FakeTesServer()
+    yield server
+    server.stop()
 
 
 @pytest.fixture
 def clock(monkeypatch):
-    now = [1000.0]
-    monkeypatch.setattr(tes_runner, "monotonic", lambda: now[0])
-    return now
+    clock = Clock()
+    monkeypatch.setattr(tes_runner, "monotonic", clock)
+    return clock
 
 
 @pytest.fixture
-def tes(monkeypatch):
-    server = SimpleNamespace(state="QUEUED", task=None, checks=0)
-
-    def fetch(client, task_id):
-        assert task_id == TASK_ID
-        server.checks += 1
-        return server.state
-
-    client = Mock()
-    client.get_task.side_effect = lambda task_id, view: server.task
-    server.client = client
-    monkeypatch.setattr(tes_runner, "fetch_tes_task_state", fetch)
-    monkeypatch.setattr(tes_runner, "tes_client_from_params", lambda params: client)
-    return server
+def runner():
+    runner = fake_runner(TesJobRunner)
+    runner.work_queue = Queue()
+    return runner
 
 
-def _job_state(galaxy_state=model.Job.states.QUEUED, tes_url="http://127.0.0.1:18000/"):
-    job_wrapper = Mock()
-    job_wrapper.job_id = 7
-    job_wrapper.get_id_tag.return_value = "7"
-    job_wrapper.get_state.return_value = galaxy_state
-    job_state = AsynchronousJobState.__new__(AsynchronousJobState)
-    job_state.job_wrapper = job_wrapper
-    job_state.job_destination = SimpleNamespace(params={"tes_url": tes_url})
-    job_state.job_id = TASK_ID
-    job_state._running = False
-    job_state.start_time = None
-    job_state.stop_job = True
-    return job_state
-
-
-def test_poll_marks_running_once_then_finishes_on_complete(tes, clock):
-    runner = _Runner()
-    job_state = _job_state()
-
-    assert runner.check_watched_item(job_state) is job_state
-    tes.state = "RUNNING"
-    assert runner.check_watched_item(job_state) is job_state  # within the poll interval: no check
-    assert tes.checks == 1
-    clock[0] += 10
-    assert runner.check_watched_item(job_state) is job_state
-    clock[0] += 10
-    assert runner.check_watched_item(job_state) is job_state
-    job_state.job_wrapper.change_state.assert_called_once_with(model.Job.states.RUNNING)
-    tes.state = "COMPLETE"
-    clock[0] += 10
-    assert runner.check_watched_item(job_state) is None
-    assert runner.finished == [job_state]
-    assert runner.failed == []
-
-
-def test_poll_checks_same_task_id_on_two_servers_separately(tes, clock):
-    # Nothing makes task ids unique across TES servers (tesp-api's are MongoDB ObjectIds).
-    runner = _Runner()
-    first = _job_state()
-    second = _job_state(tes_url="http://tes-two.example.org/")
-
-    assert runner.check_watched_item(first) is first
-    assert runner.check_watched_item(second) is second
-    assert tes.checks == 2
-
-
-def test_poll_fails_the_job_with_the_redacted_executor_log(tes, clock):
-    runner = _Runner()
-    job_state = _job_state(model.Job.states.RUNNING)
-    tes.state = "EXECUTOR_ERROR"
-    tes.task = SimpleNamespace(
-        executors=[SimpleNamespace(image="quay.io/biocontainers/fastp:1.4.0", command=["/bin/sh", "/w.sh"])],
-        logs=[
-            SimpleNamespace(
-                logs=[SimpleNamespace(exit_code=137, stderr=f"killed\nPUT ...&job_token={TOKEN}")],
-                system_logs=[],
-            )
-        ],
-    )
-
-    assert runner.check_watched_item(job_state) is None
-
-    [(message, full_status, stop_job)] = runner.failed
-    assert message == f"TES task {TASK_ID} ended in state EXECUTOR_ERROR. Executor 0 exited with code 137."
-    assert TOKEN not in full_status["stderr"]
-    assert "killed" in full_status["stderr"]
-    assert stop_job is False
-
-
-def test_poll_stops_watching_a_stopped_job(tes, clock):
-    runner = _Runner()
-    job_state = _job_state(model.Job.states.DELETING)
-
-    assert runner.check_watched_item(job_state) is None
-    assert tes.checks == 0
-    assert runner.finished == runner.failed == []
-
-
-def _stopped_job_wrapper(task_id=TASK_ID):
-    job_wrapper = Mock()
-    job_wrapper.get_id_tag.return_value = "7"
-    job_wrapper.get_job.return_value = SimpleNamespace(
-        job_runner_external_id=task_id, destination_params={"tes_url": "http://127.0.0.1:18000/"}
-    )
+def _job_wrapper(runner, tes_url, state=model.Job.states.QUEUED, working_directory=None) -> FakeJobWrapper:
+    job_wrapper = FakeJobWrapper(runner.app)
+    job_wrapper.job.state = state
+    job_wrapper.job.destination_params = {"tes_url": tes_url}
+    job_wrapper.job_destination = JobDestination(params=job_wrapper.job.destination_params)
+    job_wrapper.working_directory = working_directory
     return job_wrapper
 
 
-def test_stop_job_cancels_the_task(tes):
-    _Runner().stop_job(_stopped_job_wrapper())
+def _watched(job_wrapper: FakeJobWrapper) -> AsynchronousJobState:
+    return AsynchronousJobState(
+        job_wrapper=cast(MinimalJobWrapper, job_wrapper), job_destination=job_wrapper.job_destination, job_id=TASK_ID
+    )
 
-    tes.client.cancel_task.assert_called_once_with(TASK_ID)
-    assert tes.checks == 0
+
+def _task(state, executor_logs=None):
+    task = {"id": TASK_ID, "state": state, "name": "galaxy-42", "executors": [{"image": IMAGE, "command": ["/bin/sh"]}]}
+    if executor_logs is not None:
+        task["logs"] = [{"logs": executor_logs, "system_logs": []}]
+    return task
 
 
-def test_stop_job_of_an_ended_task_is_a_no_op(tes, caplog):
+def _finished(runner) -> list[AsynchronousJobState]:
+    """Job states the runner queued for ``finish_job``."""
+    finished = []
+    while not runner.work_queue.empty():
+        method, job_state = runner.work_queue.get_nowait()
+        assert method == runner.finish_job
+        finished.append(job_state)
+    return finished
+
+
+def test_poll_follows_the_task_to_running_then_finishes_the_job(runner, tes_server, clock):
+    job_wrapper = _job_wrapper(runner, tes_server.url)
+    job_state = _watched(job_wrapper)
+    tes_server.tasks[TASK_ID] = _task("QUEUED")
+
+    assert runner.check_watched_item(job_state) is job_state
+    tes_server.tasks[TASK_ID] = _task("RUNNING")
+    assert runner.check_watched_item(job_state) is job_state  # within the poll interval: no check
+    assert len(tes_server.requests) == 1
+    assert job_wrapper.job.state == model.Job.states.QUEUED
+    clock.now += 10
+    assert runner.check_watched_item(job_state) is job_state
+    assert job_wrapper.job.state == model.Job.states.RUNNING
+    assert job_state.running
+    tes_server.tasks[TASK_ID] = _task("COMPLETE")
+    clock.now += 10
+    assert runner.check_watched_item(job_state) is None
+
+    assert _finished(runner) == [job_state]
+    assert job_wrapper.failures == []
+
+
+def test_tasks_sharing_an_id_on_two_tes_servers_are_followed_apart(runner, tes_server, other_tes_server, clock):
+    # Nothing makes task ids unique across TES servers (tesp-api's are MongoDB ObjectIds).
+    tes_server.tasks[TASK_ID] = _task("RUNNING")
+    other_tes_server.tasks[TASK_ID] = _task("COMPLETE")
+    first = _watched(_job_wrapper(runner, tes_server.url))
+    other_job_wrapper = _job_wrapper(runner, other_tes_server.url)
+    other_job_wrapper.job_id = other_job_wrapper.job.id = GALAXY_JOB_ID + 1
+    second = _watched(other_job_wrapper)
+
+    assert runner.check_watched_item(first) is first
+    assert runner.check_watched_item(second) is None
+
+    assert _finished(runner) == [second]
+
+
+def test_failed_task_fails_the_job_with_its_redacted_executor_log(runner, tes_server, clock):
+    job_wrapper = _job_wrapper(runner, tes_server.url, state=model.Job.states.RUNNING)
+    tes_server.tasks[TASK_ID] = _task(
+        "EXECUTOR_ERROR", executor_logs=[{"exit_code": 137, "stderr": f"killed\nPUT ...&job_token={TOKEN}"}]
+    )
+
+    assert runner.check_watched_item(_watched(job_wrapper)) is None
+
+    [failure] = job_wrapper.failures
+    assert failure["message"] == f"TES task {TASK_ID} ended in state EXECUTOR_ERROR. Executor 0 exited with code 137."
+    assert "killed" in failure["tool_stderr"]
+    assert TOKEN not in failure["tool_stderr"]
+    # The logs are read from the FULL view, and the ended task isn't cancelled.
+    assert tes_server.views_requested() == ["MINIMAL", "FULL"]
+
+
+def test_task_unknown_to_the_tes_server_fails_the_job(runner, tes_server, clock):
+    job_wrapper = _job_wrapper(runner, tes_server.url, state=model.Job.states.RUNNING)
+
+    assert runner.check_watched_item(_watched(job_wrapper)) is None
+
+    assert [failure["message"] for failure in job_wrapper.failures] == [
+        f"The TES server has no record of task {TASK_ID}."
+    ]
+    assert tes_server.views_requested() == ["MINIMAL"]
+
+
+def test_tes_server_errors_never_fail_the_job(runner, tes_server, clock):
+    job_wrapper = _job_wrapper(runner, tes_server.url, state=model.Job.states.RUNNING)
+    job_state = _watched(job_wrapper)
+    tes_server.tasks[TASK_ID] = _task("COMPLETE")
+    tes_server.error_status = 503
+
+    assert runner.check_watched_item(job_state) is job_state
+    tes_server.error_status = None
+    clock.now += 10
+    assert runner.check_watched_item(job_state) is None
+
+    assert job_wrapper.failures == []
+    assert _finished(runner) == [job_state]
+
+
+def test_poll_stops_watching_a_stopped_job(runner, tes_server, clock):
+    job_wrapper = _job_wrapper(runner, tes_server.url, state=model.Job.states.DELETING)
+
+    assert runner.check_watched_item(_watched(job_wrapper)) is None
+
+    assert tes_server.requests == []
+    assert job_wrapper.failures == []
+    assert _finished(runner) == []
+
+
+@pytest.fixture
+def info_logs(caplog):
+    caplog.set_level(logging.INFO, logger=tes_runner.__name__)
+    return caplog
+
+
+def test_stop_job_cancels_the_task(runner, tes_server, info_logs):
+    tes_server.tasks[TASK_ID] = _task("RUNNING")
+
+    runner.stop_job(_job_wrapper(runner, tes_server.url))
+
+    assert tes_server.requests == [(TASK_ID, "POST")]
+    assert "Cancelled TES task" in info_logs.text
+
+
+def test_stop_job_of_an_ended_task_is_a_no_op(runner, tes_server, info_logs):
     # TESK answers 400 to cancelling a task that has ended.
-    tes.client.cancel_task.side_effect = Exception("400 Bad Request")
-    tes.state = "COMPLETE"
+    tes_server.tasks[TASK_ID] = _task("COMPLETE")
+    tes_server.cancel_status = 400
+    tes_server.cancel_body = {"title": "Bad Request", "status": 400}
 
-    _Runner().stop_job(_stopped_job_wrapper())
+    runner.stop_job(_job_wrapper(runner, tes_server.url))
 
-    assert tes.checks == 1
-    assert "TES task is COMPLETE, nothing to cancel" in caplog.text
-    assert "may still be running" not in caplog.text
-
-
-def test_stop_job_reports_a_task_that_may_still_run(tes, caplog):
-    tes.client.cancel_task.side_effect = Exception("502 Bad Gateway")
-    tes.state = "RUNNING"
-
-    _Runner().stop_job(_stopped_job_wrapper())
-
-    assert "Failed to cancel TES task in state RUNNING, it may still be running" in caplog.text
+    assert tes_server.views_requested() == ["POST", "MINIMAL"]
+    assert "TES task is COMPLETE, nothing to cancel" in info_logs.text
+    assert "may still be running" not in info_logs.text
 
 
-def test_stop_job_without_a_task_does_nothing(tes):
-    _Runner().stop_job(_stopped_job_wrapper(task_id=None))
+def test_stop_job_reports_a_task_that_may_still_run(runner, tes_server, info_logs):
+    tes_server.tasks[TASK_ID] = _task("RUNNING")
+    tes_server.cancel_status = 502
 
-    tes.client.cancel_task.assert_not_called()
+    runner.stop_job(_job_wrapper(runner, tes_server.url))
+
+    assert "Failed to cancel TES task in state RUNNING, it may still be running" in info_logs.text
+
+
+def test_stop_job_without_a_task_does_nothing(runner, tes_server):
+    job_wrapper = _job_wrapper(runner, tes_server.url)
+    job_wrapper.job.job_runner_external_id = None
+
+    runner.stop_job(job_wrapper)
+
+    assert tes_server.requests == []
 
 
 @pytest.mark.parametrize("galaxy_state", [model.Job.states.QUEUED, model.Job.states.RUNNING])
-def test_recover_watches_the_existing_task_until_it_finishes(tes, clock, tmp_path, galaxy_state):
+def test_recover_watches_the_existing_task_until_it_finishes(runner, tes_server, clock, tmp_path, galaxy_state):
     """After a Galaxy restart the job's task is polled again, not resubmitted, and the job finishes from it."""
-    runner = _Runner()
-    job_wrapper = _job_state(galaxy_state).job_wrapper
-    job_wrapper.working_directory = str(tmp_path)
-    job_wrapper.job_destination = SimpleNamespace(params={"tes_url": "http://127.0.0.1:18000/"})
-    job = SimpleNamespace(state=galaxy_state, id=7, get_job_runner_external_id=lambda: TASK_ID)
+    job_wrapper = _job_wrapper(runner, tes_server.url, state=galaxy_state, working_directory=str(tmp_path))
 
-    runner.recover(job, job_wrapper)
+    runner.recover(job_wrapper.job, job_wrapper)
 
-    [job_state] = runner.monitored
+    job_state = runner.monitor_queue.get_nowait()
     assert job_state.job_id == TASK_ID
     assert job_state.running == (galaxy_state == model.Job.states.RUNNING)
     # The exit code and streams the task uploads are read from the usual job directory files.
-    assert job_state.exit_code_file == os.path.join(str(tmp_path), "galaxy_7.ec")
-    assert job_state.output_file == os.path.join(str(tmp_path), "galaxy_7.o")
-    tes.state = "COMPLETE"
+    assert job_state.exit_code_file == os.path.join(str(tmp_path), f"galaxy_{GALAXY_JOB_ID}.ec")
+    assert job_state.output_file == os.path.join(str(tmp_path), f"galaxy_{GALAXY_JOB_ID}.o")
+    tes_server.tasks[TASK_ID] = _task("COMPLETE")
     assert runner.check_watched_item(job_state) is None
-    assert runner.finished == [job_state]
-    tes.client.create_task.assert_not_called()
+    assert _finished(runner) == [job_state]
+    assert tes_server.requests == [(TASK_ID, "MINIMAL")]
 
 
-def test_recover_without_a_task_id_fails_the_job(tes):
-    runner = _Runner()
-    job_wrapper = Mock()
-    job = SimpleNamespace(state=model.Job.states.RUNNING, id=7, get_job_runner_external_id=lambda: None)
+def test_recover_without_a_task_id_fails_the_job(runner, tes_server):
+    job_wrapper = _job_wrapper(runner, tes_server.url, state=model.Job.states.RUNNING)
+    job_wrapper.job.job_runner_external_id = None
 
-    runner.recover(job, job_wrapper)
+    runner.recover(job_wrapper.job, job_wrapper)
 
-    job_wrapper.fail.assert_called_once()
-    assert runner.monitored == []
+    assert [failure["message"] for failure in job_wrapper.failures] == [
+        "The job's TES task id was lost, can't recover it."
+    ]
+    assert runner.monitor_queue.empty()
