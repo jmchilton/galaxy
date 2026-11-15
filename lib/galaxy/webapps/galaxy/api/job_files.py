@@ -6,7 +6,19 @@ import logging
 import os
 import re
 import shutil
-from typing import Union
+import tempfile
+from typing import (
+    Annotated,
+    Union,
+)
+
+import anyio
+from fastapi import (
+    Path,
+    Query,
+    Request,
+)
+from sqlalchemy.orm import scoped_session
 
 from galaxy import (
     exceptions,
@@ -18,14 +30,26 @@ from galaxy.model import (
     JobToOutputDatasetAssociation,
     JobToOutputLibraryDatasetAssociation,
 )
-from galaxy.structured_app import MinimalManagerApp
+from galaxy.security.idencoding import IdEncodingHelper
+from galaxy.structured_app import (
+    MinimalManagerApp,
+    StructuredApp,
+)
 from galaxy.web import (
     expose_api_anonymous_and_sessionless,
     expose_api_raw_anonymous_and_sessionless,
 )
-from . import BaseGalaxyAPIController
+from . import (
+    BaseGalaxyAPIController,
+    DependsOnApp,
+    Router,
+)
 
 log = logging.getLogger(__name__)
+
+router = Router(tags=["jobs"])
+
+PUT_STAGING_PREFIX = ".job_files_put_"
 
 
 class JobFilesAPIController(BaseGalaxyAPIController):
@@ -199,53 +223,107 @@ class JobFilesAPIController(BaseGalaxyAPIController):
             if key not in kwargs:
                 error_message = f"Job files action requires a valid '{key}'."
                 raise exceptions.ObjectAttributeMissingException(error_message)
-
-        job_id = trans.security.decode_id(encoded_job_id)
-        job_key = trans.security.encode_id(job_id, kind="jobs_files")
-        if not util.safe_str_cmp(str(kwargs["job_key"]), job_key):
-            raise exceptions.ItemAccessibilityException("Invalid job_key supplied.")
-
-        # Verify job is active. Don't update the contents of complete jobs.
-        job = trans.sa_session.get(Job, job_id)
-        assert job
-        if job.state not in Job.non_ready_states:
-            error_message = "Attempting to read or modify the files of a job that has already completed."
-            raise exceptions.ItemAccessibilityException(error_message)
-        return job
+        return authorize_job_access(trans.security, trans.sa_session, encoded_job_id, kwargs["job_key"])
 
     def __check_job_can_write_to_path(self, trans: ProvidesAppContext, job: Job, path: str):
-        """Verify an idealized job runner should actually be able to write to
-        the specified path - it must be a dataset output, a dataset "extra
-        file", or a some place in the working directory of this job.
+        check_job_can_write_to_path(trans.app, job, path)
 
-        Would like similar checks for reading the unstructured nature of loc
-        files make this very difficult. (See abandoned work here
-        https://gist.github.com/jmchilton/9103619.)
-        """
-        in_work_dir = self.__in_working_directory(job, path, trans.app)
-        if not in_work_dir and not self.__is_output_dataset_path(job, path):
-            raise exceptions.ItemAccessibilityException("Job is not authorized to write to supplied path.")
 
-    def __is_output_dataset_path(self, job: Job, path: str):
-        """Check if is an output path for this job or a file in the an
-        output's extra files path.
-        """
-        all_output_assocs: list[Union[JobToOutputDatasetAssociation, JobToOutputLibraryDatasetAssociation]] = [
-            *job.output_datasets,
-            *job.output_library_datasets,
-        ]
-        for assoc in all_output_assocs:
-            dataset = assoc.dataset
-            if not dataset:
-                continue
-            if os.path.abspath(dataset.get_file_name()) == os.path.abspath(path):
-                return True
-            elif util.in_directory(path, dataset.extra_files_path):
-                return True
-        return False
+def authorize_job_access(
+    security: IdEncodingHelper, sa_session: scoped_session, encoded_job_id: str, job_key: str
+) -> Job:
+    """Return the job if ``job_key`` is its job files key and the job is still active."""
+    job_id = security.decode_id(encoded_job_id)
+    expected_job_key = security.encode_id(job_id, kind="jobs_files")
+    if not util.safe_str_cmp(str(job_key), expected_job_key):
+        raise exceptions.ItemAccessibilityException("Invalid job_key supplied.")
 
-    def __in_working_directory(self, job: Job, path: str, app: MinimalManagerApp):
-        working_directory = app.object_store.get_filename(
-            job, base_dir="job_work", dir_only=True, extra_dir=str(job.id)
-        )
-        return util.in_directory(path, working_directory)
+    # Verify job is active. Don't update the contents of complete jobs.
+    job = sa_session.get(Job, job_id)
+    assert job
+    if job.state not in Job.non_ready_states:
+        error_message = "Attempting to read or modify the files of a job that has already completed."
+        raise exceptions.ItemAccessibilityException(error_message)
+    return job
+
+
+def check_job_can_write_to_path(app: MinimalManagerApp, job: Job, path: str) -> None:
+    """Verify an idealized job runner should actually be able to write to
+    the specified path - it must be a dataset output, a dataset "extra
+    file", or a some place in the working directory of this job.
+
+    Would like similar checks for reading the unstructured nature of loc
+    files make this very difficult. (See abandoned work here
+    https://gist.github.com/jmchilton/9103619.)
+    """
+    if not _in_working_directory(job, path, app) and not _is_output_dataset_path(job, path):
+        raise exceptions.ItemAccessibilityException("Job is not authorized to write to supplied path.")
+
+
+def _is_output_dataset_path(job: Job, path: str) -> bool:
+    """Check if is an output path for this job or a file in the an
+    output's extra files path.
+    """
+    all_output_assocs: list[Union[JobToOutputDatasetAssociation, JobToOutputLibraryDatasetAssociation]] = [
+        *job.output_datasets,
+        *job.output_library_datasets,
+    ]
+    for assoc in all_output_assocs:
+        dataset = assoc.dataset
+        if not dataset:
+            continue
+        if os.path.abspath(dataset.get_file_name()) == os.path.abspath(path):
+            return True
+        elif util.in_directory(path, dataset.extra_files_path):
+            return True
+    return False
+
+
+def _in_working_directory(job: Job, path: str, app: MinimalManagerApp) -> bool:
+    working_directory = app.object_store.get_filename(job, base_dir="job_work", dir_only=True, extra_dir=str(job.id))
+    return util.in_directory(path, working_directory)
+
+
+def _authorize_put(app: StructuredApp, job_id: str, path: str, job_key: str) -> str:
+    """Authorize a raw-body write to ``path`` and return the directory to stage it in."""
+    if not os.path.isabs(path):
+        raise exceptions.RequestParameterInvalidException("'path' must be an absolute path.")
+    job = authorize_job_access(app.security, app.model.session, job_id, job_key)
+    check_job_can_write_to_path(app, job, path)
+    target_dir = os.path.dirname(path)
+    util.safe_makedirs(target_dir)
+    return target_dir
+
+
+@router.put(
+    "/api/jobs/{job_id}/files",
+    summary="Write an output or working directory file of a job from the raw request body.",
+    description=(
+        "For TES servers (Funnel, TESK) that upload task outputs with a plain HTTP PUT. "
+        "Authorized by `job_key` like the multipart POST; only for consumption by job runners, "
+        "not part of Galaxy's stable, user facing API. The file is replaced, never appended to."
+    ),
+    public=True,
+)
+async def put_job_file(
+    request: Request,
+    job_id: Annotated[str, Path(description="Encoded id string of the job.")],
+    path: Annotated[str, Query(description="Absolute path of the file to write.")],
+    job_key: Annotated[str, Query(description="The job's job files key.")],
+    app: StructuredApp = DependsOnApp,
+) -> dict[str, str]:
+    # Authorize before reading the body, then stage it next to the target and rename it into place.
+    target_dir = await anyio.to_thread.run_sync(_authorize_put, app, job_id, path, job_key)
+    fd, staging_path = tempfile.mkstemp(prefix=PUT_STAGING_PREFIX, dir=target_dir)
+    try:
+        with os.fdopen(fd, "wb") as staging_file:
+            async for chunk in request.stream():
+                staging_file.write(chunk)
+        os.replace(staging_path, path)
+    except BaseException:
+        try:
+            os.unlink(staging_path)
+        except OSError:
+            pass
+        raise
+    return {"message": "ok"}

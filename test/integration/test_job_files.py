@@ -164,6 +164,47 @@ class TestJobFilesIntegration(integration_util.IntegrationTestCase):
         api_asserts.assert_status_code_is_ok(response)
         assert open(path).read() == "some initial text data"
 
+    def test_write_with_put(self):
+        job, output_hda, working_directory = self.create_static_job_with_state("running")
+        job_id, job_key = self._api_job_keys(job)
+        put_url = self._api_url(f"jobs/{job_id}/files", use_key=False)
+        path = self._app.object_store.get_filename(output_hda.dataset)
+        assert path
+
+        # TES servers such as Funnel send the raw body without a Content-Type.
+        response = requests.put(put_url, params={"path": path, "job_key": job_key}, data=b"raw output bytes")
+        api_asserts.assert_status_code_is_ok(response)
+        assert open(path, "rb").read() == b"raw output bytes"
+
+        # Parent directories are created; tool_stdout is replaced, not appended to as POST does.
+        tool_stdout = os.path.join(working_directory, "outputs", "tool_stdout")
+        for content in (b"first", b"second"):
+            response = requests.put(put_url, params={"path": tool_stdout, "job_key": job_key}, data=content)
+            api_asserts.assert_status_code_is_ok(response)
+        assert open(tool_stdout, "rb").read() == b"second"
+        assert not [f for f in os.listdir(os.path.dirname(tool_stdout)) if f.startswith(".job_files_put_")]
+
+        self._change_job_state(job, "ok")
+        response = requests.put(put_url, params={"path": path, "job_key": job_key}, data=b"too late")
+        _assert_insufficient_permissions(response)
+        assert open(path, "rb").read() == b"raw output bytes"
+
+    def test_put_write_protection(self):
+        job, _, working_directory = self.create_static_job_with_state("running")
+        job_id, job_key = self._api_job_keys(job)
+        put_url = self._api_url(f"jobs/{job_id}/files", use_key=False)
+        t_file = tempfile.NamedTemporaryFile()
+        response = requests.put(put_url, params={"path": t_file.name, "job_key": job_key}, data=b"x")
+        _assert_insufficient_permissions(response)
+        escape = os.path.join(working_directory, "..", "escape")
+        response = requests.put(put_url, params={"path": escape, "job_key": job_key}, data=b"x")
+        _assert_insufficient_permissions(response)
+        assert not os.path.exists(escape)
+        response = requests.put(
+            put_url, params={"path": os.path.join(working_directory, "w"), "job_key": "bad"}, data=b"x"
+        )
+        _assert_insufficient_permissions(response)
+
     def test_write_protection(self):
         job, _, _ = self.create_static_job_with_state("running")
         job_id, job_key = self._api_job_keys(job)
