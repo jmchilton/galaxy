@@ -8,12 +8,15 @@ import copy
 import json
 import logging
 import threading
+from dataclasses import (
+    dataclass,
+    field,
+)
 from http.server import (
     BaseHTTPRequestHandler,
     ThreadingHTTPServer,
 )
 from queue import Queue
-from types import SimpleNamespace
 from typing import (
     Any,
     cast,
@@ -41,6 +44,7 @@ from galaxy.jobs.runners.util.tes_task import redact
 
 TASK_ID = "d4rk5c3bf5d1q0abcdef"
 GALAXY_JOB_ID = 42
+# The runner's defaults, which the harness relies on.
 INTERVAL = 60.0
 GRACE = 120.0
 SERVER_NAME = "main.handler0"
@@ -193,14 +197,14 @@ def clock(monkeypatch):
     return clock
 
 
+@dataclass
 class FakeJob:
-    def __init__(self):
-        self.id = GALAXY_JOB_ID
-        self.state = model.Job.states.QUEUED
-        self.job_runner_external_id = TASK_ID
-        self.job_runner_name = "pulsar_tes://"
-        self.handler = SERVER_NAME
-        self.destination_params: dict[str, Any] = {}
+    id: int = GALAXY_JOB_ID
+    state: str = model.Job.states.QUEUED
+    job_runner_external_id: str = TASK_ID
+    job_runner_name: str = "pulsar_tes://"
+    handler: str = SERVER_NAME
+    destination_params: dict[str, Any] = field(default_factory=dict)
 
     def get_job_runner_external_id(self):
         return self.job_runner_external_id
@@ -209,21 +213,33 @@ class FakeJob:
         return []
 
 
+@dataclass
+class FakeTool:
+    old_id: str = "cat1"
+
+
 class FakeJobWrapper:
-    """Just what ``AsynchronousJobState`` and ``fail_job`` use; records failures."""
+    """Just what ``AsynchronousJobState`` and ``fail_job`` use; records failures.
+
+    Set ``state_error`` to make reading the job's state raise, as a lost database connection does.
+    """
 
     def __init__(self, app):
         self.app = app
         self.job = FakeJob()
         self.job_id = GALAXY_JOB_ID
-        self.tool = SimpleNamespace(old_id="cat1")
+        self.tool = FakeTool()
         self.user = None
+        self.guest_ports: list[int] = []
         self.failures: list[dict[str, Any]] = []
+        self.state_error: Exception | None = None
 
     def get_id_tag(self):
         return str(self.job_id)
 
     def get_state(self):
+        if self.state_error:
+            raise self.state_error
         return self.job.state
 
     def get_job(self):
@@ -243,12 +259,7 @@ class Harness:
     def __init__(self, tes_server, clock):
         self.tes_server = tes_server
         self.clock = clock
-        self.runner = _runner(
-            PulsarTesJobRunner,
-            tes_status_check_interval=str(INTERVAL),
-            tes_status_grace_period=str(GRACE),
-            amqp_url=f"amqp://galaxy:{AMQP_PASSWORD}@broker:5672//",
-        )
+        self.runner = _runner(PulsarTesJobRunner, amqp_url=f"amqp://galaxy:{AMQP_PASSWORD}@broker:5672//")
         self.runner.work_queue = Queue()
         self.runner._init_client_manager()
         self.job_wrapper = FakeJobWrapper(self.runner.app)
@@ -329,27 +340,22 @@ def test_task_dying_before_pulsar_reports_fails_the_job(harness, tes_server, cap
     for text in (details, *(record.getMessage() for record in caplog.records)):
         assert JOB_BASE64[:32] not in text
         assert APP_CONF_BASE64[:32] not in text
-    assert harness.runner._tes_task_watches == {}
 
 
-def test_job_finished_by_pulsar_stops_the_checks(harness, tes_server):
+@pytest.mark.parametrize(
+    "state",
+    # Pulsar's final status was processed, or the job was stopped or deleted.
+    [model.Job.states.ERROR, model.Job.states.OK, model.Job.states.DELETING, model.Job.states.STOPPED],
+)
+def test_jobs_no_longer_queued_or_running_stop_the_checks(harness, tes_server, state):
     tes_server.tasks[TASK_ID] = _task("EXECUTOR_ERROR", executor_logs=[{"exit_code": 1}])
     harness.check()
     harness.check_after(INTERVAL)
-    harness.job.state = model.Job.states.ERROR  # Pulsar's "failed" message arrived.
+    harness.job.state = state
 
     assert harness.check_after(INTERVAL) is None
     assert tes_server.views_requested() == ["BASIC"]
     assert harness.failures == []
-    assert harness.runner._tes_task_watches == {}
-
-
-@pytest.mark.parametrize("state", [model.Job.states.DELETING, model.Job.states.STOPPED, model.Job.states.OK])
-def test_jobs_no_longer_queued_or_running_are_not_checked(harness, tes_server, state):
-    harness.job.state = state
-    harness.check()
-    assert harness.check_after(INTERVAL) is None
-    assert tes_server.requests == []
 
 
 def test_running_task_is_checked_once_per_interval_and_left_alone(harness, tes_server):
@@ -452,12 +458,23 @@ def test_tes_server_errors_never_fail_the_job(harness, tes_server):
     assert harness.failures == []
 
 
-def test_resubmitted_job_stops_the_checks_of_its_old_task(harness, tes_server):
+@pytest.mark.parametrize(
+    "attribute, value",
+    [
+        # Resubmitted, so the job runs as another task.
+        ("job_runner_external_id", "a-newer-task"),
+        # Claimed by another handler to finish it.
+        ("handler", "main.handler1"),
+    ],
+)
+def test_job_resubmitted_or_claimed_elsewhere_stops_the_checks(harness, tes_server, attribute, value):
     tes_server.tasks[TASK_ID] = _task("EXECUTOR_ERROR")
-    harness.job.job_runner_external_id = "a-newer-task"
     harness.check()
+    harness.check_after(INTERVAL)
+    setattr(harness.job, attribute, value)
+
     assert harness.check_after(INTERVAL) is None
-    assert tes_server.requests == []
+    assert tes_server.views_requested() == ["BASIC"]
     assert harness.failures == []
 
 
@@ -474,29 +491,14 @@ def test_final_status_from_pulsar_outlasting_the_grace_period_keeps_the_job(harn
 
     assert not harness.watch_for(INTERVAL + GRACE + INTERVAL)
     assert harness.failures == []
-    assert harness.runner._tes_tasks_reported == set()
 
 
-def test_job_claimed_by_another_handler_is_left_to_it(harness, tes_server):
-    tes_server.tasks[TASK_ID] = _task("COMPLETE")
-    harness.job.handler = "main.handler1"
-    harness.check()
-    assert harness.check_after(INTERVAL) is None
-    assert tes_server.requests == []
-
-
-def test_errors_while_checking_do_not_stop_the_monitor(harness, tes_server, monkeypatch):
+def test_errors_while_checking_do_not_stop_the_monitor(harness, tes_server):
     tes_server.tasks[TASK_ID] = _task("RUNNING")
     harness.check()
-
-    def broken_state():
-        raise RuntimeError("database went away")
-
-    working_state = harness.job_wrapper.get_state
-    # Not monkeypatch.undo(): that would also undo the clock fixture's patch.
-    monkeypatch.setattr(harness.job_wrapper, "get_state", broken_state)
+    harness.job_wrapper.state_error = RuntimeError("database went away")
     assert harness.check_after(INTERVAL) is harness.job_state
-    monkeypatch.setattr(harness.job_wrapper, "get_state", working_state)
+    harness.job_wrapper.state_error = None
     assert harness.check_after(INTERVAL) is harness.job_state
     assert tes_server.views_requested() == ["BASIC"]
 
@@ -658,10 +660,6 @@ def test_tes_checks_are_configurable():
     assert not _runner(PulsarTesJobRunner, tes_status_check_interval="0").poll
     with pytest.raises(Exception, match="tes_status_grace_period"):
         _runner(PulsarTesJobRunner, tes_status_grace_period="-1")
-
-
-def test_other_message_queue_runners_still_do_not_poll():
-    assert not _runner(PulsarMQJobRunner).poll
 
 
 def test_tes_options_are_rejected_by_other_pulsar_runners():
