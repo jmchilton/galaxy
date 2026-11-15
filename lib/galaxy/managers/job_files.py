@@ -18,12 +18,21 @@ from galaxy.model import (
 from galaxy.model.scoped_session import galaxy_scoped_session
 from galaxy.objectstore import BaseObjectStore
 from galaxy.security.idencoding import IdEncodingHelper
+from galaxy.security.job_files_tokens import (
+    JOB_FILES_READ,
+    JOB_FILES_WRITE,
+    JobFilesScope,
+    verify_job_files_token,
+)
 
 APPENDABLE_FILE_NAMES = ("tool_stdout", "tool_stderr")
 
 
 class JobFilesManager:
-    """Job runner access to low-level job files, authorized by job key only - never by user credentials.
+    """Job runner access to low-level job files, authorized by job key or job token only - never by user credentials.
+
+    The job key opens every path of the job; a job token (``galaxy.security.job_files_tokens``)
+    opens one path in one direction.
 
     Reads aren't limited to the job's own files, since tools also read unstructured inputs such as ``.loc`` files.
     """
@@ -44,8 +53,10 @@ class JobFilesManager:
     def upload_dir(self) -> str:
         return str(self._config.new_file_path)
 
-    def readable_path(self, encoded_job_id: str, path: str | None, job_key: str | None) -> str:
-        job, path = self._authorize(encoded_job_id, path, job_key)
+    def readable_path(
+        self, encoded_job_id: str, path: str | None, job_key: str | None, job_token: str | None = None
+    ) -> str:
+        job, path = self._authorize(encoded_job_id, path, job_key, job_token, JOB_FILES_READ)
         if os.path.isfile(path):
             return path
         if os.path.exists(path):
@@ -61,9 +72,11 @@ class JobFilesManager:
                 raise exceptions.ItemDeletionException("Input dataset(s) for job have been purged.")
         raise exceptions.ObjectNotFound("File not found.")
 
-    def authorize_write(self, encoded_job_id: str, path: str | None, job_key: str | None) -> str:
+    def authorize_write(
+        self, encoded_job_id: str, path: str | None, job_key: str | None, job_token: str | None = None
+    ) -> str:
         """Return a directory to stage uploads for ``path`` in - same filesystem, outside any extra files path."""
-        job, path = self._authorize(encoded_job_id, path, job_key)
+        job, path = self._authorize(encoded_job_id, path, job_key, job_token, JOB_FILES_WRITE)
         _assert_absolute(path)
         return self._write_staging_parent(job, path)
 
@@ -116,13 +129,24 @@ class JobFilesManager:
         util.safe_makedirs(os.path.dirname(path))
         shutil.move(source_path, path)
 
-    def _authorize(self, encoded_job_id: str, path: str | None, job_key: str | None) -> tuple[Job, str]:
+    def _authorize(
+        self,
+        encoded_job_id: str,
+        path: str | None,
+        job_key: str | None,
+        job_token: str | None,
+        scope: JobFilesScope,
+    ) -> tuple[Job, str]:
+        """Authorize by ``job_token`` for ``scope`` access to exactly ``path`` when given, otherwise by ``job_key``."""
         if path is None:
             raise exceptions.ObjectAttributeMissingException("Job files action requires a valid 'path'.")
-        if job_key is None:
+        if job_key is None and job_token is None:
             raise exceptions.ObjectAttributeMissingException("Job files action requires a valid 'job_key'.")
         job_id = self._security.decode_id(encoded_job_id)
-        if not util.safe_str_cmp(job_key, self._security.encode_id(job_id, kind="jobs_files")):
+        if job_token is not None:
+            if not verify_job_files_token(self._security, job_id, path, scope, job_token):
+                raise exceptions.ItemAccessibilityException("Invalid or expired job_token supplied.")
+        elif not util.safe_str_cmp(str(job_key), self._security.encode_id(job_id, kind="jobs_files")):
             raise exceptions.ItemAccessibilityException("Invalid job_key supplied.")
         return self._active_job(job_id), path
 

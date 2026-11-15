@@ -38,6 +38,12 @@ from tusclient import client
 from galaxy import model
 from galaxy.job_execution.setup import JobWorkingDirectory
 from galaxy.model.base import ensure_object_added_to_session
+from galaxy.security.job_files_tokens import (
+    JOB_FILES_READ,
+    job_files_token,
+    JOB_FILES_WRITE,
+    JobFilesScope,
+)
 from galaxy.webapps.galaxy.api.job_files import UPLOAD_STAGING_PREFIX
 from galaxy_test.base import api_asserts
 from galaxy_test.base.populators import (
@@ -408,6 +414,70 @@ class TestJobFilesIntegration(integration_util.IntegrationTestCase):
         for params in [{"path": work}, {"job_key": job.job_key}]:
             _assert_missing_attribute(requests.put(job.files_url, params=params, data=b"x"))
 
+    def test_signed_per_file_tokens(self):
+        job = self._running_job()
+        url = job.files_url
+        # Not the shared input dataset: another test purges it.
+        input_path = os.path.join(job.working_directory, "tool_script.sh")
+        _write_file(input_path, TEST_INPUT_TEXT)
+        output_path = job.output_path
+
+        def token(path: str, scope: JobFilesScope, expires: int | None = None) -> str:
+            return self._job_files_token(job, path, scope, expires)
+
+        expired = int(time.time()) - 1
+
+        # A read token reads its file, and nothing else.
+        response = requests.get(url, params={"path": input_path, "job_token": token(input_path, JOB_FILES_READ)})
+        api_asserts.assert_status_code_is_ok(response)
+        assert response.text == TEST_INPUT_TEXT
+        for params in (
+            {"path": input_path, "job_token": token(input_path, JOB_FILES_WRITE)},
+            {"path": input_path, "job_token": token(output_path, JOB_FILES_READ)},
+            {"path": input_path, "job_token": token(input_path, JOB_FILES_READ, expired)},
+            {"path": input_path, "job_token": "garbage"},
+        ):
+            _assert_insufficient_permissions(requests.get(url, params=params))
+
+        # A write token writes its file with PUT (Funnel, TESK) or multipart POST (tesp-api), and nothing else.
+        response = requests.put(
+            url, params={"path": output_path, "job_token": token(output_path, JOB_FILES_WRITE)}, data=b"put bytes"
+        )
+        api_asserts.assert_status_code_is_ok(response)
+        _assert_file_contents(output_path, "put bytes")
+        tool_stdout = os.path.join(job.working_directory, "outputs", "tool_stdout")
+        response = requests.post(
+            url,
+            params={"path": tool_stdout, "job_token": token(tool_stdout, JOB_FILES_WRITE)},
+            files={"file": io.StringIO("posted")},
+        )
+        api_asserts.assert_status_code_is_ok(response)
+        _assert_file_contents(tool_stdout, "posted")
+        other_file = os.path.join(job.working_directory, "other")
+        for params in (
+            {"path": output_path, "job_token": token(output_path, JOB_FILES_READ)},
+            {"path": other_file, "job_token": token(output_path, JOB_FILES_WRITE)},
+            {"path": output_path, "job_token": token(output_path, JOB_FILES_WRITE, expired)},
+        ):
+            _assert_insufficient_permissions(requests.put(url, params=params, data=b"x"))
+            _assert_insufficient_permissions(requests.post(url, params=params, files={"file": io.StringIO("x")}))
+            _assert_insufficient_permissions(requests.post(url, data=params, files={"file": io.StringIO("x")}))
+        _assert_file_contents(output_path, "put bytes")
+        assert not os.path.exists(other_file)
+        assert not _staging_dirs(job.working_directory)
+
+        # A valid token doesn't widen the write locations.
+        outside = tempfile.NamedTemporaryFile()
+        response = requests.put(
+            url, params={"path": outside.name, "job_token": token(outside.name, JOB_FILES_WRITE)}, data=b"x"
+        )
+        _assert_insufficient_permissions(response)
+
+        # Tokens end with the job.
+        self._change_job_state(job.job, "ok")
+        response = requests.get(url, params={"path": input_path, "job_token": token(input_path, JOB_FILES_READ)})
+        _assert_insufficient_permissions(response)
+
     def test_write_and_read_path_with_percent_escapes(self):
         job = self._running_job()
         path = os.path.join(job.working_directory, "a%2Fb%20c")
@@ -574,6 +644,10 @@ class TestJobFilesIntegration(integration_util.IntegrationTestCase):
         params = {**(params or {}), **({} if form_auth else auth)}
         files = {file_param: io.StringIO(content)} if content is not None else None
         return requests.post(job.files_url, params=params, data=data, files=files)
+
+    def _job_files_token(self, job: RunningJob, path: str, scope: JobFilesScope, expires: int | None = None) -> str:
+        expires = int(time.time()) + 600 if expires is None else expires
+        return job_files_token(self._app.security, job.job.id, path, scope, expires)
 
     def _put_job_file(self, job: RunningJob, path: str, data) -> requests.Response:
         """PUT the raw body like Funnel and TESK - path and job_key as query params."""

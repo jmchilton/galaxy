@@ -51,7 +51,7 @@ RECHECK_SECONDS = 1.0
 
 JOB_FILES_DESCRIPTION = (
     "Only for consumption by remote job runners (e.g. Pulsar) acting on behalf of a queued or running job, "
-    "authorized by `job_key` - not part of Galaxy's stable, user facing API."
+    "authorized by `job_key` or by a signed `job_token` for one path - not part of Galaxy's stable, user facing API."
 )
 
 JobIdPathParam = Annotated[str, Path(description="Encoded id string of the job.")]
@@ -60,10 +60,18 @@ JobKeyQueryParam = Annotated[
     str | None,
     Query(description="A key used to authenticate this request as acting on behalf of a job runner for the job."),
 ]
+JobTokenQueryParam = Annotated[
+    str | None,
+    Query(
+        description="Instead of `job_key`, a signed token for this one path and direction "
+        "(see `galaxy.security.job_files_tokens`)."
+    ),
+]
 
 UPLOAD_FIELD_PROPERTIES = {
     "path": {"type": "string", "description": "Path to file to create, if not given as a query parameter."},
     "job_key": {"type": "string", "description": "Job key, if not given as a query parameter."},
+    "job_token": {"type": "string", "description": "Job token, if not given as a query parameter."},
     "session_id": {"type": "string", "description": "Completed job files TUS upload to use as contents."},
     "__file_path": {"type": "string", "description": "File stored by nginx_upload_module to use as contents."},
 }
@@ -95,8 +103,9 @@ class FastAPIJobFiles:
         job_id: JobIdPathParam,
         path: FilePathQueryParam = None,
         job_key: JobKeyQueryParam = None,
+        job_token: JobTokenQueryParam = None,
     ) -> GalaxyFileResponse:
-        return GalaxyFileResponse(self.manager.readable_path(job_id, path, job_key))
+        return GalaxyFileResponse(self.manager.readable_path(job_id, path, job_key, job_token))
 
     @router.post(
         "/api/jobs/{job_id}/files",
@@ -118,10 +127,11 @@ class FastAPIJobFiles:
         job_id: JobIdPathParam,
         path: FilePathQueryParam = None,
         job_key: JobKeyQueryParam = None,
+        job_token: JobTokenQueryParam = None,
     ) -> dict[str, str]:
         params = dict(request.query_params)
-        query_auth = path is not None and job_key is not None
-        staging_dir = await anyio.to_thread.run_sync(self._start_upload, job_id, path, job_key, query_auth)
+        query_auth = path is not None and (job_key is not None or job_token is not None)
+        staging_dir = await anyio.to_thread.run_sync(self._start_upload, job_id, path, job_key, job_token, query_auth)
         started = time.monotonic()
         try:
             try:
@@ -138,11 +148,13 @@ class FastAPIJobFiles:
             await anyio.to_thread.run_sync(_remove_staging_dir, staging_dir)
         return {"message": "ok"}
 
-    def _start_upload(self, job_id: str, path: str | None, job_key: str | None, query_auth: bool) -> str:
+    def _start_upload(
+        self, job_id: str, path: str | None, job_key: str | None, job_token: str | None, query_auth: bool
+    ) -> str:
         """Return a new directory to stage the upload in, authorizing first when the query allows it."""
         if query_auth:
             # Authorize before reading the body so the upload is staged on the target's filesystem and renamed.
-            staging_parent = self.manager.authorize_write(job_id, path, job_key)
+            staging_parent = self.manager.authorize_write(job_id, path, job_key, job_token)
         else:
             staging_parent = self.manager.upload_dir
         return _new_staging_dir(staging_parent)
@@ -152,7 +164,7 @@ class FastAPIJobFiles:
     ) -> None:
         path = params.get("path")
         if not query_auth:
-            self.manager.authorize_write(job_id, path, params.get("job_key"))
+            self.manager.authorize_write(job_id, path, params.get("job_key"), params.get("job_token"))
         elif recheck:
             # The path was authorized before the body was read; only the job can have finished since.
             self.manager.assert_job_active(job_id)
@@ -185,8 +197,9 @@ class FastAPIJobFiles:
         job_id: JobIdPathParam,
         path: FilePathQueryParam = None,
         job_key: JobKeyQueryParam = None,
+        job_token: JobTokenQueryParam = None,
     ) -> dict[str, str]:
-        staging_dir = await anyio.to_thread.run_sync(self._start_upload, job_id, path, job_key, True)
+        staging_dir = await anyio.to_thread.run_sync(self._start_upload, job_id, path, job_key, job_token, True)
         started = time.monotonic()
         try:
             body_path = os.path.join(staging_dir, "body")
