@@ -66,7 +66,7 @@ from galaxy.jobs.runners import (
 from galaxy.jobs.runners.util.tes_staging import (
     build_tes_task,
     directory_output_paths,
-    executor_env,
+    job_directory_outputs,
     signed_job_files_url_for,
     staged_input_paths,
     wrapper_script,
@@ -80,10 +80,7 @@ from galaxy.jobs.runners.util.tes_task import (
     TES_TASK_NOT_FOUND,
     TesTaskKey,
 )
-from galaxy.util import (
-    asbool,
-    in_directory,
-)
+from galaxy.util import asbool
 
 if TYPE_CHECKING:
     from pulsar.client.tes_job_config import TesJobParams
@@ -219,7 +216,6 @@ class TesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
                 job_directory,
                 [str(path.false_extra_files_path) for path in job_wrapper.job_io.get_output_fnames()],
             )
-        resources = TesResources(cpu_cores=tes_params.cpu_cores, ram_gb=tes_params.ram_gb, disk_gb=tes_params.disk_gb)
         wrapper = wrapper_script(
             job_directory,
             job_state.job_file,
@@ -240,8 +236,9 @@ class TesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
             url_for=signed_job_files_url_for(
                 self.galaxy_url, self.app.security, job_wrapper.job_id, int(time()) + self.job_files_token_ttl
             ),
-            resources=resources,
-            env=executor_env(resources),
+            resources=TesResources(
+                cpu_cores=tes_params.cpu_cores, ram_gb=tes_params.ram_gb, disk_gb=tes_params.disk_gb
+            ),
             directory_paths=directory_paths,
         )
 
@@ -260,10 +257,7 @@ class TesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
             job_state.error_file,
             *(os.path.join(job_directory, f"__instrument_core_{name}") for name in CORE_METRICS_FILES),
         ]
-        for path in paths:
-            if not in_directory(path, job_directory):
-                raise Exception(f"Job output {path} is outside the job directory, which the TES runner can't stage.")
-        return [os.path.abspath(path) for path in paths]
+        return job_directory_outputs(job_directory, paths)
 
     def check_watched_item(self, job_state: AsynchronousJobState) -> AsynchronousJobState | None:
         task_key = tes_task_key(job_state)

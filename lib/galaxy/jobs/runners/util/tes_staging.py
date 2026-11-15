@@ -35,6 +35,7 @@ from galaxy.security.job_files_tokens import (
     JobFilesScope,
 )
 from galaxy.util import in_directory
+from galaxy.util.path import StrPath
 
 if TYPE_CHECKING:
     from galaxy.security.idencoding import IdEncodingHelper
@@ -87,17 +88,23 @@ def expand_paths(paths: Iterable[str]) -> list[str]:
     return files
 
 
-def directory_output_paths(job_directory: str, extra_files_paths: Iterable[str]) -> list[str]:
-    """Directories the task sends back whole: the tool working directory and the outputs' extra files directories."""
-    paths: dict[str, None] = {os.path.join(job_directory, "working"): None}
-    for path in extra_files_paths:
+def job_directory_outputs(job_directory: str, paths: Iterable[str]) -> list[str]:
+    """``paths`` made absolute; the task can only send back what it wrote in its job directory, so raise for others."""
+    absolute = []
+    for path in paths:
         if not in_directory(path, job_directory):
             raise Exception(f"Job output {path} is outside the job directory, which the TES runner can't stage.")
-        paths[os.path.abspath(path)] = None
-    return list(paths)
+        absolute.append(os.path.abspath(path))
+    return absolute
 
 
-def referenced_tool_files(tool_directory: str | None, texts: Iterable[str]) -> list[str]:
+def directory_output_paths(job_directory: str, extra_files_paths: Iterable[str]) -> list[str]:
+    """Directories the task sends back whole: the tool working directory and the outputs' extra files directories."""
+    working_directory = os.path.join(job_directory, "working")
+    return list(dict.fromkeys([working_directory, *job_directory_outputs(job_directory, extra_files_paths)]))
+
+
+def referenced_tool_files(tool_directory: StrPath | None, texts: Iterable[str]) -> list[str]:
     """Files under ``tool_directory`` named in ``texts`` (job script, tool script, config files)."""
     if not tool_directory:
         return []
@@ -107,7 +114,7 @@ def referenced_tool_files(tool_directory: str | None, texts: Iterable[str]) -> l
     return [path for path in expand_paths(sorted(referenced)) if in_directory(path, tool_directory)]
 
 
-def tool_directory_files(tool_directory: str | None) -> list[str]:
+def tool_directory_files(tool_directory: StrPath | None) -> list[str]:
     """Every file under ``tool_directory`` outside ``test-data`` and hidden directories, or none if there are too many."""
     if not tool_directory:
         return []
@@ -124,7 +131,7 @@ def tool_directory_files(tool_directory: str | None) -> list[str]:
 def staged_input_paths(
     job_directory: str,
     input_paths: Iterable[str],
-    tool_directory: str | None,
+    tool_directory: StrPath | None,
     exclude: Iterable[str] = (),
 ) -> list[str]:
     """Every file the job may read, as absolute paths on Galaxy's disk, without duplicates."""
@@ -224,13 +231,13 @@ def build_tes_task(
     output_paths: Iterable[str],
     wrapper: str,
     url_for: UrlFor,
-    resources: TesResources | None = None,
-    env: dict[str, str] | None = None,
+    resources: TesResources,
     directory_paths: Iterable[str] = (),
 ) -> TesTask:
     """A TES task that stages ``input_paths`` in, runs ``wrapper`` in ``image`` and stages ``output_paths`` out.
 
-    Every path is the same inside the task as on Galaxy's disk.
+    Every path is the same inside the task as on Galaxy's disk. The job script sees ``resources`` as
+    ``GALAXY_SLOTS`` and ``GALAXY_MEMORY_MB``.
     """
     wrapper_path = os.path.join(job_directory, TES_WRAPPER_SCRIPT)
     inputs = [TesInput(url=url_for(path, JOB_FILES_READ), path=path, type=TesFileType.FILE) for path in input_paths]
@@ -240,6 +247,7 @@ def build_tes_task(
         TesOutput(url=url_for(path, JOB_FILES_DIRECTORY_WRITE), path=path, type=TesFileType.DIRECTORY)
         for path in directory_paths
     )
+    env = _executor_env(resources)
     executor = TesExecutor(image=image, command=["/bin/sh", wrapper_path], workdir=job_directory, env=env or None)
     return TesTask(
         name=name,
@@ -252,8 +260,7 @@ def build_tes_task(
     )
 
 
-def executor_env(resources: TesResources) -> dict[str, str]:
-    """``GALAXY_SLOTS`` and ``GALAXY_MEMORY_MB`` for the job script, from the TES resources."""
+def _executor_env(resources: TesResources) -> dict[str, str]:
     env = {}
     if resources.cpu_cores:
         env["GALAXY_SLOTS"] = str(resources.cpu_cores)

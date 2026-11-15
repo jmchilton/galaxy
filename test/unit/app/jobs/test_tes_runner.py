@@ -30,7 +30,6 @@ from galaxy.jobs.runners.util import (
 from galaxy.jobs.runners.util.tes_staging import (
     build_tes_task,
     directory_output_paths,
-    executor_env,
     job_files_url,
     signed_job_files_url_for,
     staged_input_paths,
@@ -182,7 +181,6 @@ def test_build_tes_task():
         wrapper="#!/bin/sh\nexit 0\n",
         url_for=lambda path, scope: job_files_url(GALAXY_URL, "abc", path, f"{scope}-token"),
         resources=resources,
-        env=executor_env(resources),
         directory_paths=directories,
     )
 
