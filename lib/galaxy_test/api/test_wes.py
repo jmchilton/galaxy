@@ -273,13 +273,13 @@ steps:
             result = self._list_wes_runs(1)
             assert len(result["runs"]) == 1
             all_ids_page1.append(result["runs"][0]["run_id"])
-            assert result["next_page_token"] is not None
+            assert result["next_page_token"]
 
             # Follow to page 2
             result = self._list_wes_runs(1, result["next_page_token"])
             assert len(result["runs"]) == 1
             all_ids_page1.append(result["runs"][0]["run_id"])
-            assert result["next_page_token"] is not None
+            assert result["next_page_token"]
 
             # Follow to page 3
             result = self._list_wes_runs(1, result["next_page_token"])
@@ -296,7 +296,7 @@ steps:
             result = self._list_wes_runs(2)
             assert len(result["runs"]) == 2
             all_ids_page2.extend([r["run_id"] for r in result["runs"]])
-            assert result["next_page_token"] is not None
+            assert result["next_page_token"]
 
             # Follow to page 2 (should have 1 item)
             result = self._list_wes_runs(2, result["next_page_token"])
@@ -307,6 +307,14 @@ steps:
             assert len(set(all_ids_page2)) == len(all_ids_page2), "Duplicate run_ids in pagination"
             for run_id in submitted_ids:
                 assert run_id in all_ids_page2, f"Submitted run {run_id} not found in paginated results"
+
+            # Follow any remaining pages (other tests' runs are older than ours); the last page's token is "".
+            while result["next_page_token"]:
+                result = self._list_wes_runs(100, result["next_page_token"])
+            assert result["next_page_token"] == ""
+
+            # A client echoing the empty token back gets the first page.
+            assert self._list_wes_runs(1, "")["runs"][0]["run_id"] == all_ids_page1[0]
 
     def test_wes_get_run(self):
         """Test GET /ga4gh/wes/v1/runs/{run_id} returns full run details."""
@@ -761,7 +769,7 @@ steps: {}
 
             # Verify structure
             assert "task_logs" in task_list_response
-            assert "next_page_token" in task_list_response
+            assert task_list_response["next_page_token"] == ""
             assert task_list_response["task_logs"] is not None
 
             # Verify task list

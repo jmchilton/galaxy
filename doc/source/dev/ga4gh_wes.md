@@ -351,7 +351,7 @@ curl -s "$BASE/ga4gh/wes/v1/runs/33b43b4e7093c91f/tasks" -H "x-api-key: $KEY" | 
       "stderr": "/api/jobs/417e33144b294c21/stderr"
     }
   ],
-  "next_page_token": null
+  "next_page_token": ""
 }
 ```
 
@@ -363,9 +363,11 @@ above). Fetch a single task with `GET /ga4gh/wes/v1/runs/{run_id}/tasks/{task_id
 ### Pagination
 
 Both `GET /runs` and `GET /runs/{id}/tasks` use opaque keyset (cursor) tokens, not
-offsets. Pass `page_size` (1–100, default 10); if more results exist the response includes
-`next_page_token`, which you echo back as `page_token` on the next request. Do not try to
-decode or construct tokens yourself.
+offsets. Pass `page_size` (1–100, default 10); if more results exist the response's
+`next_page_token` is a token you echo back as `page_token` on the next request. On the last
+page it is an empty string (`""`), as the WES spec prescribes. Stop paging when it is empty:
+an empty `page_token` means no token and returns the first page again. Do not try to decode
+or construct tokens yourself.
 
 ```bash
 curl -s "$BASE/ga4gh/wes/v1/runs?page_size=2" -H "x-api-key: $KEY"

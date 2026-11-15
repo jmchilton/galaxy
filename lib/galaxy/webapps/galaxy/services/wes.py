@@ -684,8 +684,8 @@ class WesService(ServiceBase):
             run_summary = self._invocation_to_run_summary(invocation)
             runs.append(run_summary)
 
-        # Generate next_page_token from last item's ID
-        next_page_token = None
+        # Generate next_page_token from last item's ID; WES uses an empty string for the last page
+        next_page_token = ""
         if has_more and invocations:
             last_invocation = invocations[page_size - 1]
             token = SingleKeysetToken(last_id=last_invocation.id)
@@ -991,8 +991,8 @@ class WesService(ServiceBase):
         # Convert to TaskLog objects
         task_logs = [self._task_row_to_task_log(row, steps_by_id, jobs_by_id) for row in task_rows]
 
-        # Generate next page token
-        next_page_token = None
+        # Generate next page token; WES uses an empty string for the last page
+        next_page_token = ""
         if has_more and task_rows:
             last_row = task_rows[-1]
             token = TaskKeysetToken(step_order=last_row["step_order"], job_index=last_row["job_index"])
