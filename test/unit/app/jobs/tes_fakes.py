@@ -26,7 +26,8 @@ SERVER_NAME = "main.handler0"
 
 
 class FakeTesServer:
-    """Serves ``GET /v1/tasks/{id}`` the way Funnel does: BASIC drops stdout, stderr and system logs.
+    """Serves ``GET /v1/tasks/{id}`` the way Funnel does: MINIMAL has the id and state only, BASIC drops
+    stdout, stderr and system logs.
 
     ``POST /v1/tasks/{id}:cancel`` answers ``cancel_status`` with ``cancel_body`` for known tasks.
     """
@@ -79,6 +80,8 @@ class FakeTesServer:
 
     @staticmethod
     def view(task, view):
+        if view == "MINIMAL":
+            return {key: task[key] for key in ("id", "state") if key in task}
         task = copy.deepcopy(task)
         if view != "FULL":
             for attempt in task.get("logs", []):

@@ -18,6 +18,7 @@ from urllib.parse import (
     urlparse,
 )
 
+import requests
 from pulsar.client.tes_job_config import (
     parse_tes_job_params,
     tes_client_from_params,
@@ -49,6 +50,9 @@ TES_NOTHING_TO_CANCEL_STATES = TES_FINISHED_STATES | {"CANCELING"}
 # A TES task's server URL and task id. Nothing in the TES spec makes task ids unique
 # across servers (tesp-api's are MongoDB ObjectIds), and destinations can use different servers.
 TesTaskKey = tuple[str | None, str]
+
+TES_STATE_REQUEST_TIMEOUT = 30.0
+"""Seconds a state check waits on the TES server, so a server that hangs can't stall a runner's monitor thread."""
 
 STDERR_TAIL_LINES = 20
 SYSTEM_LOG_TAIL_LINES = 10
@@ -88,23 +92,27 @@ def tes_task_key(job_state: "AsynchronousJobState") -> TesTaskKey:
 def fetch_tes_task_state(tes_client: "TesClient", task_id: str) -> str:
     """Return the TES state name of a task, or ``TES_TASK_NOT_FOUND``.
 
-    Any other failure to read the task is raised.
+    Any other failure to read the task is raised. Asks for the MINIMAL view, the
+    task's id and state only: the BASIC view lists every input with its URL, so
+    each check of a task with thousands of inputs would fetch and parse megabytes.
+    pydantic-tes can't read MINIMAL (``TesTask`` requires executors) and sets no
+    timeout, so this requests the task itself, with the client's URL and headers.
     """
-    try:
-        # pydantic-tes rejects the MINIMAL view, which omits executors.
-        task = tes_client.get_task(task_id, "BASIC")
-    except ValidationError as e:
-        # pydantic-tes 0.4.0 predates TES 1.1's PREEMPTED and CANCELING states.
-        for error in e.errors():
-            state = error.get("input")
-            if error["loc"] == ("state",) and isinstance(state, str):
-                return state
-        raise
-    except Exception as e:
-        if http_status_code(e) == 404:
-            return TES_TASK_NOT_FOUND
-        raise
-    return task.state.value if task.state else "UNKNOWN"
+    response = requests.get(
+        tes_client._build_url(f"tasks/{task_id}"),
+        params={"view": "MINIMAL"},
+        headers=tes_client._headers,
+        timeout=TES_STATE_REQUEST_TIMEOUT,
+    )
+    if response.status_code == 404:
+        return TES_TASK_NOT_FOUND
+    response.raise_for_status()
+    task = response.json()
+    if not isinstance(task, dict):
+        raise ValueError(f"TES server answered with a {type(task).__name__} instead of task {task_id}")
+    # Funnel leaves out UNKNOWN, its zero value. Kept as text: pydantic-tes 0.4.0 predates PREEMPTED and CANCELING.
+    state = task.get("state")
+    return state if isinstance(state, str) and state else "UNKNOWN"
 
 
 def log_tes_cancel_failure(
@@ -145,15 +153,6 @@ def describe_tes_error(exception: Exception) -> str:
         # Pydantic's message quotes the task document, executor arguments included.
         return "TES task document or destination parameters failed validation"
     return redact(str(exception))[:500]
-
-
-def http_status_code(exception: BaseException) -> int | None:
-    """Status code of the HTTP response behind a pydantic-tes request error, if any."""
-    for candidate in (exception, exception.__cause__):
-        status_code = getattr(getattr(candidate, "response", None), "status_code", None)
-        if isinstance(status_code, int):
-            return status_code
-    return None
 
 
 class TesTaskFailure(NamedTuple):

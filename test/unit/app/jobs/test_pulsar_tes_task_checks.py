@@ -180,7 +180,7 @@ def test_task_dying_before_pulsar_reports_fails_the_job(harness, tes_server, cap
     assert harness.failures == []
     assert not harness.watch_for(INTERVAL)
 
-    assert tes_server.views_requested() == ["BASIC", "BASIC", "BASIC", "FULL"]
+    assert tes_server.views_requested() == ["MINIMAL", "MINIMAL", "MINIMAL", "FULL"]
     [failure] = harness.failures
     # Funnel logs only the executors that ran, so this is executor 0's log, but tesp-api
     # stores one log like it for the whole task, so it isn't attributed.
@@ -218,7 +218,7 @@ def test_jobs_no_longer_queued_or_running_stop_the_checks(harness, tes_server, s
     harness.job.state = state
 
     assert harness.check_after(INTERVAL) is None
-    assert tes_server.views_requested() == ["BASIC"]
+    assert tes_server.views_requested() == ["MINIMAL"]
     assert harness.failures == []
 
 
@@ -227,7 +227,7 @@ def test_running_task_is_checked_once_per_interval_and_left_alone(harness, tes_s
     harness.check()
     # The monitor loop runs every second; only checks that are due read the job or ask the TES server.
     assert harness.watch_for(10 * INTERVAL)
-    assert tes_server.views_requested() == ["BASIC"] * 10
+    assert tes_server.views_requested() == ["MINIMAL"] * 10
     assert harness.job_wrapper.state_reads == 10
     assert harness.failures == []
 
@@ -471,7 +471,7 @@ def test_task_unknown_to_the_tes_server_fails_the_job(harness, tes_server):
     assert not harness.watch_for(INTERVAL + GRACE + INTERVAL)
 
     # A lost task can't be cancelled; trying would raise before the job fails.
-    assert tes_server.views_requested() == ["BASIC", "BASIC", "BASIC"]
+    assert tes_server.views_requested() == ["MINIMAL", "MINIMAL", "MINIMAL"]
     [failure] = harness.failures
     assert failure == {
         "message": f"The TES server has no record of task {TASK_ID}, and Pulsar never reported a final job status.",
@@ -508,7 +508,7 @@ def test_tes_server_errors_never_fail_the_job(harness, tes_server):
     tes_server.error_status = 500
     harness.check()
     assert harness.watch_for(INTERVAL + 3 * GRACE)
-    assert set(tes_server.views_requested()) == {"BASIC"}
+    assert set(tes_server.views_requested()) == {"MINIMAL"}
 
     tes_server.stop()
     assert harness.watch_for(3 * GRACE)
@@ -531,7 +531,7 @@ def test_job_resubmitted_or_claimed_elsewhere_stops_the_checks(harness, tes_serv
     setattr(harness.job, attribute, value)
 
     assert harness.check_after(INTERVAL) is None
-    assert tes_server.views_requested() == ["BASIC"]
+    assert tes_server.views_requested() == ["MINIMAL"]
     assert harness.failures == []
 
 
@@ -607,7 +607,7 @@ def test_errors_while_checking_do_not_stop_the_monitor(harness, tes_server):
     assert harness.check_after(INTERVAL) is harness.job_state
     harness.job_wrapper.state_error = None
     assert harness.check_after(INTERVAL) is harness.job_state
-    assert tes_server.views_requested() == ["BASIC"]
+    assert tes_server.views_requested() == ["MINIMAL"]
 
 
 def test_known_secrets_are_redacted_exactly(harness, tes_server):
@@ -663,7 +663,7 @@ def test_stopping_a_job_whose_task_already_ended_is_done(harness, tes_server, ca
 
     harness.runner.stop_job(harness.job_wrapper)
 
-    assert tes_server.views_requested() == ["POST", "BASIC"]
+    assert tes_server.views_requested() == ["POST", "MINIMAL"]
     assert f"({GALAXY_JOB_ID}/{TASK_ID}) TES task is {state}, nothing to cancel" in _log_messages(caplog, logging.INFO)
     assert _log_messages(caplog, logging.ERROR) == []
 
@@ -671,7 +671,7 @@ def test_stopping_a_job_whose_task_already_ended_is_done(harness, tes_server, ca
 def test_stopping_a_job_whose_task_is_gone_is_done(harness, tes_server, caplog):
     caplog.set_level(logging.INFO, logger=pulsar_runner.__name__)
     harness.runner.stop_job(harness.job_wrapper)
-    assert tes_server.views_requested() == ["POST", "BASIC"]
+    assert tes_server.views_requested() == ["POST", "MINIMAL"]
     assert f"({GALAXY_JOB_ID}/{TASK_ID}) TES task is NOT_FOUND, nothing to cancel" in _log_messages(
         caplog, logging.INFO
     )
@@ -688,7 +688,7 @@ def test_failing_to_cancel_a_running_task_is_logged_not_raised(harness, tes_serv
 
     harness.runner.stop_job(harness.job_wrapper)
 
-    assert tes_server.views_requested() == ["POST", "BASIC"]
+    assert tes_server.views_requested() == ["POST", "MINIMAL"]
     [message] = _log_messages(caplog, logging.ERROR)
     assert message.startswith(f"({GALAXY_JOB_ID}/{TASK_ID}) Failed to cancel TES task")
     assert "may still be running" in message
@@ -714,7 +714,7 @@ def test_failing_a_job_whose_task_already_ended_fails_the_job(harness, tes_serve
 
     harness.runner.fail_job(harness.job_state, message="Pulsar failed to stage out the outputs")
 
-    assert tes_server.views_requested() == ["POST", "BASIC"]
+    assert tes_server.views_requested() == ["POST", "MINIMAL"]
     assert harness.failures == [{"message": "Pulsar failed to stage out the outputs", "tool_stderr": None}]
 
 
@@ -736,7 +736,7 @@ def test_status_for_a_stopped_job_whose_task_already_ended_finishes_it(harness, 
 
     assert harness.runner._update_job_state_for_status(harness.job_state, "failed") is None
 
-    assert tes_server.views_requested() == ["POST", "BASIC"]
+    assert tes_server.views_requested() == ["POST", "MINIMAL"]
     method, _ = harness.runner.work_queue.get_nowait()
     assert method == harness.runner.finish_job
 
