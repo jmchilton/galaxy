@@ -175,9 +175,7 @@ steps:
                 run_ids.append(response.json()["run_id"])
 
             # List runs
-            response = self._wes_get("ga4gh/wes/v1/runs", params={"page_size": 10})
-            self._assert_status_code_is(response, 200)
-            result = response.json()
+            result = self._list_wes_runs(10)
 
             # Validate structure
             assert "runs" in result
@@ -209,29 +207,19 @@ steps:
 
             # Test page_size=1: should get 3 pages
             all_ids_page1 = []
-            response = self._wes_get("ga4gh/wes/v1/runs", params={"page_size": 1})
-            self._assert_status_code_is(response, 200)
-            result = response.json()
+            result = self._list_wes_runs(1)
             assert len(result["runs"]) == 1
             all_ids_page1.append(result["runs"][0]["run_id"])
             assert result["next_page_token"] is not None
 
             # Follow to page 2
-            response = self._wes_get(
-                "ga4gh/wes/v1/runs", params={"page_size": 1, "page_token": result["next_page_token"]}
-            )
-            self._assert_status_code_is(response, 200)
-            result = response.json()
+            result = self._list_wes_runs(1, result["next_page_token"])
             assert len(result["runs"]) == 1
             all_ids_page1.append(result["runs"][0]["run_id"])
             assert result["next_page_token"] is not None
 
             # Follow to page 3
-            response = self._wes_get(
-                "ga4gh/wes/v1/runs", params={"page_size": 1, "page_token": result["next_page_token"]}
-            )
-            self._assert_status_code_is(response, 200)
-            result = response.json()
+            result = self._list_wes_runs(1, result["next_page_token"])
             assert len(result["runs"]) == 1
             all_ids_page1.append(result["runs"][0]["run_id"])
 
@@ -242,19 +230,13 @@ steps:
 
             # Test page_size=2: should get 2 pages (2 + 1)
             all_ids_page2 = []
-            response = self._wes_get("ga4gh/wes/v1/runs", params={"page_size": 2})
-            self._assert_status_code_is(response, 200)
-            result = response.json()
+            result = self._list_wes_runs(2)
             assert len(result["runs"]) == 2
             all_ids_page2.extend([r["run_id"] for r in result["runs"]])
             assert result["next_page_token"] is not None
 
             # Follow to page 2 (should have 1 item)
-            response = self._wes_get(
-                "ga4gh/wes/v1/runs", params={"page_size": 2, "page_token": result["next_page_token"]}
-            )
-            self._assert_status_code_is(response, 200)
-            result = response.json()
+            result = self._list_wes_runs(2, result["next_page_token"])
             assert len(result["runs"]) >= 1
             all_ids_page2.extend([r["run_id"] for r in result["runs"]])
 
@@ -347,7 +329,7 @@ steps:
             )
 
             # Cancel run
-            response = self._wes_post(f"ga4gh/wes/v1/runs/{invocation_id}/cancel")
+            response = self._cancel_wes_run(invocation_id)
             self._assert_status_code_is(response, 200)
             result = response.json()
 
@@ -948,6 +930,19 @@ steps:
         response = self._wes_get(f"ga4gh/wes/v1/runs/{run_id}/status")
         self._assert_status_code_is(response, 200)
         return response.json()
+
+    def _list_wes_runs(self, page_size: int, page_token: Optional[str] = None) -> dict[str, Any]:
+        """GET a page of runs, validate 200, return JSON."""
+        params: dict[str, Any] = {"page_size": page_size}
+        if page_token is not None:
+            params["page_token"] = page_token
+        response = self._wes_get("ga4gh/wes/v1/runs", params=params)
+        self._assert_status_code_is(response, 200)
+        return response.json()
+
+    def _cancel_wes_run(self, run_id: str, authenticated: bool = True) -> requests.Response:
+        """POST to a run's cancel endpoint and return the raw response."""
+        return self._wes_post(f"ga4gh/wes/v1/runs/{run_id}/cancel", authenticated=authenticated)
 
     def _get_task_list_and_extract_first_id(self, run_id: str) -> str:
         """GET task list, validate 200, extract and return first task ID."""
