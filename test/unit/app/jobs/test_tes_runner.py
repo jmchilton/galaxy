@@ -22,7 +22,12 @@ from galaxy.jobs.runners import (
     AsynchronousJobState,
     tes as tes_runner,
 )
-from galaxy.jobs.runners.tes import (
+from galaxy.jobs.runners.tes import TesJobRunner
+from galaxy.jobs.runners.util import (
+    tes_staging,
+    tes_task,
+)
+from galaxy.jobs.runners.util.tes_staging import (
     build_tes_task,
     directory_output_paths,
     executor_env,
@@ -30,10 +35,8 @@ from galaxy.jobs.runners.tes import (
     signed_job_files_url_for,
     staged_input_paths,
     TES_WRAPPER_SCRIPT,
-    TesJobRunner,
     wrapper_script,
 )
-from galaxy.jobs.runners.util import tes_task
 from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.security.job_files_tokens import (
     JOB_FILES_DIRECTORY_WRITE,
@@ -110,7 +113,7 @@ def test_staged_input_paths(tmp_path):
 
 
 def test_staged_input_paths_of_a_large_tool_directory(tmp_path, monkeypatch):
-    monkeypatch.setattr(tes_runner, "MAX_TOOL_DIRECTORY_FILES", 2)
+    monkeypatch.setattr(tes_staging, "MAX_TOOL_DIRECTORY_FILES", 2)
     staged, input_files, referenced, _ = _staging_fixture(tmp_path)
 
     assert staged[:3] == input_files
