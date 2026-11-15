@@ -84,6 +84,12 @@ GALAXY_TO_WES_STATE = {
 
 WES_TO_GALAXY_STATE = {v: k for k, v in GALAXY_TO_WES_STATE.items()}
 
+
+def _invocation_wes_state(invocation: WorkflowInvocation) -> State:
+    """Map a Galaxy invocation to a WES run state."""
+    return GALAXY_TO_WES_STATE.get(invocation.state or "", State.UNKNOWN)
+
+
 # Galaxy invocation states whose WES state (COMPLETE, EXECUTOR_ERROR, CANCELED) is terminal.
 TERMINAL_GALAXY_STATES = ("completed", "failed", "cancelled")
 
@@ -730,7 +736,7 @@ class WesService(ServiceBase):
 
         return RunStatus(
             run_id=self.security.encode_id(invocation.id),
-            state=GALAXY_TO_WES_STATE.get(invocation.state or "", State.UNKNOWN),
+            state=_invocation_wes_state(invocation),
         )
 
     def cancel_run(
@@ -1165,7 +1171,7 @@ class WesService(ServiceBase):
         """
         return RunSummary(
             run_id=self._security.encode_id(invocation.id),
-            state=GALAXY_TO_WES_STATE.get(invocation.state or "", State.UNKNOWN),
+            state=_invocation_wes_state(invocation),
             start_time=invocation.create_time.isoformat() if invocation.create_time else None,
             end_time=invocation.update_time.isoformat() if invocation.update_time else None,
             tags={},
@@ -1245,7 +1251,7 @@ class WesService(ServiceBase):
         return RunLog(
             run_id=encoded_run_id,
             request=original_request,  # We don't save this so we often can't recover this and that is probably fine. - John
-            state=GALAXY_TO_WES_STATE.get(invocation.state or "", State.UNKNOWN),
+            state=_invocation_wes_state(invocation),
             run_log=run_log,
             task_logs=None,  # Deprecated field - use task_logs_url
             task_logs_url=task_logs_url,
