@@ -5,9 +5,11 @@ dies before Pulsar reports, these helpers let the runner see that on the TES
 server and say why.
 """
 
+import logging
 import re
 from collections.abc import Iterable
 from typing import (
+    Any,
     NamedTuple,
     TYPE_CHECKING,
 )
@@ -16,6 +18,10 @@ from urllib.parse import (
     urlparse,
 )
 
+from pulsar.client.tes_job_config import (
+    parse_tes_job_params,
+    tes_client_from_params,
+)
 from pydantic import ValidationError
 
 if TYPE_CHECKING:
@@ -99,6 +105,38 @@ def fetch_tes_task_state(tes_client: "TesClient", task_id: str) -> str:
             return TES_TASK_NOT_FOUND
         raise
     return task.state.value if task.state else "UNKNOWN"
+
+
+def log_tes_cancel_failure(
+    log: logging.Logger, destination_params: dict[str, Any], id_tag: str, task_id: str, cancel_error: str
+) -> None:
+    """Log that cancelling ``task_id`` failed with ``cancel_error``, unless the task had nothing left to cancel.
+
+    TESK answers 400 to cancelling a task that has ended, and servers answer 404 for
+    a deleted one, so this asks the TES server for the task's state first. Never raises.
+    """
+    try:
+        task_state = fetch_tes_task_state(tes_client_from_params(parse_tes_job_params(destination_params)), task_id)
+    except Exception as e:
+        log.error(
+            "(%s/%s) Failed to cancel TES task and could not read its state, so it may still be running. "
+            "Cancel error: %s. State error: %s",
+            id_tag,
+            task_id,
+            cancel_error,
+            describe_tes_error(e),
+        )
+        return
+    if task_state in TES_NOTHING_TO_CANCEL_STATES:
+        log.info("(%s/%s) TES task is %s, nothing to cancel", id_tag, task_id, task_state)
+        return
+    log.error(
+        "(%s/%s) Failed to cancel TES task in state %s, it may still be running: %s",
+        id_tag,
+        task_id,
+        task_state,
+        cancel_error,
+    )
 
 
 def describe_tes_error(exception: Exception) -> str:
