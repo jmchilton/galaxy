@@ -233,11 +233,14 @@ class FakeJobWrapper:
         self.guest_ports: list[int] = []
         self.failures: list[dict[str, Any]] = []
         self.state_error: Exception | None = None
+        # Each read is a database query in the real job wrapper.
+        self.state_reads = 0
 
     def get_id_tag(self):
         return str(self.job_id)
 
     def get_state(self):
+        self.state_reads += 1
         if self.state_error:
             raise self.state_error
         return self.job.state
@@ -361,8 +364,10 @@ def test_jobs_no_longer_queued_or_running_stop_the_checks(harness, tes_server, s
 def test_running_task_is_checked_once_per_interval_and_left_alone(harness, tes_server):
     tes_server.tasks[TASK_ID] = _task("RUNNING", executor_logs=[{"exit_code": 0}])
     harness.check()
+    # The monitor loop runs every second; only checks that are due read the job or ask the TES server.
     assert harness.watch_for(10 * INTERVAL)
     assert tes_server.views_requested() == ["BASIC"] * 10
+    assert harness.job_wrapper.state_reads == 10
     assert harness.failures == []
 
 
