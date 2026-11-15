@@ -283,42 +283,44 @@ def _normalize_run_request(
     return workflow_contents_manager.normalize_workflow_format(trans, workflow_dict)
 
 
-def _get_or_create_history(
+def _get_requested_history(
     trans: ProvidesUserContext,
     engine_params: dict[str, Any],
-) -> History:
-    """Get or create a history for the WES run.
-
-    If history_id is provided in engine_params, use existing history.
-    Otherwise, create new history with name from history_name or auto-generated.
+) -> Optional[History]:
+    """Return the existing history named by history_id in engine_params, or None if none was named.
 
     Args:
         trans: Galaxy transaction/context
         engine_params: Workflow engine parameters from RunRequest
 
     Returns:
-        History object for the workflow invocation
+        The requested History, or None if engine_params has no history_id
 
     Raises:
-        exceptions.ObjectNotFound: If specified history_id does not exist
-        exceptions.AuthenticationRequired: If user cannot access history
+        exceptions.ObjectNotFound: If the history does not exist or belongs to another user
     """
-    # Check if specific history requested
-    if "history_id" in engine_params:
-        history_id = engine_params["history_id"]
-        # Decode the ID if it's encoded
-        try:
-            decoded_id = trans.security.decode_id(history_id)
-        except Exception:
-            # If decode fails, assume it's already decoded
-            decoded_id = history_id
+    if "history_id" not in engine_params:
+        return None
 
-        history = trans.sa_session.query(History).filter_by(id=decoded_id, user_id=trans.user.id).one_or_none()
-        if not history:
-            raise exceptions.ObjectNotFound(f"History {history_id} not found or not accessible")
-        return history
+    history_id = engine_params["history_id"]
+    # Decode the ID if it's encoded
+    try:
+        decoded_id = trans.security.decode_id(history_id)
+    except Exception:
+        # If decode fails, assume it's already decoded
+        decoded_id = history_id
 
-    # Create new history
+    history = trans.sa_session.query(History).filter_by(id=decoded_id, user_id=trans.user.id).one_or_none()
+    if not history:
+        raise exceptions.ObjectNotFound(f"History {history_id} not found or not accessible")
+    return history
+
+
+def _create_history(
+    trans: ProvidesUserContext,
+    engine_params: dict[str, Any],
+) -> History:
+    """Create a history for the WES run, named from history_name or "WES Run"."""
     history = History(user=trans.user, name=_generate_history_name(engine_params))
     trans.sa_session.add(history)
     trans.sa_session.flush()
@@ -543,7 +545,9 @@ class WesService(ServiceBase):
             except json.JSONDecodeError:
                 raise exceptions.MessageException("Invalid JSON in workflow_engine_parameters")
 
-        history = _get_or_create_history(trans, engine_params)
+        history = _get_requested_history(trans, engine_params)
+        if history is None:
+            history = _create_history(trans, engine_params)
 
         # Step 6: Parse workflow parameters
         invoke_params: dict[str, Any] = {
