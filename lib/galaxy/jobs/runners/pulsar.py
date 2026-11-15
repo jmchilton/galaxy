@@ -9,6 +9,7 @@ import logging
 import os
 import re
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from time import (
     monotonic,
@@ -1601,17 +1602,33 @@ class PulsarTesJobRunner(PulsarCoexecutionJobRunner):
         stop in its step when this raises, and ``fail_job`` stops the job before
         failing it, so raising would leave jobs deleting or unfailed.
         """
-        try:
-            client.kill()
-            return
-        except Exception as e:
-            cancel_error = describe_tes_error(e)
         job_id_tag = job_wrapper.get_id_tag()
         task_id = job_wrapper.get_job().job_runner_external_id
         if not task_id:
-            log.error(
-                "(%s) Failed to cancel the job's TES task, which has no recorded id: %s", job_id_tag, cancel_error
-            )
+            try:
+                client.kill()
+            except Exception as e:
+                log.error(
+                    "(%s) Failed to cancel the job's TES task, which has no recorded id: %s",
+                    job_id_tag,
+                    describe_tes_error(e),
+                )
+            return
+        self._cancel_tes_task(job_id_tag, task_id, destination_params, client.kill)
+
+    def _cancel_tes_task(
+        self,
+        job_id_tag: str,
+        task_id: str,
+        destination_params: dict[str, Any],
+        cancel: Callable[[], object],
+    ) -> None:
+        """Ask the TES server to cancel a task by calling ``cancel``. Never raises; failures are logged."""
+        try:
+            cancel()
+        except Exception as e:
+            cancel_error = describe_tes_error(e)
+        else:
             return
         # TESK answers 400 to cancelling a task that has ended, and servers answer 404 for a deleted one.
         try:
