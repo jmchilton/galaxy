@@ -64,10 +64,10 @@ class JobFilesManager:
     def authorize_write(self, encoded_job_id: str, path: str | None, job_key: str | None) -> str:
         """Return a directory to stage uploads for ``path`` in - same filesystem, outside any extra files path."""
         job, path = self._authorize(encoded_job_id, path, job_key)
-        if not path:
-            raise exceptions.RequestParameterInvalidException("'path' parameter not provided or empty.")
-        if not os.path.isabs(path):
-            raise exceptions.RequestParameterInvalidException("'path' parameter must be an absolute path.")
+        _assert_absolute(path)
+        return self._write_staging_parent(job, path)
+
+    def _write_staging_parent(self, job: Job, path: str) -> str:
         working_directory = JobWorkingDirectory(job, self._object_store).resolve()
         if util.in_directory(path, working_directory):
             return working_directory
@@ -104,13 +104,17 @@ class JobFilesManager:
 
     def write(self, path: str, source_path: str) -> None:
         """Move ``source_path`` to ``path``, or append it if ``path`` is an existing tool stream."""
-        util.safe_makedirs(os.path.dirname(path))
         if os.path.exists(path) and path.endswith(APPENDABLE_FILE_NAMES):
             with open(source_path, "rb") as source, open(path, "ab") as destination:
                 shutil.copyfileobj(source, destination)
             os.unlink(source_path)
         else:
-            shutil.move(source_path, path)
+            self.replace(path, source_path)
+
+    def replace(self, path: str, source_path: str) -> None:
+        """Move ``source_path`` to ``path``."""
+        util.safe_makedirs(os.path.dirname(path))
+        shutil.move(source_path, path)
 
     def _authorize(self, encoded_job_id: str, path: str | None, job_key: str | None) -> tuple[Job, str]:
         if path is None:
@@ -148,3 +152,10 @@ class JobFilesManager:
             ):
                 return dataset_path
         return None
+
+
+def _assert_absolute(path: str) -> None:
+    if not path:
+        raise exceptions.RequestParameterInvalidException("'path' parameter not provided or empty.")
+    if not os.path.isabs(path):
+        raise exceptions.RequestParameterInvalidException("'path' parameter must be an absolute path.")
