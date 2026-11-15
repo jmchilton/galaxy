@@ -438,7 +438,6 @@ someone else"; don't assume `404` always means the object is absent.
 - **`request` is never returned** in the run log — the original `RunRequest` is not stored.
 - **DRS URIs only on HDA outputs**, not on collection outputs.
 - **`tags` are not persisted** to the invocation, and run summaries return `tags: {}`.
-- **`service-info` `auth_instructions_url` is a placeholder** (`"TODO"`).
 - The generated Pydantic models under `lib/galaxy/schema/wes/` are produced by
   `gen.sh` from the upstream GA4GH OpenAPI spec with no Galaxy post-processing — treat
   them as regenerable and avoid hand edits.

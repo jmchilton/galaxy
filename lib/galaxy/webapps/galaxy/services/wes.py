@@ -438,8 +438,10 @@ class WesService(ServiceBase):
             service_description="Executes Galaxy workflows according to the GA4GH WES specification",
             artifact_version="1.0.0",
         )
-        # TODO:
-        auth_instructions_url = "TODO"
+        # WES requests authenticate with a Galaxy API key, which users manage on this page.
+        assert trans.url_builder
+        galaxy_url = trans.url_builder("/", qualified=True).rstrip("/")
+        auth_instructions_url = f"{galaxy_url}/user/api_key"
 
         # Import Organization and ServiceType from WES schema
         from galaxy.schema.wes import (

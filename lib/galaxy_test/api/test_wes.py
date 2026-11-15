@@ -65,7 +65,7 @@ class TestWesApi(BaseWorkflowsApiTestCase):
         assert "supported_filesystem_protocols" in service_info
         assert "workflow_type_versions" in service_info
         assert "default_workflow_engine_parameters" in service_info
-        assert "auth_instructions_url" in service_info
+        assert service_info["auth_instructions_url"] == urljoin(self.url, "user/api_key")
 
         # Validate supported workflow types
         wf_types = service_info["workflow_type_versions"]
