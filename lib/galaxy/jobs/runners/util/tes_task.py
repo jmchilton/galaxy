@@ -11,10 +11,15 @@ from typing import (
     NamedTuple,
     TYPE_CHECKING,
 )
+from urllib.parse import (
+    unquote,
+    urlparse,
+)
 
 from pydantic import ValidationError
 
 if TYPE_CHECKING:
+    from pulsar.client.tes_job_config import TesJobParams
     from pydantictes.api import TesClient
     from pydantictes.models import TesTask
 
@@ -84,26 +89,40 @@ def http_status_code(exception: BaseException) -> int | None:
 
 
 class TesTaskFailure(NamedTuple):
-    summary: str
-    """Names the executor that failed, or ran last, and its exit code. Short enough for ``Job.info``."""
+    message: str
+    """Why the job failed, naming the executor that failed, or ran last, and its exit code.
+
+    It becomes ``Job.info``, which is cut at 255 characters, so it names the
+    executor without its image; ``executor_stderr`` has the image.
+    """
     executor_stderr: str
     """Redacted tail of that executor's stderr."""
     system_logs: str
     """Redacted tail of the TES server's system logs for the task, which describe its host and setup."""
 
 
-def describe_tes_task_failure(task: "TesTask", secrets: Iterable[str] = ()) -> TesTaskFailure:
-    """Summarize the last attempt of a FULL view TES task. Any field may be empty.
+def describe_tes_task_failure(
+    task_id: str, task_state: str, task: "TesTask | None" = None, secrets: Iterable[str] = ()
+) -> TesTaskFailure:
+    """Describe a task that reached ``task_state`` without Pulsar reporting a final job status.
 
-    ``secrets`` and the arguments of Pulsar's own executors are redacted from the logs.
+    ``task`` is its FULL view, when it could be read; only its last attempt is
+    summarized. ``secrets`` and the arguments of Pulsar's own executors are
+    redacted from the logs.
     """
+    if task_state == TES_TASK_NOT_FOUND:
+        return TesTaskFailure(
+            f"The TES server has no record of task {task_id}, and Pulsar never reported a final job status.", "", ""
+        )
+    if task_state == "COMPLETE":
+        message = f"TES task {task_id} completed, but Pulsar never reported a final job status."
+    else:
+        message = f"TES task {task_id} ended in state {task_state} before Pulsar reported a final job status."
+    if task is None or not task.logs:
+        return TesTaskFailure(message, "", "")
     secrets = [*secrets, *_pulsar_executor_arguments(task)]
-    attempts = task.logs or []
-    if not attempts:
-        return TesTaskFailure("", "", "")
-    attempt = attempts[-1]
+    attempt = task.logs[-1]
     executor_logs = attempt.logs or []
-    summary = ""
     executor_stderr = ""
     if executor_logs:
         index = len(executor_logs) - 1
@@ -112,20 +131,32 @@ def describe_tes_task_failure(task: "TesTask", secrets: Iterable[str] = ()) -> T
                 index = i
                 break
         executor_log = executor_logs[index]
-        label = _executor_label(task, index)
         short_label = _executor_label(task, index, with_image=False)
         if executor_log.exit_code in (None, -255):
             # pydantic-tes fills in -255 when the server reports no exit code.
-            summary = f"{short_label} reported no exit code."
+            message = f"{message} {short_label} reported no exit code."
         elif executor_log.exit_code == 0:
-            summary = f"{short_label} ran last and exited with code 0."
+            message = f"{message} {short_label} ran last and exited with code 0."
         else:
-            summary = f"{short_label} exited with code {executor_log.exit_code}."
+            message = f"{message} {short_label} exited with code {executor_log.exit_code}."
         stderr = _tail(executor_log.stderr, STDERR_TAIL_LINES, secrets)
         if stderr:
-            executor_stderr = f"{label} stderr, last lines:\n{stderr}"
+            executor_stderr = f"{_executor_label(task, index)} stderr, last lines:\n{stderr}"
     system_logs = _tail("\n".join(attempt.system_logs or []), SYSTEM_LOG_TAIL_LINES, secrets)
-    return TesTaskFailure(summary, executor_stderr, system_logs)
+    return TesTaskFailure(message, executor_stderr, system_logs)
+
+
+def tes_known_secrets(amqp_url: str | None, tes_params: "TesJobParams") -> list[str]:
+    """Credentials the runner knows that may surface in a task's logs: the broker and TES passwords."""
+    secrets = []
+    if amqp_url:
+        amqp_password = urlparse(amqp_url).password
+        if amqp_password:
+            secrets.append(unquote(amqp_password))
+            secrets.append(amqp_password)
+    if tes_params.basic_auth:
+        secrets.append(tes_params.basic_auth.password)
+    return secrets
 
 
 def redact(text: str, secrets: Iterable[str] = ()) -> str:

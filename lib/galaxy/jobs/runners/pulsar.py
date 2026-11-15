@@ -19,10 +19,6 @@ from typing import (
     Optional,
     TYPE_CHECKING,
 )
-from urllib.parse import (
-    unquote,
-    urlparse,
-)
 
 import pulsar.core
 import yaml
@@ -74,6 +70,7 @@ from galaxy.jobs.runners.util.tes_task import (
     describe_tes_task_failure,
     fetch_tes_task_state,
     TES_FINISHED_STATES,
+    tes_known_secrets,
     TES_NOTHING_TO_CANCEL_STATES,
     TES_TASK_NOT_FOUND,
 )
@@ -1550,31 +1547,20 @@ class PulsarTesJobRunner(PulsarCoexecutionJobRunner):
         task_state: str,
     ) -> tuple[str, dict[str, Any] | None]:
         """The job's failure message and, when the task logs have it, the failing executor's stderr."""
-        if task_state == TES_TASK_NOT_FOUND:
-            return (
-                f"The TES server has no record of task {task_id}, and Pulsar never reported a final job status.",
-                None,
-            )
-        if task_state == "COMPLETE":
-            message = f"TES task {task_id} completed, but Pulsar never reported a final job status."
-        else:
-            message = f"TES task {task_id} ended in state {task_state} before Pulsar reported a final job status."
-        # The message becomes Job.info, which is cut at 255 characters, so it names
-        # the executor without its image; the image is in the stderr details.
-        full_status = None
-        try:
-            failure = describe_tes_task_failure(
-                tes_client.get_task(task_id, "FULL"), secrets=self._tes_known_secrets(tes_params)
-            )
-        except Exception as e:
-            log.warning(
-                "(%s/%s) Could not read TES task logs: %s", job_state.job_wrapper.job_id, task_id, describe_tes_error(e)
-            )
-            return message, None
-        if failure.summary:
-            message = f"{message} {failure.summary}"
-        if failure.executor_stderr:
-            full_status = {"stderr": failure.executor_stderr}
+        task = None
+        if task_state != TES_TASK_NOT_FOUND:
+            try:
+                task = tes_client.get_task(task_id, "FULL")
+            except Exception as e:
+                log.warning(
+                    "(%s/%s) Could not read TES task logs: %s",
+                    job_state.job_wrapper.job_id,
+                    task_id,
+                    describe_tes_error(e),
+                )
+        failure = describe_tes_task_failure(
+            task_id, task_state, task, secrets=tes_known_secrets(self.runner_params.amqp_url, tes_params)
+        )
         if failure.system_logs:
             # They describe the TES server's hosts and container setup, so they go
             # to the Galaxy log for admins rather than to the job's user.
@@ -1582,10 +1568,10 @@ class PulsarTesJobRunner(PulsarCoexecutionJobRunner):
                 "(%s/%s) %s\nTES system logs, last lines:\n%s",
                 job_state.job_wrapper.job_id,
                 task_id,
-                message,
+                failure.message,
                 failure.system_logs,
             )
-        return message, full_status
+        return failure.message, {"stderr": failure.executor_stderr} if failure.executor_stderr else None
 
     def _kill_remote_job(
         self, client: "BaseJobClient", job_wrapper: "MinimalJobWrapper", destination_params: dict[str, Any]
@@ -1631,17 +1617,6 @@ class PulsarTesJobRunner(PulsarCoexecutionJobRunner):
             task_state,
             cancel_error,
         )
-
-    def _tes_known_secrets(self, tes_params: "TesJobParams") -> list[str]:
-        secrets = []
-        if self.runner_params.amqp_url:
-            amqp_password = urlparse(self.runner_params.amqp_url).password
-            if amqp_password:
-                secrets.append(unquote(amqp_password))
-                secrets.append(amqp_password)
-        if tes_params.basic_auth:
-            secrets.append(tes_params.basic_auth.password)
-        return secrets
 
 
 GCP_DESTINATION_DEFAULTS: dict[str, Any] = {
