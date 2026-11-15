@@ -370,6 +370,11 @@ runners:
     # Fail the job when every check of its TES task for this many seconds found the TES
     # server unreachable (no connection, a timeout or a 5xx answer). 0 retries forever.
     #tes_unreachable_timeout: 3600
+    # Stopping or failing a job cancels its TES task. When the TES server can't be reached
+    # for that, retry the cancel (10 seconds later, then at most 2 minutes apart) for this
+    # many seconds, so a task the server resumes later is still cancelled. 0 tries once.
+    # Retries are kept in memory; a Galaxy restart drops them.
+    #tes_cancel_retry_timeout: 86400
 
   # Using Pulsar and co-execution to run jobs against Google Cloud Platform's Batch service.
   # - https://cloud.google.com/batch/docs/get-started

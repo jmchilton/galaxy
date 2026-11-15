@@ -40,6 +40,7 @@ from galaxy.jobs.runners.pulsar import (
     PulsarMQJobRunner,
     PulsarTesJobRunner,
 )
+from galaxy.jobs.runners.util import tes_cancel_retries
 from galaxy.jobs.runners.util.tes_task import redact
 
 TASK_ID = "d4rk5c3bf5d1q0abcdef"
@@ -49,6 +50,9 @@ INTERVAL = 60.0
 GRACE = 120.0
 UNREACHABLE_TIMEOUT = 600.0
 DEFAULT_UNREACHABLE_TIMEOUT = 3600.0
+DEFAULT_CANCEL_RETRY_TIMEOUT = 86400.0
+# Seconds after the first, failed cancel at which the runner retries it: 10 s, doubling, at most 120 s apart.
+CANCEL_RETRY_TIMES = [10, 30, 70, 150, 270, 390, 510]
 SERVER_NAME = "main.handler0"
 AMQP_PASSWORD = "Br0kerPassword"
 STAGING_IMAGE = "galaxy/pulsar-pod-staging:0.15.0.2"
@@ -110,7 +114,8 @@ TESK_CANCEL_ENDED_TASK_BODY = {
 class FakeTesServer:
     """Serves ``GET /v1/tasks/{id}`` the way Funnel does: BASIC drops stdout, stderr and system logs.
 
-    ``POST /v1/tasks/{id}:cancel`` answers ``cancel_status`` with ``cancel_body`` for known tasks.
+    ``POST /v1/tasks/{id}:cancel`` answers ``cancel_status`` with ``cancel_body`` for known tasks,
+    and a 200 marks the task CANCELED. A 5xx ``cancel_status`` answers for any task.
     """
 
     def __init__(self):
@@ -137,9 +142,13 @@ class FakeTesServer:
             def do_POST(self):
                 task_id = urlparse(self.path).path.rsplit("/", 1)[-1].removesuffix(":cancel")
                 server.requests.append((task_id, "POST"))
-                if task_id not in server.tasks:
+                if server.cancel_status >= 500:
+                    self._send(server.cancel_status, {"error": "backend unavailable"})
+                elif task_id not in server.tasks:
                     self._send(404, {"error": f"task not found: taskID: {task_id}"})
                 else:
+                    if server.cancel_status == 200:
+                        server.tasks[task_id]["state"] = "CANCELED"
                     self._send(server.cancel_status, server.cancel_body)
 
             def _send(self, status, body):
@@ -153,8 +162,15 @@ class FakeTesServer:
             def log_message(self, format, *args):
                 pass
 
-        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        self.url = f"http://127.0.0.1:{self.httpd.server_address[1]}/"
+        self.handler = Handler
+        self.port = 0
+        self.start()
+        self.url = f"http://127.0.0.1:{self.port}/"
+
+    def start(self):
+        """Serve, on the same port after a ``stop()``."""
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", self.port), self.handler)
+        self.port = self.httpd.server_address[1]
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self.thread.start()
 
@@ -196,6 +212,7 @@ class Clock:
 def clock(monkeypatch):
     clock = Clock()
     monkeypatch.setattr(pulsar_runner, "monotonic", clock, raising=False)
+    monkeypatch.setattr(tes_cancel_retries, "monotonic", clock)
     return clock
 
 
@@ -300,6 +317,26 @@ class Harness:
             if self.check_after(1) is None:
                 return False
         return True
+
+    def monitor_for(self, seconds):
+        """Run the monitor loop's sweep every second for this long; return when each cancel request came."""
+        cancel_times = []
+        for second in range(1, int(seconds) + 1):
+            requests_before = len(self.tes_server.requests)
+            self.clock.now += 1
+            self.runner.check_watched_items()
+            if (TASK_ID, "POST") in self.tes_server.requests[requests_before:]:
+                cancel_times.append(second)
+        return cancel_times
+
+    def another_job(self, task_id):
+        """A second job of this runner, whose task ``task_id`` the TES server knows as running."""
+        job_wrapper = FakeJobWrapper(self.runner.app)
+        job_wrapper.job_id = job_wrapper.job.id = GALAXY_JOB_ID + 1
+        job_wrapper.job.job_runner_external_id = task_id
+        job_wrapper.job.destination_params = self.destination_params()
+        self.tes_server.tasks[task_id] = dict(_task("RUNNING"), id=task_id)
+        return job_wrapper
 
 
 @pytest.fixture
@@ -664,6 +701,14 @@ def _take_down(tes_server, how):
         tes_server.error_status = tes_server.cancel_status = how
 
 
+def _bring_back(tes_server, how):
+    if how == "connection refused":
+        tes_server.start()
+    else:
+        tes_server.error_status = None
+        tes_server.cancel_status = 200
+
+
 @pytest.mark.parametrize(
     "how, last_error", [("connection refused", "ConnectionError"), (500, "HTTP 500"), (503, "HTTP 503")]
 )
@@ -906,6 +951,9 @@ def test_failing_to_cancel_a_running_task_is_logged_not_raised(harness, tes_serv
     assert "may still be running" in message
     assert "unauthorized" in message
     assert ("could not read its state" in message) is unreadable
+    # The server answered the cancel, so retrying it would get the same answer.
+    assert harness.monitor_for(2 * CANCEL_RETRY_TIMES[-1]) == []
+    assert len(tes_server.requests) == 2
 
 
 def test_failing_to_cancel_a_task_with_no_recorded_id_is_logged_not_raised(harness, tes_server, caplog):
@@ -967,6 +1015,237 @@ def test_status_for_a_stopped_job_whose_task_already_ended_finishes_it(harness, 
     assert method == harness.runner.finish_job
 
 
+@pytest.mark.parametrize("how", ["connection refused", 503])
+def test_cancel_failing_on_an_unreachable_server_is_retried_until_it_answers(harness, tes_server, caplog, how):
+    tes_server.tasks[TASK_ID] = _task("RUNNING")
+    harness.job.state = model.Job.states.DELETING
+    _take_down(tes_server, how)
+
+    # The stop queue's thread waits for one request only, and nothing is raised.
+    harness.runner.stop_job(harness.job_wrapper)
+
+    assert _log_messages(caplog, logging.ERROR) == []
+    [warning] = _log_messages(caplog, logging.WARNING)
+    assert warning.startswith(f"({GALAXY_JOB_ID}/{TASK_ID}) Could not reach the TES server to cancel the task")
+    assert "retrying for up to 86400 seconds" in warning
+
+    _bring_back(tes_server, how)
+    caplog.set_level(logging.INFO, logger=pulsar_runner.__name__)
+    [cancelled_after] = harness.monitor_for(2 * CANCEL_RETRY_TIMES[-1])
+    assert cancelled_after <= 120
+    assert tes_server.tasks[TASK_ID]["state"] == "CANCELED"
+    assert any(
+        message.startswith(f"({GALAXY_JOB_ID}/{TASK_ID}) Cancelled TES task on attempt ")
+        for message in _log_messages(caplog, logging.INFO)
+    )
+    assert _log_messages(caplog, logging.ERROR) == []
+
+
+def test_cancel_retries_back_off_to_two_minutes_apart(harness, tes_server):
+    tes_server.tasks[TASK_ID] = _task("RUNNING")
+    _take_down(tes_server, 503)
+    harness.runner.stop_job(harness.job_wrapper)
+    assert harness.monitor_for(CANCEL_RETRY_TIMES[-1]) == CANCEL_RETRY_TIMES
+    # Each failed attempt is one request; the state isn't read from a server that can't answer.
+    assert set(tes_server.views_requested()) == {"POST"}
+
+
+@pytest.mark.parametrize("state", ["COMPLETE", "CANCELED", None])
+def test_cancel_retry_stops_once_the_task_has_ended_or_is_gone(harness, tes_server, caplog, state):
+    tes_server.tasks[TASK_ID] = _task("RUNNING")
+    _take_down(tes_server, 503)
+    harness.runner.stop_job(harness.job_wrapper)
+
+    # The task ended, or was deleted, while the server was unreachable.
+    _bring_back(tes_server, 503)
+    if state is None:
+        del tes_server.tasks[TASK_ID]
+    else:
+        tes_server.tasks[TASK_ID]["state"] = state
+        _reject_cancel_like_tesk(tes_server)
+    caplog.set_level(logging.INFO, logger=pulsar_runner.__name__)
+    assert harness.monitor_for(CANCEL_RETRY_TIMES[-1]) == [CANCEL_RETRY_TIMES[0]]
+
+    assert tes_server.views_requested() == ["POST", "POST", "BASIC"]
+    expected_state = state or "NOT_FOUND"
+    assert f"({GALAXY_JOB_ID}/{TASK_ID}) TES task is {expected_state}, nothing to cancel" in _log_messages(
+        caplog, logging.INFO
+    )
+    assert _log_messages(caplog, logging.ERROR) == []
+
+
+def test_cancel_retry_gives_up_after_tes_cancel_retry_timeout(tes_server, clock, caplog):
+    harness = Harness(tes_server, clock, tes_cancel_retry_timeout="300")
+    tes_server.tasks[TASK_ID] = _task("RUNNING")
+    _take_down(tes_server, 503)
+    harness.runner.stop_job(harness.job_wrapper)
+
+    # The last attempt comes at the deadline.
+    assert harness.monitor_for(2 * CANCEL_RETRY_TIMES[-1]) == [10, 30, 70, 150, 270, 300]
+
+    [message] = _log_messages(caplog, logging.ERROR)
+    assert message.startswith(f"({GALAXY_JOB_ID}/{TASK_ID}) Gave up cancelling TES task after 7 attempts")
+    assert "may still be running" in message
+    assert "Last error: HTTP 503: " in message
+
+
+def test_cancel_retry_timeout_of_zero_tries_the_cancel_once(tes_server, clock, caplog):
+    harness = Harness(tes_server, clock, tes_cancel_retry_timeout="0")
+    tes_server.tasks[TASK_ID] = _task("RUNNING")
+    _take_down(tes_server, 503)
+    harness.runner.stop_job(harness.job_wrapper)
+
+    assert tes_server.views_requested() == ["POST", "BASIC"]
+    [message] = _log_messages(caplog, logging.ERROR)
+    assert "may still be running" in message
+    assert harness.monitor_for(2 * CANCEL_RETRY_TIMES[-1]) == []
+
+
+def test_pending_cancels_on_one_unreachable_server_cost_one_request_per_sweep(harness, tes_server):
+    tes_server.tasks[TASK_ID] = _task("RUNNING")
+    other_job_wrapper = harness.another_job("other-task")
+    _take_down(tes_server, 503)
+    harness.runner.stop_job(harness.job_wrapper)
+    harness.runner.stop_job(other_job_wrapper)
+    assert len(tes_server.requests) == 2
+
+    # The server times out or refuses connections; asking again for every task would hold up the monitor.
+    harness.monitor_for(CANCEL_RETRY_TIMES[0])
+    assert len(tes_server.requests) == 3
+
+    _bring_back(tes_server, 503)
+    harness.monitor_for(CANCEL_RETRY_TIMES[1] - CANCEL_RETRY_TIMES[0])
+    assert tes_server.tasks[TASK_ID]["state"] == "CANCELED"
+    assert tes_server.tasks["other-task"]["state"] == "CANCELED"
+
+
+def test_pending_cancels_on_one_unreachable_server_share_its_retry_schedule(harness, tes_server):
+    # Jobs stopped a second apart are never due in the same sweep, so each would ask the server on its own.
+    _take_down(tes_server, 503)
+    for i in range(5):
+        job_wrapper = harness.another_job(f"task-{i}")
+        job_wrapper.job_id = job_wrapper.job.id = GALAXY_JOB_ID + 1 + i
+        harness.runner.stop_job(job_wrapper)
+        harness.monitor_for(1)
+    assert len(tes_server.requests) == 5
+
+    harness.monitor_for(CANCEL_RETRY_TIMES[-1])
+    assert len(tes_server.requests) == 5 + len(CANCEL_RETRY_TIMES)
+
+    _bring_back(tes_server, 503)
+    harness.monitor_for(120)
+    assert [tes_server.tasks[f"task-{i}"]["state"] for i in range(5)] == ["CANCELED"] * 5
+
+
+def test_cancel_added_while_its_server_backs_off_waits_for_the_servers_next_attempt(harness, tes_server):
+    tes_server.tasks[TASK_ID] = _task("RUNNING")
+    _take_down(tes_server, 503)
+    harness.runner.stop_job(harness.job_wrapper)
+    harness.monitor_for(CANCEL_RETRY_TIMES[3] + 1)
+    other_job_wrapper = harness.another_job("other-task")
+    harness.runner.stop_job(other_job_wrapper)
+    requests_before = len(tes_server.requests)
+
+    # The server's next attempt is due at CANCEL_RETRY_TIMES[4]; the new cancel doesn't ask it sooner.
+    harness.monitor_for(CANCEL_RETRY_TIMES[4] - CANCEL_RETRY_TIMES[3] - 1)
+    assert len(tes_server.requests) == requests_before + 1
+
+    _bring_back(tes_server, 503)
+    harness.monitor_for(CANCEL_RETRY_TIMES[5] - CANCEL_RETRY_TIMES[4])
+    assert tes_server.tasks[TASK_ID]["state"] == "CANCELED"
+    assert tes_server.tasks["other-task"]["state"] == "CANCELED"
+
+
+def test_job_failed_for_an_unreachable_server_leaves_its_cancel_to_the_retries(tes_server, clock, caplog):
+    # The server just failed the check; cancelling right away would wait on it again on the monitor thread.
+    harness = Harness(tes_server, clock, tes_cancel_retry_timeout="300")
+    tes_server.tasks[TASK_ID] = _task("RUNNING")
+    harness.job.state = model.Job.states.RUNNING
+    harness.check()
+    _take_down(tes_server, 503)
+    assert not harness.watch_for(INTERVAL + DEFAULT_UNREACHABLE_TIMEOUT)
+    assert len(harness.failures) == 1
+    assert "POST" not in tes_server.views_requested()
+
+    assert harness.monitor_for(2 * CANCEL_RETRY_TIMES[-1]) == [10, 30, 70, 150, 270, 300]
+    [message] = _log_messages(caplog, logging.ERROR)
+    assert message.startswith(f"({GALAXY_JOB_ID}/{TASK_ID}) Gave up cancelling TES task after 6 attempts")
+
+
+def test_stopping_a_job_again_while_its_cancel_is_retried_keeps_one_retry(harness, tes_server):
+    tes_server.tasks[TASK_ID] = _task("RUNNING")
+    _take_down(tes_server, 503)
+    harness.runner.stop_job(harness.job_wrapper)
+    harness.monitor_for(5)
+    harness.runner.stop_job(harness.job_wrapper)
+    assert harness.monitor_for(CANCEL_RETRY_TIMES[1]) == [CANCEL_RETRY_TIMES[0] - 5, CANCEL_RETRY_TIMES[1] - 5]
+
+
+def test_cancel_succeeding_on_a_later_stop_ends_the_retries(harness, tes_server):
+    tes_server.tasks[TASK_ID] = _task("RUNNING")
+    _take_down(tes_server, 503)
+    harness.runner.stop_job(harness.job_wrapper)
+    _bring_back(tes_server, 503)
+    harness.runner.stop_job(harness.job_wrapper)
+    assert harness.monitor_for(2 * CANCEL_RETRY_TIMES[-1]) == []
+    assert tes_server.views_requested() == ["POST", "POST"]
+
+
+def test_cancels_of_tasks_sharing_an_id_on_two_tes_servers_are_retried_apart(harness, tes_server, other_tes_server):
+    # Nothing in the TES spec makes task ids unique across servers (tesp-api's are MongoDB ObjectIds).
+    tes_server.tasks[TASK_ID] = _task("RUNNING")
+    other_tes_server.tasks[TASK_ID] = _task("RUNNING")
+    other_job_wrapper = FakeJobWrapper(harness.runner.app)
+    other_job_wrapper.job_id = other_job_wrapper.job.id = GALAXY_JOB_ID + 1
+    other_job_wrapper.job.destination_params = harness.destination_params(other_tes_server.url)
+    _take_down(tes_server, 503)
+    _take_down(other_tes_server, 503)
+    harness.runner.stop_job(harness.job_wrapper)
+    harness.runner.stop_job(other_job_wrapper)
+
+    # The first job's cancel goes through on a later stop; the other job's is still pending.
+    _bring_back(tes_server, 503)
+    harness.runner.stop_job(harness.job_wrapper)
+    assert tes_server.tasks[TASK_ID]["state"] == "CANCELED"
+    _bring_back(other_tes_server, 503)
+    harness.monitor_for(CANCEL_RETRY_TIMES[0])
+
+    assert other_tes_server.tasks[TASK_ID]["state"] == "CANCELED"
+
+
+def test_job_failed_for_an_unreachable_server_has_its_task_cancelled_once_the_server_is_back(harness, tes_server):
+    # A TES server down for longer than the unreachable timeout keeps its tasks: tesp-api
+    # resumes them when it comes back, and would run this one for a job Galaxy has failed.
+    tes_server.tasks[TASK_ID] = _task("RUNNING")
+    harness.job.state = model.Job.states.RUNNING
+    harness.check()
+    _take_down(tes_server, "connection refused")
+    assert not harness.watch_for(INTERVAL + DEFAULT_UNREACHABLE_TIMEOUT)
+    assert len(harness.failures) == 1
+
+    harness.monitor_for(300)
+    _bring_back(tes_server, "connection refused")
+    [cancelled_after] = harness.monitor_for(2 * CANCEL_RETRY_TIMES[-1])
+    assert cancelled_after <= 120
+    assert tes_server.tasks[TASK_ID]["state"] == "CANCELED"
+
+
+def test_shutdown_names_the_tasks_whose_cancel_is_still_pending(harness, tes_server, caplog):
+    tes_server.tasks[TASK_ID] = _task("RUNNING")
+    _take_down(tes_server, "connection refused")
+    harness.runner.stop_job(harness.job_wrapper)
+    harness.runner.app.config.monitor_thread_join_timeout = 0
+    # The monitor and worker threads never started here.
+    harness.runner._init_noop_monitor()
+    harness.runner.work_threads = []
+
+    harness.runner.shutdown()
+
+    [message] = [m for m in _log_messages(caplog, logging.WARNING) if "pending" in m]
+    assert "1 TES task cancel" in message
+    assert f"job {GALAXY_JOB_ID}: task {TASK_ID} at {tes_server.url}" in message
+
+
 def _runner(runner_class, **params):
     app = Mock()
     app.config.redact_email_in_job_name = False
@@ -984,6 +1263,7 @@ def test_tes_checks_are_on_by_default():
     assert runner.tes_status_check_interval == INTERVAL
     assert runner.tes_status_grace_period == GRACE
     assert runner.tes_unreachable_timeout == DEFAULT_UNREACHABLE_TIMEOUT
+    assert runner.tes_cancel_retry_timeout == DEFAULT_CANCEL_RETRY_TIMEOUT
 
 
 def test_tes_checks_are_configurable():
@@ -992,16 +1272,39 @@ def test_tes_checks_are_configurable():
         tes_status_check_interval="15",
         tes_status_grace_period="0",
         tes_unreachable_timeout="60",
+        tes_cancel_retry_timeout="600",
     )
     assert runner.poll
     assert runner.tes_status_check_interval == 15.0
     assert runner.tes_status_grace_period == 0.0
     assert runner.tes_unreachable_timeout == 60.0
-    assert not _runner(PulsarTesJobRunner, tes_status_check_interval="0").poll
+    assert runner.tes_cancel_retry_timeout == 600.0
+    assert not _runner(PulsarTesJobRunner, tes_status_check_interval="0", tes_cancel_retry_timeout="0").poll
     with pytest.raises(Exception, match="tes_status_grace_period"):
         _runner(PulsarTesJobRunner, tes_status_grace_period="-1")
     with pytest.raises(Exception, match="tes_unreachable_timeout"):
         _runner(PulsarTesJobRunner, tes_unreachable_timeout="-1")
+    with pytest.raises(Exception, match="tes_cancel_retry_timeout"):
+        _runner(PulsarTesJobRunner, tes_cancel_retry_timeout="-1")
+
+
+def test_task_checks_off_leave_the_tasks_alone_but_still_retry_cancels(tes_server, clock):
+    harness = Harness(tes_server, clock, tes_status_check_interval="0")
+    assert harness.runner.poll
+    tes_server.tasks[TASK_ID] = _task("COMPLETE")
+    harness.job.state = model.Job.states.RUNNING
+    assert harness.check() is None
+    # Nothing removes a watch with the checks off, so a final status mustn't add one.
+    harness.runner._update_job_state_for_status(harness.job_state, "complete")
+    assert harness.runner._tes_task_watches == {}
+    assert tes_server.requests == []
+
+    tes_server.tasks[TASK_ID]["state"] = "RUNNING"
+    _take_down(tes_server, 503)
+    harness.runner.stop_job(harness.job_wrapper)
+    _bring_back(tes_server, 503)
+    assert harness.monitor_for(CANCEL_RETRY_TIMES[0]) == [CANCEL_RETRY_TIMES[0]]
+    assert tes_server.tasks[TASK_ID]["state"] == "CANCELED"
 
 
 def test_tes_options_are_rejected_by_other_pulsar_runners():
