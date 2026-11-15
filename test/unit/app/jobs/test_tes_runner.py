@@ -23,14 +23,21 @@ from galaxy.jobs.runners.tes import (
     build_tes_task,
     executor_env,
     job_files_url,
+    signed_job_files_url_for,
     staged_input_paths,
     TES_WRAPPER_SCRIPT,
     TesJobRunner,
     wrapper_script,
 )
+from galaxy.security.idencoding import IdEncodingHelper
+from galaxy.security.job_files_tokens import (
+    JOB_FILES_READ,
+    JOB_FILES_WRITE,
+    verify_job_files_token,
+)
 
 GALAXY_URL = "http://172.17.0.1:18080"
-JOB_KEY = "0123456789abcdef"
+TOKEN = "1763200000.c2lnbmF0dXJl"
 TASK_ID = "d4rk5c3bf5d1q0abcdef"
 
 
@@ -42,10 +49,36 @@ def _write(path, content="x"):
 
 
 def test_job_files_url_quotes_the_path():
-    url = job_files_url(GALAXY_URL + "/", "f2db41e1fa331b3e", JOB_KEY, "/data/a b&c=d+e.dat")
+    url = job_files_url(GALAXY_URL + "/", "f2db41e1fa331b3e", "/data/a b&c=d+e.dat", TOKEN)
     parsed = urlparse(url)
     assert parsed.path == "/api/jobs/f2db41e1fa331b3e/files"
-    assert parse_qs(parsed.query) == {"path": ["/data/a b&c=d+e.dat"], "job_key": [JOB_KEY]}
+    assert parse_qs(parsed.query) == {"path": ["/data/a b&c=d+e.dat"], "job_token": [TOKEN]}
+
+
+def test_signed_urls_are_per_file_and_per_direction():
+    security = IdEncodingHelper(id_secret="a test secret, not a real one")
+    expires = 1_763_200_000
+    url_for = signed_job_files_url_for(GALAXY_URL, security, 7, expires)
+    path = "/galaxy/jobs/000/7/outputs/dataset_2.dat"
+
+    read_url, write_url = url_for(path, JOB_FILES_READ), url_for(path, JOB_FILES_WRITE)
+
+    assert read_url != write_url
+    for url, scope, other_scope in (
+        (read_url, JOB_FILES_READ, JOB_FILES_WRITE),
+        (write_url, JOB_FILES_WRITE, JOB_FILES_READ),
+    ):
+        parsed = urlparse(url)
+        assert parsed.path == f"/api/jobs/{security.encode_id(7)}/files"
+        query = parse_qs(parsed.query)
+        assert set(query) == {"path", "job_token"}
+        assert query["path"] == [path]
+        [token] = query["job_token"]
+        assert verify_job_files_token(security, 7, path, scope, token, now=expires)
+        assert not verify_job_files_token(security, 7, path, other_scope, token, now=expires)
+        assert not verify_job_files_token(security, 7, path + ".other", scope, token, now=expires)
+        assert not verify_job_files_token(security, 7, path, scope, token, now=expires + 1)
+        assert security.encode_id(7, kind="jobs_files") not in url
 
 
 def test_staged_input_paths(tmp_path):
@@ -133,7 +166,7 @@ def test_build_tes_task():
         input_paths=["/galaxy/objects/dataset_1.dat", f"{job_dir}/galaxy_7.sh"],
         output_paths=[f"{job_dir}/outputs/dataset_2.dat", f"{job_dir}/galaxy_7.ec"],
         wrapper="#!/bin/sh\nexit 0\n",
-        url_for=lambda path: job_files_url(GALAXY_URL, "abc", JOB_KEY, path),
+        url_for=lambda path, scope: job_files_url(GALAXY_URL, "abc", path, f"{scope}-token"),
         resources=resources,
         env=executor_env(resources),
     )
@@ -146,13 +179,13 @@ def test_build_tes_task():
         f"{job_dir}/galaxy_7.sh",
         f"{job_dir}/{TES_WRAPPER_SCRIPT}",
     ]
-    assert inputs[0]["url"] == job_files_url(GALAXY_URL, "abc", JOB_KEY, "/galaxy/objects/dataset_1.dat")
+    assert inputs[0]["url"] == job_files_url(GALAXY_URL, "abc", "/galaxy/objects/dataset_1.dat", "r-token")
     assert inputs[2] == {"path": f"{job_dir}/{TES_WRAPPER_SCRIPT}", "type": "FILE", "content": "#!/bin/sh\nexit 0\n"}
     assert [(o["path"], o["type"]) for o in document["outputs"]] == [
         (f"{job_dir}/outputs/dataset_2.dat", "FILE"),
         (f"{job_dir}/galaxy_7.ec", "FILE"),
     ]
-    assert document["outputs"][1]["url"] == job_files_url(GALAXY_URL, "abc", JOB_KEY, f"{job_dir}/galaxy_7.ec")
+    assert document["outputs"][1]["url"] == job_files_url(GALAXY_URL, "abc", f"{job_dir}/galaxy_7.ec", "w-token")
     assert document["executors"] == [
         {
             "image": "quay.io/biocontainers/fastp:1.4.0--h43da1c4_0",
@@ -168,7 +201,6 @@ class _Runner(TesJobRunner):
     def __init__(self):
         self.tes_poll_interval = 10.0
         self._next_checks = {}
-        self.app = SimpleNamespace(security=SimpleNamespace(encode_id=lambda job_id, kind=None: JOB_KEY))
         self.finished: list[Any] = []
         self.failed: list[Any] = []
 
@@ -245,7 +277,7 @@ def test_poll_fails_the_job_with_the_redacted_executor_log(tes, clock):
         executors=[SimpleNamespace(image="quay.io/biocontainers/fastp:1.4.0", command=["/bin/sh", "/w.sh"])],
         logs=[
             SimpleNamespace(
-                logs=[SimpleNamespace(exit_code=137, stderr=f"killed\nGET ...&job_key={JOB_KEY}")],
+                logs=[SimpleNamespace(exit_code=137, stderr=f"killed\nPUT ...&job_token={TOKEN}")],
                 system_logs=[],
             )
         ],
@@ -255,7 +287,7 @@ def test_poll_fails_the_job_with_the_redacted_executor_log(tes, clock):
 
     [(message, full_status, stop_job)] = runner.failed
     assert message == f"TES task {TASK_ID} ended in state EXECUTOR_ERROR. Executor 0 exited with code 137."
-    assert JOB_KEY not in full_status["stderr"]
+    assert TOKEN not in full_status["stderr"]
     assert "killed" in full_status["stderr"]
     assert stop_job is False
 

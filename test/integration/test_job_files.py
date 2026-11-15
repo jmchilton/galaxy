@@ -18,6 +18,7 @@ API has gone too far.
 import io
 import os
 import tempfile
+import time
 from typing import Any
 
 import requests
@@ -26,6 +27,11 @@ from tusclient import client
 
 from galaxy import model
 from galaxy.model.base import ensure_object_added_to_session
+from galaxy.security.job_files_tokens import (
+    JOB_FILES_READ,
+    job_files_token,
+    JOB_FILES_WRITE,
+)
 from galaxy_test.base import api_asserts
 from galaxy_test.base.populators import DatasetPopulator
 from galaxy_test.driver import integration_util
@@ -203,6 +209,70 @@ class TestJobFilesIntegration(integration_util.IntegrationTestCase):
         response = requests.put(
             put_url, params={"path": os.path.join(working_directory, "w"), "job_key": "bad"}, data=b"x"
         )
+        _assert_insufficient_permissions(response)
+
+    def test_signed_per_file_tokens(self):
+        job, output_hda, working_directory = self.create_static_job_with_state("running")
+        job_id = self._app.security.encode_id(job.id)
+        url = self._api_url(f"jobs/{job_id}/files", use_key=False)
+        # Not the shared input dataset: another test purges it.
+        input_path = os.path.join(working_directory, "tool_script.sh")
+        with open(input_path, "w") as fh:
+            fh.write(TEST_INPUT_TEXT)
+        output_path = self._app.object_store.get_filename(output_hda.dataset)
+        assert output_path
+        expires = int(time.time()) + 600
+
+        def token(path, scope, expires=expires):
+            return job_files_token(self._app.security, job.id, path, scope, expires)
+
+        # A read token reads its file, and nothing else.
+        response = requests.get(url, params={"path": input_path, "job_token": token(input_path, JOB_FILES_READ)})
+        api_asserts.assert_status_code_is_ok(response)
+        assert response.text == TEST_INPUT_TEXT
+        for params in (
+            {"path": input_path, "job_token": token(input_path, JOB_FILES_WRITE)},
+            {"path": input_path, "job_token": token(output_path, JOB_FILES_READ)},
+            {"path": input_path, "job_token": token(input_path, JOB_FILES_READ, int(time.time()) - 1)},
+            {"path": input_path, "job_token": "garbage"},
+        ):
+            _assert_insufficient_permissions(requests.get(url, params=params))
+
+        # A write token writes its file with PUT (Funnel, TESK) or multipart POST (tesp-api), and nothing else.
+        response = requests.put(
+            url, params={"path": output_path, "job_token": token(output_path, JOB_FILES_WRITE)}, data=b"put bytes"
+        )
+        api_asserts.assert_status_code_is_ok(response)
+        assert open(output_path, "rb").read() == b"put bytes"
+        tool_stdout = os.path.join(working_directory, "outputs", "tool_stdout")
+        response = requests.post(
+            url,
+            params={"path": tool_stdout, "job_token": token(tool_stdout, JOB_FILES_WRITE)},
+            files={"file": io.StringIO("posted")},
+        )
+        api_asserts.assert_status_code_is_ok(response)
+        assert open(tool_stdout).read() == "posted"
+        other_file = os.path.join(working_directory, "other")
+        for params in (
+            {"path": output_path, "job_token": token(output_path, JOB_FILES_READ)},
+            {"path": other_file, "job_token": token(output_path, JOB_FILES_WRITE)},
+            {"path": output_path, "job_token": token(output_path, JOB_FILES_WRITE, int(time.time()) - 1)},
+        ):
+            _assert_insufficient_permissions(requests.put(url, params=params, data=b"x"))
+            _assert_insufficient_permissions(requests.post(url, params=params, files={"file": io.StringIO("x")}))
+        assert open(output_path, "rb").read() == b"put bytes"
+        assert not os.path.exists(other_file)
+
+        # A valid token doesn't widen the write locations.
+        outside = tempfile.NamedTemporaryFile()
+        response = requests.put(
+            url, params={"path": outside.name, "job_token": token(outside.name, JOB_FILES_WRITE)}, data=b"x"
+        )
+        _assert_insufficient_permissions(response)
+
+        # Tokens end with the job.
+        self._change_job_state(job, "ok")
+        response = requests.get(url, params={"path": input_path, "job_token": token(input_path, JOB_FILES_READ)})
         _assert_insufficient_permissions(response)
 
     def test_write_protection(self):

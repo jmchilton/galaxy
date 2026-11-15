@@ -4,7 +4,7 @@ Prototype of "design B" from the galaxy-wes-tes investigation. Each job becomes 
 TES task that any spec-following TES server can run:
 
 - TES ``inputs`` fetch every file the job reads from Galaxy's job files API
-  (``GET /api/jobs/{id}/files?path=...&job_key=...``): input datasets with their
+  (``GET /api/jobs/{id}/files?path=...&job_token=...``): input datasets with their
   metadata and extra files, every file of the job directory (job script, tool
   script, config files) and tool directory files the job refers to.
 - One executor runs Galaxy's own job script in the tool's container. Paths inside
@@ -13,6 +13,10 @@ TES task that any spec-following TES server can run:
 - TES ``outputs`` send the output datasets, tool stdout/stderr, the exit code
   file and the core job metrics files back to the same API: multipart ``POST``
   (tesp-api) or raw ``PUT`` (Funnel, TESK) to the same URL.
+- Each URL carries its own signed token (``galaxy.security.job_files_tokens``),
+  valid for one path, one direction (read for inputs, write for outputs), until
+  the job ends or ``job_files_token_ttl`` passes. The job's ``job_key``, which
+  opens every file of the job, never reaches the TES server.
 - Galaxy learns the task's state by polling the TES server, then sets metadata
   and finishes the job locally.
 
@@ -31,7 +35,10 @@ from collections.abc import (
     Callable,
     Iterable,
 )
-from time import monotonic
+from time import (
+    monotonic,
+    time,
+)
 from typing import (
     Any,
     Optional,
@@ -64,6 +71,12 @@ from galaxy.jobs.runners.util.tes_task import (
     fetch_tes_task_state,
     TES_TASK_NOT_FOUND,
 )
+from galaxy.security.job_files_tokens import (
+    JOB_FILES_READ,
+    job_files_token,
+    JOB_FILES_WRITE,
+    JobFilesScope,
+)
 from galaxy.util import (
     asbool,
     in_directory,
@@ -73,6 +86,7 @@ if TYPE_CHECKING:
     from pydantictes.api import TesClient
 
     from galaxy.jobs import MinimalJobWrapper
+    from galaxy.security.idencoding import IdEncodingHelper
     from galaxy.tool_util.deps.container_classes import Container
 
 log = logging.getLogger(__name__)
@@ -82,6 +96,8 @@ __all__ = ("TesJobRunner",)
 TES_RUNNER_PARAM_SPECS: dict[str, Any] = dict(
     galaxy_url=dict(map=str, default=None),
     tes_poll_interval=dict(map=float, valid=lambda x: float(x) > 0, default=10.0),
+    # Cap on the life of each task URL's token; the job ending revokes them anyway.
+    job_files_token_ttl=dict(map=int, valid=lambda x: int(x) > 0, default=7 * 24 * 3600),
 )
 
 # Written by the core job metrics plugin into the job directory.
@@ -91,13 +107,23 @@ TES_WRAPPER_SCRIPT = "tes_job_wrapper.sh"
 MAX_SCANNED_FILE_SIZE = 1024 * 1024
 TES_WAITING_STATES = frozenset(["UNKNOWN", "QUEUED", "INITIALIZING", "PAUSED", "CANCELING"])
 TES_RUNNING_STATES = frozenset(["RUNNING"])
-UrlFor = Callable[[str], str]
+UrlFor = Callable[[str, JobFilesScope], str]
 
 
-def job_files_url(galaxy_url: str, encoded_job_id: str, job_key: str, path: str) -> str:
-    """URL of ``path`` in Galaxy's job files API, for both TES inputs and outputs."""
-    query = urlencode({"path": path, "job_key": job_key})
+def job_files_url(galaxy_url: str, encoded_job_id: str, path: str, job_token: str) -> str:
+    """URL of ``path`` in Galaxy's job files API, authorized by ``job_token``."""
+    query = urlencode({"path": path, "job_token": job_token})
     return f"{galaxy_url.rstrip('/')}/api/jobs/{encoded_job_id}/files?{query}"
+
+
+def signed_job_files_url_for(galaxy_url: str, security: "IdEncodingHelper", job_id: int, expires: int) -> UrlFor:
+    """A ``UrlFor`` whose URLs each carry a token for one path and one direction, valid until ``expires``."""
+    encoded_job_id = security.encode_id(job_id)
+
+    def url_for(path: str, scope: JobFilesScope) -> str:
+        return job_files_url(galaxy_url, encoded_job_id, path, job_files_token(security, job_id, path, scope, expires))
+
+    return url_for
 
 
 def expand_paths(paths: Iterable[str]) -> list[str]:
@@ -212,9 +238,9 @@ def build_tes_task(
     Every path is the same inside the task as on Galaxy's disk.
     """
     wrapper_path = os.path.join(job_directory, TES_WRAPPER_SCRIPT)
-    inputs = [TesInput(url=url_for(path), path=path, type=TesFileType.FILE) for path in input_paths]
+    inputs = [TesInput(url=url_for(path, JOB_FILES_READ), path=path, type=TesFileType.FILE) for path in input_paths]
     inputs.append(TesInput(content=wrapper, path=wrapper_path, type=TesFileType.FILE))
-    outputs = [TesOutput(url=url_for(path), path=path, type=TesFileType.FILE) for path in output_paths]
+    outputs = [TesOutput(url=url_for(path, JOB_FILES_WRITE), path=path, type=TesFileType.FILE) for path in output_paths]
     executor = TesExecutor(image=image, command=["/bin/sh", wrapper_path], workdir=job_directory, env=env or None)
     return TesTask(
         name=name,
@@ -245,8 +271,10 @@ class TesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
     ``disk_gb``, plus ``docker_enabled: true`` for container resolution and
     ``outputs_to_working_directory: true``. Runner parameters: ``galaxy_url`` (as
     task containers and the TES server see Galaxy; default
-    ``galaxy_infrastructure_url``) and ``tes_poll_interval`` (seconds between
-    checks of each task, default 10).
+    ``galaxy_infrastructure_url``), ``tes_poll_interval`` (seconds between
+    checks of each task, default 10) and ``job_files_token_ttl`` (seconds each
+    task URL stays valid at most, default 7 days; URLs stop working when the job
+    ends in any case).
     """
 
     runner_name = "TESRunner"
@@ -255,6 +283,7 @@ class TesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
         super().__init__(app, nworkers, runner_param_specs=TES_RUNNER_PARAM_SPECS, **kwds)
         self.galaxy_url: str = self.runner_params.galaxy_url or app.config.galaxy_infrastructure_url
         self.tes_poll_interval: float = self.runner_params.tes_poll_interval
+        self.job_files_token_ttl: int = self.runner_params.job_files_token_ttl
         # Containers found while building command lines, by Galaxy job id, until the job is submitted.
         self._containers: dict[int, Container] = {}
         # Only the monitor thread touches this.
@@ -335,8 +364,6 @@ class TesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
             exclude=output_paths,
         )
         resources = TesResources(cpu_cores=tes_params.cpu_cores, ram_gb=tes_params.ram_gb, disk_gb=tes_params.disk_gb)
-        encoded_job_id = self.app.security.encode_id(job_wrapper.job_id)
-        job_key = self.app.security.encode_id(job_wrapper.job_id, kind="jobs_files")
         wrapper = wrapper_script(
             job_directory,
             job_state.job_file,
@@ -353,7 +380,9 @@ class TesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
             input_paths=input_paths,
             output_paths=output_paths,
             wrapper=wrapper,
-            url_for=lambda path: job_files_url(self.galaxy_url, encoded_job_id, job_key, path),
+            url_for=signed_job_files_url_for(
+                self.galaxy_url, self.app.security, job_wrapper.job_id, int(time()) + self.job_files_token_ttl
+            ),
             resources=resources,
             env=executor_env(resources),
         )
@@ -426,7 +455,8 @@ class TesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
         if task_state == TES_TASK_NOT_FOUND:
             return f"The TES server has no record of task {task_id}.", None
         message = f"TES task {task_id} ended in state {task_state}."
-        secrets = [self.app.security.encode_id(job_state.job_wrapper.job_id, kind="jobs_files")]
+        # URL tokens in the logs are caught by redact()'s ``token=`` pattern.
+        secrets = []
         if tes_params.basic_auth:
             secrets.append(tes_params.basic_auth.password)
         try:

@@ -9,6 +9,7 @@ import shutil
 import tempfile
 from typing import (
     Annotated,
+    Optional,
     Union,
 )
 
@@ -31,6 +32,12 @@ from galaxy.model import (
     JobToOutputLibraryDatasetAssociation,
 )
 from galaxy.security.idencoding import IdEncodingHelper
+from galaxy.security.job_files_tokens import (
+    JOB_FILES_READ,
+    JOB_FILES_WRITE,
+    JobFilesScope,
+    verify_job_files_token,
+)
 from galaxy.structured_app import (
     MinimalManagerApp,
     StructuredApp,
@@ -79,6 +86,9 @@ class JobFilesAPIController(BaseGalaxyAPIController):
         :type   job_key: str
         :param  job_key: A key used to authenticate this request as acting on
                          behalf or a job runner for the specified job.
+        :type   job_token: str
+        :param  job_token: Instead of ``job_key``, a signed token for reading
+                           exactly this path (see ``galaxy.security.job_files_tokens``).
 
         ..note:
             This API method is intended only for consumption by job runners,
@@ -87,7 +97,7 @@ class JobFilesAPIController(BaseGalaxyAPIController):
         :rtype:     binary
         :returns:   contents of file
         """
-        job = self.__authorize_job_access(trans, job_id, **kwargs)
+        job = self.__authorize_job_access(trans, job_id, JOB_FILES_READ, **kwargs)
         path = kwargs["path"]
         try:
             return open(path, "rb")
@@ -118,6 +128,7 @@ class JobFilesAPIController(BaseGalaxyAPIController):
         :type   payload:    dict
         :param  payload:    dictionary structure containing::
             'job_key'   = Key authenticating
+            'job_token' = Instead of 'job_key', a signed token for writing exactly 'path'
             'path'      = Path to file to create.
 
         ..note:
@@ -127,7 +138,7 @@ class JobFilesAPIController(BaseGalaxyAPIController):
         :rtype:     dict
         :returns:   an okay message
         """
-        job = self.__authorize_job_access(trans, job_id, **payload)
+        job = self.__authorize_job_access(trans, job_id, JOB_FILES_WRITE, **payload)
         path = payload.get("path")
         if not path:
             raise exceptions.RequestParameterInvalidException("'path' parameter not provided or empty.")
@@ -218,25 +229,47 @@ class JobFilesAPIController(BaseGalaxyAPIController):
         """
         pass
 
-    def __authorize_job_access(self, trans: ProvidesAppContext, encoded_job_id: str, **kwargs):
-        for key in ["path", "job_key"]:
-            if key not in kwargs:
-                error_message = f"Job files action requires a valid '{key}'."
-                raise exceptions.ObjectAttributeMissingException(error_message)
-        return authorize_job_access(trans.security, trans.sa_session, encoded_job_id, kwargs["job_key"])
+    def __authorize_job_access(self, trans: ProvidesAppContext, encoded_job_id: str, scope: JobFilesScope, **kwargs):
+        if "path" not in kwargs:
+            raise exceptions.ObjectAttributeMissingException("Job files action requires a valid 'path'.")
+        if "job_key" not in kwargs and "job_token" not in kwargs:
+            raise exceptions.ObjectAttributeMissingException("Job files action requires a valid 'job_key'.")
+        return authorize_job_access(
+            trans.security,
+            trans.sa_session,
+            encoded_job_id,
+            kwargs.get("job_key"),
+            path=kwargs["path"],
+            job_token=kwargs.get("job_token"),
+            scope=scope,
+        )
 
     def __check_job_can_write_to_path(self, trans: ProvidesAppContext, job: Job, path: str):
         check_job_can_write_to_path(trans.app, job, path)
 
 
 def authorize_job_access(
-    security: IdEncodingHelper, sa_session: scoped_session, encoded_job_id: str, job_key: str
+    security: IdEncodingHelper,
+    sa_session: scoped_session,
+    encoded_job_id: str,
+    job_key: Optional[str],
+    path: Optional[str] = None,
+    job_token: Optional[str] = None,
+    scope: Optional[JobFilesScope] = None,
 ) -> Job:
-    """Return the job if ``job_key`` is its job files key and the job is still active."""
+    """Return the job if it is still active and the request is authorized.
+
+    Authorized by ``job_token``, a signed token for ``scope`` access to exactly
+    ``path``, when given; otherwise by ``job_key``, the job's job files key.
+    """
     job_id = security.decode_id(encoded_job_id)
-    expected_job_key = security.encode_id(job_id, kind="jobs_files")
-    if not util.safe_str_cmp(str(job_key), expected_job_key):
-        raise exceptions.ItemAccessibilityException("Invalid job_key supplied.")
+    if job_token is not None:
+        if path is None or scope is None or not verify_job_files_token(security, job_id, path, scope, job_token):
+            raise exceptions.ItemAccessibilityException("Invalid or expired job_token supplied.")
+    else:
+        expected_job_key = security.encode_id(job_id, kind="jobs_files")
+        if not util.safe_str_cmp(str(job_key), expected_job_key):
+            raise exceptions.ItemAccessibilityException("Invalid job_key supplied.")
 
     # Verify job is active. Don't update the contents of complete jobs.
     job = sa_session.get(Job, job_id)
@@ -284,11 +317,15 @@ def _in_working_directory(job: Job, path: str, app: MinimalManagerApp) -> bool:
     return util.in_directory(path, working_directory)
 
 
-def _authorize_put(app: StructuredApp, job_id: str, path: str, job_key: str) -> str:
+def _authorize_put(app: StructuredApp, job_id: str, path: str, job_key: Optional[str], job_token: Optional[str]) -> str:
     """Authorize a raw-body write to ``path`` and return the directory to stage it in."""
     if not os.path.isabs(path):
         raise exceptions.RequestParameterInvalidException("'path' must be an absolute path.")
-    job = authorize_job_access(app.security, app.model.session, job_id, job_key)
+    if job_key is None and job_token is None:
+        raise exceptions.ObjectAttributeMissingException("Job files action requires a valid 'job_key'.")
+    job = authorize_job_access(
+        app.security, app.model.session, job_id, job_key, path=path, job_token=job_token, scope=JOB_FILES_WRITE
+    )
     check_job_can_write_to_path(app, job, path)
     target_dir = os.path.dirname(path)
     util.safe_makedirs(target_dir)
@@ -300,7 +337,8 @@ def _authorize_put(app: StructuredApp, job_id: str, path: str, job_key: str) -> 
     summary="Write an output or working directory file of a job from the raw request body.",
     description=(
         "For TES servers (Funnel, TESK) that upload task outputs with a plain HTTP PUT. "
-        "Authorized by `job_key` like the multipart POST; only for consumption by job runners, "
+        "Authorized by `job_key` like the multipart POST, or by a signed `job_token` for exactly this path; "
+        "only for consumption by job runners, "
         "not part of Galaxy's stable, user facing API. The file is replaced, never appended to."
     ),
     public=True,
@@ -309,11 +347,14 @@ async def put_job_file(
     request: Request,
     job_id: Annotated[str, Path(description="Encoded id string of the job.")],
     path: Annotated[str, Query(description="Absolute path of the file to write.")],
-    job_key: Annotated[str, Query(description="The job's job files key.")],
+    job_key: Annotated[Optional[str], Query(description="The job's job files key.")] = None,
+    job_token: Annotated[
+        Optional[str], Query(description="Instead of `job_key`, a signed token for writing exactly `path`.")
+    ] = None,
     app: StructuredApp = DependsOnApp,
 ) -> dict[str, str]:
     # Authorize before reading the body, then stage it next to the target and rename it into place.
-    target_dir = await anyio.to_thread.run_sync(_authorize_put, app, job_id, path, job_key)
+    target_dir = await anyio.to_thread.run_sync(_authorize_put, app, job_id, path, job_key, job_token)
     fd, staging_path = tempfile.mkstemp(prefix=PUT_STAGING_PREFIX, dir=target_dir)
     try:
         with os.fdopen(fd, "wb") as staging_file:
