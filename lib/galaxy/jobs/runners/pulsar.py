@@ -1421,6 +1421,16 @@ PULSAR_TES_PARAM_SPECS: dict[str, Any] = dict(
 
 PULSAR_FINAL_STATUSES = ("complete", "cancelled", "failed", "lost")
 
+# A TES task's server URL and task id. Nothing in the TES spec makes task ids unique
+# across servers (tesp-api's are MongoDB ObjectIds), and destinations can use different servers.
+TesTaskKey = tuple[str | None, str]
+
+
+def tes_task_key(job_state: AsynchronousJobState) -> TesTaskKey:
+    task_id = job_state.job_id
+    assert task_id
+    return job_state.job_destination.params.get("tes_url"), task_id
+
 
 @dataclass
 class TesTaskWatch:
@@ -1453,10 +1463,10 @@ class PulsarTesJobRunner(PulsarCoexecutionJobRunner):
         self.tes_status_check_interval: float = self.runner_params.tes_status_check_interval
         self.tes_status_grace_period: float = self.runner_params.tes_status_grace_period
         self.poll = self.tes_status_check_interval > 0
-        # Keyed by TES task id. Only the monitor thread removes watches. A final status
-        # can arrive before the task's first check, so the thread receiving Pulsar's
-        # messages adds the watch too when the job still waits on the task.
-        self._tes_task_watches: dict[str, TesTaskWatch] = {}
+        # Only the monitor thread removes watches. A final status can arrive before the
+        # task's first check, so the thread receiving Pulsar's messages adds the watch
+        # too when the job still waits on the task.
+        self._tes_task_watches: dict[TesTaskKey, TesTaskWatch] = {}
 
     def _update_job_state_for_status(
         self,
@@ -1466,14 +1476,14 @@ class PulsarTesJobRunner(PulsarCoexecutionJobRunner):
     ) -> AsynchronousJobState | None:
         task_id = job_state.job_id
         if self.poll and pulsar_status in PULSAR_FINAL_STATUSES and task_id and self._runs_task_here(job_state):
-            self._watch(task_id, monotonic()).pulsar_reported = True
+            self._watch(tes_task_key(job_state), monotonic()).pulsar_reported = True
         return super()._update_job_state_for_status(job_state, pulsar_status, full_status=full_status)
 
     def check_watched_item(self, job_state: AsynchronousJobState) -> AsynchronousJobState | None:
-        task_id = job_state.job_id
-        assert task_id
+        task_key = tes_task_key(job_state)
+        task_id = task_key[1]
         now = monotonic()
-        watch = self._watch(task_id, now)
+        watch = self._watch(task_key, now)
         if now < watch.next_check:
             return job_state
         watch.next_check = now + self.tes_status_check_interval
@@ -1484,12 +1494,14 @@ class PulsarTesJobRunner(PulsarCoexecutionJobRunner):
             keep_watching = True
         if keep_watching:
             return job_state
-        del self._tes_task_watches[task_id]
+        del self._tes_task_watches[task_key]
         return None
 
-    def _watch(self, task_id: str, now: float) -> TesTaskWatch:
+    def _watch(self, task_key: TesTaskKey, now: float) -> TesTaskWatch:
         # setdefault, so neither thread replaces a watch the other just added.
-        return self._tes_task_watches.setdefault(task_id, TesTaskWatch(next_check=now + self.tes_status_check_interval))
+        return self._tes_task_watches.setdefault(
+            task_key, TesTaskWatch(next_check=now + self.tes_status_check_interval)
+        )
 
     def _check_tes_task(self, job_state: AsynchronousJobState, watch: TesTaskWatch, now: float) -> bool:
         """Check a job's TES task, failing the job if it died silently. Return whether to keep watching."""

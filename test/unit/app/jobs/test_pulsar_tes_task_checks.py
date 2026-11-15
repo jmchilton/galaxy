@@ -270,11 +270,11 @@ class Harness:
         self.job.destination_params = self.destination_params()
         self.job_state = self.job_state_for(self.job_wrapper)
 
-    def destination_params(self):
-        return {"tes_url": self.tes_server.url, "pulsar_container_image": STAGING_IMAGE}
+    def destination_params(self, tes_url=None):
+        return {"tes_url": tes_url or self.tes_server.url, "pulsar_container_image": STAGING_IMAGE}
 
-    def job_state_for(self, job_wrapper):
-        destination = JobDestination(params=self.destination_params())
+    def job_state_for(self, job_wrapper, tes_url=None):
+        destination = JobDestination(params=self.destination_params(tes_url))
         return AsynchronousJobState(
             job_wrapper=cast(MinimalJobWrapper, job_wrapper), job_destination=destination, job_id=TASK_ID
         )
@@ -301,6 +301,13 @@ class Harness:
 @pytest.fixture
 def harness(tes_server, clock):
     return Harness(tes_server, clock)
+
+
+@pytest.fixture
+def other_tes_server():
+    server = FakeTesServer()
+    yield server
+    server.stop()
 
 
 def test_task_dying_before_pulsar_reports_fails_the_job(harness, tes_server, caplog):
@@ -691,6 +698,29 @@ def test_final_status_from_pulsar_outlasting_the_grace_period_keeps_the_job(harn
 
     assert not harness.watch_for(INTERVAL + GRACE + INTERVAL)
     assert harness.failures == []
+
+
+def test_tasks_sharing_an_id_on_two_tes_servers_are_watched_apart(harness, tes_server, other_tes_server, clock):
+    # Nothing in the TES spec makes task ids unique across servers (tesp-api's are MongoDB ObjectIds).
+    tes_server.tasks[TASK_ID] = _task("COMPLETE", executor_logs=[{"exit_code": 0}])
+    other_tes_server.tasks[TASK_ID] = _task("EXECUTOR_ERROR", executor_logs=[{"exit_code": 1}])
+    other_job_wrapper = FakeJobWrapper(harness.runner.app)
+    other_job_wrapper.job_id = other_job_wrapper.job.id = GALAXY_JOB_ID + 1
+    harness.job.state = other_job_wrapper.job.state = model.Job.states.RUNNING
+    watched = [harness.job_state_for(other_job_wrapper, tes_url=other_tes_server.url), harness.job_state]
+    for job_state in watched:
+        harness.runner.check_watched_item(job_state)
+    # Pulsar reports the first job's task; that must not end the other job's checks.
+    harness.runner._update_job_state_for_status(harness.job_state_for(harness.job_wrapper), "complete")
+
+    for _ in range(int(INTERVAL + GRACE + INTERVAL)):
+        clock.now += 1
+        watched = [job_state for job_state in watched if harness.runner.check_watched_item(job_state)]
+
+    assert watched == []
+    assert harness.failures == []
+    [failure] = other_job_wrapper.failures
+    assert failure["message"].startswith(f"TES task {TASK_ID} ended in state EXECUTOR_ERROR")
 
 
 @pytest.mark.parametrize("status", ["complete", "cancelled"])
