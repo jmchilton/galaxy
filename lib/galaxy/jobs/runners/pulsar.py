@@ -9,6 +9,8 @@ import logging
 import os
 import re
 import subprocess
+import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from time import (
     monotonic,
@@ -69,6 +71,7 @@ from galaxy.jobs.runners.util.tes_task import (
     describe_tes_error,
     describe_tes_task_failure,
     fetch_tes_task_state,
+    redact,
     TES_FINISHED_STATES,
     TES_NOTHING_TO_CANCEL_STATES,
     tes_server_unreachable_reason,
@@ -1231,9 +1234,16 @@ PULSAR_TES_PARAM_SPECS: dict[str, Any] = dict(
         valid=lambda x: float(x) >= 0,
         default=3600.0,
     ),
+    tes_cancel_retry_timeout=dict(
+        map=float,
+        valid=lambda x: float(x) >= 0,
+        default=86400.0,
+    ),
 )
 
 PULSAR_FINAL_STATUSES = ("complete", "cancelled", "failed", "lost")
+TES_CANCEL_RETRY_FIRST_DELAY = 10.0
+TES_CANCEL_RETRY_MAX_DELAY = 120.0
 
 
 @dataclass
@@ -1241,6 +1251,20 @@ class TesTaskWatch:
     next_check: float
     finished_since: float | None = None
     unreachable_since: float | None = None
+
+
+@dataclass
+class PendingTesCancel:
+    """A TES task cancel that failed because the TES server was unreachable, for the monitor thread to retry."""
+
+    job_id_tag: str
+    destination_params: dict[str, Any]
+    tes_url: str | None
+    give_up_at: float
+    next_attempt: float
+    last_error: str
+    delay: float = TES_CANCEL_RETRY_FIRST_DELAY
+    attempts: int = 1
 
 
 class PulsarTesJobRunner(PulsarCoexecutionJobRunner):
@@ -1255,6 +1279,13 @@ class PulsarTesJobRunner(PulsarCoexecutionJobRunner):
     forever. A job whose TES server can't be reached (no connection, a timeout or
     a 5xx answer) at every check for ``tes_unreachable_timeout`` seconds (0 never
     gives up) fails too.
+
+    Stopping or failing a job cancels its TES task. A cancel that fails because the
+    TES server is unreachable is retried by the monitor thread, 10 seconds later
+    and then up to two minutes apart, for ``tes_cancel_retry_timeout`` seconds (0
+    tries once). Otherwise a TES server that comes back resumes the task, which
+    then runs for a job Galaxy has already failed. The retries live in memory, so
+    a Galaxy restart drops them; shutdown logs the tasks it leaves uncancelled.
     """
 
     destination_defaults = TES_DESTINATION_DEFAULTS
@@ -1267,11 +1298,35 @@ class PulsarTesJobRunner(PulsarCoexecutionJobRunner):
         self.tes_status_check_interval: float = self.runner_params.tes_status_check_interval
         self.tes_status_grace_period: float = self.runner_params.tes_status_grace_period
         self.tes_unreachable_timeout: float = self.runner_params.tes_unreachable_timeout
-        self.poll = self.tes_status_check_interval > 0
+        self.tes_cancel_retry_timeout: float = self.runner_params.tes_cancel_retry_timeout
+        # The monitor thread both checks the tasks and retries cancels.
+        self.poll = self.tes_status_check_interval > 0 or self.tes_cancel_retry_timeout > 0
         # Keyed by TES task id. Only the monitor thread touches the watches; the
         # thread receiving Pulsar's messages also adds to the reported tasks.
         self._tes_task_watches: dict[str, TesTaskWatch] = {}
         self._tes_tasks_reported: set[str] = set()
+        # Keyed by TES task id. Any thread stopping a job adds; the monitor thread retries.
+        self._pending_tes_cancels: dict[str, PendingTesCancel] = {}
+        self._pending_tes_cancels_lock = threading.Lock()
+
+    def check_watched_items(self) -> None:
+        super().check_watched_items()
+        self._retry_tes_cancels()
+
+    def shutdown(self):
+        with self._pending_tes_cancels_lock:
+            pending = list(self._pending_tes_cancels.items())
+        if pending:
+            log.warning(
+                "Shutting down with %d TES task cancel(s) pending, which a restarted Galaxy does not retry. "
+                "These tasks may still be running; cancel them on their TES servers: %s",
+                len(pending),
+                "; ".join(
+                    f"job {cancel.job_id_tag}: task {task_id} at {redact(cancel.tes_url or 'unknown TES URL')}"
+                    for task_id, cancel in pending
+                ),
+            )
+        super().shutdown()
 
     def _update_job_state_for_status(
         self,
@@ -1286,6 +1341,8 @@ class PulsarTesJobRunner(PulsarCoexecutionJobRunner):
         return super()._update_job_state_for_status(job_state, pulsar_status, full_status=full_status)
 
     def check_watched_item(self, job_state: AsynchronousJobState) -> AsynchronousJobState | None:
+        if not self.tes_status_check_interval:
+            return None
         task_id = job_state.job_id
         assert task_id
         now = monotonic()
@@ -1438,20 +1495,78 @@ class PulsarTesJobRunner(PulsarCoexecutionJobRunner):
 
         Failures are logged instead: the stop queue rolls back and retries every
         stop in its step when this raises, and ``fail_job`` stops the job before
-        failing it, so raising would leave jobs deleting or unfailed.
+        failing it, so raising would leave jobs deleting or unfailed. A cancel the
+        TES server was unreachable for is retried later by the monitor thread, so
+        the calling thread waits for one request only.
         """
-        try:
-            client.kill()
-            return
-        except Exception as e:
-            cancel_error = describe_tes_error(e)
         job_id_tag = job_wrapper.get_id_tag()
         task_id = job_wrapper.get_job().job_runner_external_id
         if not task_id:
-            log.error(
-                "(%s) Failed to cancel the job's TES task, which has no recorded id: %s", job_id_tag, cancel_error
-            )
+            try:
+                client.kill()
+            except Exception as e:
+                log.error(
+                    "(%s) Failed to cancel the job's TES task, which has no recorded id: %s",
+                    job_id_tag,
+                    describe_tes_error(e),
+                )
             return
+        unreachable_error = self._cancel_tes_task(job_id_tag, task_id, destination_params, client.kill, attempt=1)
+        if unreachable_error is None:
+            with self._pending_tes_cancels_lock:
+                self._pending_tes_cancels.pop(task_id, None)
+            return
+        now = monotonic()
+        try:
+            tes_url = parse_tes_job_params(destination_params).tes_url
+        except Exception:
+            tes_url = None
+        with self._pending_tes_cancels_lock:
+            if task_id in self._pending_tes_cancels:
+                # Already retried on its own schedule.
+                return
+            self._pending_tes_cancels[task_id] = PendingTesCancel(
+                job_id_tag=job_id_tag,
+                destination_params=dict(destination_params),
+                tes_url=tes_url,
+                give_up_at=now + self.tes_cancel_retry_timeout,
+                next_attempt=now + min(TES_CANCEL_RETRY_FIRST_DELAY, self.tes_cancel_retry_timeout),
+                last_error=unreachable_error,
+            )
+        log.warning(
+            "(%s/%s) Could not reach the TES server to cancel the task, retrying for up to %.0f seconds: %s",
+            job_id_tag,
+            task_id,
+            self.tes_cancel_retry_timeout,
+            unreachable_error,
+        )
+
+    def _cancel_tes_task(
+        self,
+        job_id_tag: str,
+        task_id: str,
+        destination_params: dict[str, Any],
+        cancel: Callable[[], object],
+        attempt: int,
+    ) -> str | None:
+        """Ask the TES server to cancel a task. Never raises.
+
+        Return the error if the server could not be reached and the cancel is to
+        be retried. Return ``None`` when there is nothing more to do: the task is
+        cancelled or has nothing left to cancel, or the server refused (logged).
+        """
+        try:
+            cancel()
+        except Exception as e:
+            cancel_error = describe_tes_error(e)
+            unreachable_reason = tes_server_unreachable_reason(e)
+            if self.tes_cancel_retry_timeout and unreachable_reason:
+                # Reading the state would only wait on the unreachable server again.
+                return f"{unreachable_reason}: {cancel_error}"
+        else:
+            if attempt > 1:
+                log.info("(%s/%s) Cancelled TES task on attempt %d", job_id_tag, task_id, attempt)
+            return None
         # TESK answers 400 to cancelling a task that has ended, and servers answer 404 for a deleted one.
         try:
             task_state = fetch_tes_task_state(tes_client_from_params(parse_tes_job_params(destination_params)), task_id)
@@ -1464,10 +1579,10 @@ class PulsarTesJobRunner(PulsarCoexecutionJobRunner):
                 cancel_error,
                 describe_tes_error(e),
             )
-            return
+            return None
         if task_state in TES_NOTHING_TO_CANCEL_STATES:
             log.info("(%s/%s) TES task is %s, nothing to cancel", job_id_tag, task_id, task_state)
-            return
+            return None
         log.error(
             "(%s/%s) Failed to cancel TES task in state %s, it may still be running: %s",
             job_id_tag,
@@ -1475,6 +1590,71 @@ class PulsarTesJobRunner(PulsarCoexecutionJobRunner):
             task_state,
             cancel_error,
         )
+        return None
+
+    def _retry_tes_cancels(self) -> None:
+        """Retry the cancels that are due. Runs on the monitor thread."""
+        now = monotonic()
+        with self._pending_tes_cancels_lock:
+            due = [
+                (task_id, cancel) for task_id, cancel in self._pending_tes_cancels.items() if cancel.next_attempt <= now
+            ]
+        # Each request to an unreachable server can wait for a connection timeout,
+        # so a sweep asks each unreachable server once and defers its other cancels.
+        unreachable_servers: dict[str | None, str] = {}
+        for task_id, pending in due:
+            if pending.tes_url in unreachable_servers:
+                error: str | None = unreachable_servers[pending.tes_url]
+            else:
+                pending.attempts += 1
+                try:
+                    error = self._cancel_tes_task(
+                        pending.job_id_tag,
+                        task_id,
+                        pending.destination_params,
+                        self._tes_cancel_request(pending.destination_params, task_id),
+                        attempt=pending.attempts,
+                    )
+                except Exception:
+                    log.exception("(%s/%s) Failed to retry cancelling TES task", pending.job_id_tag, task_id)
+                    error = pending.last_error
+            if error is None:
+                with self._pending_tes_cancels_lock:
+                    self._pending_tes_cancels.pop(task_id, None)
+                continue
+            unreachable_servers[pending.tes_url] = error
+            pending.last_error = error
+            now = monotonic()
+            if now >= pending.give_up_at:
+                with self._pending_tes_cancels_lock:
+                    self._pending_tes_cancels.pop(task_id, None)
+                log.error(
+                    "(%s/%s) Gave up cancelling TES task after %d attempts over %.0f seconds: the TES server "
+                    "stayed unreachable, and the task may still be running. Last error: %s",
+                    pending.job_id_tag,
+                    task_id,
+                    pending.attempts,
+                    self.tes_cancel_retry_timeout,
+                    error,
+                )
+                continue
+            pending.delay = min(pending.delay * 2, TES_CANCEL_RETRY_MAX_DELAY)
+            pending.next_attempt = min(now + pending.delay, pending.give_up_at)
+            log.debug(
+                "(%s/%s) TES server still unreachable on cancel attempt %d, next in %.0f seconds: %s",
+                pending.job_id_tag,
+                task_id,
+                pending.attempts,
+                pending.next_attempt - now,
+                error,
+            )
+
+    @staticmethod
+    def _tes_cancel_request(destination_params: dict[str, Any], task_id: str) -> Callable[[], object]:
+        def cancel() -> object:
+            return tes_client_from_params(parse_tes_job_params(destination_params)).cancel_task(task_id)
+
+        return cancel
 
     def _tes_known_secrets(self, tes_params: "TesJobParams") -> list[str]:
         secrets = []
