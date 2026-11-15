@@ -1422,6 +1422,9 @@ PULSAR_FINAL_STATUSES = ("complete", "cancelled", "failed", "lost")
 class TesTaskWatch:
     next_check: float
     finished_since: float | None = None
+    # Set by the thread receiving Pulsar's messages: finishing the job can outlast
+    # the grace period, and the job stays running meanwhile.
+    pulsar_reported: bool = False
 
 
 class PulsarTesJobRunner(PulsarCoexecutionJobRunner):
@@ -1446,10 +1449,9 @@ class PulsarTesJobRunner(PulsarCoexecutionJobRunner):
         self.tes_status_check_interval: float = self.runner_params.tes_status_check_interval
         self.tes_status_grace_period: float = self.runner_params.tes_status_grace_period
         self.poll = self.tes_status_check_interval > 0
-        # Keyed by TES task id. Only the monitor thread touches the watches; the
-        # thread receiving Pulsar's messages also adds to the reported tasks.
+        # Keyed by TES task id. Only the monitor thread adds and removes watches; the
+        # thread receiving Pulsar's messages marks them reported.
         self._tes_task_watches: dict[str, TesTaskWatch] = {}
-        self._tes_tasks_reported: set[str] = set()
 
     def _update_job_state_for_status(
         self,
@@ -1457,10 +1459,10 @@ class PulsarTesJobRunner(PulsarCoexecutionJobRunner):
         pulsar_status: str | None,
         full_status: dict[str, Any] | None = None,
     ) -> AsynchronousJobState | None:
-        if pulsar_status in PULSAR_FINAL_STATUSES and job_state.job_id in self._tes_task_watches:
-            # Finishing the job can outlast the grace period, and the job stays
-            # running meanwhile, so remember that Pulsar did report.
-            self._tes_tasks_reported.add(job_state.job_id)
+        if pulsar_status in PULSAR_FINAL_STATUSES and job_state.job_id:
+            watch = self._tes_task_watches.get(job_state.job_id)
+            if watch:
+                watch.pulsar_reported = True
         return super()._update_job_state_for_status(job_state, pulsar_status, full_status=full_status)
 
     def check_watched_item(self, job_state: AsynchronousJobState) -> AsynchronousJobState | None:
@@ -1482,14 +1484,13 @@ class PulsarTesJobRunner(PulsarCoexecutionJobRunner):
         if keep_watching:
             return job_state
         del self._tes_task_watches[task_id]
-        self._tes_tasks_reported.discard(task_id)
         return None
 
     def _check_tes_task(self, job_state: AsynchronousJobState, watch: TesTaskWatch, now: float) -> bool:
         """Check a job's TES task, failing the job if it died silently. Return whether to keep watching."""
         task_id = job_state.job_id
         assert task_id
-        if not self._waits_for_pulsar(job_state):
+        if not self._waits_for_pulsar(job_state, watch):
             return False
         try:
             tes_params = parse_tes_job_params(job_state.job_destination.params)
@@ -1519,16 +1520,15 @@ class PulsarTesJobRunner(PulsarCoexecutionJobRunner):
             return True
         message, full_status = self._tes_task_failure(tes_client, tes_params, job_state, task_id, task_state)
         # Pulsar may have reported while the TES server was being asked.
-        if self._waits_for_pulsar(job_state):
+        if self._waits_for_pulsar(job_state, watch):
             # The task is finished or gone, so there is nothing to cancel.
             job_state.stop_job = False
             self.fail_job(job_state, message=message, full_status=full_status)
         return False
 
-    def _waits_for_pulsar(self, job_state: AsynchronousJobState) -> bool:
+    def _waits_for_pulsar(self, job_state: AsynchronousJobState, watch: TesTaskWatch) -> bool:
         """Whether the job is still this handler's, queued or running as the watched task, and unreported."""
-        task_id = job_state.job_id
-        if task_id in self._tes_tasks_reported:
+        if watch.pulsar_reported:
             return False
         job_wrapper = job_state.job_wrapper
         if job_wrapper.get_state() not in (model.Job.states.QUEUED, model.Job.states.RUNNING):
@@ -1536,7 +1536,7 @@ class PulsarTesJobRunner(PulsarCoexecutionJobRunner):
             return False
         job = job_wrapper.get_job()
         # A resubmitted job runs as another task; another handler may have claimed the job to finish it.
-        return job.job_runner_external_id == task_id and job.handler == self.app.config.server_name
+        return job.job_runner_external_id == job_state.job_id and job.handler == self.app.config.server_name
 
     def _tes_task_failure(
         self,
