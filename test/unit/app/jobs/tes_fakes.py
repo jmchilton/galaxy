@@ -19,6 +19,7 @@ from urllib.parse import (
 )
 
 from galaxy import model
+from galaxy.jobs.job_destination import JobDestination
 
 TASK_ID = "d4rk5c3bf5d1q0abcdef"
 GALAXY_JOB_ID = 42
@@ -129,7 +130,7 @@ class FakeTool:
 
 
 class FakeJobWrapper:
-    """Just what ``AsynchronousJobState`` and ``fail_job`` use; records failures.
+    """Just what ``AsynchronousJobState``, the TES runners and ``fail_job`` use; records failures.
 
     Set ``state_error`` to make reading the job's state raise, as a lost database connection does.
     """
@@ -145,6 +146,8 @@ class FakeJobWrapper:
         self.state_error: Exception | None = None
         # Each read is a database query in the real job wrapper.
         self.state_reads = 0
+        self.working_directory: str | None = None
+        self.job_destination: JobDestination | None = None
 
     def get_id_tag(self):
         return str(self.job_id)
@@ -154,6 +157,9 @@ class FakeJobWrapper:
         if self.state_error:
             raise self.state_error
         return self.job.state
+
+    def change_state(self, state, **kwds):
+        self.job.state = state
 
     def get_job(self):
         return self.job
