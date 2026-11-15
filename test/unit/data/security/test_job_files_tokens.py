@@ -4,6 +4,7 @@ import pytest
 
 from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.security.job_files_tokens import (
+    JOB_FILES_DIRECTORY_WRITE,
     JOB_FILES_READ,
     job_files_token,
     JOB_FILES_WRITE,
@@ -42,6 +43,16 @@ def test_token_is_bound_to_the_scope(security):
     assert not verify_job_files_token(security, 7, PATH, JOB_FILES_READ, write_token, now=NOW)
     assert not verify_job_files_token(security, 7, PATH, JOB_FILES_WRITE, read_token, now=NOW)
     assert verify_job_files_token(security, 7, PATH, JOB_FILES_READ, read_token, now=NOW)
+
+
+def test_directory_tokens_are_their_own_scope(security):
+    directory = "/galaxy/jobs/000/7/working"
+    directory_token = _token(security, path=directory, scope=JOB_FILES_DIRECTORY_WRITE)
+    assert verify_job_files_token(security, 7, directory, JOB_FILES_DIRECTORY_WRITE, directory_token, now=NOW)
+    assert not verify_job_files_token(security, 7, directory, JOB_FILES_WRITE, directory_token, now=NOW)
+    # A file write token can't be used as a directory prefix.
+    file_token = _token(security, path=directory, scope=JOB_FILES_WRITE)
+    assert not verify_job_files_token(security, 7, directory, JOB_FILES_DIRECTORY_WRITE, file_token, now=NOW)
 
 
 def test_token_is_bound_to_the_job_and_the_secret(security):

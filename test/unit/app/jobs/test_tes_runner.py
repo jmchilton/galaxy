@@ -21,6 +21,7 @@ from galaxy.jobs.runners import (
 )
 from galaxy.jobs.runners.tes import (
     build_tes_task,
+    directory_output_paths,
     executor_env,
     job_files_url,
     signed_job_files_url_for,
@@ -31,6 +32,7 @@ from galaxy.jobs.runners.tes import (
 )
 from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.security.job_files_tokens import (
+    JOB_FILES_DIRECTORY_WRITE,
     JOB_FILES_READ,
     JOB_FILES_WRITE,
     verify_job_files_token,
@@ -195,6 +197,67 @@ def test_build_tes_task():
         }
     ]
     assert document["resources"] == {"cpu_cores": 2, "ram_gb": 4.0, "backend_parameters_strict": False}
+
+
+def test_directory_output_paths(tmp_path):
+    job_dir = str(tmp_path / "jobs" / "7")
+    extra_files = os.path.join(job_dir, "outputs", "dataset_2_files")
+
+    assert directory_output_paths(job_dir, [extra_files, extra_files]) == [
+        os.path.join(job_dir, "working"),
+        extra_files,
+    ]
+    with pytest.raises(Exception, match="outside the job directory"):
+        directory_output_paths(job_dir, [str(tmp_path / "objects" / "dataset_2_files")])
+
+
+def test_build_tes_task_with_directory_outputs():
+    job_dir = "/galaxy/jobs/000/7"
+    directories = [f"{job_dir}/working", f"{job_dir}/outputs/dataset_2_files"]
+
+    task = build_tes_task(
+        name="galaxy-7",
+        image="busybox",
+        job_directory=job_dir,
+        input_paths=[],
+        output_paths=[f"{job_dir}/galaxy_7.ec"],
+        wrapper="#!/bin/sh\nexit 0\n",
+        url_for=lambda path, scope: job_files_url(GALAXY_URL, "abc", path, f"{scope}-token"),
+        directory_paths=directories,
+    )
+
+    document = json.loads(task.model_dump_json(exclude_none=True))
+    assert [(o["path"], o["type"], o["url"]) for o in document["outputs"]] == [
+        (f"{job_dir}/galaxy_7.ec", "FILE", job_files_url(GALAXY_URL, "abc", f"{job_dir}/galaxy_7.ec", "w-token")),
+        *(
+            (path, "DIRECTORY", job_files_url(GALAXY_URL, "abc", path, f"{JOB_FILES_DIRECTORY_WRITE}-token"))
+            for path in directories
+        ),
+    ]
+
+
+def test_wrapper_script_creates_directory_outputs_and_drops_their_symlinks(tmp_path):
+    job_dir = str(tmp_path)
+    working = os.path.join(job_dir, "working")
+    extra_files = os.path.join(job_dir, "outputs", "dataset_2_files")
+    elsewhere = _write(tmp_path / "elsewhere.txt", "outside")
+    job_script = _write(
+        tmp_path / "galaxy_7.sh",
+        f"mkdir -p working/sub\necho discovered > working/sub/out_1.txt\nln -s {elsewhere} working/sub/link\n"
+        f"ln -s /nonexistent {extra_files}/dangling\necho page > {extra_files}/index.html\n",
+    )
+    ec = str(tmp_path / "galaxy_7.ec")
+    script = wrapper_script(
+        job_dir, job_script, ec, str(tmp_path / "o"), str(tmp_path / "e"), [ec], directories=[working, extra_files]
+    )
+
+    assert subprocess.run(["/bin/sh", "-c", script], check=False).returncode == 0
+    assert open(os.path.join(working, "sub", "out_1.txt")).read() == "discovered\n"
+    assert open(os.path.join(extra_files, "index.html")).read() == "page\n"
+    # TESK refuses a DIRECTORY output with any symlink in it, Funnel one that leaves the task.
+    assert not os.path.lexists(os.path.join(working, "sub", "link"))
+    assert not os.path.lexists(os.path.join(extra_files, "dangling"))
+    assert open(elsewhere).read() == "outside"
 
 
 class _Runner(TesJobRunner):

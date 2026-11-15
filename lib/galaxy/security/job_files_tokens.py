@@ -3,11 +3,11 @@
 A job's ``job_key`` opens every readable path of the job, for reading and
 writing, until the job ends. Runners that hand file URLs to a third party (a TES
 server stores and logs them) can sign each URL instead: the token is bound to
-the job, the exact ``path`` string, the direction (read or write) and an expiry
-time. The job files API still checks the job's state and its write locations.
+the job, the exact ``path`` string, the scope (read, write, or write below a
+directory) and an expiry time. The job files API still checks the job's state and its write locations.
 
 A token is ``<expires>.<signature>``: the expiry as Unix seconds and an
-unpadded base64url HMAC-SHA256 over the job id, direction, expiry and path. The
+unpadded base64url HMAC-SHA256 over the job id, scope, expiry and path. The
 key is derived from Galaxy's ``id_secret``, so tokens survive restarts and
 are only valid on the Galaxy that issued them.
 """
@@ -24,13 +24,15 @@ from typing import (
 from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.util import smart_str
 
-JobFilesScope = Literal["r", "w"]
+JobFilesScope = Literal["r", "w", "d"]
 JOB_FILES_READ: JobFilesScope = "r"
 """GET and HEAD."""
 JOB_FILES_WRITE: JobFilesScope = "w"
 """POST and PUT."""
+JOB_FILES_DIRECTORY_WRITE: JobFilesScope = "d"
+"""PUT of any file below the directory ``path`` (TES ``DIRECTORY`` outputs)."""
 
-_SCOPES = (JOB_FILES_READ, JOB_FILES_WRITE)
+_SCOPES = (JOB_FILES_READ, JOB_FILES_WRITE, JOB_FILES_DIRECTORY_WRITE)
 _KEY_PURPOSE = b"galaxy job files token v1"
 
 

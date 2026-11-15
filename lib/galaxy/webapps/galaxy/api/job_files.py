@@ -33,6 +33,7 @@ from galaxy.model import (
 )
 from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.security.job_files_tokens import (
+    JOB_FILES_DIRECTORY_WRITE,
     JOB_FILES_READ,
     JOB_FILES_WRITE,
     JobFilesScope,
@@ -317,19 +318,52 @@ def _in_working_directory(job: Job, path: str, app: MinimalManagerApp) -> bool:
     return util.in_directory(path, working_directory)
 
 
-def _authorize_put(app: StructuredApp, job_id: str, path: str, job_key: Optional[str], job_token: Optional[str]) -> str:
-    """Authorize a raw-body write to ``path`` and return the directory to stage it in."""
+def _authorize_put(
+    app: StructuredApp,
+    job_id: str,
+    path: str,
+    job_key: Optional[str],
+    job_token: Optional[str],
+    rel_path: Optional[str] = None,
+) -> str:
+    """Authorize a raw-body write and return the absolute path of the file to write.
+
+    Without ``rel_path`` the file is ``path``. With it, ``path`` is a directory
+    (a TES ``DIRECTORY`` output) and the file is ``rel_path`` below it; a
+    ``job_token`` must then be a directory write token for ``path``.
+    """
     if not os.path.isabs(path):
         raise exceptions.RequestParameterInvalidException("'path' must be an absolute path.")
     if job_key is None and job_token is None:
         raise exceptions.ObjectAttributeMissingException("Job files action requires a valid 'job_key'.")
+    scope = JOB_FILES_WRITE if rel_path is None else JOB_FILES_DIRECTORY_WRITE
     job = authorize_job_access(
-        app.security, app.model.session, job_id, job_key, path=path, job_token=job_token, scope=JOB_FILES_WRITE
+        app.security, app.model.session, job_id, job_key, path=path, job_token=job_token, scope=scope
     )
-    check_job_can_write_to_path(app, job, path)
-    target_dir = os.path.dirname(path)
-    util.safe_makedirs(target_dir)
-    return target_dir
+    target = path
+    if rel_path is not None:
+        target = os.path.normpath(os.path.join(path, rel_path))
+        if os.path.isabs(rel_path) or target == os.path.normpath(path) or not util.in_directory(target, path):
+            raise exceptions.ItemAccessibilityException("Job is not authorized to write to supplied path.")
+    check_job_can_write_to_path(app, job, target)
+    util.safe_makedirs(os.path.dirname(target))
+    return target
+
+
+async def _write_request_body(request: Request, target: str) -> None:
+    """Stage the body next to ``target``, then rename it into place."""
+    fd, staging_path = tempfile.mkstemp(prefix=PUT_STAGING_PREFIX, dir=os.path.dirname(target))
+    try:
+        with os.fdopen(fd, "wb") as staging_file:
+            async for chunk in request.stream():
+                staging_file.write(chunk)
+        os.replace(staging_path, target)
+    except BaseException:
+        try:
+            os.unlink(staging_path)
+        except OSError:
+            pass
+        raise
 
 
 @router.put(
@@ -353,18 +387,34 @@ async def put_job_file(
     ] = None,
     app: StructuredApp = DependsOnApp,
 ) -> dict[str, str]:
-    # Authorize before reading the body, then stage it next to the target and rename it into place.
-    target_dir = await anyio.to_thread.run_sync(_authorize_put, app, job_id, path, job_key, job_token)
-    fd, staging_path = tempfile.mkstemp(prefix=PUT_STAGING_PREFIX, dir=target_dir)
-    try:
-        with os.fdopen(fd, "wb") as staging_file:
-            async for chunk in request.stream():
-                staging_file.write(chunk)
-        os.replace(staging_path, path)
-    except BaseException:
-        try:
-            os.unlink(staging_path)
-        except OSError:
-            pass
-        raise
+    # Authorize before reading the body.
+    target = await anyio.to_thread.run_sync(_authorize_put, app, job_id, path, job_key, job_token)
+    await _write_request_body(request, target)
+    return {"message": "ok"}
+
+
+@router.put(
+    "/api/jobs/{job_id}/files/{rel_path:path}",
+    summary="Write a file below a directory of a job from the raw request body.",
+    description=(
+        "For TES `DIRECTORY` outputs: Funnel and TESK upload each file of the directory with a PUT to the "
+        "output URL's path plus `/<relative path>`, keeping its query string. `path` is the directory. "
+        "Authorized by `job_key` or by a signed directory `job_token` for `path`; only for consumption by "
+        "job runners, not part of Galaxy's stable, user facing API."
+    ),
+    public=True,
+)
+async def put_job_directory_file(
+    request: Request,
+    job_id: Annotated[str, Path(description="Encoded id string of the job.")],
+    rel_path: Annotated[str, Path(description="Path of the file relative to the directory `path`.")],
+    path: Annotated[str, Query(description="Absolute path of the directory.")],
+    job_key: Annotated[Optional[str], Query(description="The job's job files key.")] = None,
+    job_token: Annotated[
+        Optional[str], Query(description="Instead of `job_key`, a signed token for writing below `path`.")
+    ] = None,
+    app: StructuredApp = DependsOnApp,
+) -> dict[str, str]:
+    target = await anyio.to_thread.run_sync(_authorize_put, app, job_id, path, job_key, job_token, rel_path)
+    await _write_request_body(request, target)
     return {"message": "ok"}
