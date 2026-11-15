@@ -75,7 +75,9 @@ from galaxy.jobs.runners.util.tes_task import (
     describe_tes_error,
     fetch_tes_task_state,
     TES_NOTHING_TO_CANCEL_STATES,
+    tes_task_key,
     TES_TASK_NOT_FOUND,
+    TesTaskKey,
 )
 from galaxy.security.job_files_tokens import (
     JOB_FILES_DIRECTORY_WRITE,
@@ -319,7 +321,7 @@ class TesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
         # Containers found while building command lines, by Galaxy job id, until the job is submitted.
         self._containers: dict[int, Container] = {}
         # Only the monitor thread touches this.
-        self._next_checks: dict[str, float] = {}
+        self._next_checks: dict[TesTaskKey, float] = {}
 
     def build_command_line(
         self,
@@ -449,15 +451,15 @@ class TesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
         return [os.path.abspath(path) for path in paths]
 
     def check_watched_item(self, job_state: AsynchronousJobState) -> AsynchronousJobState | None:
-        task_id = job_state.job_id
-        assert task_id
+        task_key = tes_task_key(job_state)
+        task_id = task_key[1]
         now = monotonic()
-        if now < self._next_checks.get(task_id, 0):
+        if now < self._next_checks.get(task_key, 0):
             return job_state
-        self._next_checks[task_id] = now + self.tes_poll_interval
+        self._next_checks[task_key] = now + self.tes_poll_interval
         if job_state.job_wrapper.get_state() not in (model.Job.states.QUEUED, model.Job.states.RUNNING):
             # Stopped, deleted or finished elsewhere.
-            self._next_checks.pop(task_id, None)
+            self._next_checks.pop(task_key, None)
             return None
         tes_params = parse_tes_job_params(job_state.job_destination.params)
         tes_client = tes_client_from_params(tes_params)
@@ -478,7 +480,7 @@ class TesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
                 job_state.running = True
                 job_state.job_wrapper.change_state(model.Job.states.RUNNING)
             return job_state
-        self._next_checks.pop(task_id, None)
+        self._next_checks.pop(task_key, None)
         if task_state == "COMPLETE":
             log.debug("(%s/%s) TES task complete", job_state.job_wrapper.get_id_tag(), task_id)
             self.mark_as_finished(job_state)

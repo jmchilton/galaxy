@@ -302,14 +302,14 @@ def tes(monkeypatch):
     return server
 
 
-def _job_state(galaxy_state=model.Job.states.QUEUED):
+def _job_state(galaxy_state=model.Job.states.QUEUED, tes_url="http://127.0.0.1:18000/"):
     job_wrapper = Mock()
     job_wrapper.job_id = 7
     job_wrapper.get_id_tag.return_value = "7"
     job_wrapper.get_state.return_value = galaxy_state
     job_state = AsynchronousJobState.__new__(AsynchronousJobState)
     job_state.job_wrapper = job_wrapper
-    job_state.job_destination = SimpleNamespace(params={"tes_url": "http://127.0.0.1:18000/"})
+    job_state.job_destination = SimpleNamespace(params={"tes_url": tes_url})
     job_state.job_id = TASK_ID
     job_state._running = False
     job_state.start_time = None
@@ -335,6 +335,17 @@ def test_poll_marks_running_once_then_finishes_on_complete(tes, clock):
     assert runner.check_watched_item(job_state) is None
     assert runner.finished == [job_state]
     assert runner.failed == []
+
+
+def test_poll_checks_same_task_id_on_two_servers_separately(tes, clock):
+    # Nothing makes task ids unique across TES servers (tesp-api's are MongoDB ObjectIds).
+    runner = _Runner()
+    first = _job_state()
+    second = _job_state(tes_url="http://tes-two.example.org/")
+
+    assert runner.check_watched_item(first) is first
+    assert runner.check_watched_item(second) is second
+    assert tes.checks == 2
 
 
 def test_poll_fails_the_job_with_the_redacted_executor_log(tes, clock):
