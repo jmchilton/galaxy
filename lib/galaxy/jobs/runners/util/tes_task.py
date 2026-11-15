@@ -1,8 +1,9 @@
-"""Inspect the GA4GH TES tasks that Galaxy's Pulsar TES runner submits.
+"""Inspect the GA4GH TES tasks that Galaxy's TES runners submit.
 
 Pulsar inside the task reports job state over the message queue. If the task
 dies before Pulsar reports, these helpers let the runner see that on the TES
-server and say why.
+server and say why. The TES-native runner (``galaxy.jobs.runners.tes``) has
+no Pulsar in the task and learns every state from them.
 """
 
 import logging
