@@ -37,6 +37,7 @@ from galaxy.model import (
     ImplicitCollectionJobs,
     ImplicitCollectionJobsJobAssociation,
     Job,
+    User,
     WorkflowInvocation,
     WorkflowInvocationStep,
 )
@@ -103,6 +104,14 @@ class TaskKeysetToken:
         if len(values) < 2:
             raise ValueError("TaskKeysetToken requires at least 2 values")
         return cls(step_order=values[0], job_index=values[1])
+
+
+def _require_user(trans: ProvidesUserContext, message: str) -> User:
+    """Return the requesting user, raising AuthenticationRequired (403) with ``message`` if anonymous."""
+    user = trans.user
+    if user is None:
+        raise exceptions.AuthenticationRequired(message)
+    return user
 
 
 def _parse_gxworkflow_uri(workflow_url: str) -> tuple[str, bool]:
@@ -469,8 +478,7 @@ class WesService(ServiceBase):
         Returns:
             RunId containing the created run ID
         """
-        if trans.anonymous:
-            raise exceptions.AuthenticationRequired("You need to be logged in to submit workflows.")
+        _require_user(trans, "You need to be logged in to submit workflows.")
 
         trans.check_user_activation()
 
@@ -596,11 +604,10 @@ class WesService(ServiceBase):
         token = self._keyset_pagination.decode_token(page_token, token_class=SingleKeysetToken)
         last_id = token.last_id if token else None
 
-        if trans.user is None:
-            raise exceptions.AuthenticationRequired("Listing WES runs requires authentication.")
+        user = _require_user(trans, "Listing WES runs requires authentication.")
 
         # Build query with keyset filtering
-        query = trans.sa_session.query(WorkflowInvocation).join(History).where(History.user_id == trans.user.id)
+        query = trans.sa_session.query(WorkflowInvocation).join(History).where(History.user_id == user.id)
 
         # Apply keyset filter if we have a cursor
         if last_id is not None:
