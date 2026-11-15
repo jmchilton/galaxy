@@ -167,6 +167,45 @@ class FastAPIJobFiles:
             raise exceptions.RequestParameterMissingException("No file uploaded.")
         self.manager.write(path, source_path)
 
+    @router.put(
+        "/api/jobs/{job_id}/files",
+        summary="Write an output or working directory file of a job from the raw request body.",
+        description=(
+            f"{JOB_FILES_DESCRIPTION} For TES servers (Funnel, TESK) that upload task outputs with a plain HTTP PUT. "
+            "The file is replaced, never appended to."
+        ),
+        public=True,
+        openapi_extra={
+            "requestBody": {"content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}}
+        },
+    )
+    async def replace(
+        self,
+        request: Request,
+        job_id: JobIdPathParam,
+        path: FilePathQueryParam = None,
+        job_key: JobKeyQueryParam = None,
+    ) -> dict[str, str]:
+        staging_dir = await anyio.to_thread.run_sync(self._start_upload, job_id, path, job_key, True)
+        started = time.monotonic()
+        try:
+            body_path = os.path.join(staging_dir, "body")
+            try:
+                await _stream_body(request, body_path)
+            except ClientDisconnect:
+                raise exceptions.RequestParameterInvalidException("Client disconnected during job files upload.")
+            recheck = _long_upload(request, time.monotonic() - started)
+            await anyio.to_thread.run_sync(self._finish_replace, job_id, path, body_path, recheck)
+        finally:
+            await anyio.to_thread.run_sync(_remove_staging_dir, staging_dir)
+        return {"message": "ok"}
+
+    def _finish_replace(self, job_id: str, path: str | None, body_path: str, recheck: bool) -> None:
+        assert path
+        if recheck:
+            self.manager.assert_job_active(job_id)
+        self.manager.replace(path, body_path)
+
     @router.post("/api/job_files/tus_hooks", include_in_schema=False)
     def tus_hooks(self) -> None:
         """Accept every hook from a job files tusd server whose ``-hooks-http`` points here.
@@ -209,6 +248,14 @@ async def _body_batches(request: Request) -> AsyncIterator[bytes]:
             yield b"".join(pending)
             pending, pending_size = [], 0
     yield b"".join(pending)
+
+
+async def _stream_body(request: Request, body_path: str) -> None:
+    """Write the raw request body to ``body_path``."""
+    with open(body_path, "wb") as body_file:
+        async for batch in _body_batches(request):
+            if batch:
+                await anyio.to_thread.run_sync(body_file.write, batch)
 
 
 def _finalize_parser(parser: FormParser, remaining: bytes, files: list[File]) -> None:

@@ -355,6 +355,59 @@ class TestJobFilesIntegration(integration_util.IntegrationTestCase):
             api_asserts.assert_status_code_is_ok(self._post_job_file(job, path, content))
         _assert_file_contents(path, "second")
 
+    def test_write_with_put(self):
+        job = self._running_job()
+        # TES servers such as Funnel send the raw body without a Content-Type.
+        response = self._put_job_file(job, job.output_path, b"raw output bytes")
+        api_asserts.assert_status_code_is_ok(response)
+        _assert_file_contents(job.output_path, "raw output bytes")
+
+        # Parent directories are created; tool streams are replaced, not appended to as by POST.
+        tool_stdout = os.path.join(job.working_directory, "outputs", "tool_stdout")
+        for content in (b"first", b"second"):
+            api_asserts.assert_status_code_is_ok(self._put_job_file(job, tool_stdout, content))
+        _assert_file_contents(tool_stdout, "second")
+        assert not _staging_dirs(job.working_directory)
+
+        self._change_job_state(job.job, "ok")
+        _assert_insufficient_permissions(self._put_job_file(job, job.output_path, b"too late"))
+        _assert_file_contents(job.output_path, "raw output bytes")
+
+    def test_put_streams_large_body(self):
+        job = self._running_job()
+        path = os.path.join(job.working_directory, "large")
+        chunk = b"x" * LARGE_UPLOAD_CHUNK_SIZE
+        staged_sizes: list[int] = []
+
+        def body():
+            for _ in range(LARGE_UPLOAD_CHUNKS):
+                yield chunk
+            staged_sizes.append(
+                _wait_for_staged_upload(job.working_directory, (LARGE_UPLOAD_CHUNKS - 1) * LARGE_UPLOAD_CHUNK_SIZE)
+            )
+            yield b"end"
+
+        api_asserts.assert_status_code_is_ok(self._put_job_file(job, path, body()))
+        assert staged_sizes[0] >= (LARGE_UPLOAD_CHUNKS - 1) * LARGE_UPLOAD_CHUNK_SIZE
+        assert os.path.getsize(path) == LARGE_UPLOAD_CHUNKS * LARGE_UPLOAD_CHUNK_SIZE + 3
+        assert not _staging_dirs(job.working_directory)
+
+    def test_put_write_protection(self):
+        job = self._running_job()
+        outside = tempfile.NamedTemporaryFile()
+        _assert_insufficient_permissions(self._put_job_file(job, outside.name, b"x"))
+        escape = os.path.join(job.working_directory, "..", "escape")
+        _assert_insufficient_permissions(self._put_job_file(job, escape, b"x"))
+        assert not os.path.exists(escape)
+        work = os.path.join(job.working_directory, "work")
+        _assert_insufficient_permissions(self._put_job_file(replace(job, job_key="invalid"), work, b"x"))
+        assert not os.path.exists(work)
+        assert not _staging_dirs(job.working_directory)
+        relative = self._put_job_file(job, "relative/work", b"x")
+        api_asserts.assert_status_code_is(relative, 400)
+        for params in [{"path": work}, {"job_key": job.job_key}]:
+            _assert_missing_attribute(requests.put(job.files_url, params=params, data=b"x"))
+
     def test_write_and_read_path_with_percent_escapes(self):
         job = self._running_job()
         path = os.path.join(job.working_directory, "a%2Fb%20c")
@@ -521,6 +574,10 @@ class TestJobFilesIntegration(integration_util.IntegrationTestCase):
         params = {**(params or {}), **({} if form_auth else auth)}
         files = {file_param: io.StringIO(content)} if content is not None else None
         return requests.post(job.files_url, params=params, data=data, files=files)
+
+    def _put_job_file(self, job: RunningJob, path: str, data) -> requests.Response:
+        """PUT the raw body like Funnel and TESK - path and job_key as query params."""
+        return requests.put(job.files_url, params={"path": path, "job_key": job.job_key}, data=data)
 
     def _assert_upload_streamed(self, job: RunningJob, path: str, staging_parent: str):
         new_file_path_contents = set(os.listdir(self._app.config.new_file_path))
