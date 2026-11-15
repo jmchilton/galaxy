@@ -148,6 +148,8 @@ class FakeJobWrapper:
         self.state_reads = 0
         self.working_directory: str | None = None
         self.job_destination: JobDestination | None = None
+        # What check_limits reports, e.g. ("walltime_reached", message); None means no limits.
+        self.limit_state: tuple[str, str] | None = None
 
     def get_id_tag(self):
         return str(self.job_id)
@@ -163,6 +165,12 @@ class FakeJobWrapper:
 
     def get_job(self):
         return self.job
+
+    def has_limits(self):
+        return self.limit_state is not None
+
+    def check_limits(self, runtime=None):
+        return self.limit_state
 
     def reclaim_ownership(self):
         pass

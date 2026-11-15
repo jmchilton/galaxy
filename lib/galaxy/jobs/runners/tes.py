@@ -455,6 +455,11 @@ class TesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
     def check_watched_item(self, job_state: AsynchronousJobState) -> AsynchronousJobState | None:
         task_key = tes_task_key(job_state)
         task_id = task_key[1]
+        if job_state.check_limits():
+            # fail_job cancels the task, since check_limits sets stop_job.
+            self._next_checks.pop(task_key, None)
+            self.work_queue.put((self.fail_job, job_state))
+            return None
         now = monotonic()
         if now < self._next_checks.get(task_key, 0):
             return job_state

@@ -336,6 +336,23 @@ def test_tasks_sharing_an_id_on_two_tes_servers_are_followed_apart(runner, tes_s
     assert _finished(runner) == [second]
 
 
+def test_job_over_its_walltime_fails_and_its_task_is_cancelled(runner, tes_server, clock):
+    job_wrapper = _job_wrapper(runner, tes_server.url, state=model.Job.states.RUNNING)
+    job_state = _watched(job_wrapper)
+    job_state.running = True
+    tes_server.tasks[TASK_ID] = _task("RUNNING")
+    job_wrapper.limit_state = ("walltime_reached", "Job ran longer than the maximum allowed")
+
+    # Galaxy asks the job wrapper for its limits on every 20th check of a running job.
+    results = [runner.check_watched_item(job_state) for _ in range(20)]
+
+    assert results == [job_state] * 19 + [None]
+    assert runner.work_queue.get_nowait() == (runner.fail_job, job_state)
+    assert job_state.fail_message == "Job ran longer than the maximum allowed"
+    # fail_job cancels the task.
+    assert job_state.stop_job
+
+
 def test_failed_task_fails_the_job_with_its_redacted_executor_log(runner, tes_server, clock):
     job_wrapper = _job_wrapper(runner, tes_server.url, state=model.Job.states.RUNNING)
     tes_server.tasks[TASK_ID] = _task(
