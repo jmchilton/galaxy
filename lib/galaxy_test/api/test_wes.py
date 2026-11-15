@@ -347,7 +347,7 @@ steps:
             )
 
             # Cancel run
-            response = self._wes_post(f"ga4gh/wes/v1/runs/{invocation_id}/cancel")
+            response = self._cancel_wes_run(invocation_id)
             self._assert_status_code_is(response, 200)
             result = response.json()
 
@@ -948,6 +948,10 @@ steps:
         response = self._wes_get(f"ga4gh/wes/v1/runs/{run_id}/status")
         self._assert_status_code_is(response, 200)
         return response.json()
+
+    def _cancel_wes_run(self, run_id: str, authenticated: bool = True) -> requests.Response:
+        """POST to a run's cancel endpoint and return the raw response."""
+        return self._wes_post(f"ga4gh/wes/v1/runs/{run_id}/cancel", authenticated=authenticated)
 
     def _get_task_list_and_extract_first_id(self, run_id: str) -> str:
         """GET task list, validate 200, extract and return first task ID."""
