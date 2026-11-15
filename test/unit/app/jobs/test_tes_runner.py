@@ -266,6 +266,10 @@ class _Runner(TesJobRunner):
         self._next_checks = {}
         self.finished: list[Any] = []
         self.failed: list[Any] = []
+        self.monitored: list[Any] = []
+
+    def monitor_job(self, job_state):
+        self.monitored.append(job_state)
 
     def mark_as_finished(self, job_state):
         self.finished.append(job_state)
@@ -292,6 +296,7 @@ def tes(monkeypatch):
 
     client = Mock()
     client.get_task.side_effect = lambda task_id, view: server.task
+    server.client = client
     monkeypatch.setattr(tes_runner, "fetch_tes_task_state", fetch)
     monkeypatch.setattr(tes_runner, "tes_client_from_params", lambda params: client)
     return server
@@ -362,3 +367,80 @@ def test_poll_stops_watching_a_stopped_job(tes, clock):
     assert runner.check_watched_item(job_state) is None
     assert tes.checks == 0
     assert runner.finished == runner.failed == []
+
+
+def _stopped_job_wrapper(task_id=TASK_ID):
+    job_wrapper = Mock()
+    job_wrapper.get_id_tag.return_value = "7"
+    job_wrapper.get_job.return_value = SimpleNamespace(
+        job_runner_external_id=task_id, destination_params={"tes_url": "http://127.0.0.1:18000/"}
+    )
+    return job_wrapper
+
+
+def test_stop_job_cancels_the_task(tes):
+    _Runner().stop_job(_stopped_job_wrapper())
+
+    tes.client.cancel_task.assert_called_once_with(TASK_ID)
+    assert tes.checks == 0
+
+
+def test_stop_job_of_an_ended_task_is_a_no_op(tes, caplog):
+    # TESK answers 400 to cancelling a task that has ended.
+    tes.client.cancel_task.side_effect = Exception("400 Bad Request")
+    tes.state = "COMPLETE"
+
+    _Runner().stop_job(_stopped_job_wrapper())
+
+    assert tes.checks == 1
+    assert "TES task is COMPLETE, nothing to cancel" in caplog.text
+    assert "may still be running" not in caplog.text
+
+
+def test_stop_job_reports_a_task_that_may_still_run(tes, caplog):
+    tes.client.cancel_task.side_effect = Exception("502 Bad Gateway")
+    tes.state = "RUNNING"
+
+    _Runner().stop_job(_stopped_job_wrapper())
+
+    assert "Failed to cancel TES task in state RUNNING, it may still be running" in caplog.text
+
+
+def test_stop_job_without_a_task_does_nothing(tes):
+    _Runner().stop_job(_stopped_job_wrapper(task_id=None))
+
+    tes.client.cancel_task.assert_not_called()
+
+
+@pytest.mark.parametrize("galaxy_state", [model.Job.states.QUEUED, model.Job.states.RUNNING])
+def test_recover_watches_the_existing_task_until_it_finishes(tes, clock, tmp_path, galaxy_state):
+    """After a Galaxy restart the job's task is polled again, not resubmitted, and the job finishes from it."""
+    runner = _Runner()
+    job_wrapper = _job_state(galaxy_state).job_wrapper
+    job_wrapper.working_directory = str(tmp_path)
+    job_wrapper.job_destination = SimpleNamespace(params={"tes_url": "http://127.0.0.1:18000/"})
+    job = SimpleNamespace(state=galaxy_state, id=7, get_job_runner_external_id=lambda: TASK_ID)
+
+    runner.recover(job, job_wrapper)
+
+    [job_state] = runner.monitored
+    assert job_state.job_id == TASK_ID
+    assert job_state.running == (galaxy_state == model.Job.states.RUNNING)
+    # The exit code and streams the task uploads are read from the usual job directory files.
+    assert job_state.exit_code_file == os.path.join(str(tmp_path), "galaxy_7.ec")
+    assert job_state.output_file == os.path.join(str(tmp_path), "galaxy_7.o")
+    tes.state = "COMPLETE"
+    assert runner.check_watched_item(job_state) is None
+    assert runner.finished == [job_state]
+    tes.client.create_task.assert_not_called()
+
+
+def test_recover_without_a_task_id_fails_the_job(tes):
+    runner = _Runner()
+    job_wrapper = Mock()
+    job = SimpleNamespace(state=model.Job.states.RUNNING, id=7, get_job_runner_external_id=lambda: None)
+
+    runner.recover(job, job_wrapper)
+
+    job_wrapper.fail.assert_called_once()
+    assert runner.monitored == []

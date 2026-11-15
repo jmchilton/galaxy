@@ -75,6 +75,7 @@ from galaxy.jobs.runners.util.tes_task import (
     describe_tes_error,
     describe_tes_task_failure,
     fetch_tes_task_state,
+    TES_NOTHING_TO_CANCEL_STATES,
     TES_TASK_NOT_FOUND,
 )
 from galaxy.security.job_files_tokens import (
@@ -514,17 +515,41 @@ class TesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
         super().finish_job(job_state)
 
     def stop_job(self, job_wrapper: "MinimalJobWrapper") -> None:
-        """Cancel the job's TES task. Never raises."""
+        """Cancel the job's TES task. Never raises; a task that has already ended is left alone."""
         job = job_wrapper.get_job()
         task_id = job.job_runner_external_id
         if not task_id:
             return
+        id_tag = job_wrapper.get_id_tag()
+        tes_client = tes_client_from_params(parse_tes_job_params(job.destination_params))
         try:
-            tes_client_from_params(parse_tes_job_params(job.destination_params)).cancel_task(task_id)
-            log.info("(%s/%s) Cancelled TES task", job_wrapper.get_id_tag(), task_id)
+            tes_client.cancel_task(task_id)
+            log.info("(%s/%s) Cancelled TES task", id_tag, task_id)
+            return
         except Exception as e:
-            log.warning(
-                "(%s/%s) Failed to cancel TES task: %s", job_wrapper.get_id_tag(), task_id, describe_tes_error(e)
+            cancel_error = describe_tes_error(e)
+        # TESK answers 400 to cancelling a task that has ended, and servers answer 404 for a deleted one.
+        try:
+            task_state = fetch_tes_task_state(tes_client, task_id)
+        except Exception as e:
+            log.error(
+                "(%s/%s) Failed to cancel TES task and could not read its state, so it may still be running. "
+                "Cancel error: %s. State error: %s",
+                id_tag,
+                task_id,
+                cancel_error,
+                describe_tes_error(e),
+            )
+            return
+        if task_state in TES_NOTHING_TO_CANCEL_STATES:
+            log.info("(%s/%s) TES task is %s, nothing to cancel", id_tag, task_id, task_state)
+        else:
+            log.error(
+                "(%s/%s) Failed to cancel TES task in state %s, it may still be running: %s",
+                id_tag,
+                task_id,
+                task_state,
+                cancel_error,
             )
 
     def recover(self, job: model.Job, job_wrapper: "MinimalJobWrapper") -> None:
