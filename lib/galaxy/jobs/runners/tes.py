@@ -312,6 +312,8 @@ class TesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
     """
 
     runner_name = "TESRunner"
+    # The job script doesn't set metadata in the task; Galaxy does, from the uploaded outputs.
+    always_handle_metadata_externally = True
 
     def __init__(self, app: "GalaxyManagerApplication", nworkers: int, **kwds: Any) -> None:
         super().__init__(app, nworkers, runner_param_specs=TES_RUNNER_PARAM_SPECS, **kwds)
@@ -512,11 +514,6 @@ class TesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
         if failure.system_logs:
             log.info("(%s) %s\nTES system logs, last lines:\n%s", task_id, failure.message, failure.system_logs)
         return failure.message, {"stderr": failure.executor_stderr} if failure.executor_stderr else None
-
-    def finish_job(self, job_state: AsynchronousJobState) -> None:
-        # The task uploaded outputs, streams and the exit code into the job directory.
-        self._handle_metadata_externally(job_state.job_wrapper, resolve_requirements=True)
-        super().finish_job(job_state)
 
     def stop_job(self, job_wrapper: "MinimalJobWrapper") -> None:
         """Cancel the job's TES task. Never raises; a task that has already ended is left alone."""
