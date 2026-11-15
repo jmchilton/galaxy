@@ -440,6 +440,160 @@ def test_one_log_for_all_executors_is_not_attributed_to_one(harness, tes_server,
     assert failure["tool_stderr"] == "Task stderr, last lines:\n+ docker run ...\nUnable to find image"
 
 
+# Funnel 0.12.3 SYSTEM_ERROR system logs, from the stage 6 argv runs (runs/stage6/argv/tes-level/funnel/galaxy.json
+# and runs/tesp-probes/design-b/evidence/results/t8-*.json in the demo repository), with paths, ids and the long
+# docker command shortened. Funnel records exit code 0 for an executor it could not start.
+FUNNEL_ARGV_SYSTEM_LOGS = [
+    (
+        "level='info' msg='Version' timestamp='2026-11-15T02:11:05.929931193Z' task_attempt='0' executor_index='0' "
+        "Version='0.12.3' GitCommit='738ab75a' GitBranch='v0.12.3' GitUpstream='https://github.com/calypr/funnel'"
+    ),
+    (
+        "level='error' msg='failed to pull docker image using command' timestamp='2026-11-15T02:11:06.596165975Z' "
+        "task_attempt='0' executor_index='0' exit_status_1='pull {{.Image}}'"
+    ),
+    (
+        "level='info' msg='Running command' timestamp='2026-11-15T02:11:06.612017584Z' task_attempt='0' executor_index='0' "
+        f"cmd='/usr/bin/docker run -i --rm --name {TASK_ID}-0 --workdir / --volume /work/{TASK_ID}/pulsar_staging:"
+        f"/pulsar_staging:rw {STAGING_IMAGE} pulsar-submit --no-wait --base64 {JOB_BASE64} --app_conf_base64 {APP_CONF_BASE64}'"
+    ),
+    (
+        "level='error' msg='failed to run docker container' timestamp='2026-11-15T02:11:06.624469219Z' task_attempt='0' "
+        "executor_index='0' unknown='fork/exec /usr/bin/docker: argument list too long'"
+    ),
+    (
+        "level='error' msg='failed to get exit code: fork/exec /usr/bin/docker: argument list too long' "
+        "timestamp='2026-11-15T02:11:06.648944403Z' task_attempt='0' executor_index='0'"
+    ),
+    (
+        "level='error' msg='System error' timestamp='2026-11-15T02:11:06.669537216Z' task_attempt='0' executor_index='0' "
+        "error='fork/exec /usr/bin/docker: argument list too long'"
+    ),
+]
+FUNNEL_DOWNLOAD_SYSTEM_LOGS = [
+    (
+        "level='info' msg='download started' timestamp='2026-11-14T21:28:20.928273819Z' task_attempt='0' "
+        "executor_index='0' url='http://172.17.0.1:18301/data/does-not-exist.txt'"
+    ),
+    (
+        "level='error' msg='download failed' timestamp='2026-11-14T21:28:20.936770544Z' task_attempt='0' "
+        "executor_index='0' error='httpStorage: GET request returned status code: 404' "
+        "url='http://172.17.0.1:18301/data/does-not-exist.txt'"
+    ),
+    (
+        "level='error' msg='System error' timestamp='2026-11-14T21:28:20.954311183Z' task_attempt='0' "
+        "executor_index='0' error='httpStorage: GET request returned status code: 404'"
+    ),
+]
+# tesp-api with patch 0011 (stage_failure_log): one entry, the reason, then the tail of the job's stderr.
+TESP_STAGE_IN_SYSTEM_LOGS = [
+    (
+        "stage-in failed (exit code 22): downloading the inputs failed\n"
+        "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\n"
+        "curl: (22) The requested URL returned error: 404"
+    )
+]
+TESP_SUBMISSION_SYSTEM_LOGS = [
+    (
+        "the job did not start: Pulsar or the batch system refused it (for example, resources the batch system cannot "
+        "provide); Pulsar's log has the details"
+    )
+]
+# TESK: the whole taskmaster pod log as one entry, in tesk-core 0.11.0's format ("%(asctime)s %(levelname)s:
+# %(message)s"); a job that doesn't complete ends the taskmaster through exit_cancelled.
+TESK_SYSTEM_LOGS = [
+    (
+        "2026-11-14 18:42:10 INFO: Keeping PVC 'task-1a2b3c4d-pvc' (TESK_KEEP_FAILED_PVC)\n"
+        "2026-11-14 18:42:20 ERROR: Cancelling taskmaster: Got status Failed\n"
+    )
+]
+
+
+@pytest.mark.parametrize(
+    "executor_logs, system_logs, summary",
+    [
+        # Funnel couldn't start executor 0 and still logs exit code 0 for it.
+        (
+            [{"exit_code": 0, "stdout": "", "stderr": ""}],
+            FUNNEL_ARGV_SYSTEM_LOGS,
+            "System log: fork/exec /usr/bin/docker: argument list too long",
+        ),
+        # Funnel's input download failed before any executor ran.
+        ([], FUNNEL_DOWNLOAD_SYSTEM_LOGS, "System log: httpStorage: GET request returned status code: 404"),
+        (
+            [],
+            TESP_STAGE_IN_SYSTEM_LOGS,
+            (
+                "System log: stage-in failed (exit code 22): downloading the inputs failed: "
+                "curl: (22) The requested URL returned error: 404"
+            ),
+        ),
+        ([], TESK_SYSTEM_LOGS, "System log: Cancelling taskmaster: Got status Failed"),
+    ],
+    ids=["funnel-argv", "funnel-download", "tesp-api-stage-in", "tesk"],
+)
+def test_system_error_names_the_system_log_reason(harness, tes_server, executor_logs, system_logs, summary):
+    tes_server.tasks[TASK_ID] = _task("SYSTEM_ERROR", executor_logs=executor_logs, system_logs=system_logs)
+    harness.check()
+    assert not harness.watch_for(INTERVAL + GRACE + INTERVAL)
+
+    [failure] = harness.failures
+    assert failure["message"] == (
+        f"TES task {TASK_ID} ended in state SYSTEM_ERROR before Pulsar reported a final job status. {summary}"
+    )
+    assert "exit code 0" not in failure["message"]
+    assert "exited with code" not in failure["message"]
+    assert len(failure["message"]) <= JOB_INFO_LENGTH
+
+
+def test_system_error_reason_is_cut_to_fit_job_info(harness, tes_server):
+    long_task_id = "d08e39e6-e099-11f1-ad59-fa163e1c6750"
+    harness.job.job_runner_external_id = long_task_id
+    harness.job_state.job_id = long_task_id
+    tes_server.tasks[long_task_id] = dict(
+        _task("SYSTEM_ERROR", executor_logs=[], system_logs=TESP_SUBMISSION_SYSTEM_LOGS), id=long_task_id
+    )
+    harness.check()
+    assert not harness.watch_for(INTERVAL + GRACE + INTERVAL)
+
+    [failure] = harness.failures
+    assert "System log: the job did not start: Pulsar or the batch system refused it" in failure["message"]
+    assert failure["message"].endswith("...")
+    assert len(failure["message"]) <= JOB_INFO_LENGTH
+
+
+def test_system_error_keeps_a_failing_executors_exit_code_and_redacts_the_reason(harness, tes_server):
+    tes_server.tasks[TASK_ID] = _task(
+        "SYSTEM_ERROR",
+        executor_logs=[{"exit_code": 0}, {"exit_code": 2, "stderr": "tool failed"}],
+        system_logs=[
+            "level='error' msg='System error' error='upload to amqp://galaxy:"
+            + AMQP_PASSWORD
+            + "@broker:5672// failed: "
+            + "x" * 300
+            + "'"
+        ],
+    )
+    harness.check()
+    assert not harness.watch_for(INTERVAL + GRACE + INTERVAL)
+
+    [failure] = harness.failures
+    assert "final job status. Executor 1 exited with code 2. System log: upload to amqp://[redacted]@broker" in (
+        failure["message"]
+    )
+    assert AMQP_PASSWORD not in failure["message"]
+    assert len(failure["message"]) <= JOB_INFO_LENGTH
+
+
+def test_system_error_without_a_reason_claims_no_exit_code(harness, tes_server):
+    tes_server.tasks[TASK_ID] = _task("SYSTEM_ERROR", executor_logs=[{"exit_code": 0}])
+    harness.check()
+    assert not harness.watch_for(INTERVAL + GRACE + INTERVAL)
+
+    [failure] = harness.failures
+    assert failure["message"].endswith("final job status. No executor reported a failure.")
+
+
 def test_logs_of_the_executors_that_ran_are_attributed_to_them(harness, tes_server):
     # Funnel, TESK and tesp-api with per-executor logs record the executors that ran, up to the failing one.
     tes_server.tasks[TASK_ID] = _task(

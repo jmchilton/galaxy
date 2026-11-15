@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from pydantictes.models import (
         TesExecutorLog,
         TesTask,
+        TesTaskLog,
     )
 
 TES_TASK_NOT_FOUND = "NOT_FOUND"
@@ -50,6 +51,20 @@ _SECRET_ASSIGNMENT = re.compile(r"((?:key|token|secret|password)['\"]?\s*[=:]\s*
 _BASIC_AUTH = re.compile(r"(\bBasic\s+)[A-Za-z0-9+/=]{4,}")
 MINIMUM_SECRET_LENGTH = 6
 REDACTED = "[redacted]"
+# Leaves room in Job.info's 255 characters for the sentence before it with a 36-character task id.
+SUMMARY_MAX_CHARACTERS = 130
+
+# Reading why a TES server ended a task in SYSTEM_ERROR from its system logs. Funnel writes logfmt
+# lines (level='error' msg='System error' error='...'), TESK the taskmaster's log ("<date> <time>
+# ERROR: <message>"), and tesp-api one entry per failure: a reason line, then the job's stderr tail.
+_LOGFMT_LEVEL = re.compile(r"\blevel='?([A-Za-z]+)")
+_LOGFMT_ERROR = re.compile(r"\berror='([^']+)'")
+_LOGFMT_MSG = re.compile(r"\bmsg='([^']+)'")
+_LEVEL_NAME = re.compile(r"\b(DEBUG|INFO|WARNING|WARN|ERROR|CRITICAL|FATAL)\b:?\s*")
+_ERROR_LEVELS = frozenset(["error", "critical", "fatal"])
+_FAILURE_WORDS = re.compile(
+    r"fail|error|refused|denied|too long|not found|exception|cannot|can't|unable", re.IGNORECASE
+)
 
 
 def fetch_tes_task_state(tes_client: "TesClient", task_id: str) -> str:
@@ -127,13 +142,15 @@ def describe_tes_task_failure(
     attempt = task.logs[-1]
     executor_logs = attempt.logs or []
     executor_stderr = ""
+    summary = ""
+    failing_log: TesExecutorLog | None = None
     if executor_logs:
         index = len(executor_logs) - 1
         for i, executor_log in enumerate(executor_logs):
             if executor_log.exit_code != 0:
                 index = i
                 break
-        executor_log = executor_logs[index]
+        executor_log = failing_log = executor_logs[index]
         per_executor = _logs_are_per_executor(task, executor_logs)
         if per_executor:
             label = _executor_label(task, index)
@@ -143,16 +160,80 @@ def describe_tes_task_failure(
             short_label = "The task"
         if executor_log.exit_code in (None, -255):
             # pydantic-tes fills in -255 when the server reports no exit code.
-            message = f"{message} {short_label} reported no exit code."
+            summary = f"{short_label} reported no exit code."
         elif executor_log.exit_code == 0 and per_executor:
-            message = f"{message} {short_label} ran last and exited with code 0."
+            summary = f"{short_label} ran last and exited with code 0."
         else:
-            message = f"{message} {short_label} exited with code {executor_log.exit_code}."
+            summary = f"{short_label} exited with code {executor_log.exit_code}."
         stderr = _tail(executor_log.stderr, STDERR_TAIL_LINES, secrets)
         if stderr:
             executor_stderr = f"{label} stderr, last lines:\n{stderr}"
+    if task_state == "SYSTEM_ERROR":
+        summary = _system_error_summary(summary, failing_log, attempt, secrets)
+    if summary:
+        message = f"{message} {summary}"
     system_logs = _tail("\n".join(attempt.system_logs or []), SYSTEM_LOG_TAIL_LINES, secrets)
     return TesTaskFailure(message, executor_stderr, system_logs)
+
+
+def _system_error_summary(
+    summary: str, executor_log: "TesExecutorLog | None", attempt: "TesTaskLog", secrets: Iterable[str]
+) -> str:
+    """The summary of a SYSTEM_ERROR task: the TES server's reason, after the exit code of an executor that failed.
+
+    An executor log with exit code 0 doesn't explain a system error, and Funnel records 0
+    for an executor it could not start at all, so that code is not reported.
+    """
+    executor_failed = executor_log is not None and executor_log.exit_code not in (0, None, -255)
+    prefix = f"{summary} " if executor_failed else ""
+    reason = _system_log_reason(attempt.system_logs or [], secrets)
+    if reason:
+        return _shorten(f"{prefix}System log: {reason}", SUMMARY_MAX_CHARACTERS)
+    if executor_log is not None and executor_log.exit_code == 0:
+        return "No executor reported a failure."
+    return summary
+
+
+def _system_log_reason(system_logs: list[str], secrets: Iterable[str]) -> str:
+    """The last error line of the system logs, redacted, or ``""``.
+
+    An entry whose first line is an unlabelled error (tesp-api's reason) is named before its last error line.
+    """
+    for entry in reversed(system_logs):
+        lines = [line.strip() for line in redact(entry, secrets).splitlines() if line.strip()]
+        for i in range(len(lines) - 1, -1, -1):
+            if not _is_error_line(lines[i]):
+                continue
+            reason = _error_line_reason(lines[i])
+            if i > 0 and _log_level(lines[0]) is None and _is_error_line(lines[0]):
+                reason = f"{_error_line_reason(lines[0])}: {reason}"
+            return reason
+    return ""
+
+
+def _log_level(line: str) -> str | None:
+    match = _LOGFMT_LEVEL.search(line) or _LEVEL_NAME.search(line)
+    return match.group(1).lower() if match else None
+
+
+def _is_error_line(line: str) -> bool:
+    level = _log_level(line)
+    if level is not None:
+        return level in _ERROR_LEVELS
+    return bool(_FAILURE_WORDS.search(line))
+
+
+def _error_line_reason(line: str) -> str:
+    if _LOGFMT_LEVEL.search(line):
+        match = _LOGFMT_ERROR.search(line) or _LOGFMT_MSG.search(line)
+        return match.group(1) if match else line
+    match = _LEVEL_NAME.search(line)
+    return line[match.end() :] if match else line
+
+
+def _shorten(text: str, limit: int) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= limit else f"{text[: limit - 3]}..."
 
 
 def tes_known_secrets(amqp_url: str | None, tes_params: "TesJobParams") -> list[str]:
