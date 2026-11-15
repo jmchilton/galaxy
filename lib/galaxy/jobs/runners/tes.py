@@ -75,7 +75,8 @@ from galaxy.jobs.runners.util.tes_task import (
     describe_ended_tes_task,
     describe_tes_error,
     fetch_tes_task_state,
-    TES_NOTHING_TO_CANCEL_STATES,
+    log_tes_cancel_failure,
+    tes_known_secrets,
     tes_task_key,
     TES_TASK_NOT_FOUND,
     TesTaskKey,
@@ -261,20 +262,26 @@ class TesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
 
     def check_watched_item(self, job_state: AsynchronousJobState) -> AsynchronousJobState | None:
         task_key = tes_task_key(job_state)
-        task_id = task_key[1]
         if job_state.check_limits():
             # fail_job cancels the task, since check_limits sets stop_job.
-            self._next_checks.pop(task_key, None)
             self.work_queue.put((self.fail_job, job_state))
-            return None
-        now = monotonic()
-        if now < self._next_checks.get(task_key, 0):
+            keep_watching = False
+        else:
+            now = monotonic()
+            if now < self._next_checks.get(task_key, 0):
+                return job_state
+            self._next_checks[task_key] = now + self.tes_poll_interval
+            keep_watching = self._check_task(job_state, task_key[1])
+        if keep_watching:
             return job_state
-        self._next_checks[task_key] = now + self.tes_poll_interval
+        self._next_checks.pop(task_key, None)
+        return None
+
+    def _check_task(self, job_state: AsynchronousJobState, task_id: str) -> bool:
+        """Follow the job to the TES task's state: running, finished or failed. Return whether to keep watching."""
         if job_state.job_wrapper.get_state() not in (model.Job.states.QUEUED, model.Job.states.RUNNING):
             # Stopped, deleted or finished elsewhere.
-            self._next_checks.pop(task_key, None)
-            return None
+            return False
         tes_params = parse_tes_job_params(job_state.job_destination.params)
         tes_client = tes_client_from_params(tes_params)
         try:
@@ -286,43 +293,41 @@ class TesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
                 task_id,
                 describe_tes_error(e),
             )
-            return job_state
+            return True
         if task_state in TES_WAITING_STATES:
-            return job_state
+            return True
         if task_state in TES_RUNNING_STATES:
             if not job_state.running:
                 job_state.running = True
                 job_state.job_wrapper.change_state(model.Job.states.RUNNING)
-            return job_state
-        self._next_checks.pop(task_key, None)
+            return True
         if task_state == "COMPLETE":
             log.debug("(%s/%s) TES task complete", job_state.job_wrapper.get_id_tag(), task_id)
             self.mark_as_finished(job_state)
-            return None
-        message, full_status = self._task_failure(tes_client, tes_params, job_state, task_state)
+            return False
+        message, full_status = self._task_failure(tes_client, tes_params, task_id, task_state)
         # The task has ended, so there is nothing to cancel.
         job_state.stop_job = False
         self.fail_job(job_state, message=message, full_status=full_status)
-        return None
+        return False
 
     def _task_failure(
-        self, tes_client: "TesClient", tes_params: "TesJobParams", job_state: AsynchronousJobState, task_state: str
+        self, tes_client: "TesClient", tes_params: "TesJobParams", task_id: str, task_state: str
     ) -> tuple[str, dict[str, Any] | None]:
-        task_id = job_state.job_id
         if task_state == TES_TASK_NOT_FOUND:
             return f"The TES server has no record of task {task_id}.", None
-        message = f"TES task {task_id} ended in state {task_state}."
-        # URL tokens in the logs are caught by redact()'s ``token=`` pattern.
-        secrets = []
-        if tes_params.basic_auth:
-            secrets.append(tes_params.basic_auth.password)
+        task = None
         try:
-            failure = describe_ended_tes_task(
-                message, task_state, tes_client.get_task(task_id, "FULL"), secrets=secrets
-            )
+            task = tes_client.get_task(task_id, "FULL")
         except Exception as e:
             log.warning("(%s) Could not read TES task logs: %s", task_id, describe_tes_error(e))
-            return message, None
+        # URL tokens in the logs are caught by redact()'s ``token=`` pattern.
+        failure = describe_ended_tes_task(
+            f"TES task {task_id} ended in state {task_state}.",
+            task_state,
+            task,
+            secrets=tes_known_secrets(None, tes_params),
+        )
         if failure.system_logs:
             log.info("(%s) %s\nTES system logs, last lines:\n%s", task_id, failure.message, failure.system_logs)
         return failure.message, {"stderr": failure.executor_stderr} if failure.executor_stderr else None
@@ -334,36 +339,13 @@ class TesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
         if not task_id:
             return
         id_tag = job_wrapper.get_id_tag()
-        tes_client = tes_client_from_params(parse_tes_job_params(job.destination_params))
+        destination_params = job.destination_params or {}
         try:
-            tes_client.cancel_task(task_id)
-            log.info("(%s/%s) Cancelled TES task", id_tag, task_id)
-            return
+            tes_client_from_params(parse_tes_job_params(destination_params)).cancel_task(task_id)
         except Exception as e:
-            cancel_error = describe_tes_error(e)
-        # TESK answers 400 to cancelling a task that has ended, and servers answer 404 for a deleted one.
-        try:
-            task_state = fetch_tes_task_state(tes_client, task_id)
-        except Exception as e:
-            log.error(
-                "(%s/%s) Failed to cancel TES task and could not read its state, so it may still be running. "
-                "Cancel error: %s. State error: %s",
-                id_tag,
-                task_id,
-                cancel_error,
-                describe_tes_error(e),
-            )
-            return
-        if task_state in TES_NOTHING_TO_CANCEL_STATES:
-            log.info("(%s/%s) TES task is %s, nothing to cancel", id_tag, task_id, task_state)
+            log_tes_cancel_failure(log, destination_params, id_tag, task_id, describe_tes_error(e))
         else:
-            log.error(
-                "(%s/%s) Failed to cancel TES task in state %s, it may still be running: %s",
-                id_tag,
-                task_id,
-                task_state,
-                cancel_error,
-            )
+            log.info("(%s/%s) Cancelled TES task", id_tag, task_id)
 
     def recover(self, job: model.Job, job_wrapper: "MinimalJobWrapper") -> None:
         task_id = job.get_job_runner_external_id()
