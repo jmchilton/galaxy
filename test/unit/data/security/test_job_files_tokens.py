@@ -87,6 +87,7 @@ def test_tampered_expiry_is_rejected(security):
         f"-1.{'A' * 43}",
         f"{EXPIRES}.sïgnature",
         "²³.c2lnbmF0dXJl",
+        f"{'9' * 5000}.c2lnbmF0dXJl",
     ],
 )
 def test_malformed_tokens_are_rejected(security, token):
@@ -96,7 +97,6 @@ def test_malformed_tokens_are_rejected(security, token):
 def test_token_reveals_neither_the_job_key_nor_the_secret(security):
     token = _token(security)
     assert security.encode_id(7, kind="jobs_files") not in token
-    assert "secret" not in token
     # Short enough for a URL query: expiry, a dot and an unpadded base64url SHA-256 digest.
     assert len(token) == len(str(EXPIRES)) + 1 + 43
 

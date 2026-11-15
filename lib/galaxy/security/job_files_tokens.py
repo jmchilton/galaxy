@@ -30,6 +30,8 @@ JOB_FILES_DIRECTORY_WRITE: JobFilesScope = "d"
 """PUT of any file below the directory ``path`` (TES ``DIRECTORY`` outputs)."""
 
 _SCOPES = (JOB_FILES_READ, JOB_FILES_WRITE, JOB_FILES_DIRECTORY_WRITE)
+# Unix seconds fit in far fewer digits; int() raises past 4300.
+_MAX_EXPIRES_DIGITS = 20
 _KEY_PURPOSE = b"galaxy job files token v1"
 
 
@@ -50,7 +52,9 @@ def verify_job_files_token(
 ) -> bool:
     """Whether ``token`` authorizes ``scope`` access to exactly ``path`` of job ``job_id`` at ``now``."""
     expires_text, _, signature = str(token).partition(".")
-    if not (expires_text.isascii() and expires_text.isdigit()) or not signature or scope not in _SCOPES:
+    if not (expires_text.isascii() and expires_text.isdigit()) or len(expires_text) > _MAX_EXPIRES_DIGITS:
+        return False
+    if not signature or scope not in _SCOPES:
         return False
     expires = int(expires_text)
     if (time.time() if now is None else now) > expires:
