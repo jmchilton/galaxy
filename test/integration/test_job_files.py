@@ -21,12 +21,17 @@ import os
 import tempfile
 import time
 import uuid
+from collections.abc import (
+    Callable,
+    Iterator,
+)
 from dataclasses import (
     dataclass,
     replace,
 )
 from unittest.mock import patch
 from urllib.parse import (
+    quote,
     urlencode,
     urlsplit,
 )
@@ -383,18 +388,11 @@ class TestJobFilesIntegration(integration_util.IntegrationTestCase):
     def test_put_streams_large_body(self):
         job = self._running_job()
         path = os.path.join(job.working_directory, "large")
-        chunk = b"x" * LARGE_UPLOAD_CHUNK_SIZE
         staged_sizes: list[int] = []
 
-        def body():
-            for _ in range(LARGE_UPLOAD_CHUNKS):
-                yield chunk
-            staged_sizes.append(
-                _wait_for_staged_upload(job.working_directory, (LARGE_UPLOAD_CHUNKS - 1) * LARGE_UPLOAD_CHUNK_SIZE)
-            )
-            yield b"end"
+        response = self._put_job_file(job, path, _large_raw_body(job.working_directory, staged_sizes.append))
 
-        api_asserts.assert_status_code_is_ok(self._put_job_file(job, path, body()))
+        api_asserts.assert_status_code_is_ok(response)
         assert staged_sizes[0] >= (LARGE_UPLOAD_CHUNKS - 1) * LARGE_UPLOAD_CHUNK_SIZE
         assert os.path.getsize(path) == LARGE_UPLOAD_CHUNKS * LARGE_UPLOAD_CHUNK_SIZE + 3
         assert not _staging_dirs(job.working_directory)
@@ -407,13 +405,71 @@ class TestJobFilesIntegration(integration_util.IntegrationTestCase):
         _assert_insufficient_permissions(self._put_job_file(job, escape, b"x"))
         assert not os.path.exists(escape)
         work = os.path.join(job.working_directory, "work")
-        _assert_insufficient_permissions(self._put_job_file(replace(job, job_key="invalid"), work, b"x"))
+        _assert_insufficient_permissions(self._put_job_file(job, work, b"x", job_key="invalid"))
         assert not os.path.exists(work)
         assert not _staging_dirs(job.working_directory)
         relative = self._put_job_file(job, "relative/work", b"x")
         api_asserts.assert_status_code_is(relative, 400)
         for params in [{"path": work}, {"job_key": job.job_key}]:
             _assert_missing_attribute(requests.put(job.files_url, params=params, data=b"x"))
+
+    def test_put_rejected_before_body_is_read(self):
+        job = self._running_job()
+        tool_working = os.path.join(job.working_directory, "working")
+        path = os.path.join(tool_working, "work")
+        finished = self._running_job(with_input=False)
+        finished_path = os.path.join(finished.working_directory, "work")
+        self._change_job_state(finished.job, "ok")
+        for url, params in (
+            # A read token.
+            (job.files_url, {"path": path, "job_token": self._job_files_token(job, path, JOB_FILES_READ)}),
+            # A finished job's write token.
+            (
+                finished.files_url,
+                {"path": finished_path, "job_token": self._job_files_token(finished, finished_path, JOB_FILES_WRITE)},
+            ),
+            # A file write token for a directory.
+            (
+                f"{job.files_url}/work",
+                {"path": tool_working, "job_token": self._job_files_token(job, tool_working, JOB_FILES_WRITE)},
+            ),
+            # An escape from the directory.
+            (
+                f"{job.files_url}/..%2Fescape",
+                {
+                    "path": tool_working,
+                    "job_token": self._job_files_token(job, tool_working, JOB_FILES_DIRECTORY_WRITE),
+                },
+            ),
+        ):
+            # Announce a large body, send none of it and read the response: only a request
+            # refused before its body is read gets an answer.
+            status, body = self._send_headers_only("PUT", f"{url}?{urlencode(params)}", 100 * LARGE_UPLOAD_CHUNK_SIZE)
+            assert status == 403, body
+        assert not os.path.exists(path)
+        assert not os.path.exists(finished_path)
+        assert not os.path.exists(os.path.join(job.working_directory, "escape"))
+        assert not _staging_dirs(job.working_directory)
+        assert not _staging_dirs(finished.working_directory)
+
+    def test_job_completes_during_put(self):
+        for directory_route in (False, True):
+            job = self._running_job(with_input=False)
+            tool_working = os.path.join(job.working_directory, "working")
+            path = os.path.join(tool_working, "large")
+
+            def finish_job(staged_size: int, job: RunningJob = job) -> None:
+                # The first authorization passed and the upload is being staged; now the job finishes.
+                self._change_job_state(job.job, "ok")
+
+            body = _large_raw_body(job.working_directory, finish_job)
+            if directory_route:
+                response = self._put_directory_file(job, tool_working, "large", body, job_key=job.job_key)
+            else:
+                response = self._put_job_file(job, path, body)
+            _assert_insufficient_permissions(response)
+            assert not os.path.exists(path)
+            assert not _staging_dirs(job.working_directory)
 
     def test_signed_per_file_tokens(self):
         job = self._running_job()
@@ -422,6 +478,7 @@ class TestJobFilesIntegration(integration_util.IntegrationTestCase):
         input_path = os.path.join(job.working_directory, "tool_script.sh")
         _write_file(input_path, TEST_INPUT_TEXT)
         output_path = job.output_path
+        other_job = self._running_job(with_input=False)
 
         def token(path: str, scope: JobFilesScope, expires: int | None = None) -> str:
             return self._job_files_token(job, path, scope, expires)
@@ -429,21 +486,22 @@ class TestJobFilesIntegration(integration_util.IntegrationTestCase):
         expired = int(time.time()) - 1
 
         # A read token reads its file, and nothing else.
-        response = requests.get(url, params={"path": input_path, "job_token": token(input_path, JOB_FILES_READ)})
+        response = self._get_job_file(job, input_path, job_token=token(input_path, JOB_FILES_READ))
         api_asserts.assert_status_code_is_ok(response)
         assert response.text == TEST_INPUT_TEXT
-        for params in (
-            {"path": input_path, "job_token": token(input_path, JOB_FILES_WRITE)},
-            {"path": input_path, "job_token": token(output_path, JOB_FILES_READ)},
-            {"path": input_path, "job_token": token(input_path, JOB_FILES_READ, expired)},
-            {"path": input_path, "job_token": "garbage"},
+        for auth in (
+            {"job_token": token(input_path, JOB_FILES_WRITE)},
+            {"job_token": token(output_path, JOB_FILES_READ)},
+            {"job_token": token(input_path, JOB_FILES_READ, expired)},
+            {"job_token": self._job_files_token(other_job, input_path, JOB_FILES_READ)},
+            {"job_token": "garbage"},
+            # A token, when given, is checked instead of the job key.
+            {"job_token": "garbage", "job_key": job.job_key},
         ):
-            _assert_insufficient_permissions(requests.get(url, params=params))
+            _assert_insufficient_permissions(self._get_job_file(job, input_path, **auth))
 
         # A write token writes its file with PUT (Funnel, TESK) or multipart POST (tesp-api), and nothing else.
-        response = requests.put(
-            url, params={"path": output_path, "job_token": token(output_path, JOB_FILES_WRITE)}, data=b"put bytes"
-        )
+        response = self._put_job_file(job, output_path, b"put bytes", job_token=token(output_path, JOB_FILES_WRITE))
         api_asserts.assert_status_code_is_ok(response)
         _assert_file_contents(output_path, "put bytes")
         tool_stdout = os.path.join(job.working_directory, "outputs", "tool_stdout")
@@ -459,6 +517,7 @@ class TestJobFilesIntegration(integration_util.IntegrationTestCase):
             {"path": output_path, "job_token": token(output_path, JOB_FILES_READ)},
             {"path": other_file, "job_token": token(output_path, JOB_FILES_WRITE)},
             {"path": output_path, "job_token": token(output_path, JOB_FILES_WRITE, expired)},
+            {"path": output_path, "job_token": self._job_files_token(other_job, output_path, JOB_FILES_WRITE)},
         ):
             _assert_insufficient_permissions(requests.put(url, params=params, data=b"x"))
             _assert_insufficient_permissions(requests.post(url, params=params, files={"file": io.StringIO("x")}))
@@ -469,14 +528,12 @@ class TestJobFilesIntegration(integration_util.IntegrationTestCase):
 
         # A valid token doesn't widen the write locations.
         outside = tempfile.NamedTemporaryFile()
-        response = requests.put(
-            url, params={"path": outside.name, "job_token": token(outside.name, JOB_FILES_WRITE)}, data=b"x"
-        )
+        response = self._put_job_file(job, outside.name, b"x", job_token=token(outside.name, JOB_FILES_WRITE))
         _assert_insufficient_permissions(response)
 
         # Tokens end with the job.
         self._change_job_state(job.job, "ok")
-        response = requests.get(url, params={"path": input_path, "job_token": token(input_path, JOB_FILES_READ)})
+        response = self._get_job_file(job, input_path, job_token=token(input_path, JOB_FILES_READ))
         _assert_insufficient_permissions(response)
 
     def test_directory_put(self):
@@ -488,7 +545,7 @@ class TestJobFilesIntegration(integration_util.IntegrationTestCase):
             return self._job_files_token(job, path, scope)
 
         def put(rel_path: str, directory: str, data: bytes = b"x", **auth: str) -> requests.Response:
-            return requests.put(f"{job.files_url}/{rel_path}", params={"path": directory, **auth}, data=data)
+            return self._put_directory_file(job, directory, rel_path, data, **auth)
 
         # Funnel escapes each segment; TESK escapes everything but "/".
         response = put("sub/a%20b%2Bc.txt", tool_working, b"discovered", job_token=token(tool_working))
@@ -504,6 +561,7 @@ class TestJobFilesIntegration(integration_util.IntegrationTestCase):
         assert not _staging_dirs(os.path.dirname(job.output_path))
 
         outside = self._test_driver.mkdtemp()
+        os.symlink(outside, os.path.join(tool_working, "link"))
         for rel_path, directory, auth in (
             # A file write token, a token for another directory, a bad key.
             ("x", tool_working, {"job_token": token(tool_working, JOB_FILES_WRITE)}),
@@ -513,6 +571,9 @@ class TestJobFilesIntegration(integration_util.IntegrationTestCase):
             ("..%2Fescape", tool_working, {"job_token": token(tool_working)}),
             ("sub/..%2F..%2Fescape", tool_working, {"job_token": token(tool_working)}),
             (".", tool_working, {"job_token": token(tool_working)}),
+            ("", tool_working, {"job_token": token(tool_working)}),
+            (quote(os.path.join(outside, "x"), safe=""), tool_working, {"job_token": token(tool_working)}),
+            ("link/x", tool_working, {"job_token": token(tool_working)}),
             # A directory outside the job's write locations, with a valid token for it.
             ("x", outside, {"job_token": token(outside)}),
         ):
@@ -566,7 +627,7 @@ class TestJobFilesIntegration(integration_util.IntegrationTestCase):
         params = urlencode({"path": path, "job_key": "invalid"})
         # Announce a large body, send none of it and read the response: only a request
         # authorized before its body is read gets an answer.
-        status, body = self._post_without_body(f"{job.files_url}?{params}", 100 * LARGE_UPLOAD_CHUNK_SIZE)
+        status, body = self._send_headers_only("POST", f"{job.files_url}?{params}", 100 * LARGE_UPLOAD_CHUNK_SIZE)
         assert status == 403, body
         assert not _staging_dirs(job.working_directory)
         assert not os.path.exists(path)
@@ -598,7 +659,7 @@ class TestJobFilesIntegration(integration_util.IntegrationTestCase):
         job = self._running_job()
         path = os.path.join(job.working_directory, "large")
         params = urlencode({"path": path, "job_key": job.job_key})
-        connection = self._start_post(f"{job.files_url}?{params}", 100 * LARGE_UPLOAD_CHUNK_SIZE)
+        connection = self._start_request("POST", f"{job.files_url}?{params}", 100 * LARGE_UPLOAD_CHUNK_SIZE)
         connection.send(
             f'--{UPLOAD_BOUNDARY}\r\nContent-Disposition: form-data; name="file"; filename="large"\r\n\r\n'.encode()
         )
@@ -697,9 +758,18 @@ class TestJobFilesIntegration(integration_util.IntegrationTestCase):
         expires = int(time.time()) + 600 if expires is None else expires
         return job_files_token(self._app.security, job.job.id, path, scope, expires)
 
-    def _put_job_file(self, job: RunningJob, path: str, data) -> requests.Response:
-        """PUT the raw body like Funnel and TESK - path and job_key as query params."""
-        return requests.put(job.files_url, params={"path": path, "job_key": job.job_key}, data=data)
+    def _get_job_file(self, job: RunningJob, path: str, **auth: str) -> requests.Response:
+        return requests.get(job.files_url, params={"path": path, **auth})
+
+    def _put_job_file(self, job: RunningJob, path: str, data, **auth: str) -> requests.Response:
+        """PUT the raw body like Funnel and TESK - path and ``auth`` (default the job key) as query params."""
+        return requests.put(job.files_url, params={"path": path, **(auth or {"job_key": job.job_key})}, data=data)
+
+    def _put_directory_file(
+        self, job: RunningJob, directory: str, rel_path: str, data, **auth: str
+    ) -> requests.Response:
+        """PUT the raw body like Funnel and TESK do for each file of a TES DIRECTORY output."""
+        return requests.put(f"{job.files_url}/{rel_path}", params={"path": directory, **auth}, data=data)
 
     def _assert_upload_streamed(self, job: RunningJob, path: str, staging_parent: str):
         new_file_path_contents = set(os.listdir(self._app.config.new_file_path))
@@ -729,18 +799,19 @@ class TestJobFilesIntegration(integration_util.IntegrationTestCase):
         assert not _staging_dirs(staging_parent)
         assert set(os.listdir(self._app.config.new_file_path)) == new_file_path_contents
 
-    def _start_post(self, url: str, content_length: int) -> http.client.HTTPConnection:
-        """Send a multipart POST's headers, leaving its body to the caller."""
+    def _start_request(self, method: str, url: str, content_length: int) -> http.client.HTTPConnection:
+        """Send the headers of a multipart POST or a raw PUT, leaving its body to the caller."""
         parts = urlsplit(url)
         connection = http.client.HTTPConnection(parts.netloc, timeout=30)
-        connection.putrequest("POST", f"{parts.path}?{parts.query}")
-        connection.putheader("Content-Type", f"multipart/form-data; boundary={UPLOAD_BOUNDARY}")
+        connection.putrequest(method, f"{parts.path}?{parts.query}")
+        if method == "POST":
+            connection.putheader("Content-Type", f"multipart/form-data; boundary={UPLOAD_BOUNDARY}")
         connection.putheader("Content-Length", str(content_length))
         connection.endheaders()
         return connection
 
-    def _post_without_body(self, url: str, content_length: int) -> tuple[int, bytes]:
-        connection = self._start_post(url, content_length)
+    def _send_headers_only(self, method: str, url: str, content_length: int) -> tuple[int, bytes]:
+        connection = self._start_request(method, url, content_length)
         try:
             response = connection.getresponse()
             return response.status, response.read()
@@ -794,6 +865,18 @@ def _wait_for_staged_upload(directory, min_size, timeout=10):
             break
         time.sleep(0.05)
     return size
+
+
+def _large_raw_body(staging_parent: str, on_staged: Callable[[int], None]) -> Iterator[bytes]:
+    """LARGE_UPLOAD_CHUNKS chunks, then ``b"end"`` once most of them are staged below ``staging_parent``.
+
+    ``on_staged`` gets the staged size before the end is sent.
+    """
+    chunk = b"x" * LARGE_UPLOAD_CHUNK_SIZE
+    for _ in range(LARGE_UPLOAD_CHUNKS):
+        yield chunk
+    on_staged(_wait_for_staged_upload(staging_parent, (LARGE_UPLOAD_CHUNKS - 1) * LARGE_UPLOAD_CHUNK_SIZE))
+    yield b"end"
 
 
 def _assert_insufficient_permissions(response):

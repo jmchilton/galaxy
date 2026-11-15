@@ -1,5 +1,4 @@
 import os
-import time
 from types import SimpleNamespace
 from typing import cast
 
@@ -13,12 +12,6 @@ from galaxy.model import Job
 from galaxy.model.scoped_session import galaxy_scoped_session
 from galaxy.objectstore import BaseObjectStore
 from galaxy.security.idencoding import IdEncodingHelper
-from galaxy.security.job_files_tokens import (
-    JOB_FILES_DIRECTORY_WRITE,
-    JOB_FILES_READ,
-    job_files_token,
-    JOB_FILES_WRITE,
-)
 
 JOB_ID = 42
 
@@ -127,49 +120,3 @@ def test_missing_params(manager, security, job):
         manager.authorize_write(job_id, None, job_key)
     with pytest.raises(exceptions.ObjectAttributeMissingException):
         manager.authorize_write(job_id, path, None)
-
-
-def test_job_token(manager, security, job):
-    job_id, job_key = _keys(security)
-    working_directory = _working_directory(job)
-    path = os.path.join(working_directory, "out")
-    expires = int(time.time()) + 600
-    write_token = job_files_token(security, JOB_ID, path, JOB_FILES_WRITE, expires)
-    assert manager.authorize_write(job_id, path, None, write_token) == working_directory
-    # One path, one direction, one job.
-    with pytest.raises(exceptions.ItemAccessibilityException):
-        manager.readable_path(job_id, path, None, write_token)
-    with pytest.raises(exceptions.ItemAccessibilityException):
-        manager.authorize_write(job_id, os.path.join(working_directory, "other"), None, write_token)
-    other_job_token = job_files_token(security, JOB_ID + 1, path, JOB_FILES_WRITE, expires)
-    with pytest.raises(exceptions.ItemAccessibilityException):
-        manager.authorize_write(job_id, path, None, other_job_token)
-    # A token, when given, is checked instead of the job key.
-    with pytest.raises(exceptions.ItemAccessibilityException):
-        manager.authorize_write(job_id, path, job_key, "garbage")
-    # It ends with the job.
-    read_token = job_files_token(security, JOB_ID, path, JOB_FILES_READ, expires)
-    job.state = Job.states.OK
-    with pytest.raises(exceptions.ItemAccessibilityException):
-        manager.readable_path(job_id, path, None, read_token)
-
-
-def test_authorize_directory_write(manager, security, job):
-    job_id, job_key = _keys(security)
-    working_directory = _working_directory(job)
-    directory = os.path.join(working_directory, "working")
-    expires = int(time.time()) + 600
-    directory_token = job_files_token(security, JOB_ID, directory, JOB_FILES_DIRECTORY_WRITE, expires)
-    target, staging_parent = manager.authorize_directory_write(job_id, directory, "sub/out.txt", None, directory_token)
-    assert target == os.path.join(directory, "sub", "out.txt")
-    assert staging_parent == working_directory
-    assert manager.authorize_directory_write(job_id, directory, "out.txt", job_key)[0] == os.path.join(
-        directory, "out.txt"
-    )
-    for rel_path in ("../escape", "sub/../../escape", ".", "", "/etc/passwd"):
-        with pytest.raises(exceptions.ItemAccessibilityException):
-            manager.authorize_directory_write(job_id, directory, rel_path, None, directory_token)
-    # A file write token for the directory is not a directory token.
-    file_token = job_files_token(security, JOB_ID, directory, JOB_FILES_WRITE, expires)
-    with pytest.raises(exceptions.ItemAccessibilityException):
-        manager.authorize_directory_write(job_id, directory, "out.txt", None, file_token)
