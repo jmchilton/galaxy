@@ -201,7 +201,7 @@ def clock(monkeypatch):
 class FakeJob:
     id: int = GALAXY_JOB_ID
     state: str = model.Job.states.QUEUED
-    job_runner_external_id: str = TASK_ID
+    job_runner_external_id: str | None = TASK_ID
     job_runner_name: str = "pulsar_tes://"
     handler: str = SERVER_NAME
     destination_params: dict[str, Any] = field(default_factory=dict)
@@ -842,6 +842,20 @@ def test_failing_to_cancel_a_running_task_is_logged_not_raised(harness, tes_serv
     assert "may still be running" in message
     assert "unauthorized" in message
     assert ("could not read its state" in message) is unreadable
+
+
+def test_failing_to_cancel_a_task_with_no_recorded_id_is_logged_not_raised(harness, tes_server, caplog):
+    harness.job.job_runner_external_id = None
+    harness.job.state = model.Job.states.STOPPED
+
+    assert harness.runner._update_job_state_for_status(harness.job_state, "failed") is None
+
+    # Without a recorded id there is no task state to read after the cancel fails.
+    assert tes_server.views_requested() == ["POST"]
+    [message] = _log_messages(caplog, logging.ERROR)
+    assert message.startswith(f"({GALAXY_JOB_ID}) Failed to cancel the job's TES task, which has no recorded id")
+    method, _ = harness.runner.work_queue.get_nowait()
+    assert method == harness.runner.finish_job
 
 
 def test_failing_a_job_cancels_its_tes_task_then_fails_the_job(harness, tes_server):
