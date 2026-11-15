@@ -584,7 +584,7 @@ class TestJobFilesIntegration(integration_util.IntegrationTestCase):
             # A directory outside the job's write locations, with a valid token for it.
             ("x", outside, {"job_token": token(outside)}),
         ):
-            _assert_insufficient_permissions(put(rel_path, directory, **auth))
+            _assert_insufficient_permissions(put(rel_path, directory, b"x", **auth))
         assert not os.path.exists(os.path.join(job.working_directory, "escape"))
         assert not os.path.exists(os.path.join(tool_working, "x"))
         assert not os.listdir(outside)

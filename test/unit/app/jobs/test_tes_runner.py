@@ -310,6 +310,7 @@ def _job_wrapper(runner, tes_url, state=model.Job.states.QUEUED, working_directo
 
 
 def _watched(job_wrapper: FakeJobWrapper) -> AsynchronousJobState:
+    assert job_wrapper.job_destination
     return AsynchronousJobState(
         job_wrapper=cast(MinimalJobWrapper, job_wrapper), job_destination=job_wrapper.job_destination, job_id=TASK_ID
     )

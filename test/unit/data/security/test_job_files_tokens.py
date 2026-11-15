@@ -103,4 +103,4 @@ def test_token_reveals_neither_the_job_key_nor_the_secret(security):
 
 def test_scope_must_be_known(security):
     with pytest.raises(ValueError):
-        job_files_token(security, 7, PATH, "rw", EXPIRES)
+        job_files_token(security, 7, PATH, "rw", EXPIRES)  # type: ignore[arg-type]

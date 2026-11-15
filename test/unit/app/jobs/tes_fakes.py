@@ -116,7 +116,7 @@ class Clock:
 class FakeJob:
     id: int = GALAXY_JOB_ID
     state: str = model.Job.states.QUEUED
-    job_runner_external_id: str = TASK_ID
+    job_runner_external_id: str | None = TASK_ID
     job_runner_name: str = "pulsar_tes://"
     handler: str = SERVER_NAME
     destination_params: dict[str, Any] = field(default_factory=dict)
