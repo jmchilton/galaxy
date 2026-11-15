@@ -478,11 +478,13 @@ def test_job_resubmitted_or_claimed_elsewhere_stops_the_checks(harness, tes_serv
     assert harness.failures == []
 
 
-def test_final_status_from_pulsar_outlasting_the_grace_period_keeps_the_job(harness, tes_server):
+@pytest.mark.parametrize("checked_first", [True, False], ids=["after_a_check", "before_the_first_check"])
+def test_final_status_from_pulsar_outlasting_the_grace_period_keeps_the_job(harness, tes_server, checked_first):
     tes_server.tasks[TASK_ID] = _task("COMPLETE", executor_logs=[{"exit_code": 0}])
     harness.job.state = model.Job.states.RUNNING
-    harness.check()
-    assert harness.watch_for(INTERVAL)
+    if checked_first:
+        harness.check()
+        assert harness.watch_for(INTERVAL)
     # Pulsar's message arrives; Galaxy finishes the job on a worker thread, and the job
     # stays running until that is done.
     harness.runner._update_job_state_for_status(harness.job_state_for(harness.job_wrapper), "complete")
