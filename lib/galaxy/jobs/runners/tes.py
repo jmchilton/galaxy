@@ -166,9 +166,12 @@ class TesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
             files_dir=job_wrapper.working_directory,
         )
         try:
-            if not self.prepare_job(job_wrapper, include_metadata=False, modify_command_for_container=False):
+            prepared = self.prepare_job(job_wrapper, include_metadata=False, modify_command_for_container=False)
+            # Dropped however preparing ended: it can fail or finish the job after build_command_line.
+            container = self._containers.pop(job_wrapper.job_id, None)
+            if not prepared:
                 return
-            container = self._containers.pop(job_wrapper.job_id)
+            assert container
             job_script = self.get_job_file(
                 job_wrapper, exit_code_path=job_state.exit_code_file, shell=job_wrapper.shell, galaxy_virtual_env=None
             )
@@ -177,7 +180,6 @@ class TesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
             task = self._build_task(job_wrapper, job_state, container, tes_params)
             task_id = tes_client_from_params(tes_params).create_task(task).id
         except Exception as e:
-            self._containers.pop(job_wrapper.job_id, None)
             log.exception("(%s) Failed to submit job as a TES task", job_wrapper.get_id_tag())
             job_wrapper.fail(f"Failed to submit job as a TES task: {describe_tes_error(e)}")
             return
