@@ -323,13 +323,15 @@ def test_task_dying_before_pulsar_reports_fails_the_job(harness, tes_server, cap
 
     assert tes_server.views_requested() == ["BASIC", "BASIC", "BASIC", "FULL"]
     [failure] = harness.failures
+    # Funnel logs only the executors that ran, so this is executor 0's log, but tesp-api
+    # stores one log like it for the whole task, so it isn't attributed.
     assert failure["message"] == (
         f"TES task {TASK_ID} ended in state EXECUTOR_ERROR before Pulsar reported a final job status. "
-        "Executor 0 (pulsar-submit) exited with code 1."
+        "The task exited with code 1."
     )
     assert len(failure["message"]) <= JOB_INFO_LENGTH
     details = failure["tool_stderr"]
-    assert f"Executor 0 (pulsar-submit, image {STAGING_IMAGE}) stderr, last lines:" in details
+    assert details.startswith("Task stderr, last lines:")
     assert "OSError: [Errno 30] Read-only file system: '/dependencies'" in details
     assert "galaxy/tool_util/deps/installable.py" in details
     assert "noise line 19" not in details
@@ -412,6 +414,43 @@ def test_failure_message_fits_job_info_with_long_image_names(harness, tes_server
     assert failure["message"].endswith("Executor 1 exited with code 137.")
     assert len(failure["message"]) <= JOB_INFO_LENGTH
     assert f"Executor 1 (image {long_image}) stderr, last lines:\nKilled" in failure["tool_stderr"]
+
+
+@pytest.mark.parametrize(
+    "state, exit_code, summary",
+    [
+        ("EXECUTOR_ERROR", 125, "The task exited with code 125."),
+        ("COMPLETE", 0, "The task exited with code 0."),
+        ("SYSTEM_ERROR", None, "The task reported no exit code."),
+    ],
+)
+def test_one_log_for_all_executors_is_not_attributed_to_one(harness, tes_server, state, exit_code, summary):
+    # tesp-api runs a task's executors as one Pulsar job and stores one log for them.
+    executor_log: dict[str, Any] = {"stderr": "+ docker run ...\nUnable to find image"}
+    if exit_code is not None:
+        executor_log["exit_code"] = exit_code
+    tes_server.tasks[TASK_ID] = _task(state, executor_logs=[executor_log])
+    harness.check()
+    assert not harness.watch_for(INTERVAL + GRACE + INTERVAL)
+
+    [failure] = harness.failures
+    assert failure["message"].endswith(f"final job status. {summary}")
+    assert "Executor" not in failure["message"]
+    assert "pulsar-submit" not in failure["message"]
+    assert failure["tool_stderr"] == "Task stderr, last lines:\n+ docker run ...\nUnable to find image"
+
+
+def test_logs_of_the_executors_that_ran_are_attributed_to_them(harness, tes_server):
+    # Funnel, TESK and tesp-api with per-executor logs record the executors that ran, up to the failing one.
+    tes_server.tasks[TASK_ID] = _task(
+        "EXECUTOR_ERROR", executor_logs=[{"exit_code": 0}, {"exit_code": 2, "stderr": "tool failed"}]
+    )
+    harness.check()
+    assert not harness.watch_for(INTERVAL + GRACE + INTERVAL)
+
+    [failure] = harness.failures
+    assert failure["message"].endswith("final job status. Executor 1 exited with code 2.")
+    assert failure["tool_stderr"].startswith("Executor 1 (image quay.io/biocontainers/samtools:1.21) stderr")
 
 
 def test_task_unknown_to_the_tes_server_fails_the_job(harness, tes_server):

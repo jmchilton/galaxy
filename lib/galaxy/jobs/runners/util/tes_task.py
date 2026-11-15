@@ -21,7 +21,10 @@ from pydantic import ValidationError
 if TYPE_CHECKING:
     from pulsar.client.tes_job_config import TesJobParams
     from pydantictes.api import TesClient
-    from pydantictes.models import TesTask
+    from pydantictes.models import (
+        TesExecutorLog,
+        TesTask,
+    )
 
 TES_TASK_NOT_FOUND = "NOT_FOUND"
 """Pseudo state for a task the TES server has no record of."""
@@ -90,7 +93,7 @@ def http_status_code(exception: BaseException) -> int | None:
 
 class TesTaskFailure(NamedTuple):
     message: str
-    """Why the job failed, naming the executor that failed, or ran last, and its exit code.
+    """Why the job failed, naming the executor that failed, or ran last, or the task, and its exit code.
 
     It becomes ``Job.info``, which is cut at 255 characters, so it names the
     executor without its image; ``executor_stderr`` has the image.
@@ -131,17 +134,23 @@ def describe_tes_task_failure(
                 index = i
                 break
         executor_log = executor_logs[index]
-        short_label = _executor_label(task, index, with_image=False)
+        per_executor = _logs_are_per_executor(task, executor_logs)
+        if per_executor:
+            label = _executor_label(task, index)
+            short_label = _executor_label(task, index, with_image=False)
+        else:
+            label = "Task"
+            short_label = "The task"
         if executor_log.exit_code in (None, -255):
             # pydantic-tes fills in -255 when the server reports no exit code.
             message = f"{message} {short_label} reported no exit code."
-        elif executor_log.exit_code == 0:
+        elif executor_log.exit_code == 0 and per_executor:
             message = f"{message} {short_label} ran last and exited with code 0."
         else:
             message = f"{message} {short_label} exited with code {executor_log.exit_code}."
         stderr = _tail(executor_log.stderr, STDERR_TAIL_LINES, secrets)
         if stderr:
-            executor_stderr = f"{_executor_label(task, index)} stderr, last lines:\n{stderr}"
+            executor_stderr = f"{label} stderr, last lines:\n{stderr}"
     system_logs = _tail("\n".join(attempt.system_logs or []), SYSTEM_LOG_TAIL_LINES, secrets)
     return TesTaskFailure(message, executor_stderr, system_logs)
 
@@ -185,6 +194,19 @@ def _pulsar_executor_arguments(task: "TesTask") -> list[str]:
         for argument in executor.command[1:]
         if not argument.startswith("-")
     ]
+
+
+def _logs_are_per_executor(task: "TesTask", executor_logs: list["TesExecutorLog"]) -> bool:
+    """Whether the attempt's executor logs belong to the task's executors in order.
+
+    Funnel, TESK and tesp-api with per-executor logs record the executors that ran,
+    up to the one that failed. tesp-api without them records one log for the whole
+    task. One log for several executors is therefore ambiguous and not attributed.
+    """
+    executor_count = len(task.executors or [])
+    if len(executor_logs) > executor_count:
+        return False
+    return not (len(executor_logs) == 1 and executor_count > 1)
 
 
 def _executor_label(task: "TesTask", index: int, with_image: bool = True) -> str:
