@@ -299,10 +299,11 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
     poll = True
     recovers_finishing_jobs = True
     client_manager_kwargs: dict[str, Any] = {}
+    pulsar_param_specs: dict[str, Any] = PULSAR_PARAM_SPECS
 
     def __init__(self, app, nworkers, **kwds):
         """Start the job runner."""
-        super().__init__(app, nworkers, runner_param_specs=PULSAR_PARAM_SPECS, **kwds)
+        super().__init__(app, nworkers, runner_param_specs=self.pulsar_param_specs, **kwds)
         galaxy_url = self.runner_params.galaxy_url
         if not galaxy_url:
             galaxy_url = app.config.galaxy_infrastructure_url
@@ -434,7 +435,7 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
             return None
         if job_state.job_wrapper.get_state() == model.Job.states.STOPPED:
             client = self.get_client_from_state(job_state)
-            client.kill()
+            self._kill_remote_job(client, job_state.job_wrapper, job_state.job_destination.params)
             self.mark_as_finished(job_state)
             return None
         if pulsar_status in ["failed", "lost"]:
@@ -1029,7 +1030,12 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
             job_id = job.job_runner_external_id
             log.debug(f"Attempt remote Pulsar kill of job with url {pulsar_url} and id {job_id}")
             client = self.get_client(job.destination_params, job_id, external_id=job_id)
-            client.kill()
+            self._kill_remote_job(client, job_wrapper, job.destination_params)
+
+    def _kill_remote_job(
+        self, client: "BaseJobClient", job_wrapper: "MinimalJobWrapper", destination_params: dict[str, Any]
+    ) -> None:
+        client.kill()
 
     def recover(self, job: model.Job, job_wrapper: "MinimalJobWrapper") -> None:
         """Recover jobs stuck in the queued/running/finishing state when Galaxy started."""
