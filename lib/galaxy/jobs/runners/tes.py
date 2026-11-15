@@ -6,7 +6,8 @@ TES task that any spec-following TES server can run:
 - TES ``inputs`` fetch every file the job reads from Galaxy's job files API
   (``GET /api/jobs/{id}/files?path=...&job_token=...``): input datasets with their
   metadata and extra files, every file of the job directory (job script, tool
-  script, config files) and tool directory files the job refers to.
+  script, config files) and the tool directory (only the files the job refers
+  to when it is large).
 - One executor runs Galaxy's own job script in the tool's container. Paths inside
   the container are Galaxy's absolute paths, as on the Kubernetes runner, so the
   command line needs no rewriting.
@@ -116,6 +117,9 @@ CORE_METRICS_FILES = ("galaxy_slots", "galaxy_memory_mb", "epoch_start", "epoch_
 TES_WRAPPER_SCRIPT = "tes_job_wrapper.sh"
 # Job directory files at most this large are searched for tool directory paths.
 MAX_SCANNED_FILE_SIZE = 1024 * 1024
+# Tool directories with at most this many files, test data excluded, are staged whole, so a
+# tool script finds the modules and data next to it. Larger ones stage only referenced files.
+MAX_TOOL_DIRECTORY_FILES = 200
 TES_WAITING_STATES = frozenset(["UNKNOWN", "QUEUED", "INITIALIZING", "PAUSED", "CANCELING"])
 TES_RUNNING_STATES = frozenset(["RUNNING"])
 UrlFor = Callable[[str, JobFilesScope], str]
@@ -178,6 +182,20 @@ def referenced_tool_files(tool_directory: str | None, texts: Iterable[str]) -> l
     return [path for path in expand_paths(sorted(referenced)) if in_directory(path, tool_directory)]
 
 
+def tool_directory_files(tool_directory: str | None) -> list[str]:
+    """Every file under ``tool_directory`` outside ``test-data`` and hidden directories, or none if there are too many."""
+    if not tool_directory:
+        return []
+    files: list[str] = []
+    for root, dirs, names in os.walk(tool_directory):
+        dirs[:] = sorted(name for name in dirs if name != "test-data" and not name.startswith("."))
+        files.extend(os.path.join(root, name) for name in sorted(names))
+        if len(files) > MAX_TOOL_DIRECTORY_FILES:
+            log.debug("Tool directory %s is too large to stage whole, staging the files the job names", tool_directory)
+            return []
+    return files
+
+
 def staged_input_paths(
     job_directory: str,
     input_paths: Iterable[str],
@@ -193,7 +211,8 @@ def staged_input_paths(
             with open(path, errors="replace") as fh:
                 texts.append(fh.read())
     staged: dict[str, None] = {}
-    for path in [*expand_paths(input_paths), *job_files, *referenced_tool_files(tool_directory, texts)]:
+    tool_files = [*referenced_tool_files(tool_directory, texts), *tool_directory_files(tool_directory)]
+    for path in [*expand_paths(input_paths), *job_files, *tool_files]:
         staged[os.path.abspath(path)] = None
     return list(staged)
 

@@ -77,30 +77,42 @@ def test_signed_urls_carry_a_token_for_their_path_and_scope():
         assert security.encode_id(7, kind="jobs_files") not in url
 
 
-def test_staged_input_paths(tmp_path):
+def _staging_fixture(tmp_path):
     job_dir = tmp_path / "jobs" / "7"
     tool_dir = tmp_path / "tools" / "mytool"
     dataset = _write(tmp_path / "objects" / "dataset_1.dat")
     metadata_file = _write(tmp_path / "objects" / "metadata_1.dat")
     extra_file = _write(tmp_path / "objects" / "dataset_1_files" / "sub" / "part.txt")
-    script = _write(tool_dir / "helper.py")
+    script = _write(tool_dir / "main.py")
     data_dir_file = _write(tool_dir / "data" / "table.tsv")
-    _write(tool_dir / "unused.py")
+    # Imported by main.py, never named in the job's files.
+    helper = _write(tool_dir / "helper.py")
+    _write(tool_dir / "test-data" / "input.fastq")
+    _write(tool_dir / ".hg" / "store")
     job_script = _write(job_dir / "galaxy_7.sh", f"python '{script}' --data {tool_dir}/data;\n")
     config = _write(job_dir / "working" / "config.yml", "key: value\n")
     output = _write(job_dir / "outputs" / "dataset_2.dat", "stale")
     missing = str(tmp_path / "objects" / "never_written.dat")
+    inputs = [dataset, metadata_file, str(tmp_path / "objects" / "dataset_1_files"), missing, dataset]
+    staged = staged_input_paths(str(job_dir), inputs, str(tool_dir), exclude=[output])
+    return staged, [dataset, metadata_file, extra_file], {job_script, config, script, data_dir_file}, helper
 
-    staged = staged_input_paths(
-        str(job_dir),
-        [dataset, metadata_file, str(tmp_path / "objects" / "dataset_1_files"), missing, dataset],
-        str(tool_dir),
-        exclude=[output],
-    )
 
-    assert staged[:3] == [dataset, metadata_file, extra_file]
-    assert set(staged[3:]) == {job_script, config, script, data_dir_file}
+def test_staged_input_paths(tmp_path):
+    staged, input_files, referenced, helper = _staging_fixture(tmp_path)
+
+    assert staged[:3] == input_files
+    # The whole tool directory, without test data and hidden directories.
+    assert set(staged[3:]) == referenced | {helper}
     assert len(staged) == len(set(staged))
+
+
+def test_staged_input_paths_of_a_large_tool_directory(tmp_path, monkeypatch):
+    monkeypatch.setattr(tes_runner, "MAX_TOOL_DIRECTORY_FILES", 2)
+    staged, input_files, referenced, _ = _staging_fixture(tmp_path)
+
+    assert staged[:3] == input_files
+    assert set(staged[3:]) == referenced
 
 
 def test_wrapper_script_keeps_the_exit_code_and_exits_zero(tmp_path):
