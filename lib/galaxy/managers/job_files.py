@@ -19,6 +19,7 @@ from galaxy.model.scoped_session import galaxy_scoped_session
 from galaxy.objectstore import BaseObjectStore
 from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.security.job_files_tokens import (
+    JOB_FILES_DIRECTORY_WRITE,
     JOB_FILES_READ,
     JOB_FILES_WRITE,
     JobFilesScope,
@@ -79,6 +80,25 @@ class JobFilesManager:
         job, path = self._authorize(encoded_job_id, path, job_key, job_token, JOB_FILES_WRITE)
         _assert_absolute(path)
         return self._write_staging_parent(job, path)
+
+    def authorize_directory_write(
+        self,
+        encoded_job_id: str,
+        directory: str | None,
+        rel_path: str,
+        job_key: str | None,
+        job_token: str | None = None,
+    ) -> tuple[str, str]:
+        """Return the file ``rel_path`` below ``directory`` names and a directory to stage its upload in.
+
+        For TES ``DIRECTORY`` outputs. A ``job_token`` must be a directory write token for ``directory``.
+        """
+        job, directory = self._authorize(encoded_job_id, directory, job_key, job_token, JOB_FILES_DIRECTORY_WRITE)
+        _assert_absolute(directory)
+        target = os.path.normpath(os.path.join(directory, rel_path))
+        if os.path.isabs(rel_path) or target == os.path.normpath(directory) or not util.in_directory(target, directory):
+            raise exceptions.ItemAccessibilityException("Job is not authorized to write to supplied path.")
+        return target, self._write_staging_parent(job, target)
 
     def _write_staging_parent(self, job: Job, path: str) -> str:
         working_directory = JobWorkingDirectory(job, self._object_store).resolve()

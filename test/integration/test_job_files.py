@@ -39,6 +39,7 @@ from galaxy import model
 from galaxy.job_execution.setup import JobWorkingDirectory
 from galaxy.model.base import ensure_object_added_to_session
 from galaxy.security.job_files_tokens import (
+    JOB_FILES_DIRECTORY_WRITE,
     JOB_FILES_READ,
     job_files_token,
     JOB_FILES_WRITE,
@@ -477,6 +478,53 @@ class TestJobFilesIntegration(integration_util.IntegrationTestCase):
         self._change_job_state(job.job, "ok")
         response = requests.get(url, params={"path": input_path, "job_token": token(input_path, JOB_FILES_READ)})
         _assert_insufficient_permissions(response)
+
+    def test_directory_put(self):
+        """Funnel and TESK upload a TES DIRECTORY output as one PUT per file to ``<url path>/<relative path>?<query>``."""
+        job = self._running_job()
+        tool_working = os.path.join(job.working_directory, "working")
+
+        def token(path: str, scope: JobFilesScope = JOB_FILES_DIRECTORY_WRITE) -> str:
+            return self._job_files_token(job, path, scope)
+
+        def put(rel_path: str, directory: str, data: bytes = b"x", **auth: str) -> requests.Response:
+            return requests.put(f"{job.files_url}/{rel_path}", params={"path": directory, **auth}, data=data)
+
+        # Funnel escapes each segment; TESK escapes everything but "/".
+        response = put("sub/a%20b%2Bc.txt", tool_working, b"discovered", job_token=token(tool_working))
+        api_asserts.assert_status_code_is_ok(response)
+        _assert_file_contents(os.path.join(tool_working, "sub", "a b+c.txt"), "discovered")
+        assert not _staging_dirs(job.working_directory)
+
+        # An output's extra files directory, authorized by the job key, staged outside it.
+        response = put("index.html", job.output_extra_files_path, b"page", job_key=job.job_key)
+        api_asserts.assert_status_code_is_ok(response)
+        _assert_file_contents(os.path.join(job.output_extra_files_path, "index.html"), "page")
+        assert not _staging_dirs(job.output_extra_files_path)
+        assert not _staging_dirs(os.path.dirname(job.output_path))
+
+        outside = self._test_driver.mkdtemp()
+        for rel_path, directory, auth in (
+            # A file write token, a token for another directory, a bad key.
+            ("x", tool_working, {"job_token": token(tool_working, JOB_FILES_WRITE)}),
+            ("x", tool_working, {"job_token": token(job.working_directory)}),
+            ("x", tool_working, {"job_key": "bad"}),
+            # Escapes from the directory, though the job may write there.
+            ("..%2Fescape", tool_working, {"job_token": token(tool_working)}),
+            ("sub/..%2F..%2Fescape", tool_working, {"job_token": token(tool_working)}),
+            (".", tool_working, {"job_token": token(tool_working)}),
+            # A directory outside the job's write locations, with a valid token for it.
+            ("x", outside, {"job_token": token(outside)}),
+        ):
+            _assert_insufficient_permissions(put(rel_path, directory, **auth))
+        assert not os.path.exists(os.path.join(job.working_directory, "escape"))
+        assert not os.path.exists(os.path.join(tool_working, "x"))
+        assert not os.listdir(outside)
+        api_asserts.assert_status_code_is(put("x", "relative", job_key=job.job_key), 400)
+        _assert_missing_attribute(put("x", tool_working))
+
+        self._change_job_state(job.job, "ok")
+        _assert_insufficient_permissions(put("late.txt", tool_working, job_token=token(tool_working)))
 
     def test_write_and_read_path_with_percent_escapes(self):
         job = self._running_job()

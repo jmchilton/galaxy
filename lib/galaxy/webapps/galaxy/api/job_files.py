@@ -199,7 +199,42 @@ class FastAPIJobFiles:
         job_key: JobKeyQueryParam = None,
         job_token: JobTokenQueryParam = None,
     ) -> dict[str, str]:
-        staging_dir = await anyio.to_thread.run_sync(self._start_upload, job_id, path, job_key, job_token, True)
+        staging_parent = await anyio.to_thread.run_sync(self.manager.authorize_write, job_id, path, job_key, job_token)
+        assert path
+        await self._replace_from_body(request, job_id, path, staging_parent)
+        return {"message": "ok"}
+
+    @router.put(
+        "/api/jobs/{job_id}/files/{rel_path:path}",
+        summary="Write a file below a directory of a job from the raw request body.",
+        description=(
+            f"{JOB_FILES_DESCRIPTION} For TES `DIRECTORY` outputs: Funnel and TESK upload each file of the directory "
+            "with a PUT to the output URL's path plus `/<relative path>`, keeping its query string. `path` is the "
+            "directory, and a `job_token` must be a directory token for it. The file is replaced, never appended to."
+        ),
+        public=True,
+        openapi_extra={
+            "requestBody": {"content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}}
+        },
+    )
+    async def replace_in_directory(
+        self,
+        request: Request,
+        job_id: JobIdPathParam,
+        rel_path: Annotated[str, Path(description="Path of the file relative to the directory `path`.")],
+        path: Annotated[str | None, Query(description="Absolute path of the directory.")] = None,
+        job_key: JobKeyQueryParam = None,
+        job_token: JobTokenQueryParam = None,
+    ) -> dict[str, str]:
+        target, staging_parent = await anyio.to_thread.run_sync(
+            self.manager.authorize_directory_write, job_id, path, rel_path, job_key, job_token
+        )
+        await self._replace_from_body(request, job_id, target, staging_parent)
+        return {"message": "ok"}
+
+    async def _replace_from_body(self, request: Request, job_id: str, target: str, staging_parent: str) -> None:
+        """Stream the raw body into ``staging_parent``, then move it to the already authorized ``target``."""
+        staging_dir = await anyio.to_thread.run_sync(_new_staging_dir, staging_parent)
         started = time.monotonic()
         try:
             body_path = os.path.join(staging_dir, "body")
@@ -208,16 +243,14 @@ class FastAPIJobFiles:
             except ClientDisconnect:
                 raise exceptions.RequestParameterInvalidException("Client disconnected during job files upload.")
             recheck = _long_upload(request, time.monotonic() - started)
-            await anyio.to_thread.run_sync(self._finish_replace, job_id, path, body_path, recheck)
+            await anyio.to_thread.run_sync(self._finish_replace, job_id, target, body_path, recheck)
         finally:
             await anyio.to_thread.run_sync(_remove_staging_dir, staging_dir)
-        return {"message": "ok"}
 
-    def _finish_replace(self, job_id: str, path: str | None, body_path: str, recheck: bool) -> None:
-        assert path
+    def _finish_replace(self, job_id: str, target: str, body_path: str, recheck: bool) -> None:
         if recheck:
             self.manager.assert_job_active(job_id)
-        self.manager.replace(path, body_path)
+        self.manager.replace(target, body_path)
 
     @router.post("/api/job_files/tus_hooks", include_in_schema=False)
     def tus_hooks(self) -> None:

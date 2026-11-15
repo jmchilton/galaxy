@@ -20,11 +20,17 @@ TES task that any spec-following TES server can run:
 - Galaxy learns the task's state by polling the TES server, then sets metadata
   and finishes the job locally.
 
+With ``tes_directory_outputs: true`` on the destination, the tool working
+directory and each output's extra files directory also go back as TES
+``DIRECTORY`` outputs, so discovered outputs, ``galaxy.json`` and output
+``extra_files`` work. Funnel and TESK upload each file with a PUT to the output
+URL's path plus ``/<relative path>``; tesp-api posts every file to the same URL,
+which Galaxy can't place, so leave it off there.
+
 Requirements: ``outputs_to_working_directory: true`` on the destination (every
 file the job writes is then in its job directory), a container for every tool, and
-TES workers that can reach ``galaxy_url``. Not handled: discovered outputs and
-output ``extra_files`` (their names aren't known before the job runs), reference
-data, resubmission and job directory cleanup on the TES side.
+TES workers that can reach ``galaxy_url``. Not handled: reference data,
+resubmission and job directory cleanup on the TES side.
 """
 
 import logging
@@ -71,6 +77,7 @@ from galaxy.jobs.runners.util.tes_task import (
     TES_TASK_NOT_FOUND,
 )
 from galaxy.security.job_files_tokens import (
+    JOB_FILES_DIRECTORY_WRITE,
     JOB_FILES_READ,
     job_files_token,
     JOB_FILES_WRITE,
@@ -141,6 +148,16 @@ def expand_paths(paths: Iterable[str]) -> list[str]:
     return files
 
 
+def directory_output_paths(job_directory: str, extra_files_paths: Iterable[str]) -> list[str]:
+    """Directories the task sends back whole: the tool working directory and the outputs' extra files directories."""
+    paths: dict[str, None] = {os.path.join(job_directory, "working"): None}
+    for path in extra_files_paths:
+        if not in_directory(path, job_directory):
+            raise Exception(f"Job output {path} is outside the job directory, which the TES runner can't stage.")
+        paths[os.path.abspath(path)] = None
+    return list(paths)
+
+
 def referenced_tool_files(tool_directory: str | None, texts: Iterable[str]) -> list[str]:
     """Files under ``tool_directory`` named in ``texts`` (job script, tool script, config files)."""
     if not tool_directory:
@@ -179,6 +196,7 @@ def wrapper_script(
     stderr_file: str,
     outputs: Iterable[str],
     precreated: Iterable[str] = (),
+    directories: Iterable[str] = (),
 ) -> str:
     """The executor's script: run Galaxy's job script, keep its exit code in a file, exit 0.
 
@@ -190,19 +208,26 @@ def wrapper_script(
     exits 0 and Galaxy reads the tool's exit code from the uploaded file. Funnel and
     TESK fail a task whose FILE output is missing, so every declared output is
     created, empty, after the job script if the job didn't write it.
+
+    ``directories`` (TES ``DIRECTORY`` outputs) are created before the job script
+    and lose their symlinks after it: TESK refuses a directory output with any
+    symlink in it, and Funnel one whose links leave the task.
     """
     q = shlex.quote
+    directories = list(directories)
     lines = [
         "#!/bin/sh",
         "# Written by Galaxy's TES runner. Runs Galaxy's job script, then always exits 0.",
         f"cd {q(job_directory)} || exit 0",
         # TES creates no empty directories; the job script creates working, outputs and configs itself.
         "mkdir -p home tmp metadata",
+        *([f"mkdir -p {' '.join(q(d) for d in directories)}"] if directories else []),
         *_touch_loop(precreated),
         f"/bin/bash {q(job_script)} > {q(stdout_file)} 2> {q(stderr_file)}",
         "rc=$?",
         f"[ -s {q(exit_code_file)} ] || echo $rc > {q(exit_code_file)}",
         *_touch_loop(outputs),
+        *([f"find {' '.join(q(d) for d in directories)} -type l -exec rm -f {{}} +"] if directories else []),
         "exit 0",
         "",
     ]
@@ -233,6 +258,7 @@ def build_tes_task(
     url_for: UrlFor,
     resources: TesResources | None = None,
     env: dict[str, str] | None = None,
+    directory_paths: Iterable[str] = (),
 ) -> TesTask:
     """A TES task that stages ``input_paths`` in, runs ``wrapper`` in ``image`` and stages ``output_paths`` out.
 
@@ -242,6 +268,10 @@ def build_tes_task(
     inputs = [TesInput(url=url_for(path, JOB_FILES_READ), path=path, type=TesFileType.FILE) for path in input_paths]
     inputs.append(TesInput(content=wrapper, path=wrapper_path, type=TesFileType.FILE))
     outputs = [TesOutput(url=url_for(path, JOB_FILES_WRITE), path=path, type=TesFileType.FILE) for path in output_paths]
+    outputs.extend(
+        TesOutput(url=url_for(path, JOB_FILES_DIRECTORY_WRITE), path=path, type=TesFileType.DIRECTORY)
+        for path in directory_paths
+    )
     executor = TesExecutor(image=image, command=["/bin/sh", wrapper_path], workdir=job_directory, env=env or None)
     return TesTask(
         name=name,
@@ -365,6 +395,12 @@ class TesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
             job_wrapper.tool.tool_dir,
             exclude=output_paths,
         )
+        directory_paths: list[str] = []
+        if asbool(job_wrapper.get_destination_configuration("tes_directory_outputs", False)):
+            directory_paths = directory_output_paths(
+                job_directory,
+                [str(path.false_extra_files_path) for path in job_wrapper.job_io.get_output_fnames()],
+            )
         resources = TesResources(cpu_cores=tes_params.cpu_cores, ram_gb=tes_params.ram_gb, disk_gb=tes_params.disk_gb)
         wrapper = wrapper_script(
             job_directory,
@@ -374,6 +410,7 @@ class TesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
             job_state.error_file,
             output_paths,
             precreated=[path for path in output_paths if os.path.exists(path)],
+            directories=directory_paths,
         )
         return build_tes_task(
             name=f"galaxy-{job_wrapper.job_id}",
@@ -387,6 +424,7 @@ class TesJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
             ),
             resources=resources,
             env=executor_env(resources),
+            directory_paths=directory_paths,
         )
 
     def _output_paths(
