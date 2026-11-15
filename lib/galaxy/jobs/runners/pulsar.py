@@ -72,7 +72,9 @@ from galaxy.jobs.runners.util.tes_task import (
     TES_FINISHED_STATES,
     tes_known_secrets,
     TES_NOTHING_TO_CANCEL_STATES,
+    tes_task_key,
     TES_TASK_NOT_FOUND,
+    TesTaskKey,
 )
 from galaxy.model.base import check_database_connection
 from galaxy.model.store.discover import safe_path_from_directory
@@ -1420,16 +1422,6 @@ PULSAR_TES_PARAM_SPECS: dict[str, Any] = dict(
 )
 
 PULSAR_FINAL_STATUSES = ("complete", "cancelled", "failed", "lost")
-
-# A TES task's server URL and task id. Nothing in the TES spec makes task ids unique
-# across servers (tesp-api's are MongoDB ObjectIds), and destinations can use different servers.
-TesTaskKey = tuple[str | None, str]
-
-
-def tes_task_key(job_state: AsynchronousJobState) -> TesTaskKey:
-    task_id = job_state.job_id
-    assert task_id
-    return job_state.job_destination.params.get("tes_url"), task_id
 
 
 @dataclass

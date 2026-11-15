@@ -27,6 +27,8 @@ if TYPE_CHECKING:
         TesTaskLog,
     )
 
+    from galaxy.jobs.runners import AsynchronousJobState
+
 TES_TASK_NOT_FOUND = "NOT_FOUND"
 """Pseudo state for a task the TES server has no record of."""
 
@@ -37,6 +39,10 @@ TES_FINISHED_STATES = frozenset(
 
 TES_NOTHING_TO_CANCEL_STATES = TES_FINISHED_STATES | {"CANCELING"}
 """States in which cancelling the task has nothing left to do."""
+
+# A TES task's server URL and task id. Nothing in the TES spec makes task ids unique
+# across servers (tesp-api's are MongoDB ObjectIds), and destinations can use different servers.
+TesTaskKey = tuple[str | None, str]
 
 STDERR_TAIL_LINES = 20
 SYSTEM_LOG_TAIL_LINES = 10
@@ -65,6 +71,12 @@ _ERROR_LEVELS = frozenset(["error", "critical", "fatal"])
 _FAILURE_WORDS = re.compile(
     r"fail|error|refused|denied|too long|not found|exception|cannot|can't|unable", re.IGNORECASE
 )
+
+
+def tes_task_key(job_state: "AsynchronousJobState") -> TesTaskKey:
+    task_id = job_state.job_id
+    assert task_id
+    return job_state.job_destination.params.get("tes_url"), task_id
 
 
 def fetch_tes_task_state(tes_client: "TesClient", task_id: str) -> str:
