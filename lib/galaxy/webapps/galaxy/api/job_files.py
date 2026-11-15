@@ -84,6 +84,9 @@ UPLOAD_FORM_SCHEMA = {
         "__file": {"type": "string", "format": "binary", "description": "Alias of `file`."},
     },
 }
+RAW_BODY_OPENAPI = {
+    "requestBody": {"content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}}
+}
 
 
 @router.cbv
@@ -187,9 +190,7 @@ class FastAPIJobFiles:
             "The file is replaced, never appended to."
         ),
         public=True,
-        openapi_extra={
-            "requestBody": {"content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}}
-        },
+        openapi_extra=RAW_BODY_OPENAPI,
     )
     async def replace(
         self,
@@ -213,9 +214,7 @@ class FastAPIJobFiles:
             "directory, and a `job_token` must be a directory token for it. The file is replaced, never appended to."
         ),
         public=True,
-        openapi_extra={
-            "requestBody": {"content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}}
-        },
+        openapi_extra=RAW_BODY_OPENAPI,
     )
     async def replace_in_directory(
         self,
