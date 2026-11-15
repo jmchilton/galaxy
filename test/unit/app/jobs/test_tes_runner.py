@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import subprocess
+import time
 from queue import Queue
 from typing import cast
 from urllib.parse import (
@@ -32,6 +33,7 @@ from galaxy.jobs.runners.tes import (
     TesJobRunner,
     wrapper_script,
 )
+from galaxy.jobs.runners.util import tes_task
 from galaxy.security.idencoding import IdEncodingHelper
 from galaxy.security.job_files_tokens import (
     JOB_FILES_DIRECTORY_WRITE,
@@ -423,6 +425,21 @@ def test_tes_server_errors_never_fail_the_job(runner, tes_server, clock):
 
     assert job_wrapper.failures == []
     assert _finished(runner) == [job_state]
+
+
+def test_a_tes_server_that_hangs_does_not_stall_the_monitor(runner, tes_server, clock, monkeypatch):
+    job_wrapper = _job_wrapper(runner, tes_server.url, state=model.Job.states.RUNNING)
+    job_state = _watched(job_wrapper)
+    tes_server.tasks[TASK_ID] = _task("COMPLETE")
+    tes_server.delay = 5
+    monkeypatch.setattr(tes_task, "TES_STATE_REQUEST_TIMEOUT", 0.1)
+
+    started = time.monotonic()
+    assert runner.check_watched_item(job_state) is job_state
+    assert time.monotonic() - started < 2
+
+    assert job_wrapper.failures == []
+    assert _finished(runner) == []
 
 
 def test_poll_stops_watching_a_stopped_job(runner, tes_server, clock):

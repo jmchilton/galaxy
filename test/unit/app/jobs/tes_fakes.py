@@ -3,6 +3,7 @@
 import copy
 import json
 import threading
+import time
 from dataclasses import (
     dataclass,
     field,
@@ -37,6 +38,8 @@ class FakeTesServer:
         self.tasks: dict[str, dict[str, Any]] = {}
         self.requests: list[tuple[str, str]] = []
         self.error_status: int | None = None
+        # Seconds each GET waits before answering, as a server that hangs does.
+        self.delay = 0.0
         self.cancel_status = 200
         self.cancel_body: dict[str, Any] = {}
         server = self
@@ -47,6 +50,7 @@ class FakeTesServer:
                 task_id = url.path.rsplit("/", 1)[-1]
                 view = parse_qs(url.query).get("view", ["MINIMAL"])[0]
                 server.requests.append((task_id, view))
+                time.sleep(server.delay)
                 if server.error_status:
                     self._send(server.error_status, {"error": "backend unavailable"})
                 elif task_id not in server.tasks:
