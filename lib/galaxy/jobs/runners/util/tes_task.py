@@ -148,6 +148,17 @@ def describe_tes_task_failure(
         message = f"TES task {task_id} completed, but Pulsar never reported a final job status."
     else:
         message = f"TES task {task_id} ended in state {task_state} before Pulsar reported a final job status."
+    return describe_ended_tes_task(message, task_state, task, secrets)
+
+
+def describe_ended_tes_task(
+    message: str, task_state: str, task: "TesTask | None", secrets: Iterable[str] = ()
+) -> TesTaskFailure:
+    """``message``, followed by a summary of the last attempt of ``task``, the FULL view of a task that ended in ``task_state``.
+
+    ``task`` is None when it could not be read. ``secrets`` and the arguments of
+    Pulsar's own executors are redacted from the logs.
+    """
     if task is None or not task.logs:
         return TesTaskFailure(message, "", "")
     secrets = [*secrets, *_pulsar_executor_arguments(task)]
