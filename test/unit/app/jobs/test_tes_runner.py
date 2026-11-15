@@ -215,28 +215,46 @@ def test_directory_output_paths(tmp_path):
         directory_output_paths(job_dir, [str(tmp_path / "objects" / "dataset_2_files")])
 
 
-def test_wrapper_script_creates_directory_outputs_and_drops_their_symlinks(tmp_path):
-    job_dir = str(tmp_path)
+def test_wrapper_script_creates_directory_outputs_and_replaces_their_symlinks(tmp_path):
+    job_dir = str(tmp_path / "job")
     working = os.path.join(job_dir, "working")
     extra_files = os.path.join(job_dir, "outputs", "dataset_2_files")
     elsewhere = _write(tmp_path / "elsewhere.txt", "outside")
     job_script = _write(
-        tmp_path / "galaxy_7.sh",
-        f"mkdir -p working/sub\necho discovered > working/sub/out_1.txt\nln -s {elsewhere} working/sub/link\n"
-        f"ln -s /nonexistent {extra_files}/dangling\necho page > {extra_files}/index.html\n",
+        tmp_path / "job" / "galaxy_7.sh",
+        "mkdir -p working/sub\necho discovered > working/sub/out_1.txt\n"
+        f"ln -s {elsewhere} working/sub/link\nln -s out_1.txt working/sub/alias.txt\n"
+        f"ln -s /nonexistent {extra_files}/dangling\necho page > {extra_files}/index.html\n"
+        f"ln -s index.html {extra_files}/default.html\nln -s ../../working/sub {extra_files}/subdir\n",
     )
-    ec = str(tmp_path / "galaxy_7.ec")
+    ec = os.path.join(job_dir, "galaxy_7.ec")
     script = wrapper_script(
-        job_dir, job_script, ec, str(tmp_path / "o"), str(tmp_path / "e"), [ec], directories=[working, extra_files]
+        job_dir,
+        job_script,
+        ec,
+        os.path.join(job_dir, "o"),
+        os.path.join(job_dir, "e"),
+        [ec],
+        directories=[working, extra_files],
     )
 
     assert subprocess.run(["/bin/sh", "-c", script], check=False).returncode == 0
     assert open(os.path.join(working, "sub", "out_1.txt")).read() == "discovered\n"
     assert open(os.path.join(extra_files, "index.html")).read() == "page\n"
     # TESK refuses a DIRECTORY output with any symlink in it, Funnel one that leaves the task.
+    # Links to files in the job directory become copies, so their contents still go back.
+    alias = os.path.join(working, "sub", "alias.txt")
+    default = os.path.join(extra_files, "default.html")
+    for copy in (alias, default):
+        assert not os.path.islink(copy)
+    assert open(alias).read() == "discovered\n"
+    assert open(default).read() == "page\n"
+    # Links that leave the job directory, dangle or name a directory are removed.
+    for removed in ("dangling", "subdir"):
+        assert not os.path.lexists(os.path.join(extra_files, removed))
     assert not os.path.lexists(os.path.join(working, "sub", "link"))
-    assert not os.path.lexists(os.path.join(extra_files, "dangling"))
     assert open(elsewhere).read() == "outside"
+    assert not [name for name in os.listdir(os.path.join(working, "sub")) if name.endswith(".galaxy_copy")]
 
 
 @pytest.fixture

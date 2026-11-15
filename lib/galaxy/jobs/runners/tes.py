@@ -119,6 +119,13 @@ MAX_SCANNED_FILE_SIZE = 1024 * 1024
 TES_WAITING_STATES = frozenset(["UNKNOWN", "QUEUED", "INITIALIZING", "PAUSED", "CANCELING"])
 TES_RUNNING_STATES = frozenset(["RUNNING"])
 UrlFor = Callable[[str, JobFilesScope], str]
+# Run by find with the job directory as $0 and symlinks as arguments: a link to a file
+# in the job directory becomes a copy of it, any other link is removed.
+REPLACE_LINKS = (
+    'for l; do t=$(readlink -f "$l") || t=; case "$t" in "$0"/*) '
+    'if [ -f "$t" ] && cp "$t" "$l.galaxy_copy" && mv -f "$l.galaxy_copy" "$l"; then continue; fi;; esac; '
+    'rm -f "$l" "$l.galaxy_copy"; done'
+)
 
 
 def job_files_url(galaxy_url: str, encoded_job_id: str, path: str, job_token: str) -> str:
@@ -214,7 +221,9 @@ def wrapper_script(
 
     ``directories`` (TES ``DIRECTORY`` outputs) are created before the job script
     and lose their symlinks after it: TESK refuses a directory output with any
-    symlink in it, and Funnel one whose links leave the task.
+    symlink in it, and Funnel one whose links leave the task. A link to a file
+    in the job directory is replaced by a copy of that file, so its contents
+    still go back; any other link is removed.
     """
     q = shlex.quote
     directories = list(directories)
@@ -230,7 +239,13 @@ def wrapper_script(
         "rc=$?",
         f"[ -s {q(exit_code_file)} ] || echo $rc > {q(exit_code_file)}",
         *_touch_loop(outputs),
-        *([f"find {' '.join(q(d) for d in directories)} -type l -exec rm -f {{}} +"] if directories else []),
+        *(
+            [
+                f"find {' '.join(q(d) for d in directories)} -type l -exec sh -c {q(REPLACE_LINKS)} {q(job_directory)} {{}} +"
+            ]
+            if directories
+            else []
+        ),
         "exit 0",
         "",
     ]
