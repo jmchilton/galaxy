@@ -292,6 +292,10 @@ PULSAR_PARAM_SPECS = dict(
 )
 
 
+# A repeated complete/cancelled status needs no handling once the job reached these. Deleted jobs
+# are excluded - finishing them is what cleans up their working directory and outputs.
+FINISH_HANDLED_STATES = [model.Job.states.OK, model.Job.states.ERROR, model.Job.states.FINISHING]
+
 PARAMETER_SPECIFICATION_REQUIRED = object()
 PARAMETER_SPECIFICATION_IGNORED = object()
 
@@ -449,6 +453,9 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
     ) -> AsynchronousJobState | None:
         log.debug("(%s) Received status update: %s", job_state.job_id, pulsar_status)
         if pulsar_status in ["complete", "cancelled"]:
+            if job_state.job_wrapper.get_state() in FINISH_HANDLED_STATES:
+                log.debug("(%s) Job already finishing, ignoring repeated %s status", job_state.job_id, pulsar_status)
+                return None
             self.mark_as_finished(job_state)
             return None
         if job_state.job_wrapper.get_state() == model.Job.states.STOPPED:

@@ -500,6 +500,31 @@ def test_final_status_from_pulsar_outlasting_the_grace_period_keeps_the_job(harn
     assert harness.failures == []
 
 
+@pytest.mark.parametrize("status", ["complete", "cancelled"])
+def test_late_final_status_for_a_job_failed_by_the_checks_is_ignored(harness, tes_server, status):
+    tes_server.tasks[TASK_ID] = _task("COMPLETE", executor_logs=[{"exit_code": 0}])
+    harness.job.state = model.Job.states.RUNNING
+    harness.check()
+    assert not harness.watch_for(INTERVAL + GRACE + INTERVAL)
+    assert harness.job.state == model.Job.states.ERROR
+
+    # Galaxy's message consumer was down past the grace period; Pulsar's status arrives now.
+    assert harness.runner._update_job_state_for_status(harness.job_state, status) is None
+
+    assert harness.runner.work_queue.empty()
+
+
+@pytest.mark.parametrize("state", [model.Job.states.DELETING, model.Job.states.DELETED])
+def test_final_status_for_a_deleted_job_still_finishes_it(harness, state):
+    # Finishing a deleted job is what cleans up its working directory and outputs.
+    harness.job.state = state
+
+    assert harness.runner._update_job_state_for_status(harness.job_state, "cancelled") is None
+
+    method, _ = harness.runner.work_queue.get_nowait()
+    assert method == harness.runner.finish_job
+
+
 def test_errors_while_checking_do_not_stop_the_monitor(harness, tes_server):
     tes_server.tasks[TASK_ID] = _task("RUNNING")
     harness.check()
