@@ -41,6 +41,7 @@ import shlex
 from collections.abc import (
     Callable,
     Iterable,
+    Iterator,
 )
 from time import (
     monotonic,
@@ -205,16 +206,22 @@ def staged_input_paths(
     """Every file the job may read, as absolute paths on Galaxy's disk, without duplicates."""
     excluded = {os.path.abspath(path) for path in exclude}
     job_files = [path for path in expand_paths([job_directory]) if os.path.abspath(path) not in excluded]
-    texts = []
-    for path in job_files:
-        if os.path.getsize(path) <= MAX_SCANNED_FILE_SIZE:
-            with open(path, errors="replace") as fh:
-                texts.append(fh.read())
     staged: dict[str, None] = {}
-    tool_files = [*referenced_tool_files(tool_directory, texts), *tool_directory_files(tool_directory)]
+    tool_files = [
+        *referenced_tool_files(tool_directory, _scanned_texts(job_files)),
+        *tool_directory_files(tool_directory),
+    ]
     for path in [*expand_paths(input_paths), *job_files, *tool_files]:
         staged[os.path.abspath(path)] = None
     return list(staged)
+
+
+def _scanned_texts(paths: Iterable[str]) -> Iterator[str]:
+    """Contents of each file at ``paths`` no larger than ``MAX_SCANNED_FILE_SIZE``, read one at a time."""
+    for path in paths:
+        if os.path.getsize(path) <= MAX_SCANNED_FILE_SIZE:
+            with open(path, errors="replace") as fh:
+                yield fh.read()
 
 
 def wrapper_script(
