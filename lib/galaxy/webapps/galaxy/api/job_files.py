@@ -7,6 +7,7 @@ import os
 import shutil
 import tempfile
 import time
+from collections.abc import AsyncIterator
 from typing import Annotated
 from urllib.parse import parse_qsl
 
@@ -44,7 +45,7 @@ log = logging.getLogger(__name__)
 router = Router(tags=["jobs"])
 
 UPLOAD_STAGING_PREFIX = ".job_files_upload_"
-PARSER_WRITE_SIZE = 256 * 1024
+STREAM_WRITE_SIZE = 256 * 1024
 RECHECK_BODY_SIZE = 1024 * 1024
 RECHECK_SECONDS = 1.0
 
@@ -142,11 +143,9 @@ class FastAPIJobFiles:
         if query_auth:
             # Authorize before reading the body so the upload is staged on the target's filesystem and renamed.
             staging_parent = self.manager.authorize_write(job_id, path, job_key)
-            util.safe_makedirs(staging_parent)
         else:
             staging_parent = self.manager.upload_dir
-        release_request_sessions()
-        return tempfile.mkdtemp(prefix=UPLOAD_STAGING_PREFIX, dir=staging_parent)
+        return _new_staging_dir(staging_parent)
 
     def _finish_upload(
         self, job_id: str, params: dict[str, str], uploads: dict[str, str], query_auth: bool, recheck: bool
@@ -178,6 +177,12 @@ class FastAPIJobFiles:
         return None
 
 
+def _new_staging_dir(staging_parent: str) -> str:
+    util.safe_makedirs(staging_parent)
+    release_request_sessions()
+    return tempfile.mkdtemp(prefix=UPLOAD_STAGING_PREFIX, dir=staging_parent)
+
+
 def _remove_staging_dir(staging_dir: str) -> None:
     try:
         shutil.rmtree(staging_dir)
@@ -188,6 +193,22 @@ def _remove_staging_dir(staging_dir: str) -> None:
 def _long_upload(request: Request, elapsed: float) -> bool:
     content_length = request.headers.get("content-length")
     return content_length is None or int(content_length) >= RECHECK_BODY_SIZE or elapsed >= RECHECK_SECONDS
+
+
+async def _body_batches(request: Request) -> AsyncIterator[bytes]:
+    """The request body in batches of at least STREAM_WRITE_SIZE, so each threadpool call handles one.
+
+    The last batch may be shorter, and is empty for an empty body.
+    """
+    pending: list[bytes] = []
+    pending_size = 0
+    async for chunk in request.stream():
+        pending.append(chunk)
+        pending_size += len(chunk)
+        if pending_size >= STREAM_WRITE_SIZE:
+            yield b"".join(pending)
+            pending, pending_size = [], 0
+    yield b"".join(pending)
 
 
 def _finalize_parser(parser: FormParser, remaining: bytes, files: list[File]) -> None:
@@ -222,16 +243,13 @@ async def _parse_body(request: Request, upload_dir: str) -> tuple[dict[str, str]
             files.append,
             config={"UPLOAD_DIR": upload_dir, "UPLOAD_DELETE_TMP": False, "MAX_MEMORY_FILE_SIZE": 0},
         )
-        # Hand the parser at least PARSER_WRITE_SIZE per threadpool call; a small upload takes a single call.
-        pending: list[bytes] = []
-        pending_size = 0
-        async for chunk in request.stream():
-            pending.append(chunk)
-            pending_size += len(chunk)
-            if pending_size >= PARSER_WRITE_SIZE:
-                await anyio.to_thread.run_sync(parser.write, b"".join(pending))
-                pending, pending_size = [], 0
-        await anyio.to_thread.run_sync(_finalize_parser, parser, b"".join(pending), files)
+        # The last batch goes with finalizing, so a small upload takes a single threadpool call.
+        last = b""
+        async for batch in _body_batches(request):
+            if last:
+                await anyio.to_thread.run_sync(parser.write, last)
+            last = batch
+        await anyio.to_thread.run_sync(_finalize_parser, parser, last, files)
         uploads = {
             file.field_name.decode(): os.fsdecode(file.actual_file_name)
             for file in files
