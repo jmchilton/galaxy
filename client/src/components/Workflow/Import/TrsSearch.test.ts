@@ -81,4 +81,39 @@ describe("TrsSearch", () => {
 
         expect((input.element as HTMLInputElement).value).toBe("");
     });
+
+    it("ignores a response to a search that a newer search replaced", async () => {
+        let resolveFirst: () => void = () => {};
+        const firstHeld = new Promise<void>((resolve) => {
+            resolveFirst = resolve;
+        });
+        server.use(
+            http.untyped.get("/api/trs_consume/servers", () => HttpResponse.json(TRS_SERVERS)),
+            http.untyped.get("/api/trs_search", async ({ request }) => {
+                const query = new URL(request.url).searchParams.get("query");
+                if (query === "first") {
+                    await firstHeld;
+                }
+                return HttpResponse.json([{ id: query, name: `${query} workflow`, description: "" }]);
+            }),
+        );
+
+        const wrapper = mount(TrsSearch as object, { localVue });
+        await flushPromises();
+        const input = wrapper.find("#trs-search-query");
+        await input.setValue("first");
+        await wait(DEBOUNCE_WAIT);
+        await input.setValue("second");
+        await wait(DEBOUNCE_WAIT);
+        await flushPromises();
+        expect(wrapper.text()).toContain("second workflow");
+
+        resolveFirst();
+        await wait(50);
+        await flushPromises();
+
+        expect(wrapper.text()).toContain("second workflow");
+        expect(wrapper.text()).not.toContain("first workflow");
+        expect(wrapper.text()).not.toContain("Searching for");
+    });
 });
