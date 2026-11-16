@@ -20,6 +20,13 @@ class TestManageInformation(SeleniumTestCase):
         self.hover(api_key_input)
         hover_value = api_key_input.get_attribute("value")
         assert new_api_key == hover_value
+        # The key is masked until the show/hide button reveals it
+        show_hide_button = self.components.preferences.api_key_show_hide_button
+        assert api_key_input.get_attribute("type") == "password"
+        show_hide_button.wait_for_and_click()
+        assert self.components.preferences.api_key_input.wait_for_visible().get_attribute("type") == "text"
+        show_hide_button.wait_for_and_click()
+        assert self.components.preferences.api_key_input.wait_for_visible().get_attribute("type") == "password"
 
     @selenium_test
     def test_copy_api_key(self):
