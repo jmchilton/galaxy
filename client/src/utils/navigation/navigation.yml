@@ -100,6 +100,7 @@ preferences:
     get_new_key: '.create-button'
     api_key_input: '[data-test-id="api-key-input"]'
     api_key_copy_button: '[data-description="copy api key"]'
+    api_key_show_hide_button: '[data-description="show or hide api key"]'
     object_store: '#select-preferred-object-store'
     delete_account: '#g-card-delete-account'
     delete_account_input: '#name-input'
