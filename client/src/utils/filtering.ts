@@ -562,7 +562,8 @@ export default class Filtering<T> {
      * @param sourceFilterText The filterText `filters` came from, if any. Tokenized once to recover
      *                      intent `getFiltersForText` discards: whether `autoFilterKey`'s value was
      *                      unspecified text (write back as plain text) vs an explicit `key:value`
-     *                      token, and which values the user quoted (re-emit quoted).
+     *                      token, and which values the user quoted (re-emit quoted). Without an
+     *                      `autoFilterKey`, its plain words are written first, as typed.
      * @returns Parsed filter text string
      * */
     getFilterText(filters: Record<string, T>, backendFormatted = false, sourceFilterText?: string): string {
