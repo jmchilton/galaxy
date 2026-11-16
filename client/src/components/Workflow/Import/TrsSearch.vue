@@ -58,11 +58,10 @@ const searchHelp = computed(() => {
 
 const services = new Services();
 
-let searchCount = 0;
-
 // A query typed before the TRS server list has loaded is searched once a server is selected.
-watch([query, trsServer], async () => {
-    const searchId = ++searchCount;
+watch([query, trsServer], async (_new, _old, onCleanup) => {
+    let superseded = false;
+    onCleanup(() => (superseded = true));
     if (query.value == "" || trsServer.value == "") {
         results.value = [];
         loading.value = false;
@@ -75,18 +74,17 @@ watch([query, trsServer], async () => {
         const response = await axios.get(withPrefix("/api/trs_search"), {
             params: { query: query.value, trs_server: trsServer.value },
         });
-        // ignore responses to searches that a newer search has replaced
-        if (searchId === searchCount) {
+        if (!superseded) {
             results.value = response.data;
         }
     } catch (e) {
-        if (searchId === searchCount) {
+        if (!superseded) {
             errorMessage.value = errorMessageAsString(e);
         }
-    }
-
-    if (searchId === searchCount) {
-        loading.value = false;
+    } finally {
+        if (!superseded) {
+            loading.value = false;
+        }
     }
 });
 
