@@ -62,9 +62,13 @@ describe("TrsSearch", () => {
     });
 
     it("clears the query when switching to another TRS server", async () => {
+        const searches: (string | null)[] = [];
         server.use(
             http.untyped.get("/api/trs_consume/servers", () => HttpResponse.json(TRS_SERVERS)),
-            http.untyped.get("/api/trs_search", () => HttpResponse.json([])),
+            http.untyped.get("/api/trs_search", ({ request }) => {
+                searches.push(new URL(request.url).searchParams.get("trs_server"));
+                return HttpResponse.json([{ id: "dockstore-result", name: "dockstore workflow", description: "" }]);
+            }),
         );
 
         const wrapper = mount(TrsSearch as object, { localVue });
@@ -74,12 +78,16 @@ describe("TrsSearch", () => {
         await wait(DEBOUNCE_WAIT);
         await flushPromises();
         expect((input.element as HTMLInputElement).value).toBe(QUERY);
+        expect(wrapper.text()).toContain("dockstore workflow");
 
         const workflowhub = wrapper.findAll(".dropdown-item").filter((item) => item.text() === "workflowhub");
         await workflowhub.at(0).trigger("click");
+        await wait(DEBOUNCE_WAIT);
         await flushPromises();
 
         expect((input.element as HTMLInputElement).value).toBe("");
+        expect(searches).toEqual(["dockstore"]);
+        expect(wrapper.text()).not.toContain("dockstore workflow");
     });
 
     it("ignores a response to a search that a newer search replaced", async () => {
