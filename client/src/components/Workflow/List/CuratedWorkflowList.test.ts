@@ -14,6 +14,7 @@ import { Toast } from "@/composables/toast";
 import { useUserStore } from "@/stores/userStore";
 
 import CuratedWorkflowList from "./CuratedWorkflowList.vue";
+import GLink from "@/components/BaseComponents/GLink.vue";
 import GModal from "@/components/BaseComponents/GModal.vue";
 import FilterMenu from "@/components/Common/FilterMenu.vue";
 
@@ -228,6 +229,17 @@ describe("CuratedWorkflowList", () => {
         expect(wrapper.find("#no-curated-workflow-found-invalid").exists()).toBe(true);
         expect(wrapper.find("#no-curated-workflow-found-invalid").text()).toContain("owner");
         expect(catalogQueries).toHaveLength(1);
+    });
+
+    it("keeps free text when invalid filters are removed from the query", async () => {
+        const wrapper = await mountCuratedList(iwcPage(["a"]));
+
+        await setFilterText(wrapper, "flye owner:bob");
+        await wrapper.find("#no-curated-workflow-found-invalid").findComponent(GLink).trigger("click");
+        await flushPromises();
+
+        expect(wrapper.findComponent(FilterMenu).props("filterText")).toBe("flye");
+        expect(catalogQueries.at(-1)!.get("search")).toBe("flye");
     });
 
     it("renders the latest request's rows even when an older response lands after it", async () => {
