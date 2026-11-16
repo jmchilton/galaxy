@@ -592,6 +592,7 @@ const groupIndicators = computed(() => (group: ServiceCredentialGroupResponse): 
                         color="blue"
                         outline
                         title="Create a new group of credentials"
+                        data-description="create credentials group"
                         :disabled="editingGroups && Object.keys(editingGroups).length > 0"
                         @click="createTemporaryGroup">
                         <FontAwesomeIcon :icon="faPlus" />

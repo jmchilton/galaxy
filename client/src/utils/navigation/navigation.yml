@@ -993,6 +993,11 @@ window_manager:
 tool_form:
   selectors:
     tool_version: '[data-description="galaxy tool version"]'
+    credentials_manage: '[data-description="manage tool credentials"]'
+    credentials_service: 'dialog.g-dialog[open] .service-title'
+    credentials_create_group: '[data-description="create credentials group"]'
+    credentials_group_name_input: 'dialog.g-dialog[open] input[id$$="-name-input"]'
+    credentials_group_name_error: 'dialog.g-dialog[open] [id$$="-name"] .invalid-feedback'
     options: '.tool-dropdown'
     execute: 'button#execute'
     parameter_div: 'div.ui-form-element[id="form-element-${parameter}"]'

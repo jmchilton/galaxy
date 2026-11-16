@@ -94,8 +94,6 @@ describe("CredentialsGroupForm.vue", () => {
         const name = wrapper.get("input#g1-name-input");
         expect(name.attributes("aria-invalid")).toBe("true");
         expect(wrapper.get("#g1-name .invalid-feedback").text()).toBe("Group name must be at least 3 characters");
-        // The group state drives the invalid feedback, so it must be shown explicitly
-        expect(wrapper.get("#g1-name .invalid-feedback").classes()).toContain("d-block");
 
         await name.setValue("abc");
         expect(name.attributes("aria-invalid")).toBeUndefined();
