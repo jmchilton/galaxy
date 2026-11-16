@@ -8,16 +8,15 @@ import { SECRET_PLACEHOLDER } from "@/stores/userToolsServiceCredentialsStore";
 
 import CredentialsGroupForm from "./CredentialsGroupForm.vue";
 
-const SERVICE_DEFINITION = {
+const SERVICE_DEFINITION: ServiceCredentialsDefinition = {
     name: "service",
     version: "1.0",
     label: "Service",
     description: "A test service",
     optional: false,
-    multiple: false,
     variables: [{ name: "server", label: "Server", description: "Server URL", optional: false }],
     secrets: [{ name: "token", label: "Token", description: "API token", optional: false }],
-} as unknown as ServiceCredentialsDefinition;
+};
 
 function mountForm(name = "default", token: string | null = SECRET_PLACEHOLDER) {
     const groupPayload = reactive({
