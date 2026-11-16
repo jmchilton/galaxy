@@ -10,10 +10,14 @@ plumbing.
 import os
 import tempfile
 
-from galaxy.queue_worker import reload_toolbox
+from galaxy.queue_worker import (
+    reload_tool_source_cache,
+    reload_toolbox,
+)
 from galaxy.tools.cached_toolbox import CachedToolBox
 from galaxy.tools.source_store import ToolIndex
 from galaxy.tools.source_store.composite import CompositeToolSourceStore
+from galaxy.tools.source_store.populator import populate_store_inline
 from galaxy.tools.source_store.sqlalchemy import SqlAlchemyToolSourceStore
 from galaxy.util import galaxy_directory
 from galaxy_test.base.populators import (
@@ -257,6 +261,52 @@ class TestCachedToolBoxReloadAfterLocalEdit(BaseToolSourceStorageIntegrationTest
         tool = response.json()
         assert tool["version"] == "1.2"
         assert tool["versions"] == ["1.2"]
+
+
+class TestCachedToolBoxIndexReloadRefreshesListing(BaseToolSourceStorageIntegrationTestCase):
+    """A ``reload_tool_source_cache`` broadcast refreshes the cached ``/api/tools`` listing."""
+
+    _tool_path: str
+
+    @classmethod
+    def handle_galaxy_config_kwds(cls, config):
+        super().handle_galaxy_config_kwds(config)
+        tmpdir = tempfile.mkdtemp(prefix="cached_index_reload_")
+        cls._tool_path = os.path.join(tmpdir, "cached_listing_probe.xml")
+        cls._write_probe("Probe")
+        conf_path = os.path.join(tmpdir, "local_tool_conf.xml")
+        with open(conf_path, "w") as f:
+            f.write(f'<toolbox tool_path="{tmpdir}"><tool file="cached_listing_probe.xml"/></toolbox>')
+        config["use_cached_toolbox"] = True
+        existing_confs = config.get("tool_config_file") or "config/tool_conf.xml.sample"
+        if isinstance(existing_confs, str):
+            config["tool_config_file"] = f"{existing_confs},{conf_path}"
+        else:
+            config["tool_config_file"] = list(existing_confs) + [conf_path]
+
+    @classmethod
+    def _write_probe(cls, name: str) -> None:
+        with open(cls._tool_path, "w") as f:
+            f.write(
+                f'<tool id="cached_listing_probe" name="{name}" version="1.0">'
+                "<command>echo probe > '$out'</command><inputs/>"
+                '<outputs><data name="out" format="txt"/></outputs></tool>'
+            )
+
+    def _listed_probe_name(self) -> str:
+        response = self._get("tools", data={"in_panel": "False"})
+        self._assert_status_code_is(response, 200)
+        (probe,) = (tool for tool in response.json() if tool["id"] == "cached_listing_probe")
+        return probe["name"]
+
+    def test_index_reload_refreshes_tool_listing(self):
+        assert self._listed_probe_name() == "Probe"
+
+        self._write_probe("Renamed Probe")
+        populate_store_inline(self._app.config, paths=[self._tool_path], app=self._app)
+        reload_tool_source_cache(self._app)
+
+        assert self._listed_probe_name() == "Renamed Probe"
 
 
 class TestCachedToolBoxKeepsConfiguredVersion(BaseToolSourceStorageIntegrationTestCase):
