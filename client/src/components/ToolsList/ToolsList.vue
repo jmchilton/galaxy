@@ -480,8 +480,8 @@ function applyFilter(filter: string, value: string | string[]) {
         filterText.value = ToolFilters.value.setFilterValue(filterText.value, filter, value);
         return;
     }
-    // `Filtering` would drop the free text, fold words that follow a filter into its value
-    // and merge repeated filters, so the clauses are edited as written instead.
+    // `Filtering` would fold words that follow a filter into its value and merge repeated
+    // filters, so the clauses are edited as written instead.
     const clauses = [value].flat().reduce((current, item) => toggleFilterClause(current, filter, item), search.clauses);
     filterText.value = [search.remainder, ...clauses.map(({ text }) => text)].filter(Boolean).join(" ");
 }

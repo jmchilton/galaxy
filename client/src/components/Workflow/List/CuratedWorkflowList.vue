@@ -92,7 +92,7 @@ const runnableOnly = computed(() => new RegExp(RUNNABLE_TERM.source, "i").test(f
 /** Nothing but the runnable filter, so an empty result says something about this Galaxy, not the query. */
 const onlyRunnableFilter = computed(() => filterText.value.trim().toLowerCase() === "is:runnable");
 
-/** Edits the text directly, like `toggleCollection`, so free text typed alongside survives. */
+/** Edits the text directly, like `toggleCollection`, so the rest of the query stays as typed. */
 function toggleRunnable() {
     const rest = filterText.value.replace(RUNNABLE_TERM, "$1").replace(/\s+/g, " ").trim();
     filterText.value = runnableOnly.value ? rest : `${rest} is:runnable`.trim();
@@ -186,8 +186,7 @@ async function load(overlayLoading = false) {
     }
 }
 
-/** Only called once invalid filters are ruled out. The server parses the whole query itself, and
- * rebuilding it from the parsed filters would drop any free text typed alongside them. */
+/** Only called once invalid filters are ruled out. The server parses the whole query itself, so it is sent as typed. */
 function searchText() {
     return isSurroundedByQuotes.value ? filterText.value.slice(1, -1) : filterText.value;
 }
@@ -207,7 +206,7 @@ function updateFilterValue(filterKey: string, newValue: any) {
 
 /** One collection at a time, as on iwc.galaxyproject.org: picking the active one again clears it.
  * Edits the text directly rather than through `setFilterValue`, which rebuilds the query from its
- * parsed filters and so would drop free text and leave a `c:` term behind. */
+ * parsed filters and so would leave a `c:` term behind. */
 function toggleCollection(name: string) {
     const wasActive = activeCollection.value === name.toLowerCase();
     const rest = filterText.value.replace(COLLECTION_TERM, "$1").replace(/\s+/g, " ").trim();
