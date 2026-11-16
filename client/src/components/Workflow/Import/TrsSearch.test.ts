@@ -52,6 +52,8 @@ describe("TrsSearch", () => {
 
         // no server is selected yet, so there is nothing to search
         expect(searches).toEqual([]);
+        expect(wrapper.text()).toContain("Waiting for the TRS server list to load.");
+        expect(wrapper.text()).not.toContain("No search results found");
 
         resolveServers();
         await wait(50);

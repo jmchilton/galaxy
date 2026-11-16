@@ -191,6 +191,7 @@ async function importVersion(trsId?: string, toolIdToImport?: string, version?: 
                 <LoadingSpan :message="`Searching for ${query}, this may take a while - please be patient`" />
             </BAlert>
             <BAlert v-else-if="!query" variant="info" show> Enter search query to begin search. </BAlert>
+            <BAlert v-else-if="!trsServer" variant="info" show> Waiting for the TRS server list to load. </BAlert>
             <BAlert v-else-if="results.length == 0" variant="info" show>
                 No search results found, refine your search.
             </BAlert>
