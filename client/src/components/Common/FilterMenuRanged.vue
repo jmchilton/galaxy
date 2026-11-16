@@ -4,6 +4,8 @@ import { computed, ref, watch } from "vue";
 
 import type { ErrorType, ValidFilter } from "@/utils/filtering";
 
+import { useFilterText } from "./filterMenuText";
+
 import GFormInput from "../BaseComponents/Form/GFormInput.vue";
 
 type FilterType = string | boolean | undefined;
@@ -34,13 +36,10 @@ const valueGt = computed(() => props.filters[localNameGt.value]);
 
 const localValueGt = ref(valueGt.value);
 const localValueLt = ref(valueLt.value);
+const textGt = useFilterText(localValueGt);
+const textLt = useFilterText(localValueLt);
 
 const isDateType = computed(() => props.filter.type == Date);
-
-// GFormInput holds text, while the filters dict also types its values as boolean
-function asText(value: FilterType) {
-    return value === undefined ? null : String(value);
-}
 
 function hasError(field: string) {
     if (props.error && props.error.index == field) {
@@ -96,13 +95,12 @@ watch(
             <!---------------------------- GREATER THAN ---------------------------->
             <GFormInput
                 :id="`${props.identifier}-advanced-filter-${localNameGt}`"
+                v-model="textGt"
                 v-g-tooltip.focus.v-danger="hasError(localNameGt)"
-                :model-value="asText(localValueGt)"
                 size="small"
                 :state="hasError(localNameGt) ? false : null"
                 :placeholder="localPlaceholder('gt')"
                 :disabled="props.disabled"
-                @update:model-value="localValueGt = $event ?? undefined"
                 @keyup.enter="emit('on-enter')"
                 @keyup.esc="emit('on-esc')" />
 
@@ -114,13 +112,12 @@ watch(
             <!---------------------------- LESSER THAN ---------------------------->
             <GFormInput
                 :id="`${props.identifier}-advanced-filter-${localNameLt}`"
+                v-model="textLt"
                 v-g-tooltip.focus.v-danger="hasError(localNameLt)"
-                :model-value="asText(localValueLt)"
                 size="small"
                 :state="hasError(localNameLt) ? false : null"
                 :placeholder="localPlaceholder('lt')"
                 :disabled="props.disabled"
-                @update:model-value="localValueLt = $event ?? undefined"
                 @keyup.enter="emit('on-enter')"
                 @keyup.esc="emit('on-esc')" />
 
