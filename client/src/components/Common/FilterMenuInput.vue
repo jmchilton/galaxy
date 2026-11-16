@@ -7,6 +7,8 @@ import { computed, ref, watch } from "vue";
 import type { ValidFilter } from "@/utils/filtering";
 import { capitalizeFirstLetter } from "@/utils/strings";
 
+import { useFilterText } from "./filterMenuText";
+
 import GFormInput from "../BaseComponents/Form/GFormInput.vue";
 import GButton from "../BaseComponents/GButton.vue";
 import GModal from "../BaseComponents/GModal.vue";
@@ -36,13 +38,7 @@ const propValue = computed(() => props.filters[props.name]);
 
 const localValue = ref(propValue.value);
 
-// GFormInput holds text, while the filters dict also types its values as boolean
-const inputValue = computed({
-    get: () => (localValue.value === undefined ? null : String(localValue.value)),
-    set: (value: string | null) => {
-        localValue.value = value ?? undefined;
-    },
-});
+const inputValue = useFilterText(localValue);
 
 const helpToggle = ref(false);
 const modalTitle = `${capitalizeFirstLetter(props.filter.placeholder || "")} Help`;
