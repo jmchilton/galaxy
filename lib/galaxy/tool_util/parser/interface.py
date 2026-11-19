@@ -600,7 +600,7 @@ class InputSource(metaclass=ABCMeta):
 
     def parse_sanitizer_elem(self):
         """Return an XML description of sanitizers. This is a stop gap
-        until we can rework galaxy.tools.parameters.sanitize to not
+        until we can rework galaxy.tool_util.parser.sanitize to not
         explicitly depend on XML.
         """
         return None

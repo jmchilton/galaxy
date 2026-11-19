@@ -73,14 +73,6 @@ galaxy.tools.parameters.meta module
    :undoc-members:
    :show-inheritance:
 
-galaxy.tools.parameters.sanitize module
----------------------------------------
-
-.. automodule:: galaxy.tools.parameters.sanitize
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 galaxy.tools.parameters.validation module
 -----------------------------------------
 

@@ -54,7 +54,6 @@ class ToolParameterSanitizer:
     @classmethod
     def from_element(cls, elem):
         """Loads the proper filter by the type attribute of elem"""
-        # TODO: Add ability to generically specify a method to use for sanitizing input via specification in tool XML
         rval = ToolParameterSanitizer()
         rval._invalid_char = elem.get("invalid_char", cls.DEFAULT_INVALID_CHAR)
         rval.sanitize = galaxy.util.string_as_bool(elem.get("sanitize", "True"))
