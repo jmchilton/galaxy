@@ -54,6 +54,7 @@ from galaxy.model.dataset_collections.types.sample_sheet_util import column_defi
 from galaxy.schema.fetch_data import FilesPayload
 from galaxy.tool_util.parameters.factory import get_color_value
 from galaxy.tool_util.parser import get_input_source as ensure_input_source
+from galaxy.tool_util.parser.sanitize import ToolParameterSanitizer
 from galaxy.tool_util.parser.util import (
     boolean_is_checked,
     boolean_true_and_false_values,
@@ -82,7 +83,6 @@ from . import (
     validation,
 )
 from .dataset_matcher import get_dataset_matcher_factory
-from .sanitize import ToolParameterSanitizer
 from .workflow_utils import (
     is_runtime_value,
     runtime_to_json,
