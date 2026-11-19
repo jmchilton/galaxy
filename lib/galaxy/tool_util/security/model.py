@@ -1,0 +1,660 @@
+"""What a template can read, and how much of it a user controls.
+
+Every name a ``<command>`` template can reference is modelled as a node (a parameter, a
+dataset, a collection, a group of parameters). The semantics mirror the wrappers Galaxy
+puts into the template namespace (``galaxy.tools.wrappers``): the same parameter gives a
+sanitized string when written as ``$param`` and the raw submitted value through
+``$param.value`` or a string method.
+
+An abstract value (:class:`AV`) records the probe characters a user could get into the
+rendered text and where they come from. A value without sources is not user-controlled.
+"""
+
+from dataclasses import (
+    dataclass,
+    field,
+)
+from typing import (
+    Any,
+    Optional,
+)
+
+from galaxy.tool_util.parser.interface import (
+    InputSource,
+    ToolSource,
+)
+from galaxy.tool_util.parser.sanitize import ToolParameterSanitizer
+from .charsets import (
+    Chars,
+    DEFAULT_SANITIZED,
+    NONE,
+    PROBE,
+    sanitized,
+)
+from .validators import text_constraint
+
+
+@dataclass(frozen=True)
+class AV:
+    chars: Chars = NONE
+    sources: frozenset[str] = frozenset()
+    nodes: tuple["Node", ...] = ()
+    elem: Optional["AV"] = None  # element when iterated or indexed
+    items: tuple["AV", ...] | None = None  # tuple or list literal
+    quoted: str = ""  # "shlex", "json" or "pyrepr": the value was escaped for that syntax
+    py: str = ""  # a Python name such as "re.sub"
+    bound: tuple["AV", str] | None = None  # a method of another value
+    helper: str = ""  # a #def of the template
+    # A string built in Python from literal text and values ("ln -s '%s'" % x): the pieces in order.
+    parts: tuple["str | AV", ...] | None = None
+    whole: bool = True  # False when a user value is only a part of this string
+    # Probe characters the value can begin with, when a validator or a cleaning step narrows them.
+    lead: Chars | None = None
+    # A value that is one of several strings built from literal text and values: each is written
+    # on its own, so that the quotes in its literal text are seen.
+    alts: tuple["AV", ...] = ()
+
+    @property
+    def tainted(self) -> bool:
+        return bool(self.sources)
+
+
+CLEAN = AV()
+# Python writes a list as ['a', 'b']: quotes and brackets of the repr surround the user's text.
+REPR_PUNCTUATION: Chars = frozenset("'\"\\ ,[](){}:")
+# Marks a source that is only user-controlled under a condition; findings from it rank one level lower.
+CONDITIONAL = "only when the referenced dataset is empty"
+
+
+def tainted(chars: Chars, source: str) -> AV:
+    return AV(chars=chars, sources=frozenset((source,)))
+
+
+def concat(parts: "list[str | AV]") -> AV:
+    """A string made of literal text and values, in this order."""
+    pieces: list[str | AV] = []
+    for part in parts:
+        if isinstance(part, AV):
+            part = stringify(part)
+            if part.parts is not None:
+                pieces.extend(part.parts)
+                continue
+        if isinstance(part, str) and pieces and isinstance(pieces[-1], str):
+            pieces[-1] += part
+        elif part != "":
+            pieces.append(part)
+    values = [p for p in pieces if isinstance(p, AV)]
+    user = [v for v in values if v.tainted]
+    return AV(
+        chars=frozenset().union(*(v.chars for v in values)),
+        sources=frozenset().union(*(v.sources for v in values)),
+        parts=tuple(pieces),
+        whole=not user or (len(pieces) == 1 and user[0].whole),
+    )
+
+
+_QUOTES: Chars = frozenset("'\"`")
+_MAX_ALTERNATIVES = 8
+
+
+def _plain_string(value: AV) -> bool:
+    return not value.nodes and value.elem is None and value.items is None and not value.py and value.bound is None
+
+
+def _quotes_in_text(value: AV) -> bool:
+    return value.parts is not None and any(isinstance(p, str) and _QUOTES.intersection(p) for p in value.parts)
+
+
+def _alternatives(a: AV, b: AV) -> tuple[AV, ...] | None:
+    """The strings a joined value stands for, () when one summary is enough, None when there are too many.
+
+    Joining ``"x='" + $v + "'"`` with another string must not forget the quotes around ``$v``.
+    """
+    found: list[AV] = []
+    for value in (a, b):
+        for alternative in value.alts or (value,):
+            if alternative not in found:
+                found.append(alternative)
+    if not all(_plain_string(v) for v in found) or not any(v.tainted and _quotes_in_text(v) for v in found):
+        return ()
+    # Text without a user value or a quote does not change where the other strings land.
+    kept = [v for v in found if v.tainted or _quotes_in_text(v)]
+    if len(kept) < len(found):
+        kept.append(CLEAN)
+    return tuple(kept) if len(kept) <= _MAX_ALTERNATIVES else None
+
+
+def _lead(*values: AV) -> Chars | None:
+    user = [v for v in values if v.tainted]
+    if not any(v.lead is not None for v in user):
+        return None
+    return frozenset().union(*(v.lead if v.lead is not None else v.chars for v in user))
+
+
+def join(*values: AV | None) -> AV:
+    present = [v for v in values if v is not None]
+    if not present:
+        return CLEAN
+    out = present[0]
+    for other in present[1:]:
+        if other is out or other == out:
+            continue
+        nodes = out.nodes + tuple(n for n in other.nodes if n not in out.nodes)
+        items = None
+        if out.items is not None and other.items is not None and len(out.items) == len(other.items):
+            items = tuple(join(a, b) for a, b in zip(out.items, other.items))
+        elem: AV | None = None
+        if out.elem is not None or other.elem is not None or (items is None and (out.items or other.items)):
+            elem = join(element(out, strict=True), element(other, strict=True))
+        alternatives = _alternatives(out, other)
+        chars = out.chars | other.chars
+        if alternatives is None:
+            # Too many strings to write one by one: assume their quotes can surround nothing.
+            chars = chars | _QUOTES
+        out = AV(
+            chars=chars,
+            sources=out.sources | other.sources,
+            nodes=nodes,
+            elem=elem,
+            items=items,
+            quoted=out.quoted if out.quoted == other.quoted else "",
+            py=out.py if out.py == other.py else "",
+            bound=out.bound if out.bound == other.bound else None,
+            helper=out.helper if out.helper == other.helper else "",
+            whole=(out.whole or not out.tainted) and (other.whole or not other.tainted),
+            lead=_lead(out, other),
+            alts=alternatives or (),
+        )
+    return out
+
+
+class Node:
+    """Something in the template namespace. Compared by identity."""
+
+    path: str
+
+    def text(self) -> AV:
+        """The value written as ``$node`` or ``str($node)``."""
+        return CLEAN
+
+    def raw(self) -> AV:
+        return self.text()
+
+    def attr(self, name: str) -> AV | None:
+        """``$node.name``; None when the node has no such attribute."""
+        return None
+
+    def element(self) -> AV | None:
+        return None
+
+
+@dataclass(eq=False)
+class Group(Node):
+    """A section, a conditional (all of its ``<when>`` blocks) or one instance of a repeat."""
+
+    path: str = ""
+    children: dict[str, list[Node]] = field(default_factory=dict)
+
+    def add(self, name: str | None, node: Node) -> None:
+        if name:
+            self.children.setdefault(name, []).append(node)
+
+    def attr(self, name: str) -> AV | None:
+        # A template may name a parameter without the conditionals it is nested in.
+        nodes = self.children.get(name) or self.find(name)
+        return AV(nodes=tuple(nodes)) if nodes else None
+
+    def find(self, name: str) -> list[Node]:
+        found = list(self.children.get(name, []))
+        for nodes in self.children.values():
+            for node in nodes:
+                if isinstance(node, Group):
+                    found.extend(node.find(name))
+                elif isinstance(node, Repeat):
+                    found.extend(node.item.find(name))
+        return found
+
+
+@dataclass(eq=False)
+class Repeat(Node):
+    path: str
+    item: Group
+
+    def element(self) -> AV | None:
+        return AV(nodes=(self.item,))
+
+
+@dataclass(eq=False)
+class Value(Node):
+    """A parameter whose value is text: text, select, column, tag, number, boolean..."""
+
+    path: str
+    type: str
+    as_text: AV = CLEAN
+    as_raw: AV = CLEAN
+    as_element: AV | None = None
+    text_like: bool = False  # unknown attributes are string methods of the raw value
+
+    def text(self) -> AV:
+        return self.as_text
+
+    def raw(self) -> AV:
+        return self.as_raw
+
+    def attr(self, name: str) -> AV | None:
+        if name == "value":
+            return self.as_raw
+        if name == "fields":
+            return AV(nodes=(Opaque(f"{self.path}.fields", self.as_raw),))
+        if name == "value_label":
+            return self.as_raw
+        if self.text_like:
+            return AV(bound=(self.as_raw, name))
+        # Any other attribute of a select wrapper is an attribute of the parameter definition.
+        return CLEAN
+
+    def element(self) -> AV | None:
+        return self.as_element if self.as_element is not None else self.as_text
+
+
+@dataclass(eq=False)
+class Opaque(Node):
+    """An object whose every attribute, item and call result is the same kind of value."""
+
+    path: str
+    value: AV = CLEAN
+
+    def text(self) -> AV:
+        return self.value
+
+    def attr(self, name: str) -> AV | None:
+        return AV(chars=self.value.chars, sources=self.value.sources, nodes=(self,))
+
+    def element(self) -> AV | None:
+        return AV(chars=self.value.chars, sources=self.value.sources, nodes=(self,))
+
+
+# Attributes of a dataset wrapper that Galaxy computes itself.
+_DATA_CLEAN = frozenset(
+    (
+        "ext extension file_ext id hid is_collection is_of_type is_deferred has_single_item extra_files_path"
+        " files_path file_name path safe_element_identifier uuid state datatype all_metadata_files size"
+        " get_size has_data serialize is_input_supplied"
+    ).split()
+)
+_METADATA_CLEAN = frozenset(
+    "columns data_lines comment_lines sequences column_types delimiter blocks bases number_of_models".split()
+)
+
+
+@dataclass(eq=False)
+class Data(Node):
+    path: str
+    multiple: bool = False
+    sanitize: bool = True
+    output: bool = False
+
+    def _safe_string(self, what: str) -> AV:
+        # Attributes of the dataset go through SafeStringWrapper: Galaxy's default sanitizer.
+        return tainted(DEFAULT_SANITIZED if self.sanitize else PROBE, f"{what} of dataset '{self.path}'")
+
+    def attr(self, name: str) -> AV | None:
+        if self.output:
+            return CLEAN
+        if name in ("element_identifier", "name_and_ext"):
+            return tainted(PROBE, f"element identifier of dataset '{self.path}' (not sanitized)")
+        if name == "groups":
+            return AV(elem=tainted(PROBE, f"group tags of dataset '{self.path}' (not sanitized)"))
+        if name == "get_staging_path":
+            return AV(bound=(tainted(PROBE - {"/"}, f"element identifier of dataset '{self.path}'"), "__value__"))
+        if name == "metadata":
+            return AV(nodes=(Metadata(self.path, self),))
+        if name == "unsanitized":
+            return AV(
+                nodes=(Opaque(f"{self.path}.unsanitized", tainted(PROBE, f"raw model of dataset '{self.path}'")),)
+            )
+        if name == "dataset":
+            return AV(nodes=(DatasetObject(self.path, self),))
+        if name == "single_item":
+            return AV(nodes=(self,))
+        if name in _DATA_CLEAN:
+            return CLEAN
+        return self._safe_string("name" if name == "name" else f"attribute '{name}'")
+
+    def element(self) -> AV | None:
+        return AV(nodes=(self,))
+
+
+@dataclass(eq=False)
+class DatasetObject(Node):
+    """``$input.dataset``: the dataset behind SafeStringWrapper, strings are sanitized, paths are Galaxy's."""
+
+    path: str
+    data: Data
+
+    def attr(self, name: str) -> AV | None:
+        if name in _DATA_CLEAN or name in ("get_file_name", "dataset", "metadata"):
+            return CLEAN if name != "dataset" else AV(nodes=(self,))
+        return self.data._safe_string(f"attribute '{name}'")
+
+
+@dataclass(eq=False)
+class Metadata(Node):
+    path: str
+    data: Data
+
+    def attr(self, name: str) -> AV | None:
+        if name in _METADATA_CLEAN or name.endswith(("_index", "Col")) or name in ("get", "items", "element_is_set"):
+            return CLEAN
+        return self.data._safe_string(f"metadata '{name}'")
+
+
+@dataclass(eq=False)
+class Collection(Node):
+    path: str
+    nested: bool | None = None  # None: the collection type is not declared
+    sanitize: bool = True
+    output: bool = False
+
+    def _identifier(self) -> AV:
+        return tainted(PROBE, f"element identifier of collection '{self.path}' (not sanitized)")
+
+    def element(self) -> AV | None:
+        if self.output:
+            return CLEAN
+        nodes: list[Node] = []
+        if self.nested is not True:
+            nodes.append(Data(self.path, sanitize=self.sanitize))
+        if self.nested is not False:
+            nodes.append(Collection(self.path, nested=None, sanitize=self.sanitize))
+        return AV(nodes=tuple(nodes))
+
+    def attr(self, name: str) -> AV | None:
+        if self.output:
+            return CLEAN
+        if name in ("name", "element_identifier"):
+            return self._identifier()
+        if name == "keys":
+            return AV(bound=(AV(elem=self._identifier()), "__value__"))
+        if name == "items":
+            pair = AV(items=(self._identifier(), self.element() or CLEAN))
+            return AV(bound=(AV(elem=pair), "__value__"))
+        if name == "values":
+            return AV(bound=(AV(elem=self.element()), "__value__"))
+        if name in ("element_identifiers_extensions_paths_and_metadata_files", "sample_sheet_row"):
+            return AV(nodes=(Opaque(f"{self.path}.{name}", self._identifier()),))
+        if name == "get_all_staging_paths":
+            staged = tainted(PROBE - {"/"}, f"element identifier of collection '{self.path}'")
+            return AV(bound=(AV(elem=staged), "__value__"))
+        if (
+            name
+            in (
+                "safe_element_identifier is_collection all_paths all_metadata_files has_single_item"
+                " is_input_supplied collection serialize paths_as_file get_datasets_for_group"
+            ).split()
+        ):
+            return CLEAN
+        # Anything else is an element looked up by its identifier ($pair.forward).
+        return self.element()
+
+
+@dataclass(eq=False)
+class Special(Node):
+    """A value Galaxy adds to the namespace itself."""
+
+    path: str
+    value: AV = CLEAN
+    opaque: AV | None = None
+
+    def text(self) -> AV:
+        return self.value
+
+    def attr(self, name: str) -> AV | None:
+        if self.opaque is not None:
+            return AV(nodes=(Opaque(f"{self.path}.{name}", self.opaque),))
+        return CLEAN
+
+
+def file_content() -> AV:
+    """What ``open(path)`` gives a template: the content of a file, which is a dataset unless shown otherwise."""
+    source = tainted(PROBE, "content of a file the template reads with open() (not sanitized)")
+    return AV(nodes=(Opaque("open()", source),))
+
+
+def stringify(value: AV) -> AV:
+    """The value as written into the output."""
+    if value.nodes:
+        return join(*(node.text() for node in value.nodes))
+    if value.parts is not None:
+        return value
+    if value.elem is not None or value.items is not None:
+        inner = stringify(element(value))
+        punctuation = REPR_PUNCTUATION if inner.tainted else NONE
+        if "'" not in inner.chars:
+            # repr() only switches to double quotes for a string that contains a single quote.
+            punctuation = punctuation - {'"'}
+        return AV(
+            chars=value.chars | inner.chars | punctuation,
+            sources=value.sources | inner.sources,
+            quoted="pyrepr",
+            whole=False,
+        )
+    if value.bound is not None or value.py or value.helper:
+        return CLEAN
+    return AV(
+        chars=value.chars,
+        sources=value.sources,
+        quoted=value.quoted,
+        whole=value.whole,
+        lead=value.lead,
+        alts=value.alts,
+    )
+
+
+def contents(value: AV) -> AV:
+    """What a value carries, for a function whose result is not modelled: no repr punctuation is added."""
+    if (value.elem is not None or value.items is not None) and not value.nodes and value.parts is None:
+        inner = contents(element(value))
+        return AV(chars=value.chars | inner.chars, sources=value.sources | inner.sources, whole=False)
+    return stringify(value)
+
+
+def raw(value: AV) -> AV:
+    if value.nodes:
+        return join(*(node.raw() for node in value.nodes))
+    return stringify(value)
+
+
+def element(value: AV, strict: bool = False) -> AV:
+    """An element of the value when iterated or indexed."""
+    if value.nodes:
+        return join(*(node.element() or CLEAN for node in value.nodes))
+    if value.elem is not None:
+        return value.elem
+    if value.items is not None:
+        return join(*value.items)
+    if strict:
+        return CLEAN
+    # Iterating or slicing a string.
+    return AV(chars=value.chars, sources=value.sources, whole=value.whole and value.parts is None)
+
+
+def attribute(value: AV, name: str) -> AV:
+    if value.nodes:
+        return join(*(node.attr(name) or CLEAN for node in value.nodes))
+    if value.py:
+        return AV(py=f"{value.py}.{name}")
+    return AV(bound=(value, name))
+
+
+_SAFE_SPECIALS = (
+    "__tool_directory__ __root_dir__ __new_file_path__ __tool_data_path__ __datatypes_config__ __galaxy_url__"
+    " __history_id__ __local_working_directory__ __get_data_table_entry__ __admin_users__ GALAXY_DATA_INDEX_DIR"
+    " GALAXY_ROOT_DIR GALAXY_DATATYPES_CONF_FILE chromInfo __user_id__ userId user_id __job_resource"
+).split()
+SAFE_SPECIALS = frozenset(_SAFE_SPECIALS)
+_USER_SPECIALS = "__user_email__ userEmail __user_name__ dbkey".split()
+
+# Select-like parameter types whose values come from the user's data.
+_USER_SELECT_TYPES = frozenset(("data_column", "group_tag", "genomebuild"))
+
+
+@dataclass
+class Model:
+    root: Group
+    sanitize: bool = True
+    configfiles: dict[str, str] = field(default_factory=dict)
+    specials: dict[str, Special] = field(default_factory=dict)
+
+    def lookup(self, name: str) -> AV | None:
+        nodes = self.root.children.get(name)
+        if nodes:
+            return AV(nodes=tuple(nodes))
+        if name in self.specials:
+            return AV(nodes=(self.specials[name],))
+        # Old tools address nested parameters by their bare name.
+        found = self.root.find(name)
+        return AV(nodes=tuple(found)) if found else None
+
+
+def _user_select(input_source: InputSource) -> str | None:
+    """Why the options of a select come from user data, None when the tool or the admin defines them."""
+    ptype = input_source.get("type")
+    if ptype in _USER_SELECT_TYPES:
+        return str(ptype)
+    if input_source.get("dynamic_options"):
+        return "select with options from code"
+    dynamic = input_source.parse_dynamic_options()
+    if dynamic is None:
+        return None
+    elem = dynamic.elem()
+    if elem.get("from_dataset") or elem.get("from_url"):
+        return "select with options from a dataset"
+    if elem.get("from_file") or elem.get("from_data_table") or elem.get("from_parameter"):
+        return None
+    if any(f.get("type") == "data_meta" for f in elem.findall("filter")):
+        return "select with options from dataset metadata"
+    return None
+
+
+def _escapes_single_quote(sanitizer: ToolParameterSanitizer | None) -> bool:
+    """The sanitizer rewrites ' to the sequence that writes a quote inside a single-quoted shell word."""
+    return sanitizer is not None and sanitizer.sanitize_param("'") in ("'\"'\"'", "'\\''")
+
+
+def _value(input_source: InputSource, path: str, tool_sanitize: bool) -> Node:
+    ptype = input_source.get("type") or "text"
+    if ptype in ("data", "hidden_data"):
+        return Data(path, multiple=input_source.get_bool("multiple", False), sanitize=tool_sanitize)
+    if ptype == "data_collection":
+        types = [t.strip() for t in (input_source.get("collection_type") or "").split(",") if t.strip()]
+        nested = any(":" in t for t in types) if types else None
+        return Collection(path, nested=nested, sanitize=tool_sanitize)
+    if ptype in ("integer", "float", "boolean", "baseurl", "rules"):
+        return Value(path, ptype)
+
+    sanitizer_elem = input_source.parse_sanitizer_elem()
+    sanitizer = ToolParameterSanitizer.from_element(sanitizer_elem) if sanitizer_elem is not None else None
+
+    def rendered(chars: Chars) -> Chars:
+        return sanitized(chars, sanitizer) if tool_sanitize else chars
+
+    if ptype in ("select", "drill_down") or ptype in _USER_SELECT_TYPES:
+        reason = _user_select(input_source)
+        if reason is None:
+            return Value(path, ptype)
+        label = f"{reason} param '{path}'" if reason in _USER_SELECT_TYPES else f"'{path}' ({reason})"
+        if ptype == "data_column":
+            # Galaxy checks a column against the dataset's columns, except for an empty dataset.
+            label += f", {CONDITIONAL}"
+        as_raw = tainted(PROBE, f"raw value of {label} (not sanitized)")
+        return Value(path, ptype, as_text=tainted(rendered(PROBE), label), as_raw=as_raw, as_element=as_raw)
+
+    universe, first = text_constraint(input_source)
+    # Only a start that is narrower than the rest of the value is worth carrying.
+    lead = first if "-" in universe and "-" not in first else None
+    if ptype in ("color", "directory_uri", "file", "ftpfile"):
+        # These types return the submitted value as it is: no sanitizer runs when they are rendered.
+        value = AV(chars=universe, sources=frozenset((f"{ptype} param '{path}' (not sanitized)",)), lead=lead)
+        return Value(path, ptype, as_text=value, as_raw=value, text_like=True)
+    # text, hidden and anything unknown.
+    return Value(
+        path,
+        ptype,
+        as_text=AV(
+            chars=rendered(universe),
+            sources=frozenset((f"{ptype} param '{path}'",)),
+            quoted="sq-escaped" if tool_sanitize and _escapes_single_quote(sanitizer) else "",
+            lead=rendered(lead) if lead is not None else None,
+        ),
+        as_raw=AV(
+            chars=universe,
+            sources=frozenset((f"raw value of {ptype} param '{path}' (sanitizer bypassed)",)),
+            lead=lead,
+        ),
+        text_like=True,
+    )
+
+
+def _add_inputs(group: Group, input_sources: list[InputSource], prefix: str, tool_sanitize: bool) -> None:
+    for input_source in input_sources:
+        input_type = input_source.parse_input_type()
+        try:
+            name = input_source.parse_name()
+        except ValueError:
+            # A parameter without a name cannot be referenced from a template.
+            continue
+        path = f"{prefix}{name}"
+        if input_type == "repeat":
+            item = Group(path)
+            _add_inputs(
+                item, input_source.parse_nested_inputs_source().parse_input_sources(), f"{path}.", tool_sanitize
+            )
+            group.add(name, Repeat(path, item))
+        elif input_type == "section":
+            section = Group(path)
+            _add_inputs(
+                section, input_source.parse_nested_inputs_source().parse_input_sources(), f"{path}.", tool_sanitize
+            )
+            group.add(name, section)
+        elif input_type == "conditional":
+            conditional = Group(path)
+            _add_inputs(conditional, [input_source.parse_test_input_source()], f"{path}.", tool_sanitize)
+            for _value_name, case_source in input_source.parse_when_input_sources():
+                _add_inputs(conditional, case_source.parse_input_sources(), f"{path}.", tool_sanitize)
+            group.add(name, conditional)
+        elif input_type == "param":
+            group.add(name, _value(input_source, path, tool_sanitize))
+
+
+def build_model(tool_source: ToolSource) -> Model:
+    tool_sanitize = bool(tool_source.parse_sanitize())
+    root = Group("")
+    for page_source in tool_source.parse_input_pages().page_sources:
+        _add_inputs(root, page_source.parse_input_sources(), "", tool_sanitize)
+    model = Model(root=root, sanitize=tool_sanitize)
+
+    xml_tree: Any = getattr(tool_source, "xml_tree", None)
+    if xml_tree is not None:
+        for elem in xml_tree.findall("./outputs/data"):
+            if elem.get("name") and elem.get("name") not in root.children:
+                root.add(elem.get("name"), Data(elem.get("name"), output=True))
+        for elem in xml_tree.findall("./outputs/collection"):
+            if elem.get("name") and elem.get("name") not in root.children:
+                root.add(elem.get("name"), Collection(elem.get("name"), output=True))
+    for configfile in tool_source.parse_template_configfiles():
+        if configfile.name:
+            model.configfiles[configfile.name] = configfile.content or ""
+            if configfile.name not in root.children:
+                root.add(configfile.name, Special(f"configfile:{configfile.name}"))
+
+    for name in _SAFE_SPECIALS:
+        model.specials[name] = Special(name)
+    for name in _USER_SPECIALS:
+        chars = DEFAULT_SANITIZED if tool_sanitize else PROBE
+        model.specials[name] = Special(name, value=tainted(chars, f"${name}"))
+    model.specials["__user__"] = Special(
+        "__user__", opaque=tainted(PROBE, "attribute of the $__user__ object (not sanitized)")
+    )
+    model.specials["__app__"] = Special("__app__", opaque=CLEAN)
+    return model
