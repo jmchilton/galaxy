@@ -57,6 +57,14 @@ galaxy.tool\_util.parser.output\_objects module
    :undoc-members:
    :show-inheritance:
 
+galaxy.tool\_util.parser.sanitize module
+----------------------------------------
+
+.. automodule:: galaxy.tool_util.parser.sanitize
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 galaxy.tool\_util.parser.stdio module
 -------------------------------------
 
