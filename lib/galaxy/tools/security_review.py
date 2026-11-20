@@ -5,6 +5,10 @@ the quotes or the argument it is written into. It runs once per tool version and
 in the background after the toolbox loads or on the first job of a tool, and never on a request.
 Reviews are stored as one JSON file per tool in ``tool_security_review_cache_dir``, which every
 Galaxy process of an installation may share.
+
+Before a job's command line is built, :meth:`ToolSecurityReviewer.check_job` compares the values of
+the job's inputs with the tool's high and critical findings: a value that contains a character that
+can leave its place is logged (``log``) or fails the job (``enforce``).
 """
 
 import errno
@@ -21,6 +25,7 @@ from typing import (
     Any,
     Callable,
     Iterable,
+    Iterator,
     Optional,
     TYPE_CHECKING,
 )
@@ -35,15 +40,33 @@ from galaxy.tool_util.security import (
     Report,
     review_tool_source,
     ReviewTimeout,
+    SourceRef,
 )
 from galaxy.tool_util.security.charsets import (
     CRITICAL,
     HIGH,
+    show,
 )
-from galaxy.tool_util.security.report import VULNERABILITY
+from galaxy.tool_util.security.report import (
+    DATASET_ATTRIBUTE,
+    ELEMENT_IDENTIFIER,
+    GROUP_TAGS,
+    METADATA,
+    RAW,
+    SPECIAL,
+    TEXT,
+    VULNERABILITY,
+)
+from galaxy.tools.wrappers import (
+    DatasetCollectionWrapper,
+    DatasetFilenameWrapper,
+    DatasetListWrapper,
+    ToolParameterValueWrapper,
+)
 
 if TYPE_CHECKING:
     from galaxy.tools import Tool
+    from galaxy.tools.evaluation import ToolEvaluator
 
 log = logging.getLogger(__name__)
 
@@ -63,6 +86,10 @@ NOT_ANALYSED = "not_analysed"
 
 # Tool types whose command Galaxy writes itself or that have no Cheetah template.
 _UNREVIEWED_TOOL_TYPES = frozenset(("user_defined", "expression"))
+
+
+class ToolInputRejected(Exception):
+    """A job input contains characters that can leave the place where the tool writes it."""
 
 
 @dataclass(frozen=True)
@@ -174,7 +201,7 @@ class ReviewCache:
 
 
 class ToolSecurityReviewer:
-    """Reviews tools on demand or in the background."""
+    """Reviews tools on demand or in the background, and checks job values against the reviews."""
 
     def __init__(self, mode: str, cache_dir: str, timeout: float) -> None:
         if mode not in MODES:
@@ -359,6 +386,180 @@ class ToolSecurityReviewer:
                 not_analysed,
                 time.monotonic() - started,
             )
+
+    # -- job values ----------------------------------------------------------------------------
+
+    def check_job(self, tool: "Tool", evaluator: "ToolEvaluator") -> None:
+        """Compare the job values in the evaluator's param_dict with the tool's findings.
+
+        Logs each value that contains a breakout character; raises :class:`ToolInputRejected`
+        in ``enforce`` mode.
+        """
+        if not self.enabled:
+            return
+        review = self.review(tool)
+        job_id = evaluator.job.id
+        if review is None or review.status != ANALYSED:
+            log.debug("Job %s: tool %s has no security review, its values are not checked", job_id, tool.id)
+            return
+        findings = review.checked_findings
+        if not findings:
+            return
+        # Reading element identifiers and names through the wrappers marks the job as consuming
+        # them, which changes how the job cache matches it; the check must not.
+        consumes = (evaluator.consumes_names, evaluator.consumes_identifiers)
+        try:
+            violations = list(find_violations(findings, evaluator.param_dict))
+        except Exception:
+            # The check must never be the reason a job fails.
+            log.exception("Job %s: checking values against the security review of tool %s failed", job_id, tool.id)
+            return
+        finally:
+            evaluator.consumes_names, evaluator.consumes_identifiers = consumes
+        for violation in violations:
+            log.warning(
+                "Tool security review: job %s of tool %s version %s: %s of input '%s' contains [%s],"
+                " which can leave its place in the %s (%s, %s)",
+                job_id,
+                tool.id,
+                tool.version,
+                violation.ref.accessor + (f" '{violation.ref.key}'" if violation.ref.key else ""),
+                violation.ref.param or violation.ref.key,
+                show(violation.chars),
+                violation.finding.location,
+                violation.finding.rule,
+                violation.finding.severity,
+            )
+        if violations and self.mode == ENFORCE:
+            raise ToolInputRejected(rejection_message(tool, violations))
+
+
+@dataclass(frozen=True)
+class Violation:
+    finding: Finding
+    ref: SourceRef
+    chars: frozenset[str]
+
+
+def find_violations(findings: Iterable[Finding], param_dict: dict[str, Any]) -> Iterator[Violation]:
+    """Each finding and source for which a job value contains a breakout character of the finding."""
+    seen: set[tuple[str, SourceRef]] = set()
+    for finding in findings:
+        for ref in finding.refs:
+            hit: set[str] = set()
+            for value in source_values(ref, param_dict):
+                hit.update(finding.breakout.intersection(value))
+            if hit and (finding.rule, ref) not in seen:
+                seen.add((finding.rule, ref))
+                yield Violation(finding, ref, frozenset(hit))
+
+
+def source_values(ref: SourceRef, param_dict: dict[str, Any]) -> Iterator[str]:
+    """The strings a template reads from a source in this job."""
+    if ref.accessor == SPECIAL:
+        if ref.key and (value := param_dict.get(ref.key)) is not None:
+            yield str(value)
+        return
+    for value in _resolve(param_dict, ref.param_path):
+        try:
+            yield from _accessor_values(ref, value)
+        except Exception as e:
+            # A value the wrappers cannot give (an optional input without a dataset) is not written either.
+            log.debug("Cannot read %s of input %s: %s", ref.accessor, ref.param, e)
+
+
+def _resolve(node: Any, path: tuple[str, ...]) -> Iterator[Any]:
+    if not path:
+        if node is not None:
+            yield node
+        return
+    if isinstance(node, list) and not isinstance(node, DatasetListWrapper):
+        # The instances of a repeat.
+        for item in node:
+            yield from _resolve(item, path)
+        return
+    if isinstance(node, dict) and path[0] in node:
+        yield from _resolve(node[path[0]], path[1:])
+
+
+def _accessor_values(ref: SourceRef, value: Any) -> Iterator[str]:
+    accessor = ref.accessor
+    if accessor == TEXT:
+        yield str(value)
+    elif accessor == RAW:
+        raw = value.value if isinstance(value, ToolParameterValueWrapper) else value
+        for item in raw if isinstance(raw, (list, tuple)) else [raw]:
+            if item is not None:
+                yield str(item)
+    elif accessor == ELEMENT_IDENTIFIER:
+        yield from _identifiers(value)
+    elif accessor == DATASET_ATTRIBUTE and ref.key:
+        for dataset in _datasets(value):
+            attribute = getattr(dataset, ref.key, None)
+            if attribute is not None and not callable(attribute):
+                yield str(attribute)
+    elif accessor == METADATA and ref.key:
+        for dataset in _datasets(value):
+            metadata = getattr(dataset.metadata, ref.key, None)
+            for item in metadata if isinstance(metadata, (list, tuple)) else [metadata]:
+                if item is not None:
+                    yield str(item)
+    elif accessor == GROUP_TAGS:
+        for dataset in _datasets(value):
+            yield from (str(group) for group in dataset.groups)
+
+
+def _identifiers(value: Any) -> Iterator[str]:
+    """Element identifiers at every level, and the name of a collection input, which `$c.name` gives."""
+    if isinstance(value, DatasetCollectionWrapper):
+        if value.is_input_supplied and value.name is not None:
+            yield str(value.name)
+        for element in value:
+            yield from _identifiers(element)
+    elif isinstance(value, DatasetListWrapper):
+        for dataset in value:
+            yield from _identifiers(dataset)
+    elif isinstance(value, DatasetFilenameWrapper) and value:
+        yield str(value.element_identifier)
+
+
+def _datasets(value: Any) -> Iterator[DatasetFilenameWrapper]:
+    if isinstance(value, DatasetCollectionWrapper):
+        for element in value:
+            yield from _datasets(element)
+    elif isinstance(value, DatasetListWrapper):
+        for dataset in value:
+            yield from _datasets(dataset)
+    elif isinstance(value, DatasetFilenameWrapper) and value:
+        yield value
+
+
+_DESCRIPTIONS = {
+    TEXT: "the value of",
+    RAW: "the value of",
+    ELEMENT_IDENTIFIER: "an element identifier or the name of",
+    GROUP_TAGS: "a group tag of a dataset of",
+}
+
+
+def _describe(ref: SourceRef) -> str:
+    if ref.accessor == SPECIAL:
+        return f"the account value {ref.key}"
+    if ref.accessor == DATASET_ATTRIBUTE:
+        what = "the name" if ref.key == "name" else f"the {ref.key}"
+        return f"{what} of a dataset of input '{ref.param}'"
+    if ref.accessor == METADATA:
+        return f"metadata '{ref.key}' of a dataset of input '{ref.param}'"
+    return f"{_DESCRIPTIONS.get(ref.accessor, 'the value of')} input '{ref.param}'"
+
+
+def rejection_message(tool: "Tool", violations: list[Violation]) -> str:
+    parts = [f"{_describe(v.ref)} contains the characters [{show(v.chars)}]" for v in violations]
+    return (
+        f"This job was not run: {', and '.join(parts)}. Tool '{tool.name}' ({tool.id} version {tool.version}) has"
+        " a known problem handling these characters in this input, and this Galaxy server does not allow them"
+        " there. Rename the dataset or collection element, or change the value, and run the job again."
+    )
 
 
 class _exclusive:

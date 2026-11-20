@@ -1,21 +1,31 @@
 import json
 import logging
 import os
+from types import SimpleNamespace
+from typing import (
+    Any,
+    cast,
+)
 
 import pytest
 
+from galaxy import model
 from galaxy.app_unittest_utils.galaxy_mock import MockApp
 from galaxy.tool_util.parser import get_tool_source
 from galaxy.tool_util.security import ReviewTimeout
 from galaxy.tool_util.security.report import (
     ELEMENT_IDENTIFIER,
+    RAW,
 )
 from galaxy.tools import (
     create_tool_from_source,
     security_review,
     Tool,
 )
+from galaxy.tools.evaluation import ToolEvaluator
+from galaxy.tools.parameters.basic import ToolParameter
 from galaxy.tools.security_review import (
+    _identifiers,
     ANALYSED,
     ENFORCE,
     LOG,
@@ -23,8 +33,14 @@ from galaxy.tools.security_review import (
     OFF,
     ReviewCache,
     reviewed_tool_source,
+    ToolInputRejected,
     ToolReview,
     ToolSecurityReviewer,
+)
+from galaxy.tools.wrappers import (
+    DatasetCollectionWrapper,
+    DatasetListWrapper,
+    InputValueWrapper,
 )
 
 ECHO_IDS = """<tool id="echo_ids" name="Echo identifiers" version="1.0" profile="24.0">
@@ -70,6 +86,32 @@ def stored_files(reviewer: ToolSecurityReviewer) -> list[str]:
     for dirpath, _, files in os.walk(reviewer.cache.directory):
         found.extend(os.path.join(dirpath, f) for f in files if f != "warm-up.lock")
     return found
+
+
+def hdca(name: str, identifiers: list[str]) -> model.HistoryDatasetCollectionAssociation:
+    collection = model.DatasetCollection(collection_type="list")
+    for i, identifier in enumerate(identifiers):
+        hda = model.HistoryDatasetAssociation(name=f"dataset {i}", extension="txt")
+        model.DatasetCollectionElement(
+            collection=collection, element=hda, element_identifier=identifier, element_index=i
+        )
+    return model.HistoryDatasetCollectionAssociation(name=name, collection=collection)
+
+
+def evaluator(app, tool: Tool, identifiers: list[str], word: str = "plain", name: str = "my list") -> Any:
+    stub = SimpleNamespace(job=SimpleNamespace(id=7), consumes_names=False, consumes_identifiers=False)
+    # As in ToolEvaluator, the wrappers report reading identifiers and names to the evaluator.
+    collection = DatasetCollectionWrapper(
+        None,
+        hdca(name, identifiers),
+        datatypes_registry=app.datatypes_registry,
+        tool_evaluator=cast(ToolEvaluator, stub),
+    )
+    stub.param_dict = {
+        "input": collection,
+        "word": InputValueWrapper(cast(ToolParameter, tool.inputs["word"]), word),
+    }
+    return stub
 
 
 # -- the cache ---------------------------------------------------------------------------------
@@ -163,6 +205,7 @@ def test_timeout_is_recorded_as_not_analysed(app, tmp_path, caplog):
     assert "took longer than" in caplog.text
     # Stored, so the next process does not try again.
     assert reviewer(tmp_path).review(tool, compute=False) == review
+    r.check_job(tool, evaluator(app, tool, ["a'b"]))
 
 
 def test_analyser_error_is_recorded_as_not_analysed(app, tmp_path, monkeypatch):
@@ -174,6 +217,7 @@ def test_analyser_error_is_recorded_as_not_analysed(app, tmp_path, monkeypatch):
     r = reviewer(tmp_path, ENFORCE)
     review = r.review(tool)
     assert review is not None and review.status == NOT_ANALYSED and review.reason == "error: RuntimeError"
+    r.check_job(tool, evaluator(app, tool, ["a'b"]))
 
 
 def test_timeout_raised_while_reviewing(app, tmp_path, monkeypatch):
@@ -233,6 +277,91 @@ def test_off_does_nothing(app, tmp_path, monkeypatch):
     r = reviewer(tmp_path, OFF)
     tool = make_tool(app, tmp_path)
     assert r.review(tool) is None
+    r.check_job(tool, evaluator(app, tool, ["a'b; touch /tmp/x"]))
     r.warm_up(lambda: [tool])
     assert r._warm_up_thread is None
     assert not os.path.exists(r.cache.directory)
+
+
+# -- job values --------------------------------------------------------------------------------
+
+
+def test_enforce_refuses_an_identifier_that_closes_the_quotes(app, tmp_path):
+    tool = make_tool(app, tmp_path)
+    job = evaluator(app, tool, ["sample_1", "it's"])
+    with pytest.raises(ToolInputRejected) as e:
+        reviewer(tmp_path, ENFORCE).check_job(tool, job)
+    message = str(e.value)
+    assert "an element identifier or the name of input 'input' contains the characters [']" in message
+    assert "Echo identifiers" in message and "echo_ids" in message
+    assert "it's" not in message
+    # Reading identifiers through the wrappers must not change how the job cache sees the job.
+    assert job.consumes_identifiers is False and job.consumes_names is False
+
+
+def test_log_warns_and_lets_the_job_run(app, tmp_path, caplog):
+    tool = make_tool(app, tmp_path)
+    reviewer(tmp_path, LOG).check_job(tool, evaluator(app, tool, ["it's"], word="x'y"))
+    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 2
+    assert all("job 7 of tool echo_ids version 1.0" in w and "contains [']" in w for w in warnings)
+    assert any("element_identifier of input 'input'" in w for w in warnings)
+    assert any("raw of input 'word'" in w for w in warnings)
+    assert all("it's" not in w and "x'y" not in w for w in warnings)
+
+
+@pytest.mark.parametrize("mode", [LOG, ENFORCE])
+def test_harmless_values_pass(app, tmp_path, caplog, mode):
+    tool = make_tool(app, tmp_path)
+    reviewer(tmp_path, mode).check_job(tool, evaluator(app, tool, ["sample 1", "a;b|c"], word="a b;c"))
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+def test_collection_name_is_checked(app, tmp_path):
+    # `$c.name` gives the collection's name, and the review does not tell it from element identifiers.
+    tool = make_tool(app, tmp_path)
+    with pytest.raises(ToolInputRejected):
+        reviewer(tmp_path, ENFORCE).check_job(tool, evaluator(app, tool, ["a"], name="Bob's list"))
+
+
+def test_raw_value_is_checked(app, tmp_path):
+    tool = make_tool(app, tmp_path)
+    with pytest.raises(ToolInputRejected) as e:
+        reviewer(tmp_path, ENFORCE).check_job(tool, evaluator(app, tool, ["a"], word="it's"))
+    assert "the value of input 'word' contains the characters [']" in str(e.value)
+
+
+def test_identifiers_of_nested_collections_and_multiple_inputs(app):
+    inner = model.DatasetCollection(collection_type="paired")
+    for i, identifier in enumerate(["forward", "rev'erse"]):
+        hda = model.HistoryDatasetAssociation(name=f"d{i}", extension="txt")
+        model.DatasetCollectionElement(collection=inner, element=hda, element_identifier=identifier, element_index=i)
+    outer = model.DatasetCollection(collection_type="list:paired")
+    model.DatasetCollectionElement(collection=outer, element=inner, element_identifier="sam'ple", element_index=0)
+    wrapper = DatasetCollectionWrapper(
+        None, model.HistoryDatasetCollectionAssociation(name="pairs", collection=outer), app.datatypes_registry
+    )
+    assert list(_identifiers(wrapper)) == ["pairs", "sam'ple", "forward", "rev'erse"]
+
+    datasets = [model.HistoryDatasetAssociation(name=name, extension="txt") for name in ("one", "two")]
+    assert list(_identifiers(DatasetListWrapper(None, datasets, datatypes_registry=app.datatypes_registry))) == [
+        "one",
+        "two",
+    ]
+
+
+def test_check_errors_do_not_fail_the_job(app, tmp_path, monkeypatch, caplog):
+    def broken(findings, param_dict):
+        raise RuntimeError("unexpected param_dict")
+
+    monkeypatch.setattr(security_review, "find_violations", broken)
+    tool = make_tool(app, tmp_path)
+    reviewer(tmp_path, ENFORCE).check_job(tool, evaluator(app, tool, ["it's"]))
+    assert "checking values against the security review of tool echo_ids failed" in caplog.text
+
+
+def test_finding_refs_name_the_inputs(app, tmp_path):
+    review = reviewer(tmp_path).review(make_tool(app, tmp_path))
+    assert review is not None
+    refs = {(ref.accessor, ref.param) for f in review.checked_findings for ref in f.refs}
+    assert refs == {(ELEMENT_IDENTIFIER, "input"), (RAW, "word")}

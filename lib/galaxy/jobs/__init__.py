@@ -1468,6 +1468,7 @@ class MinimalJobWrapper(HasResourceParameters):
             job=job,
             tool=self.tool,
             local_working_directory=self.working_directory,
+            security_reviewer=self.app.tool_security_reviewer,
         )
         return tool_evaluator
 
