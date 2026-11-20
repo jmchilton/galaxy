@@ -1,5 +1,7 @@
 """``python -m galaxy.tool_util.security tool.xml [...]``: print the security review of tools."""
 
+from __future__ import annotations
+
 import argparse
 import json
 import sys

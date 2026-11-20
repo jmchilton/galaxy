@@ -17,11 +17,14 @@ The model is reached through a :class:`Judge`, so the Tool Shed and Galaxy can u
 client. :class:`AnthropicJudge` is the implementation for the Anthropic SDK.
 """
 
+from __future__ import annotations
+
 import copy
 import re
 from typing import (
     Any,
     Literal,
+    Optional,
     Protocol,
 )
 
@@ -62,7 +65,8 @@ class Assessment(BaseModel):
             "unsure: the material shown is not enough to decide."
         )
     )
-    attack: str | None = Field(
+    # Optional rather than `str | None`: pydantic evaluates field annotations at runtime.
+    attack: Optional[str] = Field(
         description="A concrete value that survives sanitization, validation and quoting here; null for none/unsure."
     )
     reason: str = Field(description="One or two sentences naming the quoting, sanitizer or validator that decides it.")

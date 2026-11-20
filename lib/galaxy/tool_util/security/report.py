@@ -1,5 +1,7 @@
 """Findings and the per-tool report the review produces."""
 
+from __future__ import annotations
+
 from dataclasses import (
     asdict,
     dataclass,

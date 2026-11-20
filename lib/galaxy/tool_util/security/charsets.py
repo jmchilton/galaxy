@@ -10,9 +10,12 @@ Sanitizers are not re-modelled here. :func:`sanitized` runs the real
 ``sanitize_param``) on each probe character and records what comes out.
 """
 
+from __future__ import annotations
+
 import string
 from typing import (
     Any,
+    FrozenSet,
     NamedTuple,
 )
 
@@ -26,7 +29,7 @@ except ImportError:  # Python < 3.11
     import sre_constants  # type: ignore[no-redef, unused-ignore]
     import sre_parse  # type: ignore[no-redef, unused-ignore]
 
-Chars = frozenset[str]
+Chars = FrozenSet[str]
 
 PROBE: Chars = frozenset(string.punctuation + " \t\n")
 NONE: Chars = frozenset()

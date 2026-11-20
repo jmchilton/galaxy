@@ -12,6 +12,8 @@ Cheetah for a class (which would execute the generated module, including ``#impo
 ``#attr`` lines).
 """
 
+from __future__ import annotations
+
 import ast
 import re
 import warnings

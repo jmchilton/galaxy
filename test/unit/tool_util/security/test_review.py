@@ -1,5 +1,7 @@
 """The security review, on small tools written for one behaviour each."""
 
+from __future__ import annotations
+
 import os
 
 import pytest
@@ -89,13 +91,15 @@ INPUTS = """
 def review(tmp_path, command: str, configfiles: str = "", extra: str = "", tool_attrs: str = "") -> Report:
     path = os.path.join(tmp_path, "tool.xml")
     with open(path, "w") as fh:
-        fh.write(f"""<tool id="t" name="t" version="1" profile="24.2" {tool_attrs}>
+        fh.write(
+            f"""<tool id="t" name="t" version="1" profile="24.2" {tool_attrs}>
   <command><![CDATA[{command}]]></command>
   <configfiles>{configfiles}</configfiles>
   <inputs>{INPUTS}</inputs>
   <outputs><data name="out" format="txt"/></outputs>
   {extra}
-</tool>""")
+</tool>"""
+        )
     return review_tool_source(get_tool_source(path))
 
 

@@ -10,6 +10,8 @@ An abstract value (:class:`AV`) records the probe characters a user could get in
 rendered text and where they come from. A value without sources is not user-controlled.
 """
 
+from __future__ import annotations
+
 from dataclasses import (
     dataclass,
     field,
@@ -38,15 +40,15 @@ from .validators import text_constraint
 class AV:
     chars: Chars = NONE
     sources: frozenset[str] = frozenset()
-    nodes: tuple["Node", ...] = ()
-    elem: Optional["AV"] = None  # element when iterated or indexed
-    items: tuple["AV", ...] | None = None  # tuple or list literal
+    nodes: tuple[Node, ...] = ()
+    elem: Optional[AV] = None  # element when iterated or indexed
+    items: tuple[AV, ...] | None = None  # tuple or list literal
     quoted: str = ""  # "shlex", "json" or "pyrepr": the value was escaped for that syntax
     py: str = ""  # a Python name such as "re.sub"
-    bound: tuple["AV", str] | None = None  # a method of another value
+    bound: tuple[AV, str] | None = None  # a method of another value
     helper: str = ""  # a #def of the template
     # A string built in Python from literal text and values ("ln -s '%s'" % x): the pieces in order.
-    parts: tuple["str | AV", ...] | None = None
+    parts: tuple[str | AV, ...] | None = None
     whole: bool = True  # False when a user value is only a part of this string
     # Probe characters the value can begin with, when a validator or a cleaning step narrows them.
     lead: Chars | None = None
@@ -54,7 +56,7 @@ class AV:
     words: Chars | None = None
     # A value that is one of several strings built from literal text and values: each is written
     # on its own, so that the quotes in its literal text are seen.
-    alts: tuple["AV", ...] = ()
+    alts: tuple[AV, ...] = ()
 
     @property
     def tainted(self) -> bool:
@@ -72,7 +74,7 @@ def tainted(chars: Chars, source: str) -> AV:
     return AV(chars=chars, sources=frozenset((source,)))
 
 
-def concat(parts: "list[str | AV]") -> AV:
+def concat(parts: list[str | AV]) -> AV:
     """A string made of literal text and values, in this order."""
     pieces: list[str | AV] = []
     for part in parts:
@@ -237,7 +239,7 @@ class Group(Node):
         if name:
             self.children.setdefault(name, []).append(node)
 
-    def restrict(self, values: set[str]) -> "Group | None":
+    def restrict(self, values: set[str]) -> Group | None:
         """The conditional when its test parameter has one of these values, None for an unknown value."""
         if not self.selector or not values <= self.case_values:
             return None

@@ -1,5 +1,7 @@
 """The model judgement layer, with a stand-in for the model."""
 
+from __future__ import annotations
+
 import os
 
 from galaxy.tool_util.parser.factory import get_tool_source
