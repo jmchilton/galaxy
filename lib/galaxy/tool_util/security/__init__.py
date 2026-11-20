@@ -17,6 +17,7 @@ from __future__ import annotations
 import re
 import sys
 import time
+from dataclasses import replace
 
 from Cheetah.Parser import ParseError
 
@@ -41,8 +42,10 @@ from .report import (
     Finding,
     Report,
     ReviewTimeout,
+    sorted_refs,
     Source,
     SourceRef,
+    VULNERABILITY,
 )
 from .template import (
     compile_template,
@@ -51,6 +54,9 @@ from .template import (
 )
 
 __all__ = ("Finding", "Report", "ReviewTimeout", "review_tool_source", "Source", "SourceRef")
+
+# Capabilities that send text a template writes to a program that runs it.
+_RUNS_TEXT = frozenset(("capability-pipe-to-shell",))
 
 # A here-document (`<<WORD`, `<<-WORD`), not the here-string `<<<`. An arithmetic `<<` matches too.
 _HEREDOC = re.compile(r"(?<!<)<<(?!<)")
@@ -139,7 +145,37 @@ def review_tool_source(tool_source: ToolSource, timeout: float | None = None) ->
         else:
             _analyse(content, location, language, model, report, deadline)
 
+    _mark_unchecked_locations(report)
     xml_tree = getattr(tool_source, "xml_tree", None)
     if xml_tree is not None:
         audit_tool_xml(xml_tree, report)
     return report
+
+
+def _mark_unchecked_locations(report: Report) -> None:
+    """Make the findings of a template that a character test cannot judge not checkable.
+
+    A template with parts that were not analysed can write values the analysis did not follow,
+    and a template that pipes text into a shell runs whatever a value says, whatever characters
+    it has.
+    """
+    for note in report.unanalyzed:
+        location, separator, _ = note.partition(": ")
+        if separator and (location == "command" or location.startswith("configfile:")):
+            report.unchecked_locations.setdefault(location, "parts of it were not analysed")
+    for finding in report.findings:
+        if finding.rule in _RUNS_TEXT:
+            report.unchecked_locations.setdefault(finding.location, "it sends text to a shell to run")
+    if not report.unchecked_locations:
+        return
+    report.findings = [
+        (
+            replace(finding, unchecked=sorted_refs((*finding.unchecked, *finding.refs)))
+            if finding.kind == VULNERABILITY and finding.location in report.unchecked_locations
+            else finding
+        )
+        for finding in report.findings
+    ]
+    for location in report.unchecked_locations:
+        report.writes.pop(location, None)
+        report.closers.pop(location, None)
