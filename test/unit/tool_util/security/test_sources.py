@@ -80,27 +80,73 @@ def high(report: Report):
 
 
 @pytest.mark.parametrize(
-    "command,breakout",
+    "command,breakout,requires",
     [
-        # Only a quote leaves single quotes; what follows it is the command.
-        ("echo '${free}'", frozenset("'")),
-        ("echo ${free}", SHELL_EXEC),
-        ('echo "${free}"', frozenset('`$"')),
+        # A quote leaves single quotes, and a command character after it starts a command.
+        ("echo '${free}'", frozenset("'"), SHELL_EXEC),
+        ("echo ${free}", SHELL_EXEC, frozenset()),
+        ('echo "${free}"', frozenset('`$"'), frozenset()),
         # In $'...' a backslash escapes the closing quote.
-        ("echo $'${free}'", frozenset("'\\")),
-        # shlex.quote writes the quotes itself; the value has to bring the command characters.
-        ("#import shlex\necho '${shlex.quote(str($free))}'", SHELL_EXEC),
+        ("echo $'${free}'", frozenset("'\\"), SHELL_EXEC),
+        # Escaping writes the quote that closes the string; the value has to bring the command characters.
+        ("#import shlex\necho '${shlex.quote(str($free))}'", SHELL_EXEC, frozenset()),
+        ('echo "$json.dumps(str($free))"', frozenset("`$") | SHELL_EXEC, frozenset()),
+        ('echo "${repr(str($free))}"', frozenset("`$") | SHELL_EXEC, frozenset()),
     ],
 )
-def test_breakout(tmp_path, command, breakout):
-    assert high(review(tmp_path, command)).breakout == breakout
+def test_breakout(tmp_path, command, breakout, requires):
+    finding = high(review(tmp_path, command))
+    assert (finding.breakout, finding.requires) == (breakout, requires)
+    assert finding.checkable
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        # Template code can write the character that leaves the quotes, whatever the user wrote.
+        "echo \"${text.replace('Q', '`')}\"",
+        "echo ${str($text).replace('__gt__', '>')}",
+        "#import re\necho ${re.sub('_', ';', str($free))}",
+        "#import urllib.parse\necho '${urllib.parse.unquote(str($free))}'",
+        "#import base64\necho '${base64.b64decode(str($free))}'",
+        "echo '${some_function($free)}'",
+        "echo '${str($free).translate($table)}'",
+    ],
+)
+def test_rewritten_values_are_not_checkable(tmp_path, command):
+    report = review(tmp_path, command)
+    findings = [f for f in report.findings if f.severity == HIGH and f.kind == "vulnerability"]
+    assert findings
+    assert all(not f.checkable and f.unchecked for f in findings)
+
+
+def test_rewriting_that_cannot_add_a_breakout_character_stays_checkable(tmp_path):
+    finding = high(review(tmp_path, "echo '${str($free).replace('_', '-').lower()}'"))
+    assert finding.checkable and not finding.unchecked
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "echo '${free}'\necho ${str($free).replace('Q', ';')}",
+        "echo ${str($free).replace('Q', ';')}\necho '${free}'",
+    ],
+)
+def test_a_rewritten_source_is_not_checkable_anywhere(tmp_path, command):
+    # Whether the rewrite comes before or after a place that writes the value as it is.
+    findings = [f for f in review(tmp_path, command).findings if f.kind == "vulnerability" and f.severity == HIGH]
+    assert len(findings) == 2
+    assert all(f.unchecked for f in findings)
 
 
 def test_nested_shell(tmp_path):
     report = review(tmp_path, "sh -c 'echo ${free}'")
-    breakout = {f.rule: f.breakout for f in report.findings}
+    breakout = {f.rule: (f.breakout, f.requires) for f in report.findings}
     # Closing the quotes of `sh -c '...'`, or a command character inside the nested shell.
-    assert breakout == {"shell-injection": frozenset("'"), "nested-interpreter": SHELL_EXEC}
+    assert breakout == {
+        "shell-injection": (frozenset("'"), SHELL_EXEC),
+        "nested-interpreter": (SHELL_EXEC, frozenset()),
+    }
 
 
 def test_no_character_decides_the_program(tmp_path):

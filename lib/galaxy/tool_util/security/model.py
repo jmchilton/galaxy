@@ -12,12 +12,16 @@ rendered text and where they come from. A value without sources is not user-cont
 
 from __future__ import annotations
 
+import threading
+from contextlib import contextmanager
 from dataclasses import (
     dataclass,
     field,
 )
 from typing import (
     Any,
+    Callable,
+    Iterator,
     Optional,
 )
 
@@ -80,6 +84,28 @@ CLEAN = AV()
 REPR_PUNCTUATION: Chars = frozenset("'\"\\ ,[](){}:")
 # Marks a source that is only user-controlled under a condition; findings from it rank one level lower.
 CONDITIONAL = "only when the referenced dataset is empty"
+
+
+# Receives (sources, characters, escape) when the model puts characters into a user value that the
+# user did not write: `escape` for the punctuation of a repr, otherwise text from the template.
+_recorders = threading.local()
+
+
+@contextmanager
+def recording(record: Callable[[frozenset[str], Chars, bool], None]) -> Iterator[None]:
+    previous = getattr(_recorders, "record", None)
+    _recorders.record = record
+    try:
+        yield
+    finally:
+        _recorders.record = previous
+
+
+def introduced(value: AV, chars: Chars, escape: bool = False) -> None:
+    """Characters the template, not the user, can bring into this value."""
+    record = getattr(_recorders, "record", None)
+    if record is not None and value.tainted and chars:
+        record(value.sources, chars, escape)
 
 
 def tainted(chars: Chars, source: str) -> AV:
@@ -202,6 +228,8 @@ def join(*values: AV | None) -> AV:
         if alternatives is None:
             # Too many strings to write one by one: assume their quotes can surround nothing.
             chars = chars | _QUOTES
+            introduced(out, _QUOTES)
+            introduced(other, _QUOTES)
         out = AV(
             chars=chars,
             sources=out.sources | other.sources,
@@ -524,6 +552,7 @@ def stringify(value: AV) -> AV:
         if "'" not in inner.chars:
             # repr() only switches to double quotes for a string that contains a single quote.
             punctuation = punctuation - {'"'}
+        introduced(inner, punctuation, escape=True)
         return AV(
             chars=value.chars | inner.chars | punctuation,
             sources=value.sources | inner.sources,
