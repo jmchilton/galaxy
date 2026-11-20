@@ -187,6 +187,7 @@ class _Text:
 
     quote: str = ""
     esc: bool = False
+    escaped: str = ""  # as ShellState.escaped
 
 
 States = frozenset[Any]
@@ -671,8 +672,13 @@ class TemplateAnalysis:
 
     @staticmethod
     def _feed_text(state: _Text, text: str) -> _Text:
-        quote, esc = state.quote, state.esc
+        quote, esc, escaped = state.quote, state.esc, state.escaped
         for c in text:
+            if c == "\n" and not esc:
+                # Only a value on the same line is taken to follow the escaped quote: a Python string
+                # ends with its line, and elsewhere every later quote of the script would be off by
+                # one, which rarely still parses.
+                escaped = ""
             if esc:
                 esc = False
             elif c == "\\":
@@ -682,7 +688,7 @@ class TemplateAnalysis:
                     quote = ""
             elif c in "'\"":
                 quote = c
-        return _Text(quote, esc)
+        return _Text(quote, esc, escaped)
 
     def write_placeholder(self, node: ast.expr | None, raw_expr: str | None, states: States, env: Env) -> States:
         if isinstance(node, ast.Call) and not self._capture:
@@ -725,20 +731,40 @@ class TemplateAnalysis:
                     states = self.write_value(part, raw_expr, states, env)
             return states
         if self.language != "shell":
-            if text.tainted:
-                for state in states:
-                    self.judge_config(text, state.quote, raw_expr)
-            return states
+            if not text.tainted:
+                return states
+            after_config: set[_Text] = set()
+            for state in states:
+                escaped = bool(state.quote) and state.escaped == state.quote
+                self.judge_config(text, state.quote, raw_expr, escaped)
+                if self._can_escape_config_quote(text, state.quote):
+                    state = _Text(state.quote, state.esc, state.quote)
+                after_config.add(state)
+            return frozenset(after_config)
         out = set()
         for state in states:
             context, after = shell.placeholder(state)
-            out.add(after)
             if context.comment:
+                out.add(after)
                 continue
             self.note_reader(value, context)
             if text.tainted:
-                self.judge_shell(text, context, raw_expr)
+                escaped = bool(context.quote) and state.escaped == context.quote
+                self.judge_shell(text, context, raw_expr, escaped)
+                own_escapes = text.quoted == "dq-escaped" and context.quote == '"'
+                if context.quote in ('"', shell.ANSI) and not context.lang and "\\" in text.chars and not own_escapes:
+                    after = after._replace(escaped=context.quote)
+            out.add(after)
         return frozenset(out)
+
+    def _can_escape_config_quote(self, text: AV, quote: str) -> bool:
+        """The value can end in a backslash that escapes the closing quote of a string in a program."""
+        if not quote or "\\" not in text.chars or self.language not in CODE_LANGUAGES:
+            return False
+        if text.quoted == "json" or (text.quoted == "pyrepr" and self.language == "python"):
+            return False
+        # In sh only double quotes treat a backslash as an escape.
+        return self.language != "sh" or quote == '"'
 
     def note_reader(self, value: AV, context: shell.Context) -> None:
         # `Rscript '$script'`, `R --vanilla < '$script'`, `awk -f '$script'`: the program the command runs.
@@ -751,9 +777,19 @@ class TemplateAnalysis:
             if isinstance(node, Special) and node.path.startswith("configfile:"):
                 self.readers.setdefault(node.path[len("configfile:") :], set()).add(context.cmd)
 
-    def judge_shell(self, text: AV, context: shell.Context, raw_expr: str | None) -> None:
+    def judge_shell(self, text: AV, context: shell.Context, raw_expr: str | None, escaped: bool = False) -> None:
+        """``escaped``: an earlier user value in the same kind of quotes can end in a backslash."""
         chars = text.chars
         verdicts: list[Verdict] = []
+        if escaped and (verdict := charsets.unquoted(chars, text.words)):
+            # The earlier value escaped its closing quote, so the quote that opens this value closes
+            # that string instead, and this value is written unquoted.
+            self.finding(
+                verdict._replace(why=f"{verdict.why}, once an earlier value escapes the closing quote"),
+                text,
+                f"{context.describe()}, after a value that can end in a backslash",
+                raw_expr,
+            )
         if context.role == "cmd" and context.lead and text.whole:
             verdicts.append(Verdict("command-position", charsets.HIGH, chars, "chooses the program that is run"))
         quoted_for_here = text.quoted == "shlex" and not context.quote and not context.lang
@@ -810,11 +846,26 @@ class TemplateAnalysis:
         for verdict in verdicts:
             self.finding(verdict, text, context.describe(), raw_expr)
 
-    def judge_config(self, text: AV, quote: str, raw_expr: str | None) -> None:
+    def judge_config(self, text: AV, quote: str, raw_expr: str | None, escaped: bool = False) -> None:
+        """``escaped``: an earlier user value in the same kind of string can end in a backslash."""
         chars = text.chars
         if text.quoted == "json" or (text.quoted == "pyrepr" and self.language == "python"):
             # Escaped by json.dumps, or a Python list written into Python code.
             return
+        if escaped and self.language in CODE_LANGUAGES:
+            # The earlier value escaped the closing quote of its string; the quote that opens this
+            # value's string closes it instead, so this value is program text.
+            verdict = charsets.code(self.language, chars, "")
+            if verdict:
+                why = f"{verdict.why}, once an earlier value on the line escapes the closing quote"
+                self.finding(
+                    Verdict("configfile-injection", verdict.severity, verdict.chars, why),
+                    text,
+                    f"inside a {quote}...{quote} string of a {self.language} script, after a value that can end"
+                    " in a backslash",
+                    raw_expr,
+                )
+                return
         where = f"inside a {quote}...{quote} string" if quote else "outside any string"
         if self.language in CODE_LANGUAGES:
             verdict = charsets.code(self.language, chars, quote)

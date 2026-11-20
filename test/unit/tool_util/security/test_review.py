@@ -60,6 +60,9 @@ INPUTS = """
   <sanitizer><valid initial="string.printable"><remove value="&apos;"/></valid>
   <mapping initial="none"><add source="&apos;" target="&apos;&quot;&apos;&quot;&apos;"/></mapping></sanitizer>
 </param>
+<param name="no_dq" type="text">
+  <sanitizer sanitize="false"/><validator type="regex">^[^"$`]*$</validator>
+</param>
 <param name="no_expansion" type="text">
   <sanitizer sanitize="false"/><validator type="regex">^[^\\\\$`]*$</validator>
 </param>
@@ -715,3 +718,44 @@ def test_conditional_selector_picks_the_when_block(tmp_path, command, expected):
 )
 def test_narrowing_does_not_hide_raw_values(tmp_path, command, expected):
     assert expected in rules(review(tmp_path, command))
+
+
+@pytest.mark.parametrize(
+    "command,content,expected",
+    [
+        # One value that can end in a backslash breaks the string syntax only.
+        ("python '$script'", "adata.obs['$no_quote'] = 1", {("configfile-injection", "low")}),
+        # A second value on the line: the first escapes its closing quote, the second is Python code.
+        (
+            "python '$script'",
+            "adata.obs['$no_quote'] = adata.obs['$no_quote']",
+            {("configfile-injection", "low"), ("configfile-injection", "high")},
+        ),
+    ],
+)
+def test_value_after_an_escaped_closing_quote_in_a_script(tmp_path, command, content, expected):
+    assert rules(review(tmp_path, command, CONFIG.format(f"<![CDATA[{content}]]>"))) == expected
+
+
+def test_backslash_inside_sh_single_quotes_escapes_nothing(tmp_path):
+    report = review(tmp_path, "sh '$script'", CONFIG.format("<![CDATA[x='$no_quote' y='$no_quote']]>"))
+    assert not any("can end in a backslash" in f.context for f in report.findings)
+
+
+@pytest.mark.parametrize(
+    "command,expected",
+    [
+        ('tool "$no_dq"', {("argument-injection", "low")}),
+        # The first value escapes its closing quote; the second is then written unquoted.
+        ('tool "$no_dq" "$no_dq"', {("argument-injection", "low"), ("shell-injection", "high")}),
+        # Inside single quotes a backslash is an ordinary character.
+        ("tool '$no_quote' '$no_quote'", set()),
+        # The backslashes the template writes before quotes escape them on purpose.
+        (
+            '#set $t = $no_expansion.replace(\'"\', \'\\\\"\')\ntool "$t" "$t"',
+            set(),
+        ),
+    ],
+)
+def test_value_after_an_escaped_closing_quote_in_the_command(tmp_path, command, expected):
+    assert rules(review(tmp_path, command)) - {("option-injection", "low")} == expected
