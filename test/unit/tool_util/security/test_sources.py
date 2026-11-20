@@ -128,6 +128,34 @@ def test_rewriting_that_cannot_add_a_breakout_character_stays_checkable(tmp_path
 @pytest.mark.parametrize(
     "command",
     [
+        "echo '${''.join([\"'\", str($free)])}'",
+        "#set $l = [\"'\", str($free)]\necho '${''.join($l)}'",
+        "#set $l = [\"'\", str($free)]\necho '${''.join(reversed($l))}'",
+    ],
+)
+def test_literal_elements_joined_with_a_value_are_not_the_users(tmp_path, command):
+    finding = high(review(tmp_path, command))
+    assert finding.unchecked and not finding.checkable
+
+
+def test_requires_only_with_a_single_user_value(tmp_path):
+    # `echo '$x' && echo '$y'`: a quote in x leaves the `;` of y unquoted.
+    report = review(tmp_path, "echo '${free}' && echo '${text.value}'")
+    findings = [f for f in report.findings if f.severity == HIGH]
+    assert len(findings) == 2
+    assert all(f.breakout == frozenset("'") and not f.requires for f in findings)
+
+
+def test_a_rewritten_value_makes_the_whole_template_uncheckable(tmp_path):
+    # The rewrite can bring the quote that lets the other value out.
+    report = review(tmp_path, """echo '${str($free).replace("Q", "'")}${text.value}'""")
+    findings = [f for f in report.findings if f.kind == "vulnerability" and f.severity == HIGH]
+    assert findings and not any(f.checkable for f in findings)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
         "echo '${free}'\necho ${str($free).replace('Q', ';')}",
         "echo ${str($free).replace('Q', ';')}\necho '${free}'",
     ],
