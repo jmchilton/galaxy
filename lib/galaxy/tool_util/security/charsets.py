@@ -82,6 +82,9 @@ class Verdict(NamedTuple):
     # Characters at least one of which a value must contain to do what `why` says; None when that
     # is any of `chars`, empty when no character decides it.
     breakout: Optional[Chars] = None
+    # When not empty, the value must also contain one of these: closing single quotes starts a
+    # command only with a command character after the quote.
+    requires: Chars = frozenset()
 
 
 def unquoted(chars: Chars, word_first: Chars | None = None) -> Verdict | None:
@@ -108,6 +111,7 @@ def single_quoted(chars: Chars) -> Verdict | None:
             after.chars | {"'"},
             "can close the single quotes and start a command",
             frozenset("'"),
+            after.chars,
         )
     return Verdict("argument-injection", MEDIUM, frozenset("'"), "can close the single quotes")
 
