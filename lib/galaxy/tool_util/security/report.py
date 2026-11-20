@@ -23,6 +23,11 @@ VULNERABILITY = "vulnerability"
 CAPABILITY = "capability"
 
 
+# Breakout characters that close or escape quotes: a value that can bring one where it is written
+# changes how the rest of its line is quoted.
+QUOTE_CLOSERS = frozenset("'\"`\\")
+
+
 class ReviewTimeout(Exception):
     """The review ran past the deadline it was given."""
 
@@ -124,6 +129,10 @@ class Report:
     findings: list[Finding] = field(default_factory=list)
     # Template sites the analysis could not follow; an honest list of what was not checked.
     unanalyzed: list[str] = field(default_factory=list)
+    # Every user value each template (location) writes, by source, with the characters that do
+    # harm in it once a stray quote of another value has left it outside any quotes. A location
+    # whose values the job check cannot judge is left out.
+    writes: dict[str, dict[SourceRef, frozenset[str]]] = field(default_factory=dict)
 
     def add(self, finding: Finding) -> None:
         for i, existing in enumerate(self.findings):
@@ -169,6 +178,11 @@ class Report:
             "max_severity": self.max_severity,
             "findings": [_finding_to_dict(f) for f in self.sorted()],
             "unanalyzed": self.unanalyzed,
+            "writes": [
+                {"location": location, "ref": asdict(ref), "follow": sorted(follow)}
+                for location, refs in sorted(self.writes.items())
+                for ref, follow in sorted(refs.items(), key=lambda item: repr(item[0]))
+            ],
         }
 
     @classmethod
@@ -183,6 +197,8 @@ class Report:
             f["breakout"] = frozenset(f.get("breakout") or ())
             f["requires"] = frozenset(f.get("requires") or ())
             report.findings.append(Finding(**f))
+        for write in as_dict.get("writes") or []:
+            report.writes.setdefault(write["location"], {})[SourceRef(**write["ref"])] = frozenset(write["follow"])
         return report
 
 

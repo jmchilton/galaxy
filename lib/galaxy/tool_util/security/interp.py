@@ -48,6 +48,7 @@ from .model import (
 from .report import (
     Finding,
     OPAQUE,
+    QUOTE_CLOSERS,
     Report,
     ReviewTimeout,
     source_refs,
@@ -123,6 +124,12 @@ def _verdict_breakout(verdict: Verdict) -> charsets.Chars:
     return verdict.chars if verdict.breakout is None else verdict.breakout
 
 
+def _unquoted_harm(chars: charsets.Chars, language: str) -> charsets.Chars:
+    """The characters that run code when a value with these characters is outside any quotes."""
+    after = charsets.unquoted(chars) if language == "shell" else charsets.code(language, chars, "")
+    return after.chars if after is not None and after.severity in (charsets.HIGH, charsets.CRITICAL) else charsets.NONE
+
+
 def _breakout(
     verdict: Verdict, text: AV, language: str, escaped: charsets.Chars
 ) -> tuple[charsets.Chars, charsets.Chars]:
@@ -137,12 +144,7 @@ def _breakout(
     added = _ESCAPING_ADDS.get(text.quoted, charsets.NONE) | escaped
     if not breakout & added:
         return breakout, verdict.requires
-    rest = text.chars - added
-    after = charsets.unquoted(rest) if language == "shell" else charsets.code(language, rest, "")
-    follow = (
-        after.chars if after is not None and after.severity in (charsets.HIGH, charsets.CRITICAL) else charsets.NONE
-    )
-    return (breakout - added) | follow, charsets.NONE
+    return (breakout - added) | _unquoted_harm(text.chars - added, language), charsets.NONE
 
 
 _STRING_FUNCTIONS = frozenset(("str", "unicode", "repr", "format", "basestring"))
@@ -414,8 +416,8 @@ class TemplateAnalysis:
         # text (str.replace, a decoder, an unknown function) or as the quotes of an escaping.
         self._introduced: dict[SourceRef, charsets.Chars] = {}
         self._escapes: dict[SourceRef, charsets.Chars] = {}
-        # Every source of a user value the template writes.
-        self._written: set[SourceRef] = set()
+        # Every source of a user value the template writes, with what does harm in it unquoted.
+        self._written: dict[SourceRef, charsets.Chars] = {}
         # time.monotonic() after which the analysis stops with ReviewTimeout.
         self._deadline = deadline
         self._in_capture_region = 0
@@ -442,6 +444,13 @@ class TemplateAnalysis:
             for state in states:
                 shell.finish(state, self.events)
 
+    def _record_write(self, text: AV) -> None:
+        refs = source_refs(text.sources)
+        escaped = frozenset().union(*(self._escapes.get(ref, charsets.NONE) for ref in refs))
+        harm = _unquoted_harm(text.chars - _ESCAPING_ADDS.get(text.quoted, charsets.NONE) - escaped, self.language)
+        for ref in refs:
+            self._written[ref] = self._written.get(ref, charsets.NONE) | harm
+
     def _record(self, sources: frozenset[str], chars: charsets.Chars, escape: bool) -> None:
         into = self._escapes if escape else self._introduced
         for ref in source_refs(sources):
@@ -462,28 +471,37 @@ class TemplateAnalysis:
 
         * a source the template rewrites is not checkable, wherever it is written (also when the
           rewrite comes after a finding, in a later loop pass);
-        * when any finding of the template has a source that is not checkable or opaque, it can
-          bring the quote that lets the other values out: no finding of the template is checkable;
-        * ``requires`` holds only when the finding's sources are the only user values written.
+        * when any finding of the template has a source that is not checkable or opaque, or a
+          written source is opaque or rewritten so that it can gain a quote or a character that
+          does harm unquoted, it can bring the quote that lets the other values out: no finding
+          of the template is checkable, and its writes are not recorded;
+        * otherwise the template's writes go into Report.writes: when the job check sees a value
+          close its quotes (a finding with a quote in ``breakout``, at any severity), the harmful
+          characters of every written value count, also of values that have no finding.
         """
         indexes = [
             i for i, f in enumerate(self.report.findings) if f.location == self.location and f.kind == VULNERABILITY
         ]
         for i in indexes:
             finding = self.report.findings[i]
-            unchecked = set(finding.unchecked) | set(self._unchecked(finding.refs, finding.breakout | finding.requires))
+            needed = finding.breakout | finding.requires
+            unchecked = set(finding.unchecked) | set(self._unchecked(finding.refs, needed))
             self.report.findings[i] = dataclasses.replace(finding, unchecked=tuple(sorted(unchecked, key=repr)))
         poisoned = any(
             f.unchecked or any(ref.accessor == OPAQUE for ref in f.refs)
             for f in (self.report.findings[i] for i in indexes)
+        ) or any(
+            ref.accessor == OPAQUE or self._introduced.get(ref, charsets.NONE) & (QUOTE_CLOSERS | harm)
+            for ref, harm in self._written.items()
         )
+        if not poisoned and self._written:
+            writes = self.report.writes.setdefault(self.location, {})
+            for ref, harm in self._written.items():
+                writes[ref] = writes.get(ref, charsets.NONE) | harm
         for i in indexes:
             finding = self.report.findings[i]
             if poisoned and finding.refs:
-                finding = dataclasses.replace(finding, unchecked=finding.refs)
-            if finding.requires and not self._written <= set(finding.refs):
-                finding = dataclasses.replace(finding, requires=charsets.NONE)
-            self.report.findings[i] = finding
+                self.report.findings[i] = dataclasses.replace(finding, unchecked=finding.refs)
 
     def note(self, message: str) -> None:
         if message not in self._noted:
@@ -861,7 +879,7 @@ class TemplateAnalysis:
             return self.inline(value.helper, [], states, env)
         text = stringify(value)
         if text.tainted:
-            self._written.update(source_refs(text.sources))
+            self._record_write(text)
         if self._capture:
             self._capture[-1].append(text)
             return states
