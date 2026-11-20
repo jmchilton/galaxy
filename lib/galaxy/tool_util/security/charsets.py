@@ -162,12 +162,17 @@ _CODE_BREAK: dict[str, tuple[Chars, Chars]] = {
     "awk": (frozenset("'\";|`$"), frozenset("(){}/ \t\n")),
     "sed": (frozenset("'\";`\n"), frozenset("/")),
 }
+# The quotes that start a string literal in a language, where they differ from '...' and "...".
+STRING_QUOTES = {"sed": "", "awk": '"'}
 _CODE_DEFAULT: tuple[Chars, Chars] = (frozenset("'\"`;()"), PROBE - frozenset("_-.,:=+@%/^"))
 
 
 def code(lang: str, chars: Chars, quote: str = "") -> Verdict | None:
     """Value written into a program text that another interpreter parses (``sh -c``, ``awk``, a script)."""
     high, medium = _CODE_BREAK.get(lang, _CODE_DEFAULT)
+    if quote not in STRING_QUOTES.get(lang, "'\""):
+        # Not a string in this language: sed has none, awk only "...".
+        quote = ""
     if quote and lang != "sh":
         # Inside a string literal of the nested program only its delimiter and the escape character matter.
         if quote in chars:

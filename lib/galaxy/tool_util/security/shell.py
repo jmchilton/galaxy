@@ -18,7 +18,15 @@ from dataclasses import dataclass
 from typing import (
     Any,
     NamedTuple,
+    Optional,
     Tuple,
+)
+
+from .charsets import STRING_QUOTES
+from .sed import (
+    SedState,
+    START as SED_START,
+    step as sed_step,
 )
 
 _WORD_LIMIT = 48
@@ -56,6 +64,7 @@ class Frame(NamedTuple):
     kind: str = "top"
     quote: str = ""
     inner: str = ""  # quote state inside the program text of a nested interpreter
+    sed: Optional[SedState] = None  # where the program text of a sed command has got to
     cmd: str | None = None  # "?" when the command word contains a placeholder
     wrapper: bool = False
     piped: bool = False
@@ -96,6 +105,7 @@ class Context:
     first_arg: bool = False  # the first argument of the command that is not an option
     # The value starts an argument that does not follow an option: a leading dash makes it one.
     option_position: bool = False
+    sed: Optional[SedState] = None  # where in a sed program the value lands
 
     def describe(self) -> str:
         where = {
@@ -171,20 +181,29 @@ class _Lexer:
             self.set(script="")
         else:
             role = "arg"
-        self.set(word="", role=role, dynamic=False, lead=False, inner="")
+        self.set(word="", role=role, dynamic=False, lead=False, inner="", sed=SED_START if role == "code:sed" else None)
 
     def add(self, c: str) -> None:
         self.start_word(c)
         f = self.top
         if f.word is not None and len(f.word) < _WORD_LIMIT:
             self.set(word=f.word + c)
+        if f.sed is not None:
+            # Galaxy turns the newlines of a command line into spaces before it runs.
+            self.set(sed=sed_step(f.sed, " " if c == "\n" and not self.script else c))
+
+    def toggle_inner(self, c: str) -> None:
+        """A quote in the program text of a nested interpreter starts or ends one of its strings."""
+        f = self.top
+        if c in STRING_QUOTES.get(f.role[5:], "'\""):
+            self.set(inner="" if f.inner == c else c)
 
     def end_word(self) -> None:
         f = self.top
         if f.word is None:
             return
         text, dynamic, role = f.word, f.dynamic, f.role
-        self.set(word=None, dynamic=False, role="", lead=False, inner="")
+        self.set(word=None, dynamic=False, role="", lead=False, inner="", sed=None)
         if not dynamic:
             self.event("word", text)
         if role == "cmd":
@@ -280,7 +299,10 @@ class _Lexer:
         if self.esc:
             self.esc = False
             if f.quote == '"' and c == '"' and f.role.startswith("code:"):
-                self.set(inner="" if f.inner == '"' else '"')
+                self.toggle_inner(c)
+            if f.quote == '"' and c not in '$`"\\\n':
+                # Inside double quotes the shell keeps a backslash that escapes nothing.
+                self.add("\\")
             self.add(c)
             self.last = ""
             return
@@ -297,7 +319,7 @@ class _Lexer:
                 self.set(quote="")
             else:
                 if c == '"' and f.role.startswith("code:"):
-                    self.set(inner="" if f.inner == '"' else '"')
+                    self.toggle_inner(c)
                 self.add(c)
             return
         if c == "`":
@@ -316,7 +338,7 @@ class _Lexer:
                 self.push("cs")
             else:
                 if c == "'" and f.role.startswith("code:"):
-                    self.set(inner="" if f.inner == "'" else "'")
+                    self.toggle_inner(c)
                 self.add(c)
             return
         # Unquoted.
@@ -384,9 +406,10 @@ class _Lexer:
         self.set(dynamic=True, lead=f.lead or lead)
         f = self.top
         lang = inner = ""
+        sed_state = None
         for frame in reversed(self.frames):
             if frame.role.startswith("code:"):
-                lang, inner = frame.role[5:], frame.inner
+                lang, inner, sed_state = frame.role[5:], frame.inner, frame.sed
                 break
         role = f.role
         if role == "cmd" and _ASSIGNMENT.match(f.word or ""):
@@ -395,7 +418,17 @@ class _Lexer:
         first_arg = role == "arg" and not f.has_args and not (f.word or "").startswith("-")
         option_position = role == "arg" and f.lead and not f.after_option and bool(f.cmd) and f.cmd != "?"
         return Context(
-            False, f.quote, role, f.cmd, lang, inner, f.lead, len(self.frames) > 1, first_arg, option_position
+            False,
+            f.quote,
+            role,
+            f.cmd,
+            lang,
+            inner,
+            f.lead,
+            len(self.frames) > 1,
+            first_arg,
+            option_position,
+            sed_state,
         )
 
 
