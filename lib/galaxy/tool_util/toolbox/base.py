@@ -872,10 +872,6 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
     def tools(self):
         return self._tools_by_id.copy().items()
 
-    def all_tool_versions(self) -> List["Tool"]:
-        """Every registered tool, each version of it."""
-        return [tool for versions in list(self._tool_versions_by_id.values()) for tool in list(versions.values())]
-
     def dynamic_confs(self, include_migrated_tool_conf=False) -> List[DynamicToolConfDict]:
         confs = []
         for dynamic_tool_conf_dict in self._dynamic_tool_confs:

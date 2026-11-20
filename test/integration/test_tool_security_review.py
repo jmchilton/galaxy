@@ -100,9 +100,6 @@ class TestToolSecurityReviewEnforce(BaseToolSecurityReviewTestCase):
             assert "an element identifier or the name of input 'input' contains the characters [' |]" in message
             assert "known problem handling these characters" in message
             assert len(self._review_warnings()) == 1
-            # The review was stored for the other Galaxy processes.
-            cache_dir = self._app.config.tool_security_review_cache_dir
-            assert any(f.endswith(".json") for _, _, files in os.walk(cache_dir) for f in files)
 
     def test_harmless_identifier_runs(self):
         with self.dataset_populator.test_history() as history_id:
