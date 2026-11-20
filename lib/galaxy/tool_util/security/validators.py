@@ -10,6 +10,8 @@ Galaxy does not evaluate ``expression`` validators of tools it loads as untruste
 is read from them here holds for tools installed by an administrator only.
 """
 
+from __future__ import annotations
+
 import ast
 import warnings
 from typing import NamedTuple
@@ -36,13 +38,13 @@ class Constraint(NamedTuple):
     # probe characters a word may begin with: the value, or what follows whitespace in it
     words: Chars = PROBE
 
-    def both(self, other: "Constraint") -> "Constraint":
+    def both(self, other: Constraint) -> Constraint:
         return Constraint(self.chars & other.chars, self.lead & other.lead, self.words & other.words)
 
-    def either(self, other: "Constraint") -> "Constraint":
+    def either(self, other: Constraint) -> Constraint:
         return Constraint(self.chars | other.chars, self.lead | other.lead, self.words | other.words)
 
-    def allowing(self, extra: Chars) -> "Constraint":
+    def allowing(self, extra: Chars) -> Constraint:
         return Constraint(self.chars | extra, self.lead | extra, self.words | extra)
 
     def word_first(self) -> Chars:

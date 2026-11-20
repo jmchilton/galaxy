@@ -12,6 +12,8 @@ Three places are inspected:
 * Declarations in the tool XML: API key injection, containers, tool type.
 """
 
+from __future__ import annotations
+
 import ast
 import re
 import warnings

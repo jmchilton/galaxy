@@ -5,13 +5,18 @@ it walks every branch, keeps for each variable the characters a user could put i
 (:class:`~.model.AV`), and at each write asks the shell lexer where the text lands.
 """
 
+from __future__ import annotations
+
 import ast
 import re
 from dataclasses import (
     dataclass,
     field,
 )
-from typing import Any
+from typing import (
+    Any,
+    FrozenSet,
+)
 
 from . import (
     charsets,
@@ -159,10 +164,10 @@ class Env:
     local: dict[str, AV] = field(default_factory=dict)
     shared: dict[str, AV] = field(default_factory=dict)  # #set global
 
-    def copy(self) -> "Env":
+    def copy(self) -> Env:
         return Env(dict(self.local), self.shared)
 
-    def merge(self, others: list["Env"]) -> None:
+    def merge(self, others: list[Env]) -> None:
         names = set(self.local)
         for other in others:
             names.update(other.local)
@@ -202,7 +207,7 @@ _EVALUATED_STRING = {
 
 _FSTRING_PREFIX = re.compile(r"(?<![\w.])([fF][rR]?|[rR][fF])$")
 
-States = frozenset[Any]
+States = FrozenSet[Any]
 _COLLECTOR = "_captureCollector_"
 
 _PERCENT = re.compile(r"%(\(\w+\))?[-+ #0]*\d*(?:\.\d+)?([sdrifgGeExXc%])")

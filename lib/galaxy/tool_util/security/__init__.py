@@ -12,6 +12,10 @@ Nothing from the tool is executed. Templates are compiled to Python with Cheetah
 and the resulting syntax tree is analysed, see :mod:`.template` for why that is safe.
 """
 
+from __future__ import annotations
+
+import sys
+
 from Cheetah.Parser import ParseError
 
 from galaxy.tool_util.parser.interface import ToolSource
@@ -87,6 +91,10 @@ def _analyse(source: str, location: str, language: str, model: Model, report: Re
 
 def review_tool_source(tool_source: ToolSource) -> Report:
     report = Report(tool_id=tool_source.parse_id())
+    if sys.version_info < (3, 9):
+        # The analysis needs ast.unparse and the subscript syntax tree of Python 3.9.
+        report.unanalyzed.append("the security review needs Python 3.9 or later")
+        return report
     model = build_model(tool_source)
     readers: dict[str, set[str]] = {}
 
