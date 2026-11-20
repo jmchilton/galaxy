@@ -58,6 +58,9 @@ echo '${word.value}' >> '$out'
 </tool>
 """
 
+# One user value in the command: a quote in it can only matter with a command character after it.
+ECHO_ONE = ECHO_IDS.replace("echo '${word.value}' >> '$out'", "true")
+
 NO_COMMAND = """<tool id="no_command" name="No command" version="1.0">
   <inputs><param name="word" type="text"/></inputs>
   <outputs><data name="out" format="txt"/></outputs>
@@ -292,7 +295,7 @@ def test_enforce_refuses_an_identifier_that_closes_the_quotes(app, tmp_path):
     with pytest.raises(ToolInputRejected) as e:
         reviewer(tmp_path, ENFORCE).check_job(tool, job)
     message = str(e.value)
-    assert "an element identifier or the name of input 'input' contains the characters [' ;]" in message
+    assert "an element identifier or the name of input 'input' contains the characters [']" in message
     assert "Echo identifiers" in message and "echo_ids" in message
     assert "id;" not in message
     # Reading identifiers through the wrappers must not change how the job cache sees the job.
@@ -305,26 +308,31 @@ def test_log_warns_and_lets_the_job_run(app, tmp_path, caplog):
     warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
     assert len(warnings) == 2
     assert all("job 7 of tool echo_ids version 1.0" in w for w in warnings)
-    assert any("element_identifier of input 'input' contains [' |]" in w for w in warnings)
-    assert any("raw of input 'word' contains [' ;]" in w for w in warnings)
+    assert any("element_identifier of input 'input' contains [']" in w for w in warnings)
+    assert any("raw of input 'word' contains [']" in w for w in warnings)
     assert all("it'|'s" not in w and "x';y" not in w for w in warnings)
 
 
 @pytest.mark.parametrize("mode", [LOG, ENFORCE])
-@pytest.mark.parametrize(
-    "identifiers,word,name",
-    [
-        # A command character alone stays inside the quotes.
-        (["sample 1", "a;b|c"], "a b;c", "my list"),
-        # A quote alone closes the quotes but cannot start a command.
-        (["sample 1", "Bob's reads"], "it's", "Bob's list"),
-    ],
-)
-def test_harmless_values_pass(app, tmp_path, caplog, mode, identifiers, word, name):
+def test_harmless_values_pass(app, tmp_path, caplog, mode):
     tool = make_tool(app, tmp_path)
-    job = evaluator(app, tool, identifiers, word=word, name=name)
-    reviewer(tmp_path, mode).check_job(tool, job)
+    # A command character stays inside the quotes.
+    reviewer(tmp_path, mode).check_job(tool, evaluator(app, tool, ["sample 1", "a;b|c"], word="a b;c"))
     assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+@pytest.mark.parametrize("mode", [LOG, ENFORCE])
+def test_lone_quote_passes_when_it_is_the_only_user_value(app, tmp_path, caplog, mode):
+    tool = make_tool(app, tmp_path, ECHO_ONE, "one.xml")
+    reviewer(tmp_path, mode).check_job(tool, evaluator(app, tool, ["sample 1", "Bob's reads"], name="Bob's list"))
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+def test_lone_quote_counts_when_another_user_value_follows(app, tmp_path):
+    # `echo 'Bob's' ...; echo 'x;y'`: the stray quote leaves the `;` of the next value unquoted.
+    tool = make_tool(app, tmp_path)
+    with pytest.raises(ToolInputRejected):
+        reviewer(tmp_path, ENFORCE).check_job(tool, evaluator(app, tool, ["Bob's reads"]))
 
 
 def test_collection_name_is_checked(app, tmp_path):
@@ -336,7 +344,7 @@ def test_collection_name_is_checked(app, tmp_path):
 
 def test_characters_of_all_values_count_together(app, tmp_path):
     # A template may join the identifiers into one string, where one brings the quote and another the `;`.
-    tool = make_tool(app, tmp_path)
+    tool = make_tool(app, tmp_path, ECHO_ONE, "one.xml")
     with pytest.raises(ToolInputRejected):
         reviewer(tmp_path, ENFORCE).check_job(tool, evaluator(app, tool, ["Bob's", "a;b"]))
 
@@ -345,7 +353,7 @@ def test_raw_value_is_checked(app, tmp_path):
     tool = make_tool(app, tmp_path)
     with pytest.raises(ToolInputRejected) as e:
         reviewer(tmp_path, ENFORCE).check_job(tool, evaluator(app, tool, ["a"], word="it';id"))
-    assert "the value of input 'word' contains the characters [' ;]" in str(e.value)
+    assert "the value of input 'word' contains the characters [']" in str(e.value)
 
 
 def test_rewritten_value_is_reported_as_not_checkable(app, tmp_path, caplog):
@@ -353,8 +361,9 @@ def test_rewritten_value_is_reported_as_not_checkable(app, tmp_path, caplog):
     rewriting = ECHO_IDS.replace("echo '${word.value}'", "echo ${str($word).replace('__gt__', '>')}")
     tool = make_tool(app, tmp_path, rewriting, "rewriting.xml")
     review = reviewer(tmp_path, ENFORCE).review(tool)
-    assert review is not None and len(review.unchecked_findings) == 1
-    assert "(1 cannot be checked against job values)" in caplog.text
+    # The rewritten value can bring the quote that lets the identifiers out: nothing is checkable.
+    assert review is not None and len(review.unchecked_findings) == 2 and not review.checked_findings
+    assert "(2 cannot be checked against job values)" in caplog.text
     reviewer(tmp_path, ENFORCE).check_job(tool, evaluator(app, tool, ["a"], word="a__gt__/tmp/x"))
 
 

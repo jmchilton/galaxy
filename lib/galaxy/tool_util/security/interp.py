@@ -47,6 +47,7 @@ from .model import (
 )
 from .report import (
     Finding,
+    OPAQUE,
     Report,
     ReviewTimeout,
     source_refs,
@@ -100,6 +101,14 @@ _ESCAPING_ADDS: dict[str, charsets.Chars] = {
     "json": _JSON_PUNCTUATION,
     "pyrepr": REPR_PUNCTUATION,
 }
+
+
+def _literal_chars(value: AV) -> charsets.Chars:
+    """The probe characters of the literal text in a value and its elements."""
+    chars = frozenset().union(*(charsets.probe(p) for p in value.parts or () if isinstance(p, str)))
+    for inner in (*(value.items or ()), *((value.elem,) if value.elem is not None else ()), *value.alts):
+        chars = chars | _literal_chars(inner)
+    return chars
 
 
 def _ansi_quoted(chars: charsets.Chars) -> Verdict | None:
@@ -405,6 +414,8 @@ class TemplateAnalysis:
         # text (str.replace, a decoder, an unknown function) or as the quotes of an escaping.
         self._introduced: dict[SourceRef, charsets.Chars] = {}
         self._escapes: dict[SourceRef, charsets.Chars] = {}
+        # Every source of a user value the template writes.
+        self._written: set[SourceRef] = set()
         # time.monotonic() after which the analysis stops with ReviewTimeout.
         self._deadline = deadline
         self._in_capture_region = 0
@@ -443,15 +454,36 @@ class TemplateAnalysis:
         return tuple(ref for ref in refs if self._introduced.get(ref, charsets.NONE) & needed)
 
     def _mark_unchecked(self) -> None:
-        """Sources rewritten after a finding was recorded (in a later loop pass) are not checkable either."""
-        for i, finding in enumerate(self.report.findings):
-            if finding.location != self.location or finding.kind != VULNERABILITY:
-                continue
-            unchecked = self._unchecked(finding.refs, finding.breakout | finding.requires)
-            if set(unchecked) - set(finding.unchecked):
-                self.report.findings[i] = dataclasses.replace(
-                    finding, unchecked=tuple(sorted(set(finding.unchecked) | set(unchecked), key=repr))
-                )
+        """Decide, for the whole template, which findings a character test on job values can judge.
+
+        One value can change how everything after it is quoted: a stray quote flips the quoting of
+        the rest of the line, so a quote from one value and a command character from another are
+        enough. So:
+
+        * a source the template rewrites is not checkable, wherever it is written (also when the
+          rewrite comes after a finding, in a later loop pass);
+        * when any finding of the template has a source that is not checkable or opaque, it can
+          bring the quote that lets the other values out: no finding of the template is checkable;
+        * ``requires`` holds only when the finding's sources are the only user values written.
+        """
+        indexes = [
+            i for i, f in enumerate(self.report.findings) if f.location == self.location and f.kind == VULNERABILITY
+        ]
+        for i in indexes:
+            finding = self.report.findings[i]
+            unchecked = set(finding.unchecked) | set(self._unchecked(finding.refs, finding.breakout | finding.requires))
+            self.report.findings[i] = dataclasses.replace(finding, unchecked=tuple(sorted(unchecked, key=repr)))
+        poisoned = any(
+            f.unchecked or any(ref.accessor == OPAQUE for ref in f.refs)
+            for f in (self.report.findings[i] for i in indexes)
+        )
+        for i in indexes:
+            finding = self.report.findings[i]
+            if poisoned and finding.refs:
+                finding = dataclasses.replace(finding, unchecked=finding.refs)
+            if finding.requires and not self._written <= set(finding.refs):
+                finding = dataclasses.replace(finding, requires=charsets.NONE)
+            self.report.findings[i] = finding
 
     def note(self, message: str) -> None:
         if message not in self._noted:
@@ -828,6 +860,8 @@ class TemplateAnalysis:
                 return self.write_value(self.call_helper(value.helper, [], env), raw_expr, states, env)
             return self.inline(value.helper, [], states, env)
         text = stringify(value)
+        if text.tainted:
+            self._written.update(source_refs(text.sources))
         if self._capture:
             self._capture[-1].append(text)
             return states
@@ -1543,6 +1577,8 @@ class TemplateAnalysis:
             return AV(chars=text.chars, sources=text.sources, lead=text.chars - charsets.probe(first_literal))
         if name == "join" and args:
             item = stringify(element(args[0]))
+            # Literal elements joined with a user value (`''.join(["'", x])`) put their text next to it.
+            self._introduce(item, _literal_chars(args[0]))
             if receiver.parts is not None or not receiver.tainted:
                 # Two elements show the separator between values once.
                 return concat([item, receiver, item])
