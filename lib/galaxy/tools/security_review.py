@@ -109,6 +109,11 @@ class ToolReview:
         return [f for f in self._serious if not f.checkable]
 
     @property
+    def unchecked_locations(self) -> dict[str, str]:
+        """Templates whose values no character test can judge, with the reason."""
+        return self.report.unchecked_locations if self.report is not None else {}
+
+    @property
     def _serious(self) -> list[Finding]:
         if self.report is None:
             return []
@@ -205,6 +210,14 @@ class ToolSecurityReviewer:
 
     @staticmethod
     def _log_summary(review: ToolReview) -> None:
+        for location, reason in sorted(review.unchecked_locations.items()):
+            log.info(
+                "Security review of tool %s version %s: values written in %s are not checked, %s",
+                review.tool_id,
+                review.tool_version,
+                location,
+                reason,
+            )
         serious = [
             f
             for f in (review.report.sorted() if review.report else [])
