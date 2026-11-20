@@ -53,7 +53,7 @@ __all__ = ("ANALYSER_VERSION", "Finding", "Report", "ReviewTimeout", "review_too
 
 # Identifies what the analysis reports. Change it with every change to findings, sources or
 # breakout characters, so that stored reviews (see galaxy.tools.security_review) are redone.
-ANALYSER_VERSION = "5"
+ANALYSER_VERSION = "6"
 
 
 def _compile(source: str, location: str, report: Report) -> CompiledTemplate | None:

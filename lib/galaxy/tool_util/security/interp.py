@@ -978,6 +978,7 @@ class TemplateAnalysis:
                 text,
                 f"{context.describe()}, after a value that can end in a backslash",
                 raw_expr,
+                needs_closer="'" if context.quote == shell.ANSI else context.quote,
             )
         if context.role == "cmd" and context.lead and text.whole:
             verdicts.append(
@@ -1089,6 +1090,7 @@ class TemplateAnalysis:
                     f"inside a {quote}...{quote} string of a {self.language} script, after a value that can end"
                     " in a backslash",
                     raw_expr,
+                    needs_closer=quote,
                 )
                 return
         where = f"inside a {quote}...{quote} string" if quote else "outside any string"
@@ -1120,7 +1122,11 @@ class TemplateAnalysis:
         )
         self.finding(verdict, text, f"into `{name}(...)` in template Python", name)
 
-    def finding(self, verdict: Verdict, text: AV, where: str, raw_expr: str | None) -> None:
+    def finding(
+        self, verdict: Verdict, text: AV, where: str, raw_expr: str | None, needs_closer: str | None = None
+    ) -> None:
+        """``needs_closer``: the quote of the value's string, when the finding holds only once another
+        value has escaped the closing quote; until then only that quote or a backslash closes it."""
         refs = source_refs(text.sources)
         escaped = frozenset().union(*(self._escapes.get(ref, charsets.NONE) for ref in refs))
         breakout, requires, closes = _breakout(verdict, text, self.language, escaped)
@@ -1147,7 +1153,8 @@ class TemplateAnalysis:
                 refs=refs,
                 breakout=breakout,
                 requires=requires,
-                closes=closes,
+                closes=closes if needs_closer is None else text.chars & frozenset(needs_closer + "\\"),
+                needs_closer=needs_closer is not None,
                 unchecked=self._unchecked(refs, breakout | requires | closes),
             )
         )
