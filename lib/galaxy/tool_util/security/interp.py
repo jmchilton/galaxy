@@ -113,6 +113,21 @@ def _literal_chars(value: AV) -> charsets.Chars:
     return chars
 
 
+def _kept_literal_chars(item: AV, separator: AV) -> charsets.Chars:
+    """The literal text each element of a join writes around its own value (`"'%s'" % x`).
+
+    Writing two elements and the separator between them shows every quote state a longer join
+    reaches only when their text quotes with one kind of quote and escapes nothing: with both
+    kinds, three elements can reach a third.
+    """
+    if item.alts or item.parts is None or not item.tainted or separator.parts is None or separator.tainted:
+        return charsets.NONE
+    literal = "".join(part for part in (*item.parts, *separator.parts) if isinstance(part, str))
+    if len(set(literal) & set("'\"")) > 1 or set(literal) & set("\\`$"):
+        return charsets.NONE
+    return charsets.probe(literal)
+
+
 def _ansi_quoted(chars: charsets.Chars) -> Verdict | None:
     """A value in $'...', where a backslash can escape the closing quote, which is as good as a quote."""
     verdict = charsets.single_quoted(chars | {"'"} if "\\" in chars else chars)
@@ -1672,8 +1687,9 @@ class TemplateAnalysis:
             return AV(chars=text.chars, sources=text.sources, lead=text.chars - charsets.probe(first_literal))
         if name == "join" and args:
             item = stringify(element(args[0]))
-            # Literal elements joined with a user value (`''.join(["'", x])`) put their text next to it.
-            self._introduce(item, _literal_chars(args[0]))
+            # Literal elements joined with a user value (`''.join(["'", x])`) put their text next to it,
+            # in an order the element no longer shows.
+            self._introduce(item, _literal_chars(args[0]) - _kept_literal_chars(item, receiver))
             if receiver.parts is not None or not receiver.tainted:
                 # Two elements show the separator between values once.
                 return concat([item, receiver, item])

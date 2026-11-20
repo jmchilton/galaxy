@@ -307,3 +307,21 @@ def test_path_functions_keep_the_value_checkable(tmp_path, command):
     finding = high(review(tmp_path, command))
     assert finding.checkable
     assert finding.breakout == frozenset("'")
+
+
+@pytest.mark.parametrize(
+    "command,checkable",
+    [
+        # Each element quotes its own value: the shell reads the quotes in place.
+        ("""#set $l = ' '.join(["'%s'" % r.label.value for r in $rows])\necho $l""", True),
+        ("""#set $l = "' '".join(["'%s'" % r.label.value for r in $rows])\necho $l""", True),
+        # With both kinds of quotes, a third element can land in a third quote state.
+        ("""#set $l = ' '.join(["'%s\\"" % r.label.value for r in $rows])\necho $l""", False),
+        ("""#set $l = '" "'.join(["'%s'" % r.label.value for r in $rows])\necho $l""", False),
+        # A literal element alone loses its place next to the value.
+        ("""#set $l = ''.join(["'", str($free)])\necho $l""", False),
+    ],
+)
+def test_join_of_quoted_elements(tmp_path, command, checkable):
+    findings = [f for f in review(tmp_path, command).findings if f.severity == HIGH]
+    assert findings and all(f.checkable is checkable for f in findings)
