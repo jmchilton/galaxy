@@ -17,6 +17,7 @@ from typing import (
     Any,
     FrozenSet,
     NamedTuple,
+    Optional,
 )
 
 from galaxy.tool_util.parser.sanitize import ToolParameterSanitizer
@@ -78,6 +79,9 @@ class Verdict(NamedTuple):
     severity: str
     chars: Chars
     why: str
+    # Characters at least one of which a value must contain to do what `why` says; None when that
+    # is any of `chars`, empty when no character decides it.
+    breakout: Optional[Chars] = None
 
 
 def unquoted(chars: Chars, word_first: Chars | None = None) -> Verdict | None:
@@ -98,19 +102,34 @@ def single_quoted(chars: Chars) -> Verdict | None:
         return None
     after = unquoted(chars)
     if after and after.rule == "shell-injection":
-        return Verdict("shell-injection", HIGH, after.chars | {"'"}, "can close the single quotes and start a command")
+        return Verdict(
+            "shell-injection",
+            HIGH,
+            after.chars | {"'"},
+            "can close the single quotes and start a command",
+            frozenset("'"),
+        )
     return Verdict("argument-injection", MEDIUM, frozenset("'"), "can close the single quotes")
 
 
 def double_quoted(chars: Chars) -> Verdict | None:
     if "`" in chars or ("$" in chars and "(" in chars):
         hit = chars & frozenset("`$(")
-        return Verdict("shell-injection", HIGH, hit, "can run a command substitution inside the double quotes")
+        # `...` or $(...), or closing the quotes when the value can also start a command after them.
+        closes = '"' in chars and bool(chars & SHELL_EXEC)
+        breakout = (hit - {"("}) | (frozenset('"') if closes else NONE)
+        return Verdict(
+            "shell-injection", HIGH, hit, "can run a command substitution inside the double quotes", breakout
+        )
     if '"' in chars:
         after = unquoted(chars)
         if after and after.rule == "shell-injection":
             return Verdict(
-                "shell-injection", HIGH, after.chars | {'"'}, "can close the double quotes and start a command"
+                "shell-injection",
+                HIGH,
+                after.chars | {'"'},
+                "can close the double quotes and start a command",
+                frozenset('"'),
             )
         return Verdict("argument-injection", MEDIUM, frozenset('"'), "can close the double quotes")
     if "$" in chars:

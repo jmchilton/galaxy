@@ -33,6 +33,18 @@ from .charsets import (
     PROBE,
     sanitized,
 )
+from .report import (
+    DATASET_ATTRIBUTE,
+    ELEMENT_IDENTIFIER,
+    GROUP_TAGS,
+    METADATA,
+    OPAQUE,
+    RAW,
+    Source,
+    SourceRef,
+    SPECIAL,
+    TEXT,
+)
 from .validators import text_constraint
 
 
@@ -72,6 +84,11 @@ CONDITIONAL = "only when the referenced dataset is empty"
 
 def tainted(chars: Chars, source: str) -> AV:
     return AV(chars=chars, sources=frozenset((source,)))
+
+
+def source(text: str, accessor: str, param: str | None = None, key: str | None = None) -> Source:
+    """A source description with the input and accessor it names; the same text always gets the same reference."""
+    return Source(text, SourceRef(accessor, param, key))
 
 
 def concat(parts: list[str | AV]) -> AV:
@@ -349,32 +366,42 @@ class Data(Node):
     sanitize: bool = True
     output: bool = False
 
-    def _safe_string(self, what: str) -> AV:
+    def _safe_string(self, what: str, accessor: str = DATASET_ATTRIBUTE, key: str | None = None) -> AV:
         # Attributes of the dataset go through SafeStringWrapper: Galaxy's default sanitizer.
-        return tainted(DEFAULT_SANITIZED if self.sanitize else PROBE, f"{what} of dataset '{self.path}'")
+        return tainted(
+            DEFAULT_SANITIZED if self.sanitize else PROBE,
+            source(f"{what} of dataset '{self.path}'", accessor, self.path, key),
+        )
 
     def attr(self, name: str) -> AV | None:
         if self.output:
             return CLEAN
         if name in ("element_identifier", "name_and_ext"):
-            return tainted(PROBE, f"element identifier of dataset '{self.path}' (not sanitized)")
+            return tainted(
+                PROBE,
+                source(f"element identifier of dataset '{self.path}' (not sanitized)", ELEMENT_IDENTIFIER, self.path),
+            )
         if name == "groups":
-            return AV(elem=tainted(PROBE, f"group tags of dataset '{self.path}' (not sanitized)"))
+            return AV(
+                elem=tainted(
+                    PROBE, source(f"group tags of dataset '{self.path}' (not sanitized)", GROUP_TAGS, self.path)
+                )
+            )
         if name == "get_staging_path":
-            return AV(bound=(tainted(PROBE - {"/"}, f"element identifier of dataset '{self.path}'"), "__value__"))
+            staged = source(f"element identifier of dataset '{self.path}'", ELEMENT_IDENTIFIER, self.path)
+            return AV(bound=(tainted(PROBE - {"/"}, staged), "__value__"))
         if name == "metadata":
             return AV(nodes=(Metadata(self.path, self),))
         if name == "unsanitized":
-            return AV(
-                nodes=(Opaque(f"{self.path}.unsanitized", tainted(PROBE, f"raw model of dataset '{self.path}'")),)
-            )
+            raw_model = source(f"raw model of dataset '{self.path}'", OPAQUE, self.path)
+            return AV(nodes=(Opaque(f"{self.path}.unsanitized", tainted(PROBE, raw_model)),))
         if name == "dataset":
             return AV(nodes=(DatasetObject(self.path, self),))
         if name == "single_item":
             return AV(nodes=(self,))
         if name in _DATA_CLEAN:
             return CLEAN
-        return self._safe_string("name" if name == "name" else f"attribute '{name}'")
+        return self._safe_string("name" if name == "name" else f"attribute '{name}'", key=name)
 
     def element(self) -> AV | None:
         return AV(nodes=(self,))
@@ -390,7 +417,7 @@ class DatasetObject(Node):
     def attr(self, name: str) -> AV | None:
         if name in _DATA_CLEAN or name in ("get_file_name", "dataset", "metadata"):
             return CLEAN if name != "dataset" else AV(nodes=(self,))
-        return self.data._safe_string(f"attribute '{name}'")
+        return self.data._safe_string(f"attribute '{name}'", key=name)
 
 
 @dataclass(eq=False)
@@ -401,7 +428,7 @@ class Metadata(Node):
     def attr(self, name: str) -> AV | None:
         if name in _METADATA_CLEAN or name.endswith(("_index", "Col")) or name in ("get", "items", "element_is_set"):
             return CLEAN
-        return self.data._safe_string(f"metadata '{name}'")
+        return self.data._safe_string(f"metadata '{name}'", METADATA, name)
 
 
 @dataclass(eq=False)
@@ -412,7 +439,11 @@ class Collection(Node):
     output: bool = False
 
     def _identifier(self) -> AV:
-        return tainted(PROBE, f"element identifier of collection '{self.path}' (not sanitized)")
+        # `$c.name` of the collection input is its name, of a nested collection its element identifier.
+        return tainted(
+            PROBE,
+            source(f"element identifier of collection '{self.path}' (not sanitized)", ELEMENT_IDENTIFIER, self.path),
+        )
 
     def element(self) -> AV | None:
         if self.output:
@@ -439,7 +470,9 @@ class Collection(Node):
         if name in ("element_identifiers_extensions_paths_and_metadata_files", "sample_sheet_row"):
             return AV(nodes=(Opaque(f"{self.path}.{name}", self._identifier()),))
         if name == "get_all_staging_paths":
-            staged = tainted(PROBE - {"/"}, f"element identifier of collection '{self.path}'")
+            staged = tainted(
+                PROBE - {"/"}, source(f"element identifier of collection '{self.path}'", ELEMENT_IDENTIFIER, self.path)
+            )
             return AV(bound=(AV(elem=staged), "__value__"))
         if (
             name
@@ -472,8 +505,8 @@ class Special(Node):
 
 def file_content() -> AV:
     """What ``open(path)`` gives a template: the content of a file, which is a dataset unless shown otherwise."""
-    source = tainted(PROBE, "content of a file the template reads with open() (not sanitized)")
-    return AV(nodes=(Opaque("open()", source),))
+    content = tainted(PROBE, source("content of a file the template reads with open() (not sanitized)", OPAQUE))
+    return AV(nodes=(Opaque("open()", content),))
 
 
 def stringify(value: AV) -> AV:
@@ -634,8 +667,9 @@ def _value(input_source: InputSource, path: str, tool_sanitize: bool) -> Node:
         if ptype == "data_column":
             # Galaxy checks a column against the dataset's columns, except for an empty dataset.
             label += f", {CONDITIONAL}"
-        as_raw = tainted(PROBE, f"raw value of {label} (not sanitized)")
-        return Value(path, ptype, as_text=tainted(rendered(PROBE), label), as_raw=as_raw, as_element=as_raw)
+        as_raw = tainted(PROBE, source(f"raw value of {label} (not sanitized)", RAW, path))
+        as_text = tainted(rendered(PROBE), source(label, TEXT, path))
+        return Value(path, ptype, as_text=as_text, as_raw=as_raw, as_element=as_raw)
 
     constraint = text_constraint(input_source)
     universe = constraint.chars
@@ -647,7 +681,8 @@ def _value(input_source: InputSource, path: str, tool_sanitize: bool) -> Node:
         # These types return the submitted value as it is: no sanitizer runs when they are rendered.
         value = AV(
             chars=universe,
-            sources=frozenset((f"{ptype} param '{path}' (not sanitized)",)),
+            # The rendered text is the submitted value.
+            sources=frozenset((source(f"{ptype} param '{path}' (not sanitized)", RAW, path),)),
             lead=lead,
             words=words,
         )
@@ -658,14 +693,14 @@ def _value(input_source: InputSource, path: str, tool_sanitize: bool) -> Node:
         ptype,
         as_text=AV(
             chars=rendered(universe),
-            sources=frozenset((f"{ptype} param '{path}'",)),
+            sources=frozenset((source(f"{ptype} param '{path}'", TEXT, path),)),
             quoted="sq-escaped" if tool_sanitize and _escapes_single_quote(sanitizer) else "",
             lead=rendered(lead) if lead is not None else None,
             words=rendered(words) if words is not None else None,
         ),
         as_raw=AV(
             chars=universe,
-            sources=frozenset((f"raw value of {ptype} param '{path}' (sanitizer bypassed)",)),
+            sources=frozenset((source(f"raw value of {ptype} param '{path}' (sanitizer bypassed)", RAW, path),)),
             lead=lead,
             words=words,
         ),
@@ -738,9 +773,9 @@ def build_model(tool_source: ToolSource) -> Model:
         model.specials[name] = Special(name)
     for name in _USER_SPECIALS:
         chars = DEFAULT_SANITIZED if tool_sanitize else PROBE
-        model.specials[name] = Special(name, value=tainted(chars, f"${name}"))
+        model.specials[name] = Special(name, value=tainted(chars, source(f"${name}", SPECIAL, key=name)))
     model.specials["__user__"] = Special(
-        "__user__", opaque=tainted(PROBE, "attribute of the $__user__ object (not sanitized)")
+        "__user__", opaque=tainted(PROBE, source("attribute of the $__user__ object (not sanitized)", OPAQUE))
     )
     model.specials["__app__"] = Special("__app__", opaque=CLEAN)
     return model

@@ -47,7 +47,7 @@ class CompileTimeExecution(Exception):
         self.line = line
 
 
-class NoCompileTimeSettings(Compiler):  # type: ignore[misc]  # Cheetah is untyped
+class NoCompileTimeSettings(Compiler):  # type: ignore[misc, unused-ignore]  # Cheetah is untyped
     """Second line of defence behind the text search: these two methods are the ``eval``/``exec`` sinks."""
 
     def setCompilerSetting(self, key: str, valueExpr: str) -> None:
