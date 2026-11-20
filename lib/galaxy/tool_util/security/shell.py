@@ -10,11 +10,14 @@ plain whitespace here, a ``#`` comment runs to the end of the command, and here-
 cannot occur.
 """
 
+from __future__ import annotations
+
 import re
 from dataclasses import dataclass
 from typing import (
     Any,
     NamedTuple,
+    Tuple,
 )
 
 _WORD_LIMIT = 48
@@ -118,7 +121,7 @@ class Context:
 
 INITIAL = ShellState()
 
-Event = tuple[str, ...]
+Event = Tuple[str, ...]
 
 
 class _Lexer:
