@@ -148,6 +148,7 @@ from galaxy.tools.data_manager.manager import DataManagers
 from galaxy.tools.error_reports import ErrorReports
 from galaxy.tools.evaluation import ToolTemplatingException
 from galaxy.tools.search import ToolBoxSearch
+from galaxy.tools.security_review import ToolSecurityReviewer
 from galaxy.tools.special_tools import load_lib_tools
 from galaxy.tours import (
     build_tours_registry,
@@ -588,6 +589,9 @@ class GalaxyManagerApplication(MinimalManagerApp, MinimalGalaxyApplication):
         )
         # Initialize the job management configuration
         self.job_config = self._register_singleton(jobs.JobConfiguration)
+        self.tool_security_reviewer = self._register_singleton(
+            ToolSecurityReviewer, ToolSecurityReviewer.from_config(self.config)
+        )
 
         # Setup infrastructure for short term storage manager.
         short_term_storage_config_kwds: dict[str, Any] = {}
@@ -728,6 +732,7 @@ class UniverseApplication(StructuredApp, GalaxyManagerApplication, InstallationT
             ("repository manager", self._shutdown_repo_manager),
             ("database connection", self._shutdown_model),
             ("application stack", self._shutdown_application_stack),
+            ("tool security review", self.tool_security_reviewer.shutdown),
         ]
         self._register_singleton(StructuredApp, self)  # type: ignore[type-abstract]
         if kwargs.get("is_webapp"):
@@ -870,6 +875,7 @@ class UniverseApplication(StructuredApp, GalaxyManagerApplication, InstallationT
         self.application_stack.register_postfork_function(
             lambda: send_local_control_task(self, "rebuild_toolbox_search_index")
         )
+        self.application_stack.register_postfork_function(self.warm_up_tool_security_reviews)
 
         # Inject url_for for components to more easily optionally depend
         # on url_for.
@@ -882,6 +888,11 @@ class UniverseApplication(StructuredApp, GalaxyManagerApplication, InstallationT
         self.legacy_mapper = None
         self.application_stack.register_postfork_function(self.object_store.start)
         log.info(f"Galaxy app startup finished {startup_timer}")
+
+    def warm_up_tool_security_reviews(self) -> None:
+        """Review the tools of the toolbox in the background, in processes that prepare jobs."""
+        if self.is_job_handler:
+            self.tool_security_reviewer.warm_up(lambda: self.toolbox.all_tool_versions())
 
     def _shutdown_queue_worker(self):
         self.queue_worker.shutdown()

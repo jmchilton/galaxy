@@ -61,6 +61,7 @@ if TYPE_CHECKING:
     from galaxy.tools import ToolBox
     from galaxy.tools.cache import ToolCache
     from galaxy.tools.error_reports import ErrorReports
+    from galaxy.tools.security_review import ToolSecurityReviewer
     from galaxy.visualization.genomes import Genomes
 
 
@@ -130,6 +131,7 @@ class MinimalManagerApp(MinimalApp):
     job_manager: "JobManager"
     job_search: "JobSearch"
     job_metrics: JobMetrics
+    tool_security_reviewer: "ToolSecurityReviewer"
     dynamic_tool_manager: "DynamicToolManager"
     genomes: "Genomes"
     error_reports: "ErrorReports"

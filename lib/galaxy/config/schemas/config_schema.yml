@@ -3707,6 +3707,41 @@ mapping:
           deferred datasets as part of the submitted job. Note also that you have to set ``metadata_strategy``
           to ``extended`` if you set this option to ``remote``.
 
+      tool_security_review:
+        type: str
+        default: log
+        enum: ['off', 'log', 'enforce']
+        required: false
+        desc: |
+          Galaxy reviews the command and configfile templates of tools for places where a
+          value a user controls (a text parameter, an element identifier, a dataset name)
+          can leave the quotes or the argument it is written into. Reviews are computed in
+          the background after the toolbox loads and stored in
+          ``tool_security_review_cache_dir``. Before a job's command line is built, the
+          values of its inputs are compared with the tool's high and critical findings.
+          Set to ``log`` to log a warning for a value that contains a character that can
+          leave its place, ``enforce`` to also fail such a job with a message that names the
+          input and the characters, or ``off`` to turn off the review, its cache and the
+          checks. The review reports false positives, so check the warnings in ``log`` mode
+          before choosing ``enforce``.
+
+      tool_security_review_cache_dir:
+        type: str
+        default: tool_security_review
+        path_resolves_to: cache_dir
+        required: false
+        desc: |
+          Directory in which the security reviews of tools are stored, one file per tool
+          version and analyser version. Galaxy processes that share it share the reviews.
+
+      tool_security_review_timeout:
+        type: float
+        default: 5.0
+        required: false
+        desc: |
+          Seconds the security review of one tool may take. A tool whose review takes longer
+          is recorded as not reviewed, and its jobs are not checked.
+
       preserve_python_environment:
         type: str
         default: legacy_only
