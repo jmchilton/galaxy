@@ -1664,14 +1664,14 @@ class Tool(UsesDictVisibleKeys, ToolParameterBundle):
                     if os.path.exists(result):
                         return result
 
-    def security_review(self, compute: bool = True) -> Optional["ToolReview"]:
-        """The security review of this tool's templates, stored or computed within the configured timeout.
+    def security_review(self) -> Optional["ToolReview"]:
+        """The security review of this tool's templates, computed within the configured timeout on first use.
 
         None when reviews are off, outside a Galaxy server, or for a tool without a Cheetah command.
         """
         if self.app.name != "galaxy":
             return None
-        return self.app.tool_security_reviewer.review(self, compute=compute)
+        return self.app.tool_security_reviewer.review(self)
 
     def tool_provided_metadata(self, job_wrapper):
         meta_file = os.path.join(job_wrapper.tool_working_directory, self.provided_metadata_file)

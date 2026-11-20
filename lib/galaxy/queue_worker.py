@@ -176,7 +176,6 @@ def reload_toolbox(app: "UniverseApplication", save_integrated_tool_panel: bool 
     _get_new_toolbox(app, save_integrated_tool_panel)
     app.toolbox._reload_count = reload_count + 1
     send_local_control_task(app, "rebuild_toolbox_search_index")
-    app.warm_up_tool_security_reviews()
     log.debug("Toolbox reload %s", reload_timer)
 
 

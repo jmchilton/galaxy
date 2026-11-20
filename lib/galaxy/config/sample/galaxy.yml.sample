@@ -2711,24 +2711,17 @@ galaxy:
   # Galaxy reviews the command and configfile templates of tools for
   # places where a value a user controls (a text parameter, an element
   # identifier, a dataset name) can leave the quotes or the argument it
-  # is written into. Reviews are computed in the background after the
-  # toolbox loads and stored in ``tool_security_review_cache_dir``.
-  # Before a job's command line is built, the values of its inputs are
-  # compared with the tool's high and critical findings. Set to ``log``
-  # to log a warning for a value that contains a character that can
-  # leave its place, ``enforce`` to also fail such a job with a message
-  # that names the input and the characters, or ``off`` to turn off the
-  # review, its cache and the checks. The review reports false
-  # positives, so check the warnings in ``log`` mode before choosing
-  # ``enforce``.
+  # is written into. A process that prepares jobs reviews a tool when it
+  # prepares the tool's first job, and keeps the review in memory as
+  # long as it keeps the tool. Before a job's command line is built, the
+  # values of its inputs are compared with the tool's high and critical
+  # findings. Set to ``log`` to log a warning for a value that contains
+  # a character that can leave its place, ``enforce`` to also fail such
+  # a job with a message that names the input and the characters, or
+  # ``off`` to turn off the review and the checks. The review reports
+  # false positives, so check the warnings in ``log`` mode before
+  # choosing ``enforce``.
   #tool_security_review: log
-
-  # Directory in which the security reviews of tools are stored, one
-  # file per tool version and analyser version. Galaxy processes that
-  # share it share the reviews.
-  # The value of this option will be resolved with respect to
-  # <cache_dir>.
-  #tool_security_review_cache_dir: tool_security_review
 
   # Seconds the security review of one tool may take. A tool whose
   # review takes longer is recorded as not reviewed, and its jobs are

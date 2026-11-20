@@ -50,14 +50,10 @@ from .template import (
     CompileTimeExecution,
 )
 
-__all__ = ("ANALYSER_VERSION", "Finding", "Report", "ReviewTimeout", "review_tool_source", "Source", "SourceRef")
+__all__ = ("Finding", "Report", "ReviewTimeout", "review_tool_source", "Source", "SourceRef")
 
 # A here-document (`<<WORD`, `<<-WORD`), not the here-string `<<<`. An arithmetic `<<` matches too.
 _HEREDOC = re.compile(r"(?<!<)<<(?!<)")
-
-# Identifies what the analysis reports. Change it with every change to findings, sources or
-# breakout characters, so that stored reviews (see galaxy.tools.security_review) are redone.
-ANALYSER_VERSION = "7"
 
 
 def _compile(source: str, location: str, report: Report) -> CompiledTemplate | None:

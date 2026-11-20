@@ -1,6 +1,8 @@
-import json
+import gc
 import logging
 import os
+import threading
+import time
 from types import SimpleNamespace
 from typing import (
     Any,
@@ -12,7 +14,10 @@ import pytest
 from galaxy import model
 from galaxy.app_unittest_utils.galaxy_mock import MockApp
 from galaxy.tool_util.parser import get_tool_source
-from galaxy.tool_util.security import ReviewTimeout
+from galaxy.tool_util.security import (
+    review_tool_source,
+    ReviewTimeout,
+)
 from galaxy.tool_util.security.report import (
     ELEMENT_IDENTIFIER,
     RAW,
@@ -31,10 +36,8 @@ from galaxy.tools.security_review import (
     LOG,
     NOT_ANALYSED,
     OFF,
-    ReviewCache,
     reviewed_tool_source,
     ToolInputRejected,
-    ToolReview,
     ToolSecurityReviewer,
 )
 from galaxy.tools.wrappers import (
@@ -81,14 +84,7 @@ def make_tool(app, tmp_path, contents: str = ECHO_IDS, name: str = "tool.xml") -
 
 
 def reviewer(tmp_path, mode: str = LOG, timeout: float = 5.0) -> ToolSecurityReviewer:
-    return ToolSecurityReviewer(mode, os.path.join(tmp_path, "reviews"), timeout)
-
-
-def stored_files(reviewer: ToolSecurityReviewer) -> list[str]:
-    found: list[str] = []
-    for dirpath, _, files in os.walk(reviewer.cache.directory):
-        found.extend(os.path.join(dirpath, f) for f in files if f != "warm-up.lock")
-    return found
+    return ToolSecurityReviewer(mode, timeout)
 
 
 def hdca(name: str, identifiers: list[str]) -> model.HistoryDatasetCollectionAssociation:
@@ -117,87 +113,64 @@ def evaluator(app, tool: Tool, identifiers: list[str], word: str = "plain", name
     return stub
 
 
-# -- the cache ---------------------------------------------------------------------------------
+# -- reviews ---------------------------------------------------------------------------------
 
 
-def test_miss_computes_and_stores(app, tmp_path):
-    r = reviewer(tmp_path)
-    review = r.review(make_tool(app, tmp_path))
+def test_first_use_computes_the_review(app, tmp_path):
+    review = reviewer(tmp_path).review(make_tool(app, tmp_path))
     assert review is not None and review.status == ANALYSED
     assert {f.rule for f in review.checked_findings} == {"shell-injection"}
-    (path,) = stored_files(r)
-    assert json.load(open(path))["tool_id"] == "echo_ids"
 
 
-def test_hit_reads_the_stored_review(app, tmp_path, monkeypatch):
+def test_review_is_kept_for_the_tool(app, tmp_path, monkeypatch):
+    r = reviewer(tmp_path)
     tool = make_tool(app, tmp_path)
-    first = reviewer(tmp_path).review(tool)
+    first = r.review(tool)
 
     def fail(*args, **kwds):
         raise AssertionError("reviewed again")
 
     monkeypatch.setattr(security_review, "review_tool_source", fail)
-    # A new process: nothing in memory, the review comes from the directory.
-    assert reviewer(tmp_path).review(tool) == first
+    assert r.review(tool) is first
 
 
-def test_tool_text_change_is_a_miss(app, tmp_path):
+def test_reloaded_tool_is_reviewed_again(app, tmp_path):
     r = reviewer(tmp_path)
     r.review(make_tool(app, tmp_path))
-    changed = make_tool(app, tmp_path, ECHO_IDS.replace("echo '${word.value}'", "echo '${word}'"), "changed.xml")
+    # A reload creates a new Tool object, here with a changed template.
+    changed = make_tool(app, tmp_path, ECHO_IDS.replace("echo '${word.value}'", "echo '${word}'"))
     review = r.review(changed)
-    assert review is not None and review.status == ANALYSED
-    assert len(stored_files(r)) == 2
+    assert review is not None
     assert {ref.accessor for f in review.checked_findings for ref in f.refs} == {ELEMENT_IDENTIFIER}
 
 
-def test_analyser_version_change_is_a_miss(app, tmp_path, monkeypatch):
-    tool = make_tool(app, tmp_path)
-    reviewer(tmp_path).review(tool)
-    monkeypatch.setattr(security_review, "ANALYSER_VERSION", "next")
+def test_review_goes_with_its_tool(app, tmp_path):
     r = reviewer(tmp_path)
-    assert r.review(tool, compute=False) is None
-    r.review(tool)
-    assert len(stored_files(r)) == 2
-
-
-def test_stored_review_of_another_analyser_version_is_ignored(tmp_path):
-    cache = ReviewCache(str(tmp_path))
-    os.makedirs(os.path.dirname(cache.path("ab12")))
-    with open(cache.path("ab12"), "w") as fh:
-        json.dump({**ToolReview(ANALYSED).to_dict(), "analyser_version": "0"}, fh)
-    assert cache.get("ab12") is None
-
-
-@pytest.mark.parametrize("content", ["", "{not json", '{"analyser_version": "1"}', "[]"])
-def test_corrupt_file_is_a_miss(app, tmp_path, content):
     tool = make_tool(app, tmp_path)
-    r = reviewer(tmp_path)
     r.review(tool)
-    (path,) = stored_files(r)
-    with open(path, "w") as fh:
-        fh.write(content)
-    fresh = reviewer(tmp_path)
-    assert fresh.review(tool, compute=False) is None
-    review = fresh.review(tool)
-    assert review is not None and review.status == ANALYSED
-    assert ReviewCache(fresh.cache.directory).get(os.path.basename(path)[: -len(".json")]) == review
+    assert len(r._reviews) == 1
+    del tool
+    gc.collect()
+    assert len(r._reviews) == 0
 
 
-def test_write_is_atomic(tmp_path, monkeypatch):
-    cache = ReviewCache(str(tmp_path))
-    old = ToolReview(ANALYSED, tool_id="old")
-    cache.put("ab12", old)
+def test_concurrent_first_jobs_review_once(app, tmp_path, monkeypatch):
+    calls = []
 
-    def interrupted(src, dst):
-        raise OSError("disk full")
+    def counted(*args, **kwds):
+        calls.append(1)
+        time.sleep(0.05)
+        return review_tool_source(*args, **kwds)
 
-    monkeypatch.setattr(os, "replace", interrupted)
-    with pytest.raises(OSError):
-        cache.put("ab12", ToolReview(ANALYSED, tool_id="new"))
-    # Readers still see the whole old review, and no partial file is left behind.
-    assert cache.get("ab12") == old
-    assert os.listdir(os.path.dirname(cache.path("ab12"))) == ["ab12.json"]
+    monkeypatch.setattr(security_review, "review_tool_source", counted)
+    r = reviewer(tmp_path)
+    tool = make_tool(app, tmp_path)
+    threads = [threading.Thread(target=r.review, args=(tool,)) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert len(calls) == 1
 
 
 def test_timeout_is_recorded_as_not_analysed(app, tmp_path, caplog):
@@ -206,8 +179,8 @@ def test_timeout_is_recorded_as_not_analysed(app, tmp_path, caplog):
     review = r.review(tool)
     assert review is not None and review.status == NOT_ANALYSED and review.reason == "timeout"
     assert "took longer than" in caplog.text
-    # Stored, so the next process does not try again.
-    assert reviewer(tmp_path).review(tool, compute=False) == review
+    # Kept, so the next job does not try again.
+    assert r.review(tool) is review
     r.check_job(tool, evaluator(app, tool, ["a'b"]))
 
 
@@ -235,19 +208,18 @@ def test_timeout_raised_while_reviewing(app, tmp_path, monkeypatch):
 def test_summary_is_logged_once_when_computed(app, tmp_path, caplog):
     caplog.set_level(logging.INFO, logger=security_review.__name__)
     tool = make_tool(app, tmp_path)
-    reviewer(tmp_path).review(tool)
+    r = reviewer(tmp_path)
+    r.review(tool)
     assert caplog.text.count("Security review of tool echo_ids version 1.0: 2 high finding(s)") == 1
     caplog.clear()
-    reviewer(tmp_path).review(tool)
+    r.review(tool)
     assert "Security review of tool" not in caplog.text
 
 
 def test_tool_without_command_is_not_reviewed(app, tmp_path):
     tool = make_tool(app, tmp_path, NO_COMMAND)
     assert reviewed_tool_source(tool) is None
-    r = reviewer(tmp_path)
-    assert r.review(tool) is None
-    assert stored_files(r) == []
+    assert reviewer(tmp_path).review(tool) is None
 
 
 def test_tool_method(app, tmp_path):
@@ -256,17 +228,6 @@ def test_tool_method(app, tmp_path):
     app.tool_security_reviewer = reviewer(tmp_path)
     review = tool.security_review()
     assert review is not None and review.status == ANALYSED
-
-
-def test_warm_up(app, tmp_path, caplog):
-    caplog.set_level(logging.INFO, logger=security_review.__name__)
-    r = reviewer(tmp_path)
-    tools = [make_tool(app, tmp_path), make_tool(app, tmp_path, NO_COMMAND, "no_command.xml")]
-    r.warm_up(lambda: tools)
-    assert r._warm_up_thread is not None
-    r._warm_up_thread.join(30)
-    assert len(stored_files(r)) == 1
-    assert "warm-up: 1 tool(s) reviewed" in caplog.text
 
 
 # -- off ---------------------------------------------------------------------------------------
@@ -281,9 +242,6 @@ def test_off_does_nothing(app, tmp_path, monkeypatch):
     tool = make_tool(app, tmp_path)
     assert r.review(tool) is None
     r.check_job(tool, evaluator(app, tool, ["a'b; touch /tmp/x"]))
-    r.warm_up(lambda: [tool])
-    assert r._warm_up_thread is None
-    assert not os.path.exists(r.cache.directory)
 
 
 # -- job values --------------------------------------------------------------------------------
