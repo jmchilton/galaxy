@@ -436,6 +436,16 @@ class TemplateAnalysis:
         # a conversion there that would fail says nothing about the value.
         self._speculative = 0
         self._in_try = 0  # inside a #try body, where a #raise may be caught
+        # Names the template imports (`#from os.path import splitext`), by their full name.
+        self._imported: dict[str, str] = {}
+        for node in template.imports:
+            if isinstance(node, ast.ImportFrom) and node.module and not node.level:
+                for alias in node.names:
+                    self._imported[alias.asname or alias.name] = f"{node.module}.{alias.name}"
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.asname:
+                        self._imported[alias.asname] = alias.name
 
     # -- entry ---------------------------------------------------------------------------------
 
@@ -1267,7 +1277,7 @@ class TemplateAnalysis:
             if found is not None:
                 value = found
             else:
-                value = AV(py=first)
+                value = AV(py=self._imported.get(first, first))
         for part in parts[1:]:
             value = self._autocall(value, env) if autocall else value
             value = attribute(value, part)
@@ -1300,7 +1310,7 @@ class TemplateAnalysis:
                 return env.local[node.id]
             if node.id in self.template.helpers:
                 return AV(helper=node.id)
-            return AV(py=node.id)
+            return AV(py=self._imported.get(node.id, node.id))
         if isinstance(node, ast.Call):
             return self.ev_call(node, env)
         if isinstance(node, ast.Attribute):
@@ -1536,6 +1546,19 @@ class TemplateAnalysis:
         if name == "os.path.basename":
             text = stringify(first)
             return AV(chars=text.chars - {"/"}, sources=text.sources)
+        if name in ("os.path.dirname", "os.path.normpath"):
+            # Parts of the path, and the separators between them.
+            text = stringify(first)
+            return AV(chars=text.chars | ({"/"} if text.tainted else set()), sources=text.sources)
+        if name == "os.path.join" and args and not keywords:
+            parts = [stringify(a) for a in args]
+            if not any(_literal_chars(part) & QUOTE_CLOSERS for part in parts):
+                # The parts in order, with a separator between them. An absolute part drops the
+                # parts before it, which only takes text away.
+                joined: list[str | AV] = []
+                for i, part in enumerate(parts):
+                    joined.extend(("/", part) if i else (part,))
+                return concat(joined)
         if name == "os.path.splitext":
             text = stringify(first)
             return AV(items=(text, text))
