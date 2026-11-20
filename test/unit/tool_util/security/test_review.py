@@ -759,3 +759,21 @@ def test_backslash_inside_sh_single_quotes_escapes_nothing(tmp_path):
 )
 def test_value_after_an_escaped_closing_quote_in_the_command(tmp_path, command, expected):
     assert rules(review(tmp_path, command)) - {("option-injection", "low")} == expected
+
+
+@pytest.mark.parametrize(
+    "command,content,expected",
+    [
+        # The quotes keep the value inside the string, but eval runs the string.
+        ("python '$script'", "color = eval('$no_quote')", {("configfile-injection", "high")}),
+        ("python '$script'", "color = eval(f'$no_quote')", {("configfile-injection", "high")}),
+        ("Rscript '$script'", "x <- eval(parse(text = '$no_quote'))", {("configfile-injection", "high")}),
+        ("sh '$script'", 'eval "echo $letters"', set()),
+        # literal_eval only reads literals.
+        ("python '$script'", "color = ast.literal_eval('$no_quote')", set()),
+        ("python '$script'", "color = '$no_quote'", set()),
+    ],
+)
+def test_value_in_a_string_the_script_evaluates(tmp_path, command, content, expected):
+    found = rules(review(tmp_path, command, CONFIG.format(f"<![CDATA[{content}]]>")))
+    assert found - {("configfile-injection", "low")} == expected
