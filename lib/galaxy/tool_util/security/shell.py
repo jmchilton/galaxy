@@ -72,6 +72,9 @@ class ShellState(NamedTuple):
     comment: bool = False
     last: str = ""
     amp: bool = False  # saw '&' that is a background operator unless '&' or '>' follows
+    # A user value that can end in a backslash was written inside these quotes: it can escape the
+    # closing quote, and the next quoted value then lands outside the quotes.
+    escaped: str = ""
 
 
 @dataclass(frozen=True)
@@ -125,10 +128,11 @@ class _Lexer:
         self.comment = state.comment
         self.last = state.last
         self.amp = state.amp
+        self.escaped = state.escaped
         self.events = events
 
     def state(self) -> ShellState:
-        return ShellState(tuple(self.frames), self.esc, self.comment, self.last, self.amp)
+        return ShellState(tuple(self.frames), self.esc, self.comment, self.last, self.amp, self.escaped)
 
     @property
     def top(self) -> Frame:
