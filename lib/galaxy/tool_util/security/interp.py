@@ -462,6 +462,12 @@ class TemplateAnalysis:
             for ref in refs:
                 self._closers[ref] = self._closers.get(ref, charsets.NONE) | own
 
+    def _record_backslash_closer(self, text: AV) -> None:
+        """The value can end in a backslash that escapes the closing quote of its string, which then
+        closes the string of the next value instead: a backslash in it is a closer."""
+        for ref in source_refs(text.sources):
+            self._closers[ref] = self._closers.get(ref, charsets.NONE) | {"\\"}
+
     def _record_write(self, text: AV) -> None:
         refs = source_refs(text.sources)
         escaped = frozenset().union(*(self._escapes.get(ref, charsets.NONE) for ref in refs))
@@ -926,6 +932,7 @@ class TemplateAnalysis:
                 self.judge_config(text, state.quote, raw_expr, escaped, state.evaluated, state.fstring)
                 self._record_escape_closer(text, (state.quote,))
                 if self._can_escape_config_quote(text, state.quote):
+                    self._record_backslash_closer(text)
                     state = _Text(state.quote, state.esc, state.quote, state.evaluated, state.fstring)
                 after_config.add(state)
             return frozenset(after_config)
@@ -942,6 +949,7 @@ class TemplateAnalysis:
                 self._record_escape_closer(text, (context.quote, context.inner))
                 own_escapes = text.quoted == "dq-escaped" and context.quote == '"'
                 if context.quote in ('"', shell.ANSI) and not context.lang and "\\" in text.chars and not own_escapes:
+                    self._record_backslash_closer(text)
                     after = after._replace(escaped=context.quote)
             out.add(after)
         return frozenset(out)

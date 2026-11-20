@@ -412,8 +412,8 @@ class ToolSecurityReviewer:
         if review is None or review.status != ANALYSED:
             log.debug("Job %s: tool %s has no security review, its values are not checked", job_id, tool.id)
             return
-        findings = review.checked_findings
-        if not findings:
+        if not review.checked_findings and not (review.report and review.report.writes):
+            # Nothing to compare: no finding to check and no written value a stray quote could free.
             return
         # Reading element identifiers and names through the wrappers marks the job as consuming
         # them, which changes how the job cache matches it; the check must not.
@@ -465,13 +465,22 @@ def find_violations(report: Report, param_dict: dict[str, Any]) -> Iterator[Viol
     in ``breakout``, at any severity), the quoting of the rest of the line flips, so every value
     the template writes counts with the characters that do harm in it outside quotes. The
     characters of all values of a source, and of all sources of a finding, count together: a
-    template can join them into one string.
+    template can join them into one string. A backslash escapes the character after it, which is
+    template text only after the last one: it counts only when a value ends in an odd number of
+    them.
     """
     chars_by_ref: dict[SourceRef, frozenset[str]] = {}
 
     def chars_of(ref: SourceRef) -> frozenset[str]:
         if ref not in chars_by_ref:
-            chars_by_ref[ref] = frozenset().union(*(frozenset(v) for v in source_values(ref, param_dict)))
+            chars: set[str] = set()
+            escapes_template = False
+            for value in source_values(ref, param_dict):
+                chars.update(value)
+                escapes_template = escapes_template or (len(value) - len(value.rstrip("\\"))) % 2 == 1
+            if not escapes_template:
+                chars.discard("\\")
+            chars_by_ref[ref] = frozenset(chars)
         return chars_by_ref[ref]
 
     def own(finding: Finding) -> dict[SourceRef, frozenset[str]]:

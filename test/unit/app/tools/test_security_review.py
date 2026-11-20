@@ -470,3 +470,51 @@ def test_finding_refs_name_the_inputs(app, tmp_path):
     assert review is not None
     refs = {(ref.accessor, ref.param) for f in review.checked_findings for ref in f.refs}
     assert refs == {(ELEMENT_IDENTIFIER, "input"), (RAW, "word")}
+
+
+TWO_VALUES = """<tool id="two_values" name="Two values" version="1.0" profile="24.0">
+  <command><![CDATA[{command}]]></command>
+  <inputs>
+    <param name="q" type="text">{q}</param>
+    <param name="x" type="text"><sanitizer><valid initial="string.ascii_letters"><add value=";"/></valid></sanitizer></param>
+  </inputs>
+  <outputs><data name="out" format="txt"/></outputs>
+</tool>
+"""
+UNSANITIZED = '<sanitizer sanitize="false"/>'
+LETTERS_AND_QUOTE = '<sanitizer><valid initial="string.ascii_letters"><add value="&apos;"/></valid></sanitizer>'
+
+
+def two_values_refused(app, tmp_path, command: str, q_sanitizer: str, q: str, x: str) -> bool:
+    tool = make_tool(app, tmp_path, TWO_VALUES.format(command=command, q=q_sanitizer), "two_values.xml")
+    job: Any = SimpleNamespace(job=SimpleNamespace(id=7), consumes_names=False, consumes_identifiers=False)
+    job.param_dict = {
+        name: InputValueWrapper(cast(ToolParameter, tool.inputs[name]), value) for name, value in (("q", q), ("x", x))
+    }
+    try:
+        reviewer(tmp_path, ENFORCE).check_job(tool, job)
+    except ToolInputRejected:
+        return True
+    return False
+
+
+@pytest.mark.parametrize(
+    "q,expected",
+    [
+        # `echo "a\" && echo ";id;#"`: the backslash escapes the closing quote and frees x.
+        ("a\\", True),
+        # Only a backslash at the end escapes the closing quote.
+        ("C:\\data\\reads.fq", False),
+        ("a\\\\", False),
+    ],
+)
+def test_backslash_frees_the_next_value_only_at_the_end(app, tmp_path, q, expected):
+    command = """echo "$q" && echo "$x" > '$out'"""
+    assert two_values_refused(app, tmp_path, command, UNSANITIZED, q, ";id;#") is expected
+
+
+def test_tool_with_only_medium_findings_is_checked(app, tmp_path):
+    # Two stray quotes in `echo ''' && echo ";id;" && echo '''` leave the `;` of x unquoted.
+    command = """echo '$q' && echo "$x" && echo '$q' > '$out'"""
+    assert two_values_refused(app, tmp_path, command, LETTERS_AND_QUOTE, "'", ";id;")
+    assert not two_values_refused(app, tmp_path, command, LETTERS_AND_QUOTE, "Bob", ";id;")
