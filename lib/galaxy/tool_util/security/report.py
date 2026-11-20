@@ -101,6 +101,16 @@ class Finding:
     # as for a value that chooses the program to run.
     refs: tuple[SourceRef, ...] = ()
     breakout: frozenset[str] = frozenset()
+    # When not empty, a value must also contain one of these characters.
+    requires: frozenset[str] = frozenset()
+    # Sources whose value the template rewrites in a way that can bring in a breakout character
+    # (str.replace, re.sub, a decoder, an unknown function): their characters decide nothing.
+    unchecked: tuple[SourceRef, ...] = ()
+
+    @property
+    def checkable(self) -> bool:
+        """Whether a character test on the values of the job can tell that this finding applies."""
+        return bool(self.breakout) and any(ref.accessor != OPAQUE and ref not in self.unchecked for ref in self.refs)
 
     def key(self) -> tuple[Any, ...]:
         if self.kind == VULNERABILITY:
@@ -130,6 +140,9 @@ class Report:
                     more_lines=tuple(sorted(lines)),
                     refs=sorted_refs((*first.refs, *second.refs)),
                     breakout=first.breakout | second.breakout,
+                    # Either finding's condition implies the merged one.
+                    requires=(first.requires | second.requires if first.requires and second.requires else frozenset()),
+                    unchecked=sorted_refs((*first.unchecked, *second.unchecked)),
                 )
                 return
         self.findings.append(finding)
@@ -166,7 +179,9 @@ class Report:
             f = dict(f)
             f["more_lines"] = tuple(f.get("more_lines") or ())
             f["refs"] = tuple(SourceRef(**ref) for ref in f.get("refs") or ())
+            f["unchecked"] = tuple(SourceRef(**ref) for ref in f.get("unchecked") or ())
             f["breakout"] = frozenset(f.get("breakout") or ())
+            f["requires"] = frozenset(f.get("requires") or ())
             report.findings.append(Finding(**f))
         return report
 
@@ -175,4 +190,5 @@ def _finding_to_dict(finding: Finding) -> dict[str, Any]:
     as_dict = asdict(finding)
     as_dict["more_lines"] = list(finding.more_lines)
     as_dict["breakout"] = sorted(finding.breakout)
+    as_dict["requires"] = sorted(finding.requires)
     return as_dict

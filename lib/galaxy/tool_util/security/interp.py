@@ -8,6 +8,7 @@ it walks every branch, keeps for each variable the characters a user could put i
 from __future__ import annotations
 
 import ast
+import dataclasses
 import re
 import time
 from dataclasses import (
@@ -34,9 +35,11 @@ from .model import (
     element,
     file_content,
     Group,
+    introduced,
     join,
     Model,
     raw,
+    recording,
     REPR_PUNCTUATION,
     SAFE_SPECIALS,
     Special,
@@ -47,6 +50,7 @@ from .report import (
     Report,
     ReviewTimeout,
     source_refs,
+    SourceRef,
     VULNERABILITY,
 )
 from .template import (
@@ -91,7 +95,8 @@ _ENCODERS = re.compile(
 _JSON_PUNCTUATION: charsets.Chars = frozenset('"\\[]{},: ')
 # What escaping a value for a syntax writes around or into it, whatever the value holds.
 _ESCAPING_ADDS: dict[str, charsets.Chars] = {
-    "shlex": frozenset("'"),
+    # shlex.quote("a'b") is 'a'"'"'b'.
+    "shlex": frozenset("'\""),
     "json": _JSON_PUNCTUATION,
     "pyrepr": REPR_PUNCTUATION,
 }
@@ -109,17 +114,26 @@ def _verdict_breakout(verdict: Verdict) -> charsets.Chars:
     return verdict.chars if verdict.breakout is None else verdict.breakout
 
 
-def _breakout(verdict: Verdict, text: AV) -> charsets.Chars:
+def _breakout(
+    verdict: Verdict, text: AV, language: str, escaped: charsets.Chars
+) -> tuple[charsets.Chars, charsets.Chars]:
     """The characters of the user's value, before any escaping the template applies, that a finding needs.
 
-    Escaping adds characters whatever the value holds (shlex.quote adds quotes): those are not the
-    value's, so a value must then bring one of the other characters of the verdict.
+    Returns ``(breakout, requires)``: a value must contain one of ``breakout`` and, when ``requires``
+    is not empty, one of ``requires``. Escaping writes quotes whatever the value holds (shlex.quote,
+    json.dumps, repr): when one of them is a breakout character, the escaping itself leaves the
+    place, and the value must bring what is dangerous after it.
     """
     breakout = _verdict_breakout(verdict)
-    added = _ESCAPING_ADDS.get(text.quoted, charsets.NONE)
-    if breakout and breakout <= added:
-        return verdict.chars - added
-    return breakout - added
+    added = _ESCAPING_ADDS.get(text.quoted, charsets.NONE) | escaped
+    if not breakout & added:
+        return breakout, verdict.requires
+    rest = text.chars - added
+    after = charsets.unquoted(rest) if language == "shell" else charsets.code(language, rest, "")
+    follow = (
+        after.chars if after is not None and after.severity in (charsets.HIGH, charsets.CRITICAL) else charsets.NONE
+    )
+    return (breakout - added) | follow, charsets.NONE
 
 
 _STRING_FUNCTIONS = frozenset(("str", "unicode", "repr", "format", "basestring"))
@@ -130,6 +144,13 @@ _ESCAPE_KEEPING_METHODS = frozenset(
     ("strip", "lstrip", "rstrip", "replace", "lower", "upper", "title", "capitalize", "casefold")
 )
 _CASE_METHODS = frozenset(("lower", "upper", "casefold"))
+# str methods whose result holds only characters of the value and of their literal arguments.
+_PRESERVING_METHODS = frozenset(
+    (
+        "strip lstrip rstrip lower upper casefold title capitalize swapcase zfill center ljust rjust"
+        " removeprefix removesuffix __str__"
+    ).split()
+)
 _QUOTING: charsets.Chars = frozenset("'\"\\`")
 _CLEAN_METHODS = frozenset(
     (
@@ -380,6 +401,10 @@ class TemplateAnalysis:
         self._pending: ast.expr | None = None  # expression of the placeholder about to be written
         self._depth = 0
         self._steps = 0
+        # Characters template code, not the user, can bring into the value of a source, as plain
+        # text (str.replace, a decoder, an unknown function) or as the quotes of an escaping.
+        self._introduced: dict[SourceRef, charsets.Chars] = {}
+        self._escapes: dict[SourceRef, charsets.Chars] = {}
         # time.monotonic() after which the analysis stops with ReviewTimeout.
         self._deadline = deadline
         self._in_capture_region = 0
@@ -395,13 +420,38 @@ class TemplateAnalysis:
     def run(self) -> None:
         initial = shell.INITIAL if self.language == "shell" else _Text()
         try:
-            states = self.block(self.template.main.body, frozenset((initial,)), Env())
+            with recording(self._record):
+                states = self.block(self.template.main.body, frozenset((initial,)), Env())
         except _BudgetExceeded:
             self.note("template is too expensive to analyse, the review of it is incomplete")
             return
+        finally:
+            self._mark_unchecked()
         if self.language == "shell":
             for state in states:
                 shell.finish(state, self.events)
+
+    def _record(self, sources: frozenset[str], chars: charsets.Chars, escape: bool) -> None:
+        into = self._escapes if escape else self._introduced
+        for ref in source_refs(sources):
+            into[ref] = into.get(ref, charsets.NONE) | chars
+
+    def _introduce(self, value: AV, chars: charsets.Chars = charsets.PROBE) -> None:
+        introduced(stringify(value) if value.nodes else value, chars)
+
+    def _unchecked(self, refs: tuple[SourceRef, ...], needed: charsets.Chars) -> tuple[SourceRef, ...]:
+        return tuple(ref for ref in refs if self._introduced.get(ref, charsets.NONE) & needed)
+
+    def _mark_unchecked(self) -> None:
+        """Sources rewritten after a finding was recorded (in a later loop pass) are not checkable either."""
+        for i, finding in enumerate(self.report.findings):
+            if finding.location != self.location or finding.kind != VULNERABILITY:
+                continue
+            unchecked = self._unchecked(finding.refs, finding.breakout | finding.requires)
+            if set(unchecked) - set(finding.unchecked):
+                self.report.findings[i] = dataclasses.replace(
+                    finding, unchecked=tuple(sorted(set(finding.unchecked) | set(unchecked), key=repr))
+                )
 
     def note(self, message: str) -> None:
         if message not in self._noted:
@@ -997,6 +1047,9 @@ class TemplateAnalysis:
         self.finding(verdict, text, f"into `{name}(...)` in template Python", name)
 
     def finding(self, verdict: Verdict, text: AV, where: str, raw_expr: str | None) -> None:
+        refs = source_refs(text.sources)
+        escaped = frozenset().union(*(self._escapes.get(ref, charsets.NONE) for ref in refs))
+        breakout, requires = _breakout(verdict, text, self.language, escaped)
         source = "; ".join(sorted(text.sources)[:3])
         expr = f" (`{raw_expr}`)" if raw_expr else ""
         severity = verdict.severity
@@ -1017,8 +1070,10 @@ class TemplateAnalysis:
                 source=source,
                 context=where,
                 chars=charsets.show(verdict.chars),
-                refs=source_refs(text.sources),
-                breakout=_breakout(verdict, text),
+                refs=refs,
+                breakout=breakout,
+                requires=requires,
+                unchecked=self._unchecked(refs, breakout | requires),
             )
         )
 
@@ -1058,6 +1113,8 @@ class TemplateAnalysis:
         """The text a helper produces, when it is used as a value rather than written in place."""
         method = self.template.helpers.get(name)
         if method is None or self._too_deep(method, args, keywords):
+            for value in [*args, *(keywords or {}).values()]:
+                self._introduce(contents(value))
             return join(*(contents(a) for a in [*args, *(keywords or {}).values()]))
         self._depth += 1
         self._capture.append([])
@@ -1175,6 +1232,8 @@ class TemplateAnalysis:
                 if (formatted := _percent_format(template, values)) is not None:
                     return formatted
             mixed = join(stringify(left), stringify(right))
+            self._introduce(stringify(left), stringify(right).chars | charsets.probe(str(_const(node.right) or "")))
+            self._introduce(stringify(right), stringify(left).chars | charsets.probe(str(template or "")))
             return AV(chars=mixed.chars, sources=mixed.sources, whole=False)
         if isinstance(node, ast.JoinedStr):
             return concat([self.ev(v, env) for v in node.values])
@@ -1290,6 +1349,9 @@ class TemplateAnalysis:
             return self.call_helper(callee.helper, args, env, named)
         if callee.py:
             return self.call_python(callee.py, args, keywords, node, env)
+        for value in args + keywords:
+            # A function the analysis does not know can turn the value into anything.
+            self._introduce(contents(value))
         if callee.nodes:
             # Calling an attribute of an opaque object: the result is as trustworthy as the object.
             return join(stringify(callee), *(contents(a) for a in args))
@@ -1307,6 +1369,12 @@ class TemplateAnalysis:
         if name in _CLEAN_FUNCTIONS:
             return CLEAN
         if name in _STRING_FUNCTIONS:
+            if name == "repr":
+                # repr() puts the string between quotes and escapes backslashes and that quote.
+                introduced(stringify(first), frozenset("'\"\\"), escape=True)
+            elif name == "format" and len(node.args) > 1:
+                spec = _const(node.args[1])
+                self._introduce(stringify(first), charsets.probe(spec) if isinstance(spec, str) else charsets.PROBE)
             return stringify(first)
         if name in _CONTAINER_FUNCTIONS:
             return first if (first.items is not None or first.elem is not None) else AV(elem=element(first))
@@ -1334,6 +1402,7 @@ class TemplateAnalysis:
             return default
         if _DECODERS.match(name):
             text = contents(first)
+            self._introduce(text)
             return AV(chars=charsets.PROBE, sources=text.sources, whole=False) if text.tainted else CLEAN
         if name in ("re.sub", "re.subn") and len(args) >= 3:
             # With a count, or a replacement that is not plain text, some matches are left in place.
@@ -1341,6 +1410,7 @@ class TemplateAnalysis:
             return self._substitute(_const(node.args[0]), args[1], node.args[1], stringify(args[2]), every_match)
         if name == "re.escape":
             text = stringify(first)
+            self._introduce(text, frozenset("\\"))
             return AV(chars=text.chars | ({"\\"} if text.tainted else set()), sources=text.sources)
         if name in ("re.findall", "re.split", "re.finditer") and len(args) >= 2:
             return AV(elem=stringify(args[1]))
@@ -1349,16 +1419,19 @@ class TemplateAnalysis:
             return AV(chars=text.chars, sources=text.sources, elem=text)
         if name in ("shlex.quote", "pipes.quote", "shlex.join"):
             text = stringify(first)
+            introduced(text, _ESCAPING_ADDS["shlex"], escape=True)
             return AV(chars=text.chars, sources=text.sources, quoted="shlex")
         if name == "json.dumps":
             container = first.elem is not None or first.items is not None
             text = contents(first) if container and not first.nodes else stringify(first)
             extra = (_JSON_PUNCTUATION if container else frozenset('"\\')) if text.tainted else frozenset()
+            introduced(text, extra, escape=True)
             return AV(chars=text.chars | extra, sources=text.sources, quoted="json")
         if _ENCODERS.match(name):
             # The encoded text is made of letters, digits and the few symbols of the encoding.
             text = contents(first)
             alphabet = frozenset("+/=-_\n") if "encodebytes" in name else frozenset("+/=-_")
+            self._introduce(text, alphabet)
             return AV(chars=alphabet, sources=text.sources, whole=False) if text.tainted else CLEAN
         if name == "os.path.basename":
             text = stringify(first)
@@ -1366,6 +1439,8 @@ class TemplateAnalysis:
         if name == "os.path.splitext":
             text = stringify(first)
             return AV(items=(text, text))
+        for value in args + keywords:
+            self._introduce(contents(value))
         return join(*(contents(a) for a in args + keywords))
 
     @staticmethod
@@ -1387,6 +1462,7 @@ class TemplateAnalysis:
         literal = _const(replacement_node)
         plain = isinstance(literal, str) and "\\" not in literal
         added = replaced.chars | (charsets.probe(literal) if isinstance(literal, str) and text.tainted else set())
+        self._introduce(text, frozenset(added) if isinstance(literal, str) and plain else charsets.PROBE)
         removed = charsets.regex_removed(pattern) if isinstance(pattern, str) and plain and every_match else None
         if removed is None or not isinstance(literal, str):
             return AV(chars=text.chars | added, sources=text.sources | replaced.sources)
@@ -1455,6 +1531,7 @@ class TemplateAnalysis:
             added = stringify(args[1]).chars | (
                 charsets.probe(second) if isinstance(second, str) and text.tainted else set()
             )
+            self._introduce(text, frozenset(added))
             escaped = every and first_literal == '"' and second == '\\"' and "\\" not in text.chars
             kept = self._kept_escaping(text, name, arg_nodes, keywords) if not stringify(args[1]).tainted else ""
             return AV(
@@ -1475,12 +1552,21 @@ class TemplateAnalysis:
             if isinstance(template, str) and not keywords and (formatted := _brace_format(template, args)) is not None:
                 return formatted
             mixed = join(text, *(stringify(a) for a in args + keywords))
+            for value in args + keywords:
+                self._introduce(stringify(value), text.chars | charsets.probe(str(template or "")))
             return AV(chars=mixed.chars, sources=mixed.sources, whole=False)
         passed = join(*(contents(a) for a in args + keywords))
         if passed.tainted:
             # An unmodelled method given a user value (string.Template(...).substitute(x=value)).
+            self._introduce(text)
+            self._introduce(passed)
             return AV(chars=text.chars | passed.chars, sources=text.sources | passed.sources, whole=False)
         # strip, lower, encode... keep whatever the value could contain.
+        if name not in _PRESERVING_METHODS:
+            self._introduce(text)
+        else:
+            literals = [_const(node) for node in arg_nodes]
+            self._introduce(text, charsets.probe("".join(lit for lit in literals if isinstance(lit, str))))
         return AV(
             chars=text.chars,
             sources=text.sources,
