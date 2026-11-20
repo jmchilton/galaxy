@@ -292,3 +292,18 @@ def test_template_without_such_parts_is_checkable(tmp_path):
     report = review(tmp_path, "echo '$input.element_identifier'")
     assert report.unchecked_locations == {}
     assert all(f.checkable for f in report.findings)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "#from os.path import splitext\n#set $n = splitext($input.element_identifier)[0]\necho '$n'",
+        "#import os\n#set $p = os.path.join('dir', $input.element_identifier)\necho '$p'",
+        "#from os.path import join as j\n#set $p = j($input.element_identifier, 'f.txt')\necho '$p'",
+        "#import os\n#set $p = os.path.dirname($input.element_identifier)\necho '$p'",
+    ],
+)
+def test_path_functions_keep_the_value_checkable(tmp_path, command):
+    finding = high(review(tmp_path, command))
+    assert finding.checkable
+    assert finding.breakout == frozenset("'")
