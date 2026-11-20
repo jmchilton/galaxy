@@ -7,7 +7,8 @@ of ``sh -c``/``awk``/``python -c``, as the command word, or as a redirection tar
 
 Galaxy joins the rendered lines of a command with spaces before running it, so a newline is
 plain whitespace here, a ``#`` comment runs to the end of the command, and here-documents
-cannot occur.
+cannot occur. A shell script configfile keeps its lines (:data:`SCRIPT`): a newline ends a
+command and a comment. Scripts with here-documents are not read with this lexer.
 """
 
 from __future__ import annotations
@@ -78,6 +79,8 @@ class ShellState(NamedTuple):
     # A user value that can end in a backslash was written inside these quotes: it can escape the
     # closing quote, and the next quoted value then lands outside the quotes.
     escaped: str = ""
+    # A script with lines of its own, not a command line.
+    script: bool = False
 
 
 @dataclass(frozen=True)
@@ -120,6 +123,7 @@ class Context:
 
 
 INITIAL = ShellState()
+SCRIPT = ShellState(script=True)
 
 Event = Tuple[str, ...]
 
@@ -132,10 +136,11 @@ class _Lexer:
         self.last = state.last
         self.amp = state.amp
         self.escaped = state.escaped
+        self.script = state.script
         self.events = events
 
     def state(self) -> ShellState:
-        return ShellState(tuple(self.frames), self.esc, self.comment, self.last, self.amp, self.escaped)
+        return ShellState(tuple(self.frames), self.esc, self.comment, self.last, self.amp, self.escaped, self.script)
 
     @property
     def top(self) -> Frame:
@@ -261,6 +266,10 @@ class _Lexer:
 
     def step(self, c: str) -> None:
         if self.comment:
+            if self.script and c == "\n":
+                self.comment = False
+                self.last = ""
+                self.new_command()
             return
         last, self.last = self.last, c
         if self.amp:
@@ -317,6 +326,12 @@ class _Lexer:
         elif c in "'\"":
             self.start_word(c)
             self.set(quote=ANSI if c == "'" and last == "$" else c)
+        elif c == "\n" and self.script:
+            if f.cmd is None and f.word is None:
+                # A line after `|` or `&&` continues the command list.
+                self.end_word()
+            else:
+                self.new_command()
         elif c in " \t\n\r":
             self.end_word()
         elif c == "(":

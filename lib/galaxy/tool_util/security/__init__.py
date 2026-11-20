@@ -14,6 +14,7 @@ and the resulting syntax tree is analysed, see :mod:`.template` for why that is 
 
 from __future__ import annotations
 
+import re
 import sys
 import time
 
@@ -50,6 +51,9 @@ from .template import (
 )
 
 __all__ = ("ANALYSER_VERSION", "Finding", "Report", "ReviewTimeout", "review_tool_source", "Source", "SourceRef")
+
+# A here-document (`<<WORD`, `<<-WORD`), not the here-string `<<<`. An arithmetic `<<` matches too.
+_HEREDOC = re.compile(r"(?<!<)<<(?!<)")
 
 # Identifies what the analysis reports. Change it with every change to findings, sources or
 # breakout characters, so that stored reviews (see galaxy.tools.security_review) are redone.
@@ -128,7 +132,16 @@ def review_tool_source(tool_source: ToolSource, timeout: float | None = None) ->
     for name, content in model.configfiles.items():
         reader = sorted(readers.get(name, ()))
         language = configfile_language(content, reader[0] if reader else None)
-        _analyse(content, f"configfile:{name}", language, model, report, deadline)
+        location = f"configfile:{name}"
+        if language == "sh" and not _HEREDOC.search(content):
+            # A shell script is read like the command, with its quoting and nested programs. The
+            # body of a here-document is not shell code, and a quote in it would throw the rest
+            # off: such a script is read string by string, a line at a time.
+            analysis = _analyse(content, location, "shell", model, report, deadline)
+            if analysis is not None:
+                audit_shell_events(analysis.events, report, location)
+        else:
+            _analyse(content, location, language, model, report, deadline)
 
     xml_tree = getattr(tool_source, "xml_tree", None)
     if xml_tree is not None:

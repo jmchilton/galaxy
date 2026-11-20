@@ -525,6 +525,34 @@ def test_stray_quote_in_a_data_file_frees_nothing(app, tmp_path):
     assert not refused(app, tmp_path, tool, ["R&D;x|y"], word='say "hi"')
 
 
+SHELL_SCRIPT = """<tool id="shell_script" name="Shell script" version="1.0" profile="24.0">
+  <command>sh '$script'</command>
+  <configfiles><configfile name="script">#!/bin/sh
+#for $e in $input
+echo '$e.element_identifier' >> '$out'
+#end for
+</configfile></configfiles>
+  <inputs>
+    <param name="input" type="data_collection" collection_type="list" format="txt"/>
+    <param name="word" type="text"/>
+  </inputs>
+  <outputs><data name="out" format="txt"/></outputs>
+</tool>
+"""
+
+
+@pytest.mark.parametrize(
+    "identifiers,expected",
+    [
+        (["R&D;x|y"], False),
+        (["a';id;'"], True),
+    ],
+)
+def test_shell_script_configfile_is_quoted_like_the_command(app, tmp_path, identifiers, expected):
+    tool = make_tool(app, tmp_path, SHELL_SCRIPT, "shell_script.xml")
+    assert refused(app, tmp_path, tool, identifiers) is expected
+
+
 TWO_VALUES = """<tool id="two_values" name="Two values" version="1.0" profile="24.0">
   <command><![CDATA[{command}]]></command>
   <inputs>
