@@ -295,7 +295,7 @@ def test_enforce_refuses_an_identifier_that_closes_the_quotes(app, tmp_path):
     with pytest.raises(ToolInputRejected) as e:
         reviewer(tmp_path, ENFORCE).check_job(tool, job)
     message = str(e.value)
-    assert "an element identifier or the name of input 'input' contains the characters [']" in message
+    assert "an element identifier or the name of input 'input' contains the characters [' ;]" in message
     assert "Echo identifiers" in message and "echo_ids" in message
     assert "id;" not in message
     # Reading identifiers through the wrappers must not change how the job cache sees the job.
@@ -308,8 +308,8 @@ def test_log_warns_and_lets_the_job_run(app, tmp_path, caplog):
     warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
     assert len(warnings) == 2
     assert all("job 7 of tool echo_ids version 1.0" in w for w in warnings)
-    assert any("element_identifier of input 'input' contains [']" in w for w in warnings)
-    assert any("raw of input 'word' contains [']" in w for w in warnings)
+    assert any("element_identifier of input 'input' contains [' |]" in w for w in warnings)
+    assert any("raw of input 'word' contains [' ;]" in w for w in warnings)
     assert all("it'|'s" not in w and "x';y" not in w for w in warnings)
 
 
@@ -328,11 +328,38 @@ def test_lone_quote_passes_when_it_is_the_only_user_value(app, tmp_path, caplog,
     assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
 
 
-def test_lone_quote_counts_when_another_user_value_follows(app, tmp_path):
-    # `echo 'Bob's' ...; echo 'x;y'`: the stray quote leaves the `;` of the next value unquoted.
+def test_lone_quote_counts_when_another_value_brings_a_command(app, tmp_path):
+    # `echo 'Bob's' ...; echo 'a;b'`: the stray quote leaves the `;` of the next value unquoted.
     tool = make_tool(app, tmp_path)
+    with pytest.raises(ToolInputRejected) as e:
+        reviewer(tmp_path, ENFORCE).check_job(tool, evaluator(app, tool, ["Bob's reads"], word="a;b"))
+    assert "the value of input 'word' contains the characters [;]" in str(e.value)
+    assert "an element identifier or the name of input 'input' contains the characters [']" in str(e.value)
+
+
+@pytest.mark.parametrize("mode", [LOG, ENFORCE])
+def test_lone_quote_passes_next_to_harmless_values(app, tmp_path, caplog, mode):
+    tool = make_tool(app, tmp_path)
+    reviewer(tmp_path, mode).check_job(tool, evaluator(app, tool, ["Bob's reads"], word="it's fine"))
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+def test_quote_from_a_medium_finding_frees_another_value(app, tmp_path):
+    # `q` can only close its quotes (a medium finding, never checked by itself), but that is
+    # enough to leave the command characters of `word` unquoted.
+    closer = ECHO_IDS.replace(
+        '<param name="word" type="text"/>',
+        """<param name="word" type="text"/>
+    <param name="q" type="text"><sanitizer><valid initial="string.ascii_letters"><add value="&apos;"/></valid>
+    </sanitizer></param>""",
+    ).replace("echo '${word.value}' >> '$out'", "echo '$q' >> '$out' && echo '${word.value}' >> '$out'")
+    tool = make_tool(app, tmp_path, closer, "closer.xml")
+    job = evaluator(app, tool, ["a"], word=";id;#")
+    job.param_dict["q"] = InputValueWrapper(cast(ToolParameter, tool.inputs["q"]), "'")
     with pytest.raises(ToolInputRejected):
-        reviewer(tmp_path, ENFORCE).check_job(tool, evaluator(app, tool, ["Bob's reads"]))
+        reviewer(tmp_path, ENFORCE).check_job(tool, job)
+    job.param_dict["q"] = InputValueWrapper(cast(ToolParameter, tool.inputs["q"]), "plain")
+    reviewer(tmp_path, ENFORCE).check_job(tool, job)
 
 
 def test_collection_name_is_checked(app, tmp_path):
@@ -353,7 +380,7 @@ def test_raw_value_is_checked(app, tmp_path):
     tool = make_tool(app, tmp_path)
     with pytest.raises(ToolInputRejected) as e:
         reviewer(tmp_path, ENFORCE).check_job(tool, evaluator(app, tool, ["a"], word="it';id"))
-    assert "the value of input 'word' contains the characters [']" in str(e.value)
+    assert "the value of input 'word' contains the characters [' ;]" in str(e.value)
 
 
 def test_rewritten_value_is_reported_as_not_checkable(app, tmp_path, caplog):

@@ -53,6 +53,7 @@ from galaxy.tool_util.security.report import (
     GROUP_TAGS,
     METADATA,
     OPAQUE,
+    QUOTE_CLOSERS,
     RAW,
     SPECIAL,
     TEXT,
@@ -419,7 +420,7 @@ class ToolSecurityReviewer:
         # them, which changes how the job cache matches it; the check must not.
         consumes = (evaluator.consumes_names, evaluator.consumes_identifiers)
         try:
-            violations = list(find_violations(findings, evaluator.param_dict))
+            violations = list(find_violations(review.report, evaluator.param_dict)) if review.report else []
         except Exception:
             # The check must never be the reason a job fails.
             log.exception("Job %s: checking values against the security review of tool %s failed", job_id, tool.id)
@@ -436,9 +437,9 @@ class ToolSecurityReviewer:
                 violation.ref.accessor + (f" '{violation.ref.key}'" if violation.ref.key else ""),
                 violation.ref.param or violation.ref.key,
                 show(violation.chars),
-                violation.finding.location,
-                violation.finding.rule,
-                violation.finding.severity,
+                violation.location,
+                violation.rule,
+                violation.severity,
             )
         if violations and self.mode == ENFORCE:
             raise ToolInputRejected(rejection_message(tool, violations))
@@ -446,37 +447,80 @@ class ToolSecurityReviewer:
 
 @dataclass(frozen=True)
 class Violation:
-    finding: Finding
     ref: SourceRef
     chars: frozenset[str]
+    rule: str
+    severity: str
+    location: str
 
 
-def find_violations(findings: Iterable[Finding], param_dict: dict[str, Any]) -> Iterator[Violation]:
-    """The sources of each finding whose job values bring the characters the finding needs.
+# The rule of a value that a stray quote of another value leaves outside its quotes.
+STRAY_QUOTE = "stray-quote"
 
-    The characters of all values of all sources of a finding count together: a template can join
-    them into one string (`'$a$b'`, `",".join(...)`), so a quote from one value and a command
-    character from another are enough.
+
+def find_violations(report: Report, param_dict: dict[str, Any]) -> Iterator[Violation]:
+    """The sources whose job values do what a high or critical finding says, or free other values.
+
+    A finding applies when its own values bring a breakout character (and a required one). And
+    when any value of a template can close the quotes it is written in (a finding with a quote
+    in ``breakout``, at any severity), the quoting of the rest of the line flips, so every value
+    the template writes counts with the characters that do harm in it outside quotes. The
+    characters of all values of a source, and of all sources of a finding, count together: a
+    template can join them into one string.
     """
-    seen: set[tuple[str, SourceRef]] = set()
-    for finding in findings:
-        wanted = finding.breakout | finding.requires
-        found: dict[SourceRef, set[str]] = {}
-        for ref in finding.refs:
-            if ref.accessor == OPAQUE or ref in finding.unchecked:
-                continue
-            hit: set[str] = set()
-            for value in source_values(ref, param_dict):
-                hit.update(wanted.intersection(value))
-            if hit:
-                found[ref] = hit
-        present = set().union(*found.values())
+    chars_by_ref: dict[SourceRef, frozenset[str]] = {}
+
+    def chars_of(ref: SourceRef) -> frozenset[str]:
+        if ref not in chars_by_ref:
+            chars_by_ref[ref] = frozenset().union(*(frozenset(v) for v in source_values(ref, param_dict)))
+        return chars_by_ref[ref]
+
+    def own(finding: Finding) -> dict[SourceRef, frozenset[str]]:
+        return {ref: chars_of(ref) for ref in finding.refs if ref.accessor != OPAQUE and ref not in finding.unchecked}
+
+    vulnerabilities = [f for f in report.findings if f.kind == VULNERABILITY]
+    seen: set[SourceRef] = set()
+
+    def first(violation: Violation) -> bool:
+        # One report per source is enough for the log and for the user.
+        if violation.ref in seen:
+            return False
+        seen.add(violation.ref)
+        return True
+
+    closers: dict[str, dict[SourceRef, set[str]]] = {}
+    for finding in vulnerabilities:
+        if not finding.checkable:
+            continue
+        quotes = finding.breakout & QUOTE_CLOSERS
+        for ref, chars in own(finding).items() if quotes else ():
+            if chars & quotes:
+                closers.setdefault(finding.location, {}).setdefault(ref, set()).update(chars & quotes)
+
+    for finding in vulnerabilities:
+        if finding.severity not in CHECKED_SEVERITIES or not finding.checkable:
+            continue
+        values = own(finding)
+        present = frozenset().union(*values.values())
         if not present & finding.breakout or (finding.requires and not present & finding.requires):
             continue
-        for ref, hit in found.items():
-            if (finding.rule, ref) not in seen:
-                seen.add((finding.rule, ref))
-                yield Violation(finding, ref, frozenset(hit))
+        wanted = finding.breakout | finding.requires
+        for ref, chars in values.items():
+            violation = Violation(ref, chars & wanted, finding.rule, finding.severity, finding.location)
+            if violation.chars and first(violation):
+                yield violation
+
+    for location, quoted in closers.items():
+        freed = []
+        for ref, harm in report.writes.get(location, {}).items():
+            if ref.accessor != OPAQUE and chars_of(ref) & harm:
+                freed.append(Violation(ref, chars_of(ref) & harm, STRAY_QUOTE, HIGH, location))
+        if freed:
+            for ref, closing in quoted.items():
+                freed.append(Violation(ref, frozenset(closing), STRAY_QUOTE, HIGH, location))
+            for violation in freed:
+                if first(violation):
+                    yield violation
 
 
 def source_values(ref: SourceRef, param_dict: dict[str, Any]) -> Iterator[str]:
