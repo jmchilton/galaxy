@@ -259,6 +259,7 @@ if TYPE_CHECKING:
     from galaxy.tool_util.toolbox.lineages.interface import ToolLineage
     from galaxy.tools.actions.metadata import SetMetadataToolAction
     from galaxy.tools.parameters import ToolInputsT
+    from galaxy.tools.security_review import ToolReview
 
 log = logging.getLogger(__name__)
 
@@ -1684,6 +1685,15 @@ class Tool(UsesDictVisibleKeys):
                 else:
                     if os.path.exists(result):
                         return result
+
+    def security_review(self, compute: bool = True) -> Optional["ToolReview"]:
+        """The security review of this tool's templates, stored or computed within the configured timeout.
+
+        None when reviews are off, outside a Galaxy server, or for a tool without a Cheetah command.
+        """
+        if self.app.name != "galaxy":
+            return None
+        return self.app.tool_security_reviewer.review(self, compute=compute)
 
     def tool_provided_metadata(self, job_wrapper):
         meta_file = os.path.join(job_wrapper.tool_working_directory, self.provided_metadata_file)
