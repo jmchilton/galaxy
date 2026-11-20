@@ -88,6 +88,7 @@ _NONE_METHODS = frozenset(("reverse", "sort", "clear", "remove"))
 _ESCAPE_KEEPING_METHODS = frozenset(
     ("strip", "lstrip", "rstrip", "replace", "lower", "upper", "title", "capitalize", "casefold")
 )
+_CASE_METHODS = frozenset(("lower", "upper", "casefold"))
 _QUOTING: charsets.Chars = frozenset("'\"\\`")
 _CLEAN_METHODS = frozenset(
     (
@@ -137,8 +138,20 @@ def configfile_language(content: str, reader: str | None) -> str:
     return "data"
 
 
-# Prefix of an Env key that holds the narrowed value of a dotted template name ("=cond" or "=x.y").
+# Prefixes of Env keys set by #if tests. "=x.y": the narrowed value of exactly this template name;
+# its attributes (`.value`, string methods) still give the raw value. "~cond": a conditional
+# restricted to some <when> blocks; the parameters below it are looked up in the restricted group.
 NARROWED = "="
+RESTRICTED = "~"
+
+
+def _narrowing_key(key: str) -> bool:
+    return key[:1] in (NARROWED, RESTRICTED)
+
+
+def _keys_of(local: dict[str, AV], name: str) -> list[str]:
+    """The narrowing keys about a name and its attributes."""
+    return [k for k in local if _narrowing_key(k) and (k[1:] == name or k[1:].startswith(f"{name}."))]
 
 
 @dataclass
@@ -155,7 +168,7 @@ class Env:
             names.update(other.local)
         for name in names:
             envs = [self] + others
-            if name.startswith(NARROWED) and any(name not in o.local for o in others):
+            if _narrowing_key(name) and any(name not in o.local for o in others):
                 # Narrowed on one path only: elsewhere the name has its full value again.
                 self.local.pop(name, None)
                 continue
@@ -164,7 +177,7 @@ class Env:
     def assign(self, name: str, value: AV, weak: bool = False) -> None:
         self.local[name] = join(self.local.get(name), value) if weak else value
         # What a test showed about the old value, or its attributes, does not hold for the new one.
-        for key in [k for k in self.local if k == NARROWED + name or k.startswith(f"{NARROWED}{name}.")]:
+        for key in _keys_of(self.local, name):
             del self.local[key]
 
 
@@ -228,10 +241,6 @@ def _brace_format(text: str, values: list[AV]) -> AV | None:
     return concat(parts)
 
 
-def _leaves(stmts: list[ast.stmt]) -> bool:
-    return bool(stmts) and isinstance(stmts[-1], (ast.Continue, ast.Break, ast.Return, ast.Raise))
-
-
 def _unwrap_str(node: ast.expr) -> ast.expr:
     """``str(x)`` is ``x`` as the template writes it."""
     while (
@@ -279,9 +288,11 @@ def _without_removed(value: AV, removed: charsets.Removed) -> AV:
     return AV(chars=chars, sources=text.sources, quoted=text.quoted, whole=text.whole, lead=lead, words=text.words)
 
 
-# What int() and float() accept besides digits (and letters, for float: inf, nan, 1e5). Whitespace
-# only at either end, where an unquoted shell word drops it.
-_NUMBER_CHARS = {"int": frozenset("+-_"), "float": frozenset("+-_.")}
+# What int() and float() accept besides digits and letters (inf, nan, 1e5); int() of a parameter
+# wrapper converts through float(). Whitespace is accepted at either end only, where it cannot split
+# the value into several words, and in a command a newline becomes a space. Only digits, a sign
+# and a dot are left to the user, so the whitespace is not tracked.
+_NUMBER_CHARS = {"int": frozenset("+-_."), "float": frozenset("+-_.")}
 
 
 def _number(value: AV, function: str) -> AV:
@@ -320,6 +331,7 @@ class TemplateAnalysis:
         # Above zero while evaluating code that may not run (one arm of `a if c else b`, a #try body):
         # a conversion there that would fail says nothing about the value.
         self._speculative = 0
+        self._in_try = 0  # inside a #try body, where a #raise may be caught
 
     # -- entry ---------------------------------------------------------------------------------
 
@@ -400,7 +412,7 @@ class TemplateAnalysis:
                 self.apply_narrowing(target, narrow, else_env)
             out = self.block(stmt.body, states, then_env) | self.block(stmt.orelse, states, else_env)
             # A branch that ends in #continue, #break or #return does not reach the code after the #if.
-            then_leaves, else_leaves = _leaves(stmt.body), _leaves(stmt.orelse)
+            then_leaves, else_leaves = self._leaves(stmt.body), self._leaves(stmt.orelse)
             env.local = {}
             if then_leaves and not else_leaves:
                 env.merge([else_env])
@@ -410,7 +422,7 @@ class TemplateAnalysis:
                 env.merge([then_env, else_env])
             return out
         if isinstance(stmt, (ast.For, ast.While)):
-            narrowed_before = {k: v for k, v in env.local.items() if k.startswith(NARROWED)}
+            before = dict(env.local)
             out = states
             current = states
             for _ in range(3):
@@ -422,20 +434,35 @@ class TemplateAnalysis:
                 if current <= out:
                     break
                 out = current = out | current
-            # An iteration may skip the rest of the body (#continue): what it narrowed ends with the loop.
-            for key in [k for k in env.local if k.startswith(NARROWED)]:
-                if narrowed_before.get(key) is not env.local[key]:
+            # The body may run zero times, or leave early (#continue, #break): after the loop a name can
+            # still have its value from before, and what an iteration narrowed does not hold.
+            for key, value in list(env.local.items()):
+                if value is before.get(key):
+                    continue
+                if _narrowing_key(key):
                     del env.local[key]
+                elif key in before:
+                    env.local[key] = join(before[key], value)
             return self.block(stmt.orelse, out, env)
         if isinstance(stmt, ast.Try):
             self._speculative += 1
+            self._in_try += 1
             try:
-                out = self.block(stmt.body, states, env)
+                body_env = env.copy()
+                out = self.block(stmt.body, states, body_env)
+                # A handler starts wherever the body stopped: from before it, or from after it.
+                handler_envs = []
+                for handler in stmt.handlers:
+                    handler_env = Env(shared=env.shared)
+                    handler_env.merge([env.copy(), body_env])
+                    out = out | self.block(handler.body, states | out, handler_env)
+                    handler_envs.append(handler_env)
+                out = self.block(stmt.orelse, out, body_env)
             finally:
                 self._speculative -= 1
-            for handler in stmt.handlers:
-                out = out | self.block(handler.body, states | out, env)
-            out = self.block(stmt.orelse, out, env)
+                self._in_try -= 1
+            env.local = {}
+            env.merge([body_env, *handler_envs])
             return self.block(stmt.finalbody, out, env)
         if isinstance(stmt, ast.With):
             return self.block(stmt.body, states, env)
@@ -444,6 +471,15 @@ class TemplateAnalysis:
         return states
 
     # -- narrowing by #if tests ---------------------------------------------------------------
+
+    def _leaves(self, stmts: list[ast.stmt]) -> bool:
+        """The block ends in a statement after which the code that follows the #if does not run."""
+        if not stmts:
+            return False
+        last = stmts[-1]
+        if isinstance(last, ast.Raise):
+            return not self._in_try
+        return isinstance(last, (ast.Continue, ast.Break, ast.Return))
 
     def narrowing(self, test: ast.expr, env: Env) -> tuple[list[tuple[ast.expr, Any]], list[tuple[ast.expr, Any]]]:
         """What a test that is true, or false, says about the values it looks at.
@@ -464,7 +500,7 @@ class TemplateAnalysis:
             name = ast.unparse(test.func)
             pattern = _const(test.args[0]) if test.args else None
             if name in ("re.match", "re.search", "re.fullmatch") and len(test.args) == 2 and not test.keywords:
-                if isinstance(pattern, str) and (name != "re.search" or pattern.startswith("^")):
+                if isinstance(pattern, str) and (name != "re.search" or charsets.regex_anchored_start(pattern)):
                     if name == "re.fullmatch":
                         pattern = f"(?:{pattern})\\Z"
                     constraint = regex_constraint(pattern)
@@ -490,17 +526,23 @@ class TemplateAnalysis:
         if isinstance(literal, str):
             found = self._literal_narrowing(target, [literal], env)
             return found if found != ([], []) else None
-        # `x == re.sub(pattern, '_', x)`: the value holds no character the pattern replaces.
+        # `x == re.sub(pattern, '_', x)`: the value holds no character the pattern replaces, except
+        # those of the replacement itself.
+        replacement = _const(other.args[1]) if isinstance(other, ast.Call) and len(other.args) == 3 else None
         if (
             isinstance(other, ast.Call)
             and ast.unparse(other.func) in ("re.sub", "re.subn")
             and len(other.args) == 3
             and not other.keywords
             and isinstance(_const(other.args[0]), str)
+            and isinstance(replacement, str)
+            and "\\" not in replacement
             and ast.unparse(_unwrap_str(other.args[2])) == ast.unparse(_unwrap_str(target))
         ):
             removed = charsets.regex_removed(str(_const(other.args[0])))
             if removed is not None:
+                kept = charsets.probe(replacement)
+                removed = charsets.Removed(removed.everywhere - kept, removed.start - kept, removed.start_repeats)
                 return [(target, lambda v, r=removed: _without_removed(v, r))], []
         return None
 
@@ -545,7 +587,7 @@ class TemplateAnalysis:
         target = _unwrap_str(target)
         if isinstance(target, ast.Constant) and isinstance(target.value, str):
             # A dotted template name given directly (the conditional that owns a selector).
-            env.local[NARROWED + target.value] = narrow(self.resolve(target.value, env, False))
+            env.local[RESTRICTED + target.value] = narrow(self.resolve(target.value, env, False))
             return
         if isinstance(target, ast.Name) and target.id in env.local:
             current = env.local[target.id]
@@ -555,8 +597,14 @@ class TemplateAnalysis:
         path = _template_path(target)
         if path is None:
             return
-        if "." not in path and path in env.local and not env.local[path].nodes:
-            env.local[path] = narrow(env.local[path])
+        first = path.split(".")[0]
+        if first not in env.local and first in env.shared:
+            # `#set global` names can change in any #def the template calls.
+            return
+        if "." not in path and path in env.local:
+            if not env.local[path].nodes:
+                env.local[path] = narrow(env.local[path])
+            # A local holding a parameter: `$p.value` and the like stay raw, so nothing is narrowed.
             return
         env.local[NARROWED + path] = narrow(stringify(self.resolve(path, env, True)))
 
@@ -607,6 +655,8 @@ class TemplateAnalysis:
             key = _const(target.slice)
             if isinstance(base, ast.Attribute) and base.attr == "_CHEETAH__globalSetVars" and isinstance(key, str):
                 env.shared[key] = join(env.shared.get(key), value) if weak else value
+                for narrowed in _keys_of(env.local, key):
+                    del env.local[narrowed]
             elif name := self._local_name(base, env):
                 env.assign(name, AV(elem=join(value, self.ev(target.slice, env))), weak=True)
 
@@ -871,11 +921,22 @@ class TemplateAnalysis:
 
     # -- expressions ---------------------------------------------------------------------------
 
-    def resolve(self, path: str, env: Env, autocall: bool) -> AV:
+    def _unnarrowed(self, node: ast.expr, env: Env) -> AV:
+        path = _template_path(node)
+        if isinstance(node, ast.Call) and path is not None:
+            autocall = bool(_const(node.args[2])) if len(node.args) > 2 else False
+            return self.resolve(path, env, autocall, exact=False)
+        return self.ev(node, env)
+
+    def resolve(self, path: str, env: Env, autocall: bool, exact: bool = True) -> AV:
+        """The value of a dotted template name; ``exact=False`` ignores what tests showed about it."""
         parts = path.split(".")
-        if any(key.startswith(NARROWED) for key in env.local):
+        narrowed = env.local.get(NARROWED + path) if exact else None
+        if narrowed is not None:
+            return narrowed
+        if any(key.startswith(RESTRICTED) for key in env.local):
             for i in range(len(parts), 0, -1):
-                key = NARROWED + ".".join(parts[:i])
+                key = RESTRICTED + ".".join(parts[:i])
                 if key in env.local:
                     value = env.local[key]
                     for part in parts[i:]:
@@ -980,8 +1041,14 @@ class TemplateAnalysis:
                 self._speculative -= 1
         if isinstance(node, ast.Compare):
             self.ev(node.left, env)
-            for comparator in node.comparators:
-                self.ev(comparator, env)
+            self.ev(node.comparators[0], env)
+            # `a < b < c` evaluates c only when a < b holds.
+            self._speculative += 1
+            try:
+                for comparator in node.comparators[1:]:
+                    self.ev(comparator, env)
+            finally:
+                self._speculative -= 1
             return CLEAN
         if isinstance(node, ast.UnaryOp):
             value = self.ev(node.operand, env)
@@ -1029,15 +1096,13 @@ class TemplateAnalysis:
     @staticmethod
     def _numeric(node: ast.BinOp, left: AV, right: AV) -> bool:
         """Arithmetic: `x - 1`, `x / 2`, `x + 1` give a number whatever the user wrote, or fail."""
-        if any(v.elem is not None or v.items is not None for v in (left, right)):
-            # set difference and list concatenation keep the elements.
+        if any(v.elem is not None or v.items is not None or v.nodes for v in (left, right)):
+            # Set difference and list concatenation keep the elements; a parameter wrapper or a
+            # pathlib.Path may define the operator for strings.
             return False
-        if isinstance(node.op, (ast.Sub, ast.Div, ast.FloorDiv, ast.Pow)):
-            return True
         number = (int, float)
-        return isinstance(node.op, ast.Add) and (
-            type(_const(node.left)) in number or type(_const(node.right)) in number
-        )
+        with_number = type(_const(node.left)) in number or type(_const(node.right)) in number
+        return with_number and isinstance(node.op, (ast.Add, ast.Sub, ast.Div, ast.FloorDiv, ast.Pow))
 
     def ev_call(self, node: ast.Call, env: Env) -> AV:
         func = node.func
@@ -1046,7 +1111,8 @@ class TemplateAnalysis:
             autocall = bool(_const(node.args[2])) if len(node.args) > 2 else False
             if isinstance(path, str):
                 if func.id == "VFN":
-                    value = self.ev(node.args[0], env)
+                    # `$x.method()`: an attribute of x, which a test of `$x` itself says nothing about.
+                    value = self._unnarrowed(node.args[0], env)
                     for part in path.split("."):
                         value = attribute(value, part)
                         if autocall:
@@ -1137,7 +1203,8 @@ class TemplateAnalysis:
         if _ENCODERS.match(name):
             # The encoded text is made of letters, digits and the few symbols of the encoding.
             text = contents(first)
-            return AV(chars=frozenset("+/=-_"), sources=text.sources, whole=False) if text.tainted else CLEAN
+            alphabet = frozenset("+/=-_\n") if "encodebytes" in name else frozenset("+/=-_")
+            return AV(chars=alphabet, sources=text.sources, whole=False) if text.tainted else CLEAN
         if name == "os.path.basename":
             text = stringify(first)
             return AV(chars=text.chars - {"/"}, sources=text.sources)
@@ -1271,6 +1338,10 @@ class TemplateAnalysis:
         """The escaping a str method leaves in place: none of its arguments can add or take away a quote."""
         if not text.quoted or name not in _ESCAPE_KEEPING_METHODS or keywords:
             return ""
+        if text.quoted not in ("sq-escaped", "dq-escaped"):
+            # shlex, JSON and repr escaping depend on characters a replacement can add or remove
+            # (shlex leaves `,` unquoted; JSON writes a newline as \n).
+            return text.quoted if name in _CASE_METHODS or (name == "strip" and not arg_nodes) else ""
         literals = [_const(node) for node in arg_nodes]
         if all(isinstance(literal, str) and not _QUOTING.intersection(literal) for literal in literals):
             return text.quoted
