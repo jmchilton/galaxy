@@ -108,6 +108,9 @@ class Finding:
     breakout: frozenset[str] = frozenset()
     # When not empty, a value must also contain one of these characters.
     requires: frozenset[str] = frozenset()
+    # Characters of the value that close or open quotes where it is written, which flips the
+    # quoting of the rest of the line for every other value (see Report.writes).
+    closes: frozenset[str] = frozenset()
     # Sources whose value the template rewrites in a way that can bring in a breakout character
     # (str.replace, re.sub, a decoder, an unknown function): their characters decide nothing.
     unchecked: tuple[SourceRef, ...] = ()
@@ -115,7 +118,9 @@ class Finding:
     @property
     def checkable(self) -> bool:
         """Whether a character test on the values of the job can tell that this finding applies."""
-        return bool(self.breakout) and any(ref.accessor != OPAQUE and ref not in self.unchecked for ref in self.refs)
+        return bool(self.breakout or self.closes) and any(
+            ref.accessor != OPAQUE and ref not in self.unchecked for ref in self.refs
+        )
 
     def key(self) -> tuple[Any, ...]:
         if self.kind == VULNERABILITY:
@@ -133,6 +138,10 @@ class Report:
     # harm in it once a stray quote of another value has left it outside any quotes. A location
     # whose values the job check cannot judge is left out.
     writes: dict[str, dict[SourceRef, frozenset[str]]] = field(default_factory=dict)
+    # Quote characters of values that close or open quotes where no finding says so: repr() or
+    # json.dumps() write a quote that closes the string around the value, after which a quote of
+    # the value's own opens new quotes.
+    closers: dict[str, dict[SourceRef, frozenset[str]]] = field(default_factory=dict)
 
     def add(self, finding: Finding) -> None:
         for i, existing in enumerate(self.findings):
@@ -151,6 +160,7 @@ class Report:
                     breakout=first.breakout | second.breakout,
                     # Either finding's condition implies the merged one.
                     requires=(first.requires | second.requires if first.requires and second.requires else frozenset()),
+                    closes=first.closes | second.closes,
                     unchecked=sorted_refs((*first.unchecked, *second.unchecked)),
                 )
                 return
@@ -178,11 +188,8 @@ class Report:
             "max_severity": self.max_severity,
             "findings": [_finding_to_dict(f) for f in self.sorted()],
             "unanalyzed": self.unanalyzed,
-            "writes": [
-                {"location": location, "ref": asdict(ref), "follow": sorted(follow)}
-                for location, refs in sorted(self.writes.items())
-                for ref, follow in sorted(refs.items(), key=lambda item: repr(item[0]))
-            ],
+            "writes": _by_location(self.writes),
+            "closers": _by_location(self.closers),
         }
 
     @classmethod
@@ -196,10 +203,22 @@ class Report:
             f["unchecked"] = tuple(SourceRef(**ref) for ref in f.get("unchecked") or ())
             f["breakout"] = frozenset(f.get("breakout") or ())
             f["requires"] = frozenset(f.get("requires") or ())
+            f["closes"] = frozenset(f.get("closes") or ())
             report.findings.append(Finding(**f))
-        for write in as_dict.get("writes") or []:
-            report.writes.setdefault(write["location"], {})[SourceRef(**write["ref"])] = frozenset(write["follow"])
+        for name in ("writes", "closers"):
+            for entry in as_dict.get(name) or []:
+                getattr(report, name).setdefault(entry["location"], {})[SourceRef(**entry["ref"])] = frozenset(
+                    entry["chars"]
+                )
         return report
+
+
+def _by_location(chars_by_location: dict[str, dict[SourceRef, frozenset[str]]]) -> list[dict[str, Any]]:
+    return [
+        {"location": location, "ref": asdict(ref), "chars": sorted(chars)}
+        for location, refs in sorted(chars_by_location.items())
+        for ref, chars in sorted(refs.items(), key=lambda item: repr(item[0]))
+    ]
 
 
 def _finding_to_dict(finding: Finding) -> dict[str, Any]:
@@ -207,4 +226,5 @@ def _finding_to_dict(finding: Finding) -> dict[str, Any]:
     as_dict["more_lines"] = list(finding.more_lines)
     as_dict["breakout"] = sorted(finding.breakout)
     as_dict["requires"] = sorted(finding.requires)
+    as_dict["closes"] = sorted(finding.closes)
     return as_dict

@@ -344,15 +344,23 @@ def test_lone_quote_passes_next_to_harmless_values(app, tmp_path, caplog, mode):
     assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
 
 
-def test_quote_from_a_medium_finding_frees_another_value(app, tmp_path):
-    # `q` can only close its quotes (a medium finding, never checked by itself), but that is
-    # enough to leave the command characters of `word` unquoted.
+@pytest.mark.parametrize(
+    "written",
+    [
+        # `q` can only close its quotes (a medium finding, never checked by itself)...
+        "echo '$q'",
+        # ...or repr's `"` closes the double quotes and q's own `'` opens new ones.
+        'echo "${repr(str($q))}"',
+    ],
+)
+def test_quote_from_a_medium_finding_frees_another_value(app, tmp_path, written):
+    # Either is enough to leave the command characters of `word` unquoted.
     closer = ECHO_IDS.replace(
         '<param name="word" type="text"/>',
         """<param name="word" type="text"/>
     <param name="q" type="text"><sanitizer><valid initial="string.ascii_letters"><add value="&apos;"/></valid>
     </sanitizer></param>""",
-    ).replace("echo '${word.value}' >> '$out'", "echo '$q' >> '$out' && echo '${word.value}' >> '$out'")
+    ).replace("echo '${word.value}' >> '$out'", f"{written} >> '$out' && echo '${{word.value}}' >> '$out'")
     tool = make_tool(app, tmp_path, closer, "closer.xml")
     job = evaluator(app, tool, ["a"], word=";id;#")
     job.param_dict["q"] = InputValueWrapper(cast(ToolParameter, tool.inputs["q"]), "'")

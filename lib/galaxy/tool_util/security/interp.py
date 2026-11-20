@@ -132,19 +132,22 @@ def _unquoted_harm(chars: charsets.Chars, language: str) -> charsets.Chars:
 
 def _breakout(
     verdict: Verdict, text: AV, language: str, escaped: charsets.Chars
-) -> tuple[charsets.Chars, charsets.Chars]:
+) -> tuple[charsets.Chars, charsets.Chars, charsets.Chars]:
     """The characters of the user's value, before any escaping the template applies, that a finding needs.
 
-    Returns ``(breakout, requires)``: a value must contain one of ``breakout`` and, when ``requires``
-    is not empty, one of ``requires``. Escaping writes quotes whatever the value holds (shlex.quote,
+    Returns ``(breakout, requires, closes)``: a value must contain one of ``breakout`` and, when
+    ``requires`` is not empty, one of ``requires``; ``closes`` are its characters that close or open
+    quotes where it is written. Escaping writes quotes whatever the value holds (shlex.quote,
     json.dumps, repr): when one of them is a breakout character, the escaping itself leaves the
-    place, and the value must bring what is dangerous after it.
+    place, the value must bring what is dangerous after it, and any quote of its own that the
+    escaping leaves as it is (repr writes `'` raw inside "...") then opens new quotes.
     """
     breakout = _verdict_breakout(verdict)
     added = _ESCAPING_ADDS.get(text.quoted, charsets.NONE) | escaped
     if not breakout & added:
-        return breakout, verdict.requires
-    return (breakout - added) | _unquoted_harm(text.chars - added, language), charsets.NONE
+        return breakout, verdict.requires, breakout & QUOTE_CLOSERS
+    rest = text.chars - added
+    return (breakout - added) | _unquoted_harm(rest, language), charsets.NONE, text.chars & QUOTE_CLOSERS
 
 
 _STRING_FUNCTIONS = frozenset(("str", "unicode", "repr", "format", "basestring"))
@@ -418,6 +421,8 @@ class TemplateAnalysis:
         self._escapes: dict[SourceRef, charsets.Chars] = {}
         # Every source of a user value the template writes, with what does harm in it unquoted.
         self._written: dict[SourceRef, charsets.Chars] = {}
+        # Quote characters of values that an escaping's own quote leaves outside their string.
+        self._closers: dict[SourceRef, charsets.Chars] = {}
         # time.monotonic() after which the analysis stops with ReviewTimeout.
         self._deadline = deadline
         self._in_capture_region = 0
@@ -443,6 +448,19 @@ class TemplateAnalysis:
         if self.language == "shell":
             for state in states:
                 shell.finish(state, self.events)
+
+    def _record_escape_closer(self, text: AV, quotes: tuple[str, ...]) -> None:
+        """An escaping that writes the quote of the string the value is in closes it: the value's own
+        quotes, which the escaping writes as they are when they differ from its own, open new ones."""
+        refs = source_refs(text.sources)
+        escaped = _ESCAPING_ADDS.get(text.quoted, charsets.NONE).union(
+            *(self._escapes.get(ref, charsets.NONE) for ref in refs)
+        )
+        closing = {"'" if quote == shell.ANSI else quote for quote in quotes if quote}
+        own = text.chars & QUOTE_CLOSERS
+        if own and closing & escaped:
+            for ref in refs:
+                self._closers[ref] = self._closers.get(ref, charsets.NONE) | own
 
     def _record_write(self, text: AV) -> None:
         refs = source_refs(text.sources)
@@ -484,7 +502,7 @@ class TemplateAnalysis:
         ]
         for i in indexes:
             finding = self.report.findings[i]
-            needed = finding.breakout | finding.requires
+            needed = finding.breakout | finding.requires | finding.closes
             unchecked = set(finding.unchecked) | set(self._unchecked(finding.refs, needed))
             self.report.findings[i] = dataclasses.replace(finding, unchecked=tuple(sorted(unchecked, key=repr)))
         poisoned = any(
@@ -494,10 +512,12 @@ class TemplateAnalysis:
             ref.accessor == OPAQUE or self._introduced.get(ref, charsets.NONE) & (QUOTE_CLOSERS | harm)
             for ref, harm in self._written.items()
         )
-        if not poisoned and self._written:
-            writes = self.report.writes.setdefault(self.location, {})
-            for ref, harm in self._written.items():
-                writes[ref] = writes.get(ref, charsets.NONE) | harm
+        if not poisoned:
+            for recorded, into in ((self._written, self.report.writes), (self._closers, self.report.closers)):
+                if recorded:
+                    by_ref = into.setdefault(self.location, {})
+                    for ref, chars in recorded.items():
+                        by_ref[ref] = by_ref.get(ref, charsets.NONE) | chars
         for i in indexes:
             finding = self.report.findings[i]
             if poisoned and finding.refs:
@@ -904,6 +924,7 @@ class TemplateAnalysis:
             for state in states:
                 escaped = bool(state.quote) and state.escaped == state.quote
                 self.judge_config(text, state.quote, raw_expr, escaped, state.evaluated, state.fstring)
+                self._record_escape_closer(text, (state.quote,))
                 if self._can_escape_config_quote(text, state.quote):
                     state = _Text(state.quote, state.esc, state.quote, state.evaluated, state.fstring)
                 after_config.add(state)
@@ -918,6 +939,7 @@ class TemplateAnalysis:
             if text.tainted:
                 escaped = bool(context.quote) and state.escaped == context.quote
                 self.judge_shell(text, context, raw_expr, escaped)
+                self._record_escape_closer(text, (context.quote, context.inner))
                 own_escapes = text.quoted == "dq-escaped" and context.quote == '"'
                 if context.quote in ('"', shell.ANSI) and not context.lang and "\\" in text.chars and not own_escapes:
                     after = after._replace(escaped=context.quote)
@@ -1101,7 +1123,7 @@ class TemplateAnalysis:
     def finding(self, verdict: Verdict, text: AV, where: str, raw_expr: str | None) -> None:
         refs = source_refs(text.sources)
         escaped = frozenset().union(*(self._escapes.get(ref, charsets.NONE) for ref in refs))
-        breakout, requires = _breakout(verdict, text, self.language, escaped)
+        breakout, requires, closes = _breakout(verdict, text, self.language, escaped)
         source = "; ".join(sorted(text.sources)[:3])
         expr = f" (`{raw_expr}`)" if raw_expr else ""
         severity = verdict.severity
@@ -1125,7 +1147,8 @@ class TemplateAnalysis:
                 refs=refs,
                 breakout=breakout,
                 requires=requires,
-                unchecked=self._unchecked(refs, breakout | requires),
+                closes=closes,
+                unchecked=self._unchecked(refs, breakout | requires | closes),
             )
         )
 
