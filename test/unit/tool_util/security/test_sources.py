@@ -85,7 +85,8 @@ def high(report: Report):
         # A quote leaves single quotes, and a command character after it starts a command.
         ("echo '${free}'", frozenset("'"), SHELL_EXEC),
         ("echo ${free}", SHELL_EXEC, frozenset()),
-        ('echo "${free}"', frozenset('`$"'), frozenset()),
+        # A substitution, or a closing quote that a command character follows.
+        ('echo "${free}"', frozenset('`$"'), SHELL_EXEC),
         # In $'...' a backslash escapes the closing quote.
         ("echo $'${free}'", frozenset("'\\"), SHELL_EXEC),
         # Escaping writes the quote that closes the string; the value has to bring the command characters.

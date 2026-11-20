@@ -119,9 +119,18 @@ def single_quoted(chars: Chars) -> Verdict | None:
 def double_quoted(chars: Chars) -> Verdict | None:
     if "`" in chars or ("$" in chars and "(" in chars):
         hit = chars & frozenset("`$(")
-        # `...` or $(...), or closing the quotes when the value can also start a command after them.
-        closes = '"' in chars and bool(chars & SHELL_EXEC)
-        breakout = (hit - {"("}) | (frozenset('"') if closes else NONE)
+        breakout = hit - {"("}
+        if '"' in chars and chars & SHELL_EXEC:
+            # Or close the quotes, which starts a command only with a command character after them.
+            # `$` and the backtick are command characters themselves.
+            return Verdict(
+                "shell-injection",
+                HIGH,
+                hit,
+                "can run a command substitution inside the double quotes",
+                breakout | {'"'},
+                chars & SHELL_EXEC,
+            )
         return Verdict(
             "shell-injection", HIGH, hit, "can run a command substitution inside the double quotes", breakout
         )
@@ -134,6 +143,7 @@ def double_quoted(chars: Chars) -> Verdict | None:
                 after.chars | {'"'},
                 "can close the double quotes and start a command",
                 frozenset('"'),
+                after.chars,
             )
         return Verdict("argument-injection", MEDIUM, frozenset('"'), "can close the double quotes")
     if "$" in chars:
