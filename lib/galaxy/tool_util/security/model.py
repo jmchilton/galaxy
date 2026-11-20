@@ -149,6 +149,9 @@ def _quoted(a: AV, b: AV) -> str:
     user = [v for v in (a, b) if v.tainted]
     if not user:
         return a.quoted if a.quoted == b.quoted else ""
+    if any(not v.tainted and _quotes_in_text(v) for v in (a, b)):
+        # Literal text with a quote of its own ('"' + escaped): the escaping no longer lines up.
+        return ""
     kinds = {v.quoted for v in user if v.quoted}
     if len(kinds) != 1:
         return ""

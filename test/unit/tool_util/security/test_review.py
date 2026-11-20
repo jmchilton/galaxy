@@ -12,6 +12,7 @@ from galaxy.tool_util.security import (
 from galaxy.tool_util.security.charsets import (
     DEFAULT_SANITIZED,
     PROBE,
+    regex_anchored_start,
     regex_first,
     regex_removed,
     regex_universe,
@@ -423,6 +424,11 @@ def test_charsets():
     assert DEFAULT_SANITIZED == frozenset(" -=_.()/+*^,:?!")
     assert "-" not in regex_word_first(r"^\w+( \w[\w-]*)*$")
     assert "-" in regex_word_first(r"^[\w -]*$")
+    # A lookahead inside an optional or repeated part does not apply when that part matches nothing.
+    assert "-" in regex_word_first(r"^\w+(?: (?:(?!-)\w?)*[\w-]+)*$")
+    assert regex_anchored_start(r"^a|^b") and regex_anchored_start(r"\Aa")
+    assert not regex_anchored_start(r"^a$|b$") and not regex_anchored_start(r"(?m)^a")
+    assert regex_universe(r"(?m)^[a-z]+$") == PROBE
     # A negative lookahead after the space keeps a dash from starting a word.
     assert "-" not in regex_word_first(r"(?!-)(?:[\w.:+-]| (?!-))+$")
     # `$` also matches before a newline that ends the value; `\Z` does not.
@@ -545,7 +551,13 @@ CLEANED_LIST = "#import re\n#set $l = [re.sub('[^\\w.-]', '_', str($f.element_id
         ("#set $l = [str($f.element_identifier) for $f in $flat]\ntool $l.reverse()", set()),
         ("#import json\n" + CLEANED_LIST + "tool '${json.dumps($l)}'", set()),
         ("#import base64\ntool ${base64.b64encode(str($free).encode()).decode()}", set()),
-        ("#set $n = $free - 1\ntool $n", set()),
+        ("#set $s = str($free)\n#set $n = $s - 1\ntool $n", set()),
+        # A parameter wrapper or a pathlib.Path may define the operator for text.
+        ("#import pathlib\n#set $p = pathlib.Path('/tmp') / str($free)\ntool $p", {("shell-injection", "high")}),
+        (
+            "#import base64\ntool ${base64.encodebytes(str($free).encode()).decode()}",
+            {("argument-injection", "medium")},
+        ),
     ],
 )
 def test_values_built_in_python(tmp_path, command, expected):
@@ -643,3 +655,63 @@ def test_tests_narrow_the_value(tmp_path, command, expected):
 )
 def test_conditional_selector_picks_the_when_block(tmp_path, command, expected):
     assert rules(review(tmp_path, command)) - {("option-injection", "low")} == expected
+
+
+@pytest.mark.parametrize(
+    "command,expected",
+    [
+        # What a test shows about `$text` is about the sanitized text, not about its raw value.
+        ("#import re\n#if re.match('^\\w+$', str($text))\ntool ${text.value}\n#end if", ("shell-injection", "high")),
+        ("#import re\n#if re.match('^\\w+$', str($text))\ntool ${text.lower()}\n#end if", ("shell-injection", "high")),
+        ("#if $text == 'X'\ntool ${text.value}\n#end if", ("shell-injection", "high")),
+        (
+            "#import re\n#set $p = $free\n#if re.match('^\\w+$', str($p))\ntool ${p.value}\n#end if",
+            ("shell-injection", "high"),
+        ),
+        # Only the first alternative is anchored; MULTILINE lets ^ and $ match at any line.
+        ("#import re\n#if re.search('^a$|b$', str($free))\ntool $free\n#end if", ("shell-injection", "high")),
+        ("#import re\n#if re.match('(?m)[a-z]+$', str($free))\ntool '$free'\n#end if", ("shell-injection", "high")),
+        ("#import re\n#if re.match('[a-z]+(?m:$)', str($free))\ntool '$free'\n#end if", ("shell-injection", "high")),
+        # A #raise inside #try may be caught; a conversion in a handler or a chained compare may not run.
+        (
+            (
+                "#import re\n#try\n#if not re.match('^\\w+$', str($free))\n#raise ValueError\n#end if\n"
+                "#except\n#pass\n#end try\ntool $free"
+            ),
+            ("shell-injection", "high"),
+        ),
+        ("#try\n#pass\n#except\n#silent int($free)\n#end try\ntool '$free'", ("shell-injection", "high")),
+        ("#if 5 < int($count) < int($free)\n#pass\n#end if\ntool '$free'", ("shell-injection", "high")),
+        # A loop body may run zero times or leave early.
+        ("#set $s = str($free)\n#for $r in $rows\n#silent int($s)\n#end for\ntool '$s'", ("shell-injection", "high")),
+        (
+            (
+                "#import re\n#set $s = str($free)\n#for $r in $rows\n#if not re.match('^\\w+$', $s)\n#continue\n"
+                "#end if\n#end for\ntool $s"
+            ),
+            ("shell-injection", "high"),
+        ),
+        (
+            (
+                "#import re\n#set $s = str($free)\n#for $r in $rows\n#if not re.match('^\\w+$', $s)\n#break\n"
+                "#end if\n#end for\ntool $s"
+            ),
+            ("shell-injection", "high"),
+        ),
+        ("#set $s = str($free)\n#for $r in $rows\n#set $s = 'safe'\n#end for\ntool $s", ("shell-injection", "high")),
+        (
+            "#set global $g = $word\n#if $g == 'x'\n#set global $g = $free\ntool $g\n#end if",
+            ("shell-injection", "high"),
+        ),
+        # The replacement itself stays in the value.
+        (
+            "#import re\n#if str($free) == re.sub('[^\\w]', ';', str($free))\ntool $free\n#end if",
+            ("shell-injection", "high"),
+        ),
+        # shlex.quote leaves `,` unquoted; a quote in literal text no longer lines up with the escaping.
+        ("#import shlex\ntool ${shlex.quote(str($free)).replace(',', ';')}", ("shell-injection", "high")),
+        ("#import shlex\ntool ${''.join([\"'\", shlex.quote(str($free))])}", ("shell-injection", "high")),
+    ],
+)
+def test_narrowing_does_not_hide_raw_values(tmp_path, command, expected):
+    assert expected in rules(review(tmp_path, command))
