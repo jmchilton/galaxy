@@ -27,6 +27,7 @@ from .model import (
     contents,
     element,
     file_content,
+    Group,
     join,
     Model,
     raw,
@@ -44,6 +45,7 @@ from .template import (
     CompiledTemplate,
     Method,
 )
+from .validators import regex_constraint
 
 _MAX_STATES = 64
 _MAX_DEPTH = 8
@@ -74,8 +76,19 @@ _DECODERS = re.compile(
     r"^(base64\.\w*decode\w*|binascii\.(unhexlify|a2b_\w+)|bytes\.fromhex|bytearray\.fromhex|codecs\.decode"
     r"|urllib\.parse\.unquote\w*|html\.unescape|json\.loads|ast\.literal_eval|zlib\.decompress)$"
 )
+_ENCODERS = re.compile(
+    r"^(base64\.(\w*b64encode|b32encode|b16encode|encodebytes)|binascii\.(hexlify|b2a_hex)|hashlib\.\w+)$"
+)
+# What json.dumps writes around the strings of a list or a dict.
+_JSON_PUNCTUATION: charsets.Chars = frozenset('"\\[]{},: ')
 _STRING_FUNCTIONS = frozenset(("str", "unicode", "repr", "format", "basestring"))
 _CONTAINER_FUNCTIONS = frozenset(("list", "tuple", "set", "frozenset", "sorted", "reversed", "iter", "next"))
+_NONE_METHODS = frozenset(("reverse", "sort", "clear", "remove"))
+# str methods whose result keeps the escaping of the text when their literal arguments hold no quote.
+_ESCAPE_KEEPING_METHODS = frozenset(
+    ("strip", "lstrip", "rstrip", "replace", "lower", "upper", "title", "capitalize", "casefold")
+)
+_QUOTING: charsets.Chars = frozenset("'\"\\`")
 _CLEAN_METHODS = frozenset(
     (
         "startswith endswith find rfind index rindex count isdigit isalpha isalnum isspace islower isupper"
@@ -124,6 +137,10 @@ def configfile_language(content: str, reader: str | None) -> str:
     return "data"
 
 
+# Prefix of an Env key that holds the narrowed value of a dotted template name ("=cond" or "=x.y").
+NARROWED = "="
+
+
 @dataclass
 class Env:
     local: dict[str, AV] = field(default_factory=dict)
@@ -137,10 +154,18 @@ class Env:
         for other in others:
             names.update(other.local)
         for name in names:
-            self.local[name] = join(*(o.local.get(name) for o in [self] + others))
+            envs = [self] + others
+            if name.startswith(NARROWED) and any(name not in o.local for o in others):
+                # Narrowed on one path only: elsewhere the name has its full value again.
+                self.local.pop(name, None)
+                continue
+            self.local[name] = join(*(o.local.get(name) for o in envs))
 
     def assign(self, name: str, value: AV, weak: bool = False) -> None:
         self.local[name] = join(self.local.get(name), value) if weak else value
+        # What a test showed about the old value, or its attributes, does not hold for the new one.
+        for key in [k for k in self.local if k == NARROWED + name or k.startswith(f"{NARROWED}{name}.")]:
+            del self.local[key]
 
 
 @dataclass(frozen=True)
@@ -203,6 +228,70 @@ def _brace_format(text: str, values: list[AV]) -> AV | None:
     return concat(parts)
 
 
+def _leaves(stmts: list[ast.stmt]) -> bool:
+    return bool(stmts) and isinstance(stmts[-1], (ast.Continue, ast.Break, ast.Return, ast.Raise))
+
+
+def _unwrap_str(node: ast.expr) -> ast.expr:
+    """``str(x)`` is ``x`` as the template writes it."""
+    while (
+        isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "str" and len(node.args) == 1
+    ):
+        node = node.args[0]
+    return node
+
+
+def _template_path(node: ast.expr) -> str | None:
+    """The dotted name of a ``$name`` placeholder, as Cheetah compiles it."""
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in _NAME_MAPPER:
+        if node.func.id == "VFN":
+            return None
+        path = _const(node.args[1]) if len(node.args) > 1 else None
+        return path if isinstance(path, str) else None
+    if isinstance(node, ast.Name):
+        return node.id
+    return None
+
+
+def _constrained(value: AV, constraint: Any) -> AV:
+    """A value a test showed to be accepted by a regular expression."""
+    text = stringify(value)
+    if not text.tainted:
+        return text
+    chars = text.chars & constraint.chars
+    lead = (text.chars if text.lead is None else text.lead) & constraint.lead & chars
+    return AV(
+        chars=chars,
+        sources=text.sources,
+        quoted=text.quoted,
+        whole=text.whole,
+        lead=lead,
+        words=(text.words if text.words is not None else chars) & constraint.word_first(),
+    )
+
+
+def _without_removed(value: AV, removed: charsets.Removed) -> AV:
+    text = stringify(value)
+    if not text.tainted:
+        return text
+    chars = text.chars - removed.everywhere
+    lead = (text.chars if text.lead is None else text.lead) - removed.everywhere - removed.start
+    return AV(chars=chars, sources=text.sources, quoted=text.quoted, whole=text.whole, lead=lead, words=text.words)
+
+
+# What int() and float() accept besides digits (and letters, for float: inf, nan, 1e5). Whitespace
+# only at either end, where an unquoted shell word drops it.
+_NUMBER_CHARS = {"int": frozenset("+-_"), "float": frozenset("+-_.")}
+
+
+def _number(value: AV, function: str) -> AV:
+    text = stringify(value)
+    if not text.tainted:
+        return text
+    chars = text.chars & _NUMBER_CHARS[function]
+    return AV(chars=chars, sources=text.sources, whole=text.whole, lead=chars, words=chars)
+
+
 class TemplateAnalysis:
     def __init__(
         self,
@@ -228,6 +317,9 @@ class TemplateAnalysis:
         self._in_capture_region = 0
         self._noted: set[str] = set()
         self._line: int | None = None
+        # Above zero while evaluating code that may not run (one arm of `a if c else b`, a #try body):
+        # a conversion there that would fail says nothing about the value.
+        self._speculative = 0
 
     # -- entry ---------------------------------------------------------------------------------
 
@@ -301,11 +393,24 @@ class TemplateAnalysis:
                 return self.write_placeholder(pending, self._raw_expr(stmt), states, env)
             self.ev(stmt.test, env)
             then_env, else_env = env.copy(), env.copy()
+            when_true, when_false = self.narrowing(stmt.test, env)
+            for target, narrow in when_true:
+                self.apply_narrowing(target, narrow, then_env)
+            for target, narrow in when_false:
+                self.apply_narrowing(target, narrow, else_env)
             out = self.block(stmt.body, states, then_env) | self.block(stmt.orelse, states, else_env)
+            # A branch that ends in #continue, #break or #return does not reach the code after the #if.
+            then_leaves, else_leaves = _leaves(stmt.body), _leaves(stmt.orelse)
             env.local = {}
-            env.merge([then_env, else_env])
+            if then_leaves and not else_leaves:
+                env.merge([else_env])
+            elif else_leaves and not then_leaves:
+                env.merge([then_env])
+            else:
+                env.merge([then_env, else_env])
             return out
         if isinstance(stmt, (ast.For, ast.While)):
+            narrowed_before = {k: v for k, v in env.local.items() if k.startswith(NARROWED)}
             out = states
             current = states
             for _ in range(3):
@@ -317,9 +422,17 @@ class TemplateAnalysis:
                 if current <= out:
                     break
                 out = current = out | current
+            # An iteration may skip the rest of the body (#continue): what it narrowed ends with the loop.
+            for key in [k for k in env.local if k.startswith(NARROWED)]:
+                if narrowed_before.get(key) is not env.local[key]:
+                    del env.local[key]
             return self.block(stmt.orelse, out, env)
         if isinstance(stmt, ast.Try):
-            out = self.block(stmt.body, states, env)
+            self._speculative += 1
+            try:
+                out = self.block(stmt.body, states, env)
+            finally:
+                self._speculative -= 1
             for handler in stmt.handlers:
                 out = out | self.block(handler.body, states | out, env)
             out = self.block(stmt.orelse, out, env)
@@ -329,6 +442,123 @@ class TemplateAnalysis:
         if isinstance(stmt, ast.Return) and stmt.value is not None and self._returns:
             self._returns[-1].append(self.ev(stmt.value, env))
         return states
+
+    # -- narrowing by #if tests ---------------------------------------------------------------
+
+    def narrowing(self, test: ast.expr, env: Env) -> tuple[list[tuple[ast.expr, Any]], list[tuple[ast.expr, Any]]]:
+        """What a test that is true, or false, says about the values it looks at.
+
+        Each entry pairs the expression of the value (a template name or a local variable) with
+        a function from its abstract value to the narrowed one. Tests that are not recognised
+        say nothing.
+        """
+        if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
+            when_true, when_false = self.narrowing(test.operand, env)
+            return when_false, when_true
+        if isinstance(test, ast.BoolOp):
+            parts = [self.narrowing(value, env) for value in test.values]
+            if isinstance(test.op, ast.And):
+                return [n for when_true, _ in parts for n in when_true], []
+            return [], [n for _, when_false in parts for n in when_false]
+        if isinstance(test, ast.Call) and isinstance(test.func, ast.Attribute):
+            name = ast.unparse(test.func)
+            pattern = _const(test.args[0]) if test.args else None
+            if name in ("re.match", "re.search", "re.fullmatch") and len(test.args) == 2 and not test.keywords:
+                if isinstance(pattern, str) and (name != "re.search" or pattern.startswith("^")):
+                    if name == "re.fullmatch":
+                        pattern = f"(?:{pattern})\\Z"
+                    constraint = regex_constraint(pattern)
+                    return [(test.args[1], lambda v, c=constraint: _constrained(v, c))], []
+            return [], []
+        if isinstance(test, ast.Compare) and len(test.ops) == 1:
+            left, op, right = test.left, test.ops[0], test.comparators[0]
+            found: tuple[list[tuple[ast.expr, Any]], list[tuple[ast.expr, Any]]] = ([], [])
+            if isinstance(op, (ast.Eq, ast.NotEq)):
+                found = self._equal_narrowing(left, right, env) or self._equal_narrowing(right, left, env) or ([], [])
+            elif isinstance(op, (ast.In, ast.NotIn)) and isinstance(right, (ast.List, ast.Tuple, ast.Set)):
+                literals = [_const(elt) for elt in right.elts]
+                if literals and all(isinstance(literal, str) for literal in literals):
+                    found = self._literal_narrowing(left, [str(literal) for literal in literals], env)
+            return found if isinstance(op, (ast.Eq, ast.In)) else (found[1], found[0])
+        return [], []
+
+    def _equal_narrowing(
+        self, target: ast.expr, other: ast.expr, env: Env
+    ) -> tuple[list[tuple[ast.expr, Any]], list[tuple[ast.expr, Any]]] | None:
+        """Narrowings when `target == other` is true, and when it is false; None when there are none."""
+        literal = _const(other)
+        if isinstance(literal, str):
+            found = self._literal_narrowing(target, [literal], env)
+            return found if found != ([], []) else None
+        # `x == re.sub(pattern, '_', x)`: the value holds no character the pattern replaces.
+        if (
+            isinstance(other, ast.Call)
+            and ast.unparse(other.func) in ("re.sub", "re.subn")
+            and len(other.args) == 3
+            and not other.keywords
+            and isinstance(_const(other.args[0]), str)
+            and ast.unparse(_unwrap_str(other.args[2])) == ast.unparse(_unwrap_str(target))
+        ):
+            removed = charsets.regex_removed(str(_const(other.args[0])))
+            if removed is not None:
+                return [(target, lambda v, r=removed: _without_removed(v, r))], []
+        return None
+
+    def _literal_narrowing(
+        self, target: ast.expr, literals: list[str], env: Env
+    ) -> tuple[list[tuple[ast.expr, Any]], list[tuple[ast.expr, Any]]]:
+        """Narrowings when the target is one of the literals, and when it is none of them."""
+        groups = self._conditional_groups(target, env)
+        if groups is not None:
+            # `$cond.selector == 'a'`: only the parameters of the <when value="a"> block exist.
+            prefix = _template_path(_unwrap_str(target))
+            if prefix is None:
+                return [], []
+            group_target = ast.Constant(value=prefix.rsplit(".", 1)[0])
+            sides: list[list[tuple[ast.expr, Any]]] = []
+            for values in (set(literals), None):
+                restricted = [
+                    group.restrict(values if values is not None else set(group.case_values) - set(literals))
+                    for group in groups
+                ]
+                if any(r is None for r in restricted):
+                    sides.append([])
+                else:
+                    sides.append([(group_target, lambda v, r=restricted: AV(nodes=tuple(r)))])
+            return sides[0], sides[1]
+        value = join(*(AV(parts=(literal,)) if literal else CLEAN for literal in literals))
+        return [(target, lambda v, value=value: value)], []
+
+    def _conditional_groups(self, target: ast.expr, env: Env) -> list[Group] | None:
+        """The conditionals whose selector the expression is, None when it is not a selector."""
+        path = _template_path(_unwrap_str(target))
+        if path is None or "." not in path:
+            return None
+        parent, selector = path.rsplit(".", 1)
+        owner = self.resolve(parent, env, False)
+        groups = [node for node in owner.nodes if isinstance(node, Group)]
+        if not groups or len(groups) != len(owner.nodes) or any(g.selector != selector for g in groups):
+            return None
+        return groups
+
+    def apply_narrowing(self, target: ast.expr, narrow: Any, env: Env) -> None:
+        target = _unwrap_str(target)
+        if isinstance(target, ast.Constant) and isinstance(target.value, str):
+            # A dotted template name given directly (the conditional that owns a selector).
+            env.local[NARROWED + target.value] = narrow(self.resolve(target.value, env, False))
+            return
+        if isinstance(target, ast.Name) and target.id in env.local:
+            current = env.local[target.id]
+            if not current.nodes:
+                env.local[target.id] = narrow(current)
+            return
+        path = _template_path(target)
+        if path is None:
+            return
+        if "." not in path and path in env.local and not env.local[path].nodes:
+            env.local[path] = narrow(env.local[path])
+            return
+        env.local[NARROWED + path] = narrow(stringify(self.resolve(path, env, True)))
 
     @staticmethod
     def _is_placeholder_write(stmt: ast.If) -> bool:
@@ -489,7 +719,7 @@ class TemplateAnalysis:
                 # The template writes a double quote as \", and the value has no backslash of its own.
                 chars = chars - {'"', "\\"}
             lexical = {
-                "": charsets.unquoted,
+                "": lambda c: charsets.unquoted(c, text.words),
                 "'": charsets.single_quoted,
                 '"': charsets.double_quoted,
                 # In $'...' a backslash can escape the closing quote, which is as good as a quote.
@@ -643,6 +873,15 @@ class TemplateAnalysis:
 
     def resolve(self, path: str, env: Env, autocall: bool) -> AV:
         parts = path.split(".")
+        if any(key.startswith(NARROWED) for key in env.local):
+            for i in range(len(parts), 0, -1):
+                key = NARROWED + ".".join(parts[:i])
+                if key in env.local:
+                    value = env.local[key]
+                    for part in parts[i:]:
+                        value = self._autocall(value, env) if autocall else value
+                        value = attribute(value, part)
+                    return self._autocall(value, env) if autocall else value
         first = parts[0]
         if first in env.local:
             value = env.local[first]
@@ -706,6 +945,8 @@ class TemplateAnalysis:
             return element(base)
         if isinstance(node, ast.BinOp):
             left, right = self.ev(node.left, env), self.ev(node.right, env)
+            if self._numeric(node, left, right):
+                return CLEAN
             if isinstance(node.op, ast.Add):
                 if left.items is not None and right.items is not None:
                     return AV(items=left.items + right.items)
@@ -725,9 +966,18 @@ class TemplateAnalysis:
             return stringify(self.ev(node.value, env))
         if isinstance(node, ast.IfExp):
             self.ev(node.test, env)
-            return join(self.ev(node.body, env), self.ev(node.orelse, env))
+            self._speculative += 1
+            try:
+                return join(self.ev(node.body, env), self.ev(node.orelse, env))
+            finally:
+                self._speculative -= 1
         if isinstance(node, ast.BoolOp):
-            return join(*(self.ev(v, env) for v in node.values))
+            first = self.ev(node.values[0], env)
+            self._speculative += 1
+            try:
+                return join(first, *(self.ev(v, env) for v in node.values[1:]))
+            finally:
+                self._speculative -= 1
         if isinstance(node, ast.Compare):
             self.ev(node.left, env)
             for comparator in node.comparators:
@@ -741,14 +991,24 @@ class TemplateAnalysis:
         if isinstance(node, ast.Dict):
             return AV(elem=join(*(self.ev(v, env) for v in list(node.values) + [k for k in node.keys if k])))
         if isinstance(node, (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)):
-            inner = env.copy()
-            for generator in node.generators:
-                self.bind(generator.target, element(self.ev(generator.iter, inner)), inner)
-                for condition in generator.ifs:
-                    self.ev(condition, inner)
-            if isinstance(node, ast.DictComp):
-                return AV(elem=join(self.ev(node.key, inner), self.ev(node.value, inner)))
-            return AV(elem=self.ev(node.elt, inner))
+            self._speculative += 1
+            try:
+                return self._comprehension(node, env)
+            finally:
+                self._speculative -= 1
+        return self._ev_rest(node, env)
+
+    def _comprehension(self, node: ast.ListComp | ast.SetComp | ast.GeneratorExp | ast.DictComp, env: Env) -> AV:
+        inner = env.copy()
+        for generator in node.generators:
+            self.bind(generator.target, element(self.ev(generator.iter, inner)), inner)
+            for condition in generator.ifs:
+                self.ev(condition, inner)
+        if isinstance(node, ast.DictComp):
+            return AV(elem=join(self.ev(node.key, inner), self.ev(node.value, inner)))
+        return AV(elem=self.ev(node.elt, inner))
+
+    def _ev_rest(self, node: ast.AST, env: Env) -> AV:
         if isinstance(node, ast.Starred):
             return self.ev(node.value, env)
         if isinstance(node, ast.Lambda):
@@ -765,6 +1025,19 @@ class TemplateAnalysis:
                 self.ev(part, env)
             return CLEAN
         return CLEAN
+
+    @staticmethod
+    def _numeric(node: ast.BinOp, left: AV, right: AV) -> bool:
+        """Arithmetic: `x - 1`, `x / 2`, `x + 1` give a number whatever the user wrote, or fail."""
+        if any(v.elem is not None or v.items is not None for v in (left, right)):
+            # set difference and list concatenation keep the elements.
+            return False
+        if isinstance(node.op, (ast.Sub, ast.Div, ast.FloorDiv, ast.Pow)):
+            return True
+        number = (int, float)
+        return isinstance(node.op, ast.Add) and (
+            type(_const(node.left)) in number or type(_const(node.right)) in number
+        )
 
     def ev_call(self, node: ast.Call, env: Env) -> AV:
         func = node.func
@@ -807,6 +1080,9 @@ class TemplateAnalysis:
             self.server_sink(name, join(*(stringify(a) for a in args + keywords)))
         if name == "open":
             return CLEAN if self._galaxy_file(node) else file_content()
+        if name in ("int", "float") and len(node.args) == 1 and not node.keywords and not self._speculative:
+            # Rendering stops when the conversion fails: afterwards the value is a number.
+            self.apply_narrowing(node.args[0], lambda v, n=name: _number(v, n), env)
         if name in _CLEAN_FUNCTIONS:
             return CLEAN
         if name in _STRING_FUNCTIONS:
@@ -854,9 +1130,14 @@ class TemplateAnalysis:
             text = stringify(first)
             return AV(chars=text.chars, sources=text.sources, quoted="shlex")
         if name == "json.dumps":
-            text = stringify(first)
-            extra = {'"', "\\"} if text.tainted else set()
+            container = first.elem is not None or first.items is not None
+            text = contents(first) if container and not first.nodes else stringify(first)
+            extra = (_JSON_PUNCTUATION if container else frozenset('"\\')) if text.tainted else frozenset()
             return AV(chars=text.chars | extra, sources=text.sources, quoted="json")
+        if _ENCODERS.match(name):
+            # The encoded text is made of letters, digits and the few symbols of the encoding.
+            text = contents(first)
+            return AV(chars=frozenset("+/=-_"), sources=text.sources, whole=False) if text.tainted else CLEAN
         if name == "os.path.basename":
             text = stringify(first)
             return AV(chars=text.chars - {"/"}, sources=text.sources)
@@ -921,6 +1202,9 @@ class TemplateAnalysis:
             # A match object of re.match(pattern, value): its groups are pieces of the value.
             return receiver.elem
         if receiver.elem is not None or receiver.items is not None:
+            if name in _NONE_METHODS:
+                # list.reverse(), list.sort()...: they change the list in place and return None.
+                return CLEAN
             if name in ("pop", "get", "copy", "setdefault"):
                 return receiver if name == "copy" else element(receiver)
             if name in ("keys", "values", "items"):
@@ -950,10 +1234,11 @@ class TemplateAnalysis:
                 charsets.probe(second) if isinstance(second, str) and text.tainted else set()
             )
             escaped = every and first_literal == '"' and second == '\\"' and "\\" not in text.chars
+            kept = self._kept_escaping(text, name, arg_nodes, keywords) if not stringify(args[1]).tainted else ""
             return AV(
                 chars=(text.chars - removed) | added,
                 sources=text.sources | stringify(args[1]).sources,
-                quoted="dq-escaped" if escaped else "",
+                quoted="dq-escaped" if escaped else kept,
             )
         if name == "lstrip" and isinstance(first_literal, str) and len(args) == 1:
             return AV(chars=text.chars, sources=text.sources, lead=text.chars - charsets.probe(first_literal))
@@ -974,7 +1259,22 @@ class TemplateAnalysis:
             # An unmodelled method given a user value (string.Template(...).substitute(x=value)).
             return AV(chars=text.chars | passed.chars, sources=text.sources | passed.sources, whole=False)
         # strip, lower, encode... keep whatever the value could contain.
-        return AV(chars=text.chars, sources=text.sources, whole=text.whole and text.parts is None)
+        return AV(
+            chars=text.chars,
+            sources=text.sources,
+            whole=text.whole and text.parts is None,
+            quoted=self._kept_escaping(text, name, arg_nodes, keywords),
+        )
+
+    @staticmethod
+    def _kept_escaping(text: AV, name: str, arg_nodes: list[ast.expr], keywords: list[AV]) -> str:
+        """The escaping a str method leaves in place: none of its arguments can add or take away a quote."""
+        if not text.quoted or name not in _ESCAPE_KEEPING_METHODS or keywords:
+            return ""
+        literals = [_const(node) for node in arg_nodes]
+        if all(isinstance(literal, str) and not _QUOTING.intersection(literal) for literal in literals):
+            return text.quoted
+        return ""
 
 
 def unresolved_names(template: CompiledTemplate, model: Model) -> set[str]:

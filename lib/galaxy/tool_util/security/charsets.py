@@ -77,11 +77,13 @@ class Verdict(NamedTuple):
     why: str
 
 
-def unquoted(chars: Chars) -> Verdict | None:
+def unquoted(chars: Chars, word_first: Chars | None = None) -> Verdict | None:
+    """``word_first``: probe characters a word of the value can begin with, when narrower than ``chars``."""
     if hit := chars & SHELL_EXEC:
         return Verdict("shell-injection", HIGH, hit, "can start another command")
     if hit := chars & SHELL_SPLIT:
-        if hit <= _WHITESPACE and not chars & frozenset("-/"):
+        dash = "-" in (chars if word_first is None else word_first)
+        if hit <= _WHITESPACE and not dash and "/" not in chars:
             # A list of plain words: none of them can be an option or name a file elsewhere.
             return Verdict("argument-injection", LOW, hit, "can split the word into extra plain words")
         return Verdict("argument-injection", MEDIUM, hit, "can split the word into extra arguments or globs")
@@ -223,33 +225,151 @@ def _consumed(items: Any) -> Chars:
     return frozenset(chars)
 
 
-def _end_anchored(items: Any) -> bool:
+def _end_anchor(items: Any) -> str | None:
+    """How the expression is anchored at the end: "string" (``\\Z``), "line" (``$``) or None."""
     items = list(items)
     if not items:
-        return False
+        return None
     op, arg = items[-1]
     if op is sre_constants.AT:
-        return arg in (sre_constants.AT_END, sre_constants.AT_END_STRING)
+        if arg == sre_constants.AT_END_STRING:
+            return "string"
+        return "line" if arg == sre_constants.AT_END else None
     if op is sre_constants.BRANCH:
-        return all(_end_anchored(alternative) for alternative in arg[1])
+        anchors = [_end_anchor(alternative) for alternative in arg[1]]
+        if None in anchors:
+            return None
+        return "line" if "line" in anchors else "string"
     if op is sre_constants.SUBPATTERN:
-        return _end_anchored(arg[-1])
-    return False
+        return _end_anchor(arg[-1])
+    return None
+
+
+def _end_anchored(items: Any) -> bool:
+    return _end_anchor(items) is not None
 
 
 def regex_universe(expression: str) -> Chars:
     """Probe characters a value accepted by a Galaxy ``regex`` validator may contain.
 
     Galaxy applies the expression with ``re.match``: anchored at the start only. Without a
-    final ``$`` the tail of the value is unconstrained, so every character is possible.
+    final ``$`` the tail of the value is unconstrained, so every character is possible. A
+    final ``$`` also matches before a newline that ends the value.
     """
     try:
         parsed = sre_parse.parse(expression)
     except Exception:
         return PROBE
-    if not _end_anchored(parsed):
+    anchor = _end_anchor(parsed)
+    if anchor is None:
         return PROBE
-    return _consumed(parsed)
+    consumed = _consumed(parsed)
+    return consumed | {"\n"} if anchor == "line" and consumed != PROBE else consumed
+
+
+# Stands for any character that is not a probe character (a letter, a digit, non-ASCII text).
+_OTHER = "\x00"
+
+
+def _one_or_other(op: Any, arg: Any) -> Chars | None:
+    """Like :func:`_one`, plus :data:`_OTHER` when the item also matches characters that are not probes."""
+    one = _one(op, arg)
+    if one is None:
+        return None
+    if op is sre_constants.LITERAL:
+        return one if one else frozenset(_OTHER)
+    if op is sre_constants.IN:
+        negated = any(o is sre_constants.NEGATE for o, _ in arg)
+        letters = any(
+            (o is sre_constants.LITERAL and chr(a) not in PROBE)
+            or (o is sre_constants.RANGE and any(chr(c) not in PROBE for c in range(a[0], a[1] + 1)))
+            or (o is sre_constants.CATEGORY and not str(a).endswith("CATEGORY_SPACE"))
+            for o, a in arg
+        )
+        return one | {_OTHER} if negated or letters else one
+    if op is sre_constants.CATEGORY:
+        return one if str(arg).endswith("CATEGORY_SPACE") else one | {_OTHER}
+    return one | {_OTHER}
+
+
+class _Follow(NamedTuple):
+    first: frozenset[str]
+    # Each character a match can end with, with what a negative lookahead after it keeps from following.
+    last: frozenset[tuple[str, frozenset[str]]]
+    nullable: bool
+    pairs: frozenset[tuple[str, str]]  # (a, b): b can come right after a
+    pending: frozenset[str]  # for a match that can be empty: what its lookaheads keep from following
+
+
+_EMPTY_FOLLOW = _Follow(frozenset(), frozenset(), True, frozenset(), frozenset())
+
+
+def _sequence(a: _Follow, b: _Follow) -> _Follow:
+    pairs = a.pairs | b.pairs | frozenset((x, y) for x, blocked in a.last for y in b.first - blocked)
+    first = a.first | (b.first - a.pending if a.nullable else frozenset())
+    last = b.last | (frozenset((x, blocked | b.pending) for x, blocked in a.last) if b.nullable else frozenset())
+    pending = a.pending | b.pending if a.nullable and b.nullable else frozenset()
+    return _Follow(first, last, a.nullable and b.nullable, pairs, pending)
+
+
+def _follow(items: Any) -> _Follow | None:
+    """First, last and adjacent characters of what a regex matches (Glushkov), None when unsupported."""
+    out = _EMPTY_FOLLOW
+    for op, arg in items:
+        one = _one_or_other(op, arg)
+        if one is not None:
+            part = _Follow(one, frozenset((c, frozenset()) for c in one), False, frozenset(), frozenset())
+        elif op is sre_constants.AT or op is sre_constants.ASSERT:
+            continue
+        elif op is sre_constants.ASSERT_NOT:
+            direction, pattern = arg
+            pattern = list(pattern)
+            excluded = _one(*pattern[0]) if direction == 1 and len(pattern) == 1 else None
+            part = _EMPTY_FOLLOW._replace(pending=excluded or frozenset())
+        elif op is sre_constants.BRANCH:
+            alternatives = [_follow(alternative) for alternative in arg[1]]
+            known = [alternative for alternative in alternatives if alternative is not None]
+            if len(known) != len(alternatives):
+                return None
+            part = _Follow(
+                frozenset().union(*(f.first for f in known)),
+                frozenset().union(*(f.last for f in known)),
+                any(f.nullable for f in known),
+                frozenset().union(*(f.pairs for f in known)),
+                frozenset().union(*(f.pending for f in known if f.nullable)),
+            )
+        elif op is sre_constants.SUBPATTERN:
+            inner = _follow(arg[-1])
+            if inner is None:
+                return None
+            part = inner
+        elif op in _REPEATS:
+            low, high, pattern = arg
+            inner = _follow(pattern)
+            if inner is None:
+                return None
+            pairs = inner.pairs
+            if high is sre_constants.MAXREPEAT or high > 1:
+                pairs = pairs | frozenset((x, y) for x, blocked in inner.last for y in inner.first - blocked)
+            part = _Follow(inner.first, inner.last, inner.nullable or low < 1, pairs, inner.pending)
+        else:
+            return None
+        out = _sequence(out, part)
+    return out
+
+
+def regex_word_first(expression: str) -> Chars:
+    """Probe characters that can begin a word (the value, or the text after whitespace) of an accepted value."""
+    try:
+        parsed = sre_parse.parse(expression)
+    except Exception:
+        return PROBE
+    universe = regex_universe(expression)
+    found = _follow(parsed) if universe != PROBE else None
+    if found is None:
+        return PROBE
+    after_space = frozenset(b for a, b in found.pairs if a in _WHITESPACE)
+    return (regex_first(expression) | after_space) & PROBE
 
 
 def _first(items: Any) -> tuple[Chars, bool, Chars]:

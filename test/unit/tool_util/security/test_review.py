@@ -15,6 +15,7 @@ from galaxy.tool_util.security.charsets import (
     regex_first,
     regex_removed,
     regex_universe,
+    regex_word_first,
 )
 from galaxy.tool_util.security.template import (
     compile_template,
@@ -49,6 +50,14 @@ INPUTS = """
 </param>
 <param name="expr_unknown" type="text">
   <sanitizer sanitize="false"/><validator type="expression">len(value) &lt; 10</validator>
+</param>
+<param name="dash_words" type="text">
+  <validator type="regex">^[A-Za-z0-9_][A-Za-z0-9_-]*( [A-Za-z0-9_][A-Za-z0-9_-]*)*$</validator>
+</param>
+<param name="dash_anywhere" type="text"><validator type="regex">^[A-Za-z0-9_ -]*$</validator></param>
+<param name="sq" type="text">
+  <sanitizer><valid initial="string.printable"><remove value="&apos;"/></valid>
+  <mapping initial="none"><add source="&apos;" target="&apos;&quot;&apos;&quot;&apos;"/></mapping></sanitizer>
 </param>
 <param name="no_expansion" type="text">
   <sanitizer sanitize="false"/><validator type="regex">^[^\\\\$`]*$</validator>
@@ -412,7 +421,13 @@ def test_repeated_use_is_one_finding_with_all_lines(tmp_path):
 
 def test_charsets():
     assert DEFAULT_SANITIZED == frozenset(" -=_.()/+*^,:?!")
-    assert regex_universe(r"^[\w .:-]+$") == frozenset(" .:-_")
+    assert "-" not in regex_word_first(r"^\w+( \w[\w-]*)*$")
+    assert "-" in regex_word_first(r"^[\w -]*$")
+    # A negative lookahead after the space keeps a dash from starting a word.
+    assert "-" not in regex_word_first(r"(?!-)(?:[\w.:+-]| (?!-))+$")
+    # `$` also matches before a newline that ends the value; `\Z` does not.
+    assert regex_universe(r"^[\w .:-]+$") == frozenset(" .:-_\n")
+    assert regex_universe(r"^[\w .:-]+\Z") == frozenset(" .:-_")
     assert regex_universe(r"^[a-z]+") == PROBE
     assert regex_universe(r"^[^']*$") == PROBE - {"'"}
     assert regex_removed(r"[^\w.-]") == (PROBE - frozenset("_.-"), frozenset(), False)
@@ -508,3 +523,123 @@ def test_template_built_to_explode_is_cut_off(tmp_path):
     helpers = "".join(f"#def h{i}($v)\n" + f"$h{i + 1}($v)" * 60 + "\n#end def\n" for i in range(5))
     report = review(tmp_path, helpers + "#def h5($v)\n$v\n#end def\ntool $h0($text)")
     assert any("too expensive" in note for note in report.unanalyzed)
+
+
+CLEANED_LIST = "#import re\n#set $l = [re.sub('[^\\w.-]', '_', str($f.element_identifier)) for $f in $flat]\n"
+
+
+@pytest.mark.parametrize(
+    "command,expected",
+    [
+        # A Python list is written as ['a', 'b']: its quotes leave the cleaned names outside the shell quotes.
+        (CLEANED_LIST + "tool '--names=$l'", set()),
+        (
+            (
+                "#import re\n#set $l = [re.sub('[^\\w ]', '_', str($f.element_identifier)) for $f in $flat]\n"
+                "tool '--names=$l'"
+            ),
+            {("argument-injection", "low")},
+        ),
+        ("#set $l = [str($f.element_identifier) for $f in $flat]\ntool '--names=$l'", {("shell-injection", "high")}),
+        # list.reverse() returns None, which Cheetah does not write.
+        ("#set $l = [str($f.element_identifier) for $f in $flat]\ntool $l.reverse()", set()),
+        ("#import json\n" + CLEANED_LIST + "tool '${json.dumps($l)}'", set()),
+        ("#import base64\ntool ${base64.b64encode(str($free).encode()).decode()}", set()),
+        ("#set $n = $free - 1\ntool $n", set()),
+    ],
+)
+def test_values_built_in_python(tmp_path, command, expected):
+    assert rules(review(tmp_path, command)) - {("option-injection", "low")} == expected
+
+
+@pytest.mark.parametrize(
+    "command,expected",
+    [
+        # Each word must begin with a letter, digit or underscore: the extra words cannot be options.
+        ("tool $dash_words", {("argument-injection", "low")}),
+        ("tool $dash_anywhere", {("argument-injection", "medium")}),
+    ],
+)
+def test_words_that_cannot_begin_with_a_dash(tmp_path, command, expected):
+    assert rules(review(tmp_path, command)) - {("option-injection", "low")} == expected
+
+
+@pytest.mark.parametrize(
+    "command,expected",
+    [
+        ("tool '$sq'", set()),
+        # Joined with a value no user controls, the escaping still holds.
+        ("#set $x = $sq if $count else 'none'\ntool '$x'", set()),
+        ("tool '${str($sq).strip()}'", set()),
+        # Removing the double quotes of '"'"' breaks the escaping.
+        ("tool '${str($sq).replace('\"', '')}'", {("shell-injection", "high")}),
+    ],
+)
+def test_escaped_single_quote_survives_joins_and_methods(tmp_path, command, expected):
+    assert rules(review(tmp_path, command)) - {("option-injection", "low")} == expected
+
+
+@pytest.mark.parametrize(
+    "command,expected",
+    [
+        (
+            (
+                "#import re\n#set $n = str($input.element_identifier)\n"
+                "#if re.match('^[\\w.-]+$', $n)\nln -s '$input' '$n'\n#end if"
+            ),
+            set(),
+        ),
+        # re.search without ^ finds the pattern anywhere: the value is not narrowed.
+        (
+            (
+                "#import re\n#set $n = str($input.element_identifier)\n"
+                "#if re.search('[\\w.-]+$', $n)\nln -s '$input' '$n'\n#end if"
+            ),
+            {("shell-injection", "high")},
+        ),
+        (
+            (
+                "#import re\n#if str($input.element_identifier) != re.sub('[^\\w.-]', '_', str($input.element_identifier))\n"
+                "exit 1\n#else\nln -s '$input' '$input.element_identifier'\n#end if"
+            ),
+            set(),
+        ),
+        # The skipped iterations never reach the command; after the loop nothing is narrowed.
+        (
+            (
+                "#import re\n#for $f in $flat\n#if not re.fullmatch('[\\w.]+', str($f.element_identifier))\n#continue\n"
+                "#end if\ntool '$f.element_identifier'\n#end for"
+            ),
+            set(),
+        ),
+        (
+            (
+                "#import re\n#for $f in $flat\n#if not re.fullmatch('[\\w.]+', str($f.element_identifier))\n#continue\n"
+                "#end if\n#end for\ntool '$f.element_identifier'"
+            ),
+            {("shell-injection", "high")},
+        ),
+        ("#if str($text) in ['a', 'b']\ntool $text\n#end if", set()),
+        # int() stops the rendering for anything that is not a number.
+        ("#if int(str($text)) > 0\ntool $text\n#end if", set()),
+        ("#set $n = int(str($text))\ntool $text", set()),
+        # ...but not when it may not run.
+        ("#set $n = int(str($text)) if $count else 0\ntool $text", {("argument-injection", "medium")}),
+    ],
+)
+def test_tests_narrow_the_value(tmp_path, command, expected):
+    assert rules(review(tmp_path, command)) - {("option-injection", "low")} == expected
+
+
+@pytest.mark.parametrize(
+    "command,expected",
+    [
+        # In <when value="y"> the parameter `value` is an integer.
+        ("#if $mode.kind == 'y'\ntool $mode.value\n#end if", set()),
+        ("#if str($mode.kind) != 'x'\ntool $mode.value\n#end if", set()),
+        ("#if $mode.kind == 'x'\ntool $mode.value\n#end if", {("argument-injection", "medium")}),
+        ("tool $mode.value", {("argument-injection", "medium")}),
+    ],
+)
+def test_conditional_selector_picks_the_when_block(tmp_path, command, expected):
+    assert rules(review(tmp_path, command)) - {("option-injection", "low")} == expected
