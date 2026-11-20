@@ -22,6 +22,7 @@ from typing import (
 
 from . import (
     charsets,
+    sed,
     shell,
 )
 from .charsets import Verdict
@@ -1024,6 +1025,9 @@ class TemplateAnalysis:
                     verdicts.append(
                         verdict._replace(rule="nested-interpreter", why=f"in the nested shell, {verdict.why}")
                     )
+            elif context.lang == "sed" and context.sed is not None:
+                if verdict := sed.verdict(chars, context.sed):
+                    verdicts.append(verdict)
             elif context.lang:
                 if verdict := charsets.code(context.lang, chars, context.inner):
                     verdicts.append(verdict)
