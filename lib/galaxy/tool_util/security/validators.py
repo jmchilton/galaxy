@@ -26,25 +26,33 @@ from .charsets import (
     PROBE,
     regex_first,
     regex_universe,
+    regex_word_first,
 )
 
 
 class Constraint(NamedTuple):
     chars: Chars = PROBE  # probe characters the value may contain
     lead: Chars = PROBE  # probe characters the value may begin with
+    # probe characters a word may begin with: the value, or what follows whitespace in it
+    words: Chars = PROBE
 
     def both(self, other: "Constraint") -> "Constraint":
-        return Constraint(self.chars & other.chars, self.lead & other.lead)
+        return Constraint(self.chars & other.chars, self.lead & other.lead, self.words & other.words)
 
     def either(self, other: "Constraint") -> "Constraint":
-        return Constraint(self.chars | other.chars, self.lead | other.lead)
+        return Constraint(self.chars | other.chars, self.lead | other.lead, self.words | other.words)
 
     def allowing(self, extra: Chars) -> "Constraint":
-        return Constraint(self.chars | extra, self.lead | extra)
+        return Constraint(self.chars | extra, self.lead | extra, self.words | extra)
+
+    def word_first(self) -> Chars:
+        """What a word can begin with: without whitespace in the value, the value is the only word."""
+        words = self.words & self.chars
+        return words | self.lead if self.chars & _WHITESPACE else self.lead
 
 
 ANY = Constraint()
-EMPTY = Constraint(NONE, NONE)
+EMPTY = Constraint(NONE, NONE, NONE)
 _WHITESPACE: Chars = frozenset(" \t\n")
 
 # str predicates that are false for every probe character, except the ones listed.
@@ -115,7 +123,7 @@ def _text_or_int(node: ast.AST) -> object:
 
 def _without(characters: str) -> Constraint:
     gone = probe(characters)
-    return Constraint(PROBE - gone, PROBE - gone)
+    return Constraint(PROBE - gone, PROBE - gone, PROBE - gone)
 
 
 def _absent(needle: ast.AST, haystack: ast.AST) -> Constraint:
@@ -256,7 +264,8 @@ def expression_constraint(expression: str) -> Constraint:
 
 def regex_constraint(expression: str) -> Constraint:
     chars = regex_universe(expression)
-    return Constraint(chars, regex_first(expression) if chars == PROBE else regex_first(expression) & chars)
+    first = regex_first(expression) if chars == PROBE else regex_first(expression) & chars
+    return Constraint(chars, first, regex_word_first(expression))
 
 
 def text_constraint(input_source: InputSource) -> Constraint:

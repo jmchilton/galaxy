@@ -50,6 +50,8 @@ class AV:
     whole: bool = True  # False when a user value is only a part of this string
     # Probe characters the value can begin with, when a validator or a cleaning step narrows them.
     lead: Chars | None = None
+    # Probe characters a word of the value can begin with (the value, or what follows whitespace in it).
+    words: Chars | None = None
     # A value that is one of several strings built from literal text and values: each is written
     # on its own, so that the quotes in its literal text are seen.
     alts: tuple["AV", ...] = ()
@@ -131,6 +133,33 @@ def _lead(*values: AV) -> Chars | None:
     return frozenset().union(*(v.lead if v.lead is not None else v.chars for v in user))
 
 
+def _words(*values: AV) -> Chars | None:
+    user = [v for v in values if v.tainted]
+    if not any(v.words is not None for v in user):
+        return None
+    return frozenset().union(*(v.words if v.words is not None else v.chars for v in user))
+
+
+# The other values a value escaped for this syntax may be joined with: they cannot hold what the escaping covers.
+_ESCAPED: dict[str, Chars] = {"sq-escaped": frozenset("'"), "dq-escaped": frozenset('"\\')}
+
+
+def _quoted(a: AV, b: AV) -> str:
+    """How the join of two values is escaped: a value that is not user-controlled does not change it."""
+    user = [v for v in (a, b) if v.tainted]
+    if not user:
+        return a.quoted if a.quoted == b.quoted else ""
+    kinds = {v.quoted for v in user if v.quoted}
+    if len(kinds) != 1:
+        return ""
+    kind = kinds.pop()
+    covered = _ESCAPED.get(kind)
+    for v in user:
+        if v.quoted != kind and (covered is None or v.chars & covered):
+            return ""
+    return kind
+
+
 def join(*values: AV | None) -> AV:
     present = [v for v in values if v is not None]
     if not present:
@@ -157,12 +186,13 @@ def join(*values: AV | None) -> AV:
             nodes=nodes,
             elem=elem,
             items=items,
-            quoted=out.quoted if out.quoted == other.quoted else "",
+            quoted=_quoted(out, other),
             py=out.py if out.py == other.py else "",
             bound=out.bound if out.bound == other.bound else None,
             helper=out.helper if out.helper == other.helper else "",
             whole=(out.whole or not out.tainted) and (other.whole or not other.tainted),
             lead=_lead(out, other),
+            words=_words(out, other),
             alts=alternatives or (),
         )
     return out
@@ -194,10 +224,30 @@ class Group(Node):
 
     path: str = ""
     children: dict[str, list[Node]] = field(default_factory=dict)
+    # A conditional: the name of its test parameter, the <when> value of each child that is in a
+    # <when> block, and every <when> value.
+    selector: str = ""
+    cases: dict[Node, str] = field(default_factory=dict)
+    case_values: frozenset[str] = frozenset()
 
     def add(self, name: str | None, node: Node) -> None:
         if name:
             self.children.setdefault(name, []).append(node)
+
+    def restrict(self, values: set[str]) -> "Group | None":
+        """The conditional when its test parameter has one of these values, None for an unknown value."""
+        if not self.selector or not values <= self.case_values:
+            return None
+        # Still a conditional: an `#else if` on the same selector narrows it further.
+        restricted = Group(self.path, selector=self.selector, case_values=frozenset(values))
+        for name, nodes in self.children.items():
+            for node in nodes:
+                if node not in self.cases:
+                    restricted.add(name, node)
+                elif self.cases[node] in values:
+                    restricted.add(name, node)
+                    restricted.cases[node] = self.cases[node]
+        return restricted
 
     def attr(self, name: str) -> AV | None:
         # A template may name a parameter without the conditionals it is nested in.
@@ -429,6 +479,9 @@ def stringify(value: AV) -> AV:
         return value
     if value.elem is not None or value.items is not None:
         inner = stringify(element(value))
+        if inner.tainted and not inner.chars & _REPR_ESCAPED and inner.parts is None and not inner.quoted:
+            # repr() puts every string between single quotes: ['a', 'b']. Two elements show both separators.
+            return concat(["['", _repr_element(inner), "', '", _repr_element(inner), "']"])
         punctuation = REPR_PUNCTUATION if inner.tainted else NONE
         if "'" not in inner.chars:
             # repr() only switches to double quotes for a string that contains a single quote.
@@ -447,8 +500,17 @@ def stringify(value: AV) -> AV:
         quoted=value.quoted,
         whole=value.whole,
         lead=value.lead,
+        words=value.words,
         alts=value.alts,
     )
+
+
+# Characters repr() writes differently: a string holding them is not simply put between single quotes.
+_REPR_ESCAPED: Chars = frozenset("'\\\n\t\r")
+
+
+def _repr_element(inner: AV) -> AV:
+    return AV(chars=inner.chars, sources=inner.sources, lead=inner.lead, words=inner.words)
 
 
 def contents(value: AV) -> AV:
@@ -570,12 +632,20 @@ def _value(input_source: InputSource, path: str, tool_sanitize: bool) -> Node:
         as_raw = tainted(PROBE, f"raw value of {label} (not sanitized)")
         return Value(path, ptype, as_text=tainted(rendered(PROBE), label), as_raw=as_raw, as_element=as_raw)
 
-    universe, first = text_constraint(input_source)
+    constraint = text_constraint(input_source)
+    universe = constraint.chars
     # Only a start that is narrower than the rest of the value is worth carrying.
-    lead = first if "-" in universe and "-" not in first else None
+    lead = constraint.lead if "-" in universe and "-" not in constraint.lead else None
+    word_first = constraint.word_first()
+    words = word_first if "-" in universe and "-" not in word_first else None
     if ptype in ("color", "directory_uri", "file", "ftpfile"):
         # These types return the submitted value as it is: no sanitizer runs when they are rendered.
-        value = AV(chars=universe, sources=frozenset((f"{ptype} param '{path}' (not sanitized)",)), lead=lead)
+        value = AV(
+            chars=universe,
+            sources=frozenset((f"{ptype} param '{path}' (not sanitized)",)),
+            lead=lead,
+            words=words,
+        )
         return Value(path, ptype, as_text=value, as_raw=value, text_like=True)
     # text, hidden and anything unknown.
     return Value(
@@ -586,11 +656,13 @@ def _value(input_source: InputSource, path: str, tool_sanitize: bool) -> Node:
             sources=frozenset((f"{ptype} param '{path}'",)),
             quoted="sq-escaped" if tool_sanitize and _escapes_single_quote(sanitizer) else "",
             lead=rendered(lead) if lead is not None else None,
+            words=rendered(words) if words is not None else None,
         ),
         as_raw=AV(
             chars=universe,
             sources=frozenset((f"raw value of {ptype} param '{path}' (sanitizer bypassed)",)),
             lead=lead,
+            words=words,
         ),
         text_like=True,
     )
@@ -618,10 +690,19 @@ def _add_inputs(group: Group, input_sources: list[InputSource], prefix: str, too
             )
             group.add(name, section)
         elif input_type == "conditional":
-            conditional = Group(path)
-            _add_inputs(conditional, [input_source.parse_test_input_source()], f"{path}.", tool_sanitize)
-            for _value_name, case_source in input_source.parse_when_input_sources():
-                _add_inputs(conditional, case_source.parse_input_sources(), f"{path}.", tool_sanitize)
+            test_source = input_source.parse_test_input_source()
+            conditional = Group(path, selector=test_source.parse_name())
+            _add_inputs(conditional, [test_source], f"{path}.", tool_sanitize)
+            values = []
+            for value_name, case_source in input_source.parse_when_input_sources():
+                values.append(str(value_name))
+                case = Group(path)
+                _add_inputs(case, case_source.parse_input_sources(), f"{path}.", tool_sanitize)
+                for child_name, nodes in case.children.items():
+                    for node in nodes:
+                        conditional.add(child_name, node)
+                        conditional.cases[node] = str(value_name)
+            conditional.case_values = frozenset(values)
             group.add(name, conditional)
         elif input_type == "param":
             group.add(name, _value(input_source, path, tool_sanitize))
