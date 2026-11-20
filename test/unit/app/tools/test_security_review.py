@@ -552,6 +552,19 @@ def test_backslash_frees_the_next_value_only_at_the_end(app, tmp_path, q, expect
     assert two_values_refused(app, tmp_path, command, UNSANITIZED, q, ";id;#") is expected
 
 
+@pytest.mark.parametrize(
+    "q,expected",
+    [
+        # `echo " && echo ";id;"`: outside quotes, the quote of q opens a string that x closes.
+        ('"', True),
+        ("a", False),
+    ],
+)
+def test_quote_outside_quotes_frees_the_next_value(app, tmp_path, q, expected):
+    command = """echo $q && echo "$x" > '$out'"""
+    assert two_values_refused(app, tmp_path, command, UNSANITIZED, q, ";id;") is expected
+
+
 def test_tool_with_only_medium_findings_is_checked(app, tmp_path):
     # Two stray quotes in `echo ''' && echo ";id;" && echo '''` leave the `;` of x unquoted.
     command = """echo '$q' && echo "$x" && echo '$q' > '$out'"""
