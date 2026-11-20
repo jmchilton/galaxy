@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from typing import Optional
 
 import pytest
 
@@ -88,7 +89,14 @@ INPUTS = """
 """
 
 
-def review(tmp_path, command: str, configfiles: str = "", extra: str = "", tool_attrs: str = "") -> Report:
+def review(
+    tmp_path,
+    command: str,
+    configfiles: str = "",
+    extra: str = "",
+    tool_attrs: str = "",
+    timeout: Optional[float] = None,
+) -> Report:
     path = os.path.join(tmp_path, "tool.xml")
     with open(path, "w") as fh:
         fh.write(
@@ -100,7 +108,7 @@ def review(tmp_path, command: str, configfiles: str = "", extra: str = "", tool_
   {extra}
 </tool>"""
         )
-    return review_tool_source(get_tool_source(path))
+    return review_tool_source(get_tool_source(path), timeout=timeout)
 
 
 def rules(report: Report, kind: str = "vulnerability") -> set[tuple[str, str]]:
@@ -743,7 +751,7 @@ def test_value_after_an_escaped_closing_quote_in_a_script(tmp_path, command, con
 
 def test_backslash_inside_sh_single_quotes_escapes_nothing(tmp_path):
     report = review(tmp_path, "sh '$script'", CONFIG.format("<![CDATA[x='$no_quote' y='$no_quote']]>"))
-    assert not any("can end in a backslash" in f.context for f in report.findings)
+    assert not any("can end in a backslash" in (f.context or "") for f in report.findings)
 
 
 @pytest.mark.parametrize(

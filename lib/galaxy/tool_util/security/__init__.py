@@ -15,6 +15,7 @@ and the resulting syntax tree is analysed, see :mod:`.template` for why that is 
 from __future__ import annotations
 
 import sys
+import time
 
 from Cheetah.Parser import ParseError
 
@@ -38,6 +39,9 @@ from .report import (
     CAPABILITY,
     Finding,
     Report,
+    ReviewTimeout,
+    Source,
+    SourceRef,
 )
 from .template import (
     compile_template,
@@ -45,7 +49,11 @@ from .template import (
     CompileTimeExecution,
 )
 
-__all__ = ("Finding", "Report", "review_tool_source")
+__all__ = ("ANALYSER_VERSION", "Finding", "Report", "ReviewTimeout", "review_tool_source", "Source", "SourceRef")
+
+# Identifies what the analysis reports. Change it with every change to findings, sources or
+# breakout characters, so that stored reviews (see galaxy.tools.security_review) are redone.
+ANALYSER_VERSION = "1"
 
 
 def _compile(source: str, location: str, report: Report) -> CompiledTemplate | None:
@@ -74,14 +82,17 @@ def _compile(source: str, location: str, report: Report) -> CompiledTemplate | N
     return None
 
 
-def _analyse(source: str, location: str, language: str, model: Model, report: Report) -> TemplateAnalysis | None:
+def _analyse(
+    source: str, location: str, language: str, model: Model, report: Report, deadline: float | None
+) -> TemplateAnalysis | None:
+    _check_deadline(deadline)
     template = _compile(source, location, report)
     if template is None:
         return None
     PythonAudit(report, location, model).template(template)
     for name in sorted(unresolved_names(template, model)):
         report.unanalyzed.append(f"{location}: ${name} is not a tool input, its value was not followed")
-    analysis = TemplateAnalysis(model, template, report, location, language)
+    analysis = TemplateAnalysis(model, template, report, location, language, deadline=deadline)
     try:
         analysis.run()
     except RecursionError:
@@ -89,7 +100,17 @@ def _analyse(source: str, location: str, language: str, model: Model, report: Re
     return analysis
 
 
-def review_tool_source(tool_source: ToolSource) -> Report:
+def _check_deadline(deadline: float | None) -> None:
+    if deadline is not None and time.monotonic() > deadline:
+        raise ReviewTimeout()
+
+
+def review_tool_source(tool_source: ToolSource, timeout: float | None = None) -> Report:
+    """The security review of a tool.
+
+    ``timeout``: seconds the review may take; past it, :class:`ReviewTimeout` is raised.
+    """
+    deadline = time.monotonic() + timeout if timeout is not None else None
     report = Report(tool_id=tool_source.parse_id())
     if sys.version_info < (3, 9):
         # The analysis needs ast.unparse and the subscript syntax tree of Python 3.9.
@@ -100,14 +121,14 @@ def review_tool_source(tool_source: ToolSource) -> Report:
 
     command = tool_source.parse_command()
     if command:
-        analysis = _analyse(command, "command", "shell", model, report)
+        analysis = _analyse(command, "command", "shell", model, report, deadline)
         if analysis is not None:
             audit_shell_events(analysis.events, report, "command")
             readers = analysis.readers
     for name, content in model.configfiles.items():
         reader = sorted(readers.get(name, ()))
         language = configfile_language(content, reader[0] if reader else None)
-        _analyse(content, f"configfile:{name}", language, model, report)
+        _analyse(content, f"configfile:{name}", language, model, report, deadline)
 
     xml_tree = getattr(tool_source, "xml_tree", None)
     if xml_tree is not None:

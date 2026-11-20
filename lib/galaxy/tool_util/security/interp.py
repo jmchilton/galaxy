@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ast
 import re
+import time
 from dataclasses import (
     dataclass,
     field,
@@ -44,6 +45,8 @@ from .model import (
 from .report import (
     Finding,
     Report,
+    ReviewTimeout,
+    source_refs,
     VULNERABILITY,
 )
 from .template import (
@@ -86,6 +89,39 @@ _ENCODERS = re.compile(
 )
 # What json.dumps writes around the strings of a list or a dict.
 _JSON_PUNCTUATION: charsets.Chars = frozenset('"\\[]{},: ')
+# What escaping a value for a syntax writes around or into it, whatever the value holds.
+_ESCAPING_ADDS: dict[str, charsets.Chars] = {
+    "shlex": frozenset("'"),
+    "json": _JSON_PUNCTUATION,
+    "pyrepr": REPR_PUNCTUATION,
+}
+
+
+def _ansi_quoted(chars: charsets.Chars) -> Verdict | None:
+    """A value in $'...', where a backslash can escape the closing quote, which is as good as a quote."""
+    verdict = charsets.single_quoted(chars | {"'"} if "\\" in chars else chars)
+    if verdict is not None and "\\" in chars:
+        verdict = verdict._replace(breakout=_verdict_breakout(verdict) | {"\\"})
+    return verdict
+
+
+def _verdict_breakout(verdict: Verdict) -> charsets.Chars:
+    return verdict.chars if verdict.breakout is None else verdict.breakout
+
+
+def _breakout(verdict: Verdict, text: AV) -> charsets.Chars:
+    """The characters of the user's value, before any escaping the template applies, that a finding needs.
+
+    Escaping adds characters whatever the value holds (shlex.quote adds quotes): those are not the
+    value's, so a value must then bring one of the other characters of the verdict.
+    """
+    breakout = _verdict_breakout(verdict)
+    added = _ESCAPING_ADDS.get(text.quoted, charsets.NONE)
+    if breakout and breakout <= added:
+        return verdict.chars - added
+    return breakout - added
+
+
 _STRING_FUNCTIONS = frozenset(("str", "unicode", "repr", "format", "basestring"))
 _CONTAINER_FUNCTIONS = frozenset(("list", "tuple", "set", "frozenset", "sorted", "reversed", "iter", "next"))
 _NONE_METHODS = frozenset(("reverse", "sort", "clear", "remove"))
@@ -329,6 +365,7 @@ class TemplateAnalysis:
         report: Report,
         location: str = "command",
         language: str = "shell",
+        deadline: float | None = None,
     ):
         self.model = model
         self.template = template
@@ -343,6 +380,8 @@ class TemplateAnalysis:
         self._pending: ast.expr | None = None  # expression of the placeholder about to be written
         self._depth = 0
         self._steps = 0
+        # time.monotonic() after which the analysis stops with ReviewTimeout.
+        self._deadline = deadline
         self._in_capture_region = 0
         self._noted: set[str] = set()
         self._line: int | None = None
@@ -383,6 +422,8 @@ class TemplateAnalysis:
         self._steps += 1
         if self._steps > _MAX_STEPS:
             raise _BudgetExceeded()
+        if self._deadline is not None and time.monotonic() > self._deadline:
+            raise ReviewTimeout()
         line = self.template.template_line(stmt)
         if line is not None:
             self._line = line
@@ -815,7 +856,9 @@ class TemplateAnalysis:
                 raw_expr,
             )
         if context.role == "cmd" and context.lead and text.whole:
-            verdicts.append(Verdict("command-position", charsets.HIGH, chars, "chooses the program that is run"))
+            verdicts.append(
+                Verdict("command-position", charsets.HIGH, chars, "chooses the program that is run", charsets.NONE)
+            )
         quoted_for_here = text.quoted == "shlex" and not context.quote and not context.lang
         if not quoted_for_here:
             if text.quoted == "shlex":
@@ -833,16 +876,14 @@ class TemplateAnalysis:
                 "'": charsets.single_quoted,
                 '"': charsets.double_quoted,
                 # In $'...' a backslash can escape the closing quote, which is as good as a quote.
-                shell.ANSI: lambda c: charsets.single_quoted(c | {"'"} if "\\" in c else c),
+                shell.ANSI: _ansi_quoted,
             }
             if verdict := lexical[context.quote](chars):
                 verdicts.append(verdict)
             if context.lang == "sh":
                 if verdict := lexical[context.inner](chars):
                     verdicts.append(
-                        Verdict(
-                            "nested-interpreter", verdict.severity, verdict.chars, f"in the nested shell, {verdict.why}"
-                        )
+                        verdict._replace(rule="nested-interpreter", why=f"in the nested shell, {verdict.why}")
                     )
             elif context.lang:
                 if verdict := charsets.code(context.lang, chars, context.inner):
@@ -887,7 +928,13 @@ class TemplateAnalysis:
             # {...} in an f-string is an expression; with parentheses it can call anything.
             severity = charsets.HIGH if "(" in chars else charsets.MEDIUM
             self.finding(
-                Verdict("configfile-injection", severity, chars & frozenset("{}()"), "can open an f-string expression"),
+                Verdict(
+                    "configfile-injection",
+                    severity,
+                    chars & frozenset("{}()"),
+                    "can open an f-string expression",
+                    frozenset("{"),
+                ),
                 text,
                 f"inside an f-string {quote}...{quote} of a python script",
                 raw_expr,
@@ -897,12 +944,7 @@ class TemplateAnalysis:
             verdict = charsets.code(self.language, chars, "")
             if verdict:
                 self.finding(
-                    Verdict(
-                        "configfile-injection",
-                        verdict.severity,
-                        verdict.chars,
-                        f"{verdict.why} when it runs the string",
-                    ),
+                    verdict._replace(rule="configfile-injection", why=f"{verdict.why} when it runs the string"),
                     text,
                     f"inside a {quote}...{quote} string that the {self.language} script evaluates as code",
                     raw_expr,
@@ -918,7 +960,7 @@ class TemplateAnalysis:
             if verdict:
                 why = f"{verdict.why}, once an earlier value on the line escapes the closing quote"
                 self.finding(
-                    Verdict("configfile-injection", verdict.severity, verdict.chars, why),
+                    verdict._replace(rule="configfile-injection", why=why),
                     text,
                     f"inside a {quote}...{quote} string of a {self.language} script, after a value that can end"
                     " in a backslash",
@@ -929,7 +971,7 @@ class TemplateAnalysis:
         if self.language in CODE_LANGUAGES:
             verdict = charsets.code(self.language, chars, quote)
             if verdict:
-                verdict = Verdict("configfile-injection", verdict.severity, verdict.chars, verdict.why)
+                verdict = verdict._replace(rule="configfile-injection")
                 self.finding(verdict, text, f"{where} of a {self.language} script", raw_expr)
             return
         hit = chars & frozenset(quote + "\n")
@@ -950,6 +992,7 @@ class TemplateAnalysis:
             charsets.CRITICAL if executes else charsets.HIGH,
             text.chars,
             "decides what the Galaxy server process " + ("executes" if executes else "opens"),
+            charsets.NONE,
         )
         self.finding(verdict, text, f"into `{name}(...)` in template Python", name)
 
@@ -974,6 +1017,8 @@ class TemplateAnalysis:
                 source=source,
                 context=where,
                 chars=charsets.show(verdict.chars),
+                refs=source_refs(text.sources),
+                breakout=_breakout(verdict, text),
             )
         )
 
