@@ -578,3 +578,13 @@ SED_RENAME = ECHO_IDS.replace(
 def test_value_in_a_sed_replacement(app, tmp_path, identifier, expected):
     tool = make_tool(app, tmp_path, SED_RENAME, "sed.xml")
     assert refused(app, tmp_path, tool, [identifier]) is expected
+
+
+def test_template_that_pipes_into_a_shell_is_reported_as_not_checked(app, tmp_path, caplog):
+    caplog.set_level(logging.INFO, logger=security_review.__name__)
+    piping = ECHO_IDS.replace("echo '${word.value}' >> '$out'", "echo '${word.value}' | sh >> '$out'")
+    tool = make_tool(app, tmp_path, piping, "piping.xml")
+    review = reviewer(tmp_path, ENFORCE).review(tool)
+    assert review is not None and review.unchecked_locations == {"command": "it sends text to a shell to run"}
+    assert not review.checked_findings
+    assert "values written in command are not checked, it sends text to a shell to run" in caplog.text

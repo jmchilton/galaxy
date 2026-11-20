@@ -145,6 +145,10 @@ class Report:
     # json.dumps() write a quote that closes the string around the value, after which a quote of
     # the value's own opens new quotes.
     closers: dict[str, dict[SourceRef, frozenset[str]]] = field(default_factory=dict)
+    # Locations whose user values no character test can judge, with the reason: parts of the
+    # template were not analysed, or it sends text to a program that runs it. Their findings are
+    # not checkable, and their writes are left out.
+    unchecked_locations: dict[str, str] = field(default_factory=dict)
 
     def add(self, finding: Finding) -> None:
         for i, existing in enumerate(self.findings):
@@ -194,12 +198,17 @@ class Report:
             "unanalyzed": self.unanalyzed,
             "writes": _by_location(self.writes),
             "closers": _by_location(self.closers),
+            "unchecked_locations": dict(sorted(self.unchecked_locations.items())),
         }
 
     @classmethod
     def from_dict(cls, as_dict: dict[str, Any]) -> Report:
         """The report :meth:`to_dict` wrote."""
-        report = cls(tool_id=as_dict.get("tool_id"), unanalyzed=list(as_dict.get("unanalyzed") or []))
+        report = cls(
+            tool_id=as_dict.get("tool_id"),
+            unanalyzed=list(as_dict.get("unanalyzed") or []),
+            unchecked_locations=dict(as_dict.get("unchecked_locations") or {}),
+        )
         for f in as_dict.get("findings") or []:
             f = dict(f)
             f["more_lines"] = tuple(f.get("more_lines") or ())

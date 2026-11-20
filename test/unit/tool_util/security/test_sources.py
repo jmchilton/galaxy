@@ -270,3 +270,25 @@ def test_timeout(tmp_path, monkeypatch):
     monkeypatch.setattr(time, "monotonic", lambda: next(clock, 100.0))
     with pytest.raises(ReviewTimeout):
         review(tmp_path, "echo $text", timeout=1)
+
+
+@pytest.mark.parametrize(
+    "command,reason",
+    [
+        # Whatever $unknown holds is not followed: it may bring the quote that frees another value.
+        ("echo '$unknown' '$input.element_identifier'", "parts of it were not analysed"),
+        # Letters alone are a command once the shell reads them.
+        ("echo '${free}' | sh", "it sends text to a shell to run"),
+    ],
+)
+def test_template_no_character_test_can_judge(tmp_path, command, reason):
+    report = review(tmp_path, command)
+    assert report.unchecked_locations == {"command": reason}
+    assert report.findings and not any(f.checkable for f in report.findings if f.kind == "vulnerability")
+    assert "command" not in report.writes
+
+
+def test_template_without_such_parts_is_checkable(tmp_path):
+    report = review(tmp_path, "echo '$input.element_identifier'")
+    assert report.unchecked_locations == {}
+    assert all(f.checkable for f in report.findings)
