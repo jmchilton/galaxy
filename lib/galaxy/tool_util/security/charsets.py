@@ -225,8 +225,15 @@ def _consumed(items: Any) -> Chars:
     return frozenset(chars)
 
 
-def _end_anchor(items: Any) -> str | None:
-    """How the expression is anchored at the end: "string" (``\\Z``), "line" (``$``) or None."""
+def _flag(value: int, name: str) -> bool:
+    return bool(value & getattr(sre_constants, f"SRE_FLAG_{name}"))
+
+
+def _end_anchor(items: Any, multiline: bool = False) -> str | None:
+    """How the expression is anchored at the end: "string" (``\\Z``), "line" (``$``) or None.
+
+    With MULTILINE, ``$`` matches before any newline: it does not anchor the end.
+    """
     items = list(items)
     if not items:
         return None
@@ -234,19 +241,56 @@ def _end_anchor(items: Any) -> str | None:
     if op is sre_constants.AT:
         if arg == sre_constants.AT_END_STRING:
             return "string"
-        return "line" if arg == sre_constants.AT_END else None
+        return "line" if arg == sre_constants.AT_END and not multiline else None
     if op is sre_constants.BRANCH:
-        anchors = [_end_anchor(alternative) for alternative in arg[1]]
+        anchors = [_end_anchor(alternative, multiline) for alternative in arg[1]]
         if None in anchors:
             return None
         return "line" if "line" in anchors else "string"
     if op is sre_constants.SUBPATTERN:
-        return _end_anchor(arg[-1])
+        _group, add_flags, del_flags, pattern = arg
+        inner = (multiline or _flag(add_flags, "MULTILINE")) and not _flag(del_flags, "MULTILINE")
+        return _end_anchor(pattern, inner)
     return None
 
 
+def _parsed_flags(parsed: Any) -> int:
+    state = getattr(parsed, "state", None) or getattr(parsed, "pattern", None)
+    return getattr(state, "flags", 0)
+
+
 def _end_anchored(items: Any) -> bool:
-    return _end_anchor(items) is not None
+    return _end_anchor(items, _flag(_parsed_flags(items), "MULTILINE")) is not None
+
+
+def regex_anchored_start(expression: str) -> bool:
+    """``re.search`` with this expression only matches at the start of the value.
+
+    Every alternative must begin with ``^`` or ``\\A``, and ``^`` must not be MULTILINE.
+    """
+    try:
+        parsed = sre_parse.parse(expression)
+    except Exception:
+        return False
+    multiline = _flag(_parsed_flags(parsed), "MULTILINE")
+
+    def anchored(items: Any) -> bool:
+        items = list(items)
+        if not items:
+            return False
+        op, arg = items[0]
+        if op is sre_constants.AT:
+            if arg == sre_constants.AT_BEGINNING_STRING:
+                return True
+            return arg == sre_constants.AT_BEGINNING and not multiline
+        if op is sre_constants.BRANCH:
+            return all(anchored(alternative) for alternative in arg[1])
+        if op is sre_constants.SUBPATTERN:
+            _group, add_flags, _del_flags, pattern = arg
+            return not _flag(add_flags, "MULTILINE") and anchored(pattern)
+        return False
+
+    return anchored(parsed)
 
 
 def regex_universe(expression: str) -> Chars:
@@ -260,10 +304,14 @@ def regex_universe(expression: str) -> Chars:
         parsed = sre_parse.parse(expression)
     except Exception:
         return PROBE
-    anchor = _end_anchor(parsed)
+    flags = _parsed_flags(parsed)
+    anchor = _end_anchor(parsed, _flag(flags, "MULTILINE"))
     if anchor is None:
         return PROBE
     consumed = _consumed(parsed)
+    if _flag(flags, "DOTALL"):
+        # `.` also matches a newline.
+        consumed = consumed | {"\n"}
     return consumed | {"\n"} if anchor == "line" and consumed != PROBE else consumed
 
 
@@ -336,7 +384,12 @@ def _follow(items: Any) -> _Follow | None:
                 frozenset().union(*(f.last for f in known)),
                 any(f.nullable for f in known),
                 frozenset().union(*(f.pairs for f in known)),
-                frozenset().union(*(f.pending for f in known if f.nullable)),
+                # A match through an alternative without a lookahead keeps nothing from following.
+                (
+                    frozenset.intersection(*(f.pending for f in known if f.nullable))
+                    if any(f.nullable for f in known)
+                    else frozenset()
+                ),
             )
         elif op is sre_constants.SUBPATTERN:
             inner = _follow(arg[-1])
@@ -351,7 +404,10 @@ def _follow(items: Any) -> _Follow | None:
             pairs = inner.pairs
             if high is sre_constants.MAXREPEAT or high > 1:
                 pairs = pairs | frozenset((x, y) for x, blocked in inner.last for y in inner.first - blocked)
-            part = _Follow(inner.first, inner.last, inner.nullable or low < 1, pairs, inner.pending)
+            # Zero repetitions keep nothing from following.
+            part = _Follow(
+                inner.first, inner.last, inner.nullable or low < 1, pairs, inner.pending if low >= 1 else frozenset()
+            )
         else:
             return None
         out = _sequence(out, part)
