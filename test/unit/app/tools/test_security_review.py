@@ -472,6 +472,59 @@ def test_finding_refs_name_the_inputs(app, tmp_path):
     assert refs == {(ELEMENT_IDENTIFIER, "input"), (RAW, "word")}
 
 
+def refused(app, tmp_path, tool: Tool, identifiers: list[str], word: str = "plain") -> bool:
+    try:
+        reviewer(tmp_path, ENFORCE).check_job(tool, evaluator(app, tool, identifiers, word=word))
+    except ToolInputRejected:
+        return True
+    return False
+
+
+ECHO_DOUBLE = ECHO_IDS.replace("'$e.element_identifier'", '"$e.element_identifier"').replace(
+    "'${word.value}'", '"${word.value}"'
+)
+
+
+@pytest.mark.parametrize(
+    "identifiers,word,expected",
+    [
+        # "sample "A"" is one word: closing the quotes starts nothing without a command character.
+        (['sample "A"'], "plain", False),
+        # A quote counts as stray even when the value closes and reopens it.
+        (['sample "A"'], "a;b", True),
+        (['a"; id; "'], "plain", True),
+        (["$(id)"], "plain", True),
+        (["`id`"], "plain", True),
+        # The first identifier ends in a backslash, which escapes its closing quote.
+        (["a\\", "b"], ";id;#", True),
+    ],
+)
+def test_double_quote_needs_a_command_character(app, tmp_path, identifiers, word, expected):
+    tool = make_tool(app, tmp_path, ECHO_DOUBLE, "double.xml")
+    assert refused(app, tmp_path, tool, identifiers, word) is expected
+
+
+DATA_FILE = """<tool id="data_file" name="Data file" version="1.0" profile="24.0">
+  <command>tool --conf '$conf' --title '${word.value}' > '$out'</command>
+  <configfiles><configfile name="conf">title = "${word.value}"
+#for $e in $input
+sample = $e.element_identifier
+#end for
+</configfile></configfiles>
+  <inputs>
+    <param name="input" type="data_collection" collection_type="list" format="txt"/>
+    <param name="word" type="text"/>
+  </inputs>
+  <outputs><data name="out" format="txt"/></outputs>
+</tool>
+"""
+
+
+def test_stray_quote_in_a_data_file_frees_nothing(app, tmp_path):
+    tool = make_tool(app, tmp_path, DATA_FILE, "data_file.xml")
+    assert not refused(app, tmp_path, tool, ["R&D;x|y"], word='say "hi"')
+
+
 TWO_VALUES = """<tool id="two_values" name="Two values" version="1.0" profile="24.0">
   <command><![CDATA[{command}]]></command>
   <inputs>

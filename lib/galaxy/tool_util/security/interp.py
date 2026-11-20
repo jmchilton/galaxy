@@ -126,6 +126,9 @@ def _verdict_breakout(verdict: Verdict) -> charsets.Chars:
 
 def _unquoted_harm(chars: charsets.Chars, language: str) -> charsets.Chars:
     """The characters that run code when a value with these characters is outside any quotes."""
+    if language != "shell" and language not in CODE_LANGUAGES:
+        # A data file: nothing in it runs.
+        return charsets.NONE
     after = charsets.unquoted(chars) if language == "shell" else charsets.code(language, chars, "")
     return after.chars if after is not None and after.severity in (charsets.HIGH, charsets.CRITICAL) else charsets.NONE
 
