@@ -79,6 +79,9 @@ INPUTS = """
 <param name="choice" type="select"><option value="a">A</option><option value="b c">B</option></param>
 <param name="column" type="data_column" data_ref="input" multiple="true"/>
 <param name="secret" type="hidden" value="x"/>
+<param name="quotes" type="text">
+  <sanitizer><valid initial="string.ascii_letters"><add value="&apos;"/><add value="&quot;"/></valid></sanitizer>
+</param>
 <param name="count" type="integer" value="1"/>
 <repeat name="rows" title="rows"><param name="label" type="text"/></repeat>
 <conditional name="mode">
