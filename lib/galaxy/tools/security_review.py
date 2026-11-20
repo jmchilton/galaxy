@@ -52,6 +52,7 @@ from galaxy.tool_util.security.report import (
     ELEMENT_IDENTIFIER,
     GROUP_TAGS,
     METADATA,
+    OPAQUE,
     RAW,
     SPECIAL,
     TEXT,
@@ -108,11 +109,18 @@ class ToolReview:
         """The findings whose characters are compared with the values of a job."""
         if self.report is None:
             return []
-        return [
-            f
-            for f in self.report.findings
-            if f.kind == VULNERABILITY and f.severity in CHECKED_SEVERITIES and f.breakout and f.refs
-        ]
+        return [f for f in self._serious if f.checkable]
+
+    @property
+    def unchecked_findings(self) -> list[Finding]:
+        """High and critical findings no character test on job values can decide."""
+        return [f for f in self._serious if not f.checkable]
+
+    @property
+    def _serious(self) -> list[Finding]:
+        if self.report is None:
+            return []
+        return [f for f in self.report.findings if f.kind == VULNERABILITY and f.severity in CHECKED_SEVERITIES]
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -315,11 +323,13 @@ class ToolSecurityReviewer:
             if any(f.severity == severity for f in serious)
         )
         examples = "; ".join(f"{f.rule} at {f.location} line {f.line}: {f.source}" for f in serious[:3])
+        unchecked = len(review.unchecked_findings)
         log.info(
-            "Security review of tool %s version %s: %s finding(s), e.g. %s",
+            "Security review of tool %s version %s: %s finding(s)%s, e.g. %s",
             review.tool_id,
             review.tool_version,
             counts,
+            f" ({unchecked} cannot be checked against job values)" if unchecked else "",
             examples,
         )
 
@@ -442,14 +452,29 @@ class Violation:
 
 
 def find_violations(findings: Iterable[Finding], param_dict: dict[str, Any]) -> Iterator[Violation]:
-    """Each finding and source for which a job value contains a breakout character of the finding."""
+    """The sources of each finding whose job values bring the characters the finding needs.
+
+    The characters of all values of all sources of a finding count together: a template can join
+    them into one string (`'$a$b'`, `",".join(...)`), so a quote from one value and a command
+    character from another are enough.
+    """
     seen: set[tuple[str, SourceRef]] = set()
     for finding in findings:
+        wanted = finding.breakout | finding.requires
+        found: dict[SourceRef, set[str]] = {}
         for ref in finding.refs:
+            if ref.accessor == OPAQUE or ref in finding.unchecked:
+                continue
             hit: set[str] = set()
             for value in source_values(ref, param_dict):
-                hit.update(finding.breakout.intersection(value))
-            if hit and (finding.rule, ref) not in seen:
+                hit.update(wanted.intersection(value))
+            if hit:
+                found[ref] = hit
+        present = set().union(*found.values())
+        if not present & finding.breakout or (finding.requires and not present & finding.requires):
+            continue
+        for ref, hit in found.items():
+            if (finding.rule, ref) not in seen:
                 seen.add((finding.rule, ref))
                 yield Violation(finding, ref, frozenset(hit))
 
@@ -573,6 +598,11 @@ class _exclusive:
         try:
             os.makedirs(os.path.dirname(self.path), exist_ok=True)
             self._fh = open(self.path, "a")
+        except OSError as e:
+            # Reviews still work without the lock; storing them will log why the directory fails.
+            log.warning("Cannot open the tool security review lock %s: %s", self.path, e)
+            return True
+        try:
             fcntl.flock(self._fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as e:
             if e.errno in (errno.EAGAIN, errno.EACCES, errno.EWOULDBLOCK):

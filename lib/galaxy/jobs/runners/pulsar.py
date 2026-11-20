@@ -55,6 +55,7 @@ from galaxy.jobs.runners import (
 )
 from galaxy.model.base import check_database_connection
 from galaxy.tool_util.deps import dependencies
+from galaxy.tools.security_review import ToolInputRejected
 from galaxy.util import (
     galaxy_directory,
     specs,
@@ -522,7 +523,10 @@ class PulsarJobRunner(AsynchronousJobRunner):
                 job_prepare_ret = job_wrapper.prepare(**prepare_kwds)
             except Exception as e:
                 # If we fail here the error isn't recoverable and we fail the job.
-                log.exception("failure preparing job %d", job_wrapper.job_id)
+                if isinstance(e, ToolInputRejected):
+                    log.info("(%s) %s", job_wrapper.job_id, e)
+                else:
+                    log.exception("failure preparing job %d", job_wrapper.job_id)
                 job_state = self._job_state(job_wrapper.get_job(), job_wrapper)
                 job_state.fail_message = str(e)
                 self.work_queue.put((self.fail_job, job_state))
