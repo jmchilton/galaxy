@@ -599,3 +599,24 @@ def test_tool_with_only_medium_findings_is_checked(app, tmp_path):
     command = """echo '$q' && echo "$x" && echo '$q' > '$out'"""
     assert two_values_refused(app, tmp_path, command, LETTERS_AND_QUOTE, "'", ";id;")
     assert not two_values_refused(app, tmp_path, command, LETTERS_AND_QUOTE, "Bob", ";id;")
+
+
+SED_RENAME = ECHO_IDS.replace(
+    "echo '$e.element_identifier' >> '$out';",
+    "sed \"s/'$e.element_identifier'/$e.element_identifier/\" '$e' >> '$out';",
+)
+
+
+@pytest.mark.parametrize(
+    "identifier,expected",
+    [
+        ("ID=gene1;Name=abc", False),
+        ("5' UTR", False),
+        ("C:\\data\\reads.fq", False),
+        # The delimiter ends the replacement: `s/x/a/e;...` runs a command in GNU sed.
+        ("a/e;#", True),
+    ],
+)
+def test_value_in_a_sed_replacement(app, tmp_path, identifier, expected):
+    tool = make_tool(app, tmp_path, SED_RENAME, "sed.xml")
+    assert refused(app, tmp_path, tool, [identifier]) is expected

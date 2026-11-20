@@ -101,6 +101,41 @@ def test_breakout(tmp_path, command, breakout, requires):
     assert finding.checkable
 
 
+def nested(report: Report):
+    (finding,) = [f for f in report.findings if f.rule == "nested-interpreter" and f.severity == HIGH]
+    return finding
+
+
+@pytest.mark.parametrize(
+    "command,breakout",
+    [
+        # In a part of s, y or an address only its delimiter, a backslash or a newline leaves it.
+        ("sed 's/x/${free}/' '$input'", frozenset("/\\\n]")),
+        ("sed \"s|x|${free}|g\" '$input'", frozenset("|\\\n]")),
+        ("sed '/${free}/d' '$input'", frozenset("/\\\n]")),
+        ("sed 's/[/]/${free}/' '$input'", frozenset("/\\\n]")),
+        # Quotes are plain characters to sed.
+        ("sed \"s/'${free}'/x/\" '$input'", frozenset("/\\\n]")),
+        ("sed '1i ${free}' '$input'", frozenset("\n\\")),
+        ("sed 'b ${free}' '$input'", frozenset(";\n} \t")),
+        # Where sed expects a command, letters are enough: `e` runs a shell command.
+        ("sed -n '${free}p' '$input'", frozenset()),
+        ("sed -e 's/a/b/' -e '${free}' '$input'", frozenset()),
+        ("sed 's/a/b/${free}' '$input'", frozenset()),
+    ],
+)
+def test_sed_breakout(tmp_path, command, breakout):
+    finding = nested(review(tmp_path, command))
+    assert finding.breakout == breakout
+    assert finding.checkable is bool(breakout)
+
+
+def test_awk_has_no_single_quoted_strings(tmp_path):
+    # `'...'` is not a string in awk: the value is awk code.
+    assert '"' in nested(review(tmp_path, "awk \"{print '${free}'}\" '$input'")).breakout
+    assert nested(review(tmp_path, "awk '{print \"${free}\"}' '$input'")).breakout == frozenset('"')
+
+
 @pytest.mark.parametrize(
     "script,reported",
     [
