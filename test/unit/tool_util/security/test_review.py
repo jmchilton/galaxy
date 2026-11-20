@@ -777,3 +777,21 @@ def test_value_after_an_escaped_closing_quote_in_the_command(tmp_path, command, 
 def test_value_in_a_string_the_script_evaluates(tmp_path, command, content, expected):
     found = rules(review(tmp_path, command, CONFIG.format(f"<![CDATA[{content}]]>")))
     assert found - {("configfile-injection", "low")} == expected
+
+
+def test_braces_in_an_f_string_are_code(tmp_path):
+    braces = (
+        '<inputs><param name="p" type="text"><sanitizer><valid initial="string.printable">'
+        '<remove value="&apos;"/><remove value="&quot;"/><remove value="\\"/></valid></sanitizer></param></inputs>'
+    )
+    path = os.path.join(tmp_path, "fstring.xml")
+    for content, expected in [
+        ("print(f\"No genes starting with '$p' found.\")", {("configfile-injection", "high")}),
+        ("print(\"No genes starting with '$p' found.\")", set()),
+    ]:
+        with open(path, "w") as fh:
+            fh.write(
+                f'<tool id="f" name="f" version="1" profile="24.2"><command>python \'$script\'</command>'
+                f'<configfiles><configfile name="script"><![CDATA[{content}]]></configfile></configfiles>{braces}</tool>'
+            )
+        assert rules(review_tool_source(get_tool_source(path))) == expected
