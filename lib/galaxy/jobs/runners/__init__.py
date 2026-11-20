@@ -46,6 +46,7 @@ from galaxy.tool_util.deps.dependencies import (
     ToolInfo,
 )
 from galaxy.tool_util.output_checker import DETECTED_JOB_STATE
+from galaxy.tools.security_review import ToolInputRejected
 from galaxy.util import (
     asbool,
     DATABASE_MAX_STRING_SIZE,
@@ -307,6 +308,11 @@ class BaseJobRunner:
                 modify_command_for_container=modify_command_for_container,
                 stream_stdout_stderr=stream_stdout_stderr,
             )
+        except ToolInputRejected as e:
+            # Refused by tool_security_review: enforce, a decision rather than an error.
+            log.info("(%s) %s", job_id, e)
+            job_wrapper.fail(unicodify(e))
+            return False
         except Exception as e:
             log.exception("(%s) Failure preparing job", job_id)
             job_wrapper.fail(unicodify(e), exception=True)

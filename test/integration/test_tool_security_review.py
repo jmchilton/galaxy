@@ -26,8 +26,8 @@ echo '$e.element_identifier' >> '$out_file1';
   </outputs>
 </tool>
 """
-# Closes the single quotes in the command, and keeps it valid shell: `echo 'a'b'c'` writes abc.
-QUOTED = "a'b'c"
+# Leaves the single quotes and pipes into another command: `echo 'a'|'cat' >> out` writes a.
+QUOTED = "a'|'cat"
 
 
 class _CapturedWarnings(logging.Handler):
@@ -97,7 +97,7 @@ class TestToolSecurityReviewEnforce(BaseToolSecurityReviewTestCase):
             assert result["job"]["state"] == "error"
             message = result["output"]["misc_info"]
             assert "This job was not run" in message
-            assert "an element identifier or the name of input 'input' contains the characters [']" in message
+            assert "an element identifier or the name of input 'input' contains the characters [' |]" in message
             assert "known problem handling these characters" in message
             assert len(self._review_warnings()) == 1
             # The review was stored for the other Galaxy processes.
@@ -119,10 +119,10 @@ class TestToolSecurityReviewLog(BaseToolSecurityReviewTestCase):
         with self.dataset_populator.test_history() as history_id:
             result = self._assert_runs(history_id, QUOTED)
             content = self.dataset_populator.get_history_dataset_content(history_id, dataset_id=result["output"]["id"])
-            # The quotes in the identifier closed and reopened the ones in the template.
-            assert content.strip() == "abc"
+            # The identifier left the quotes of the template and ran `cat`.
+            assert content.strip() == "a"
             (warning,) = self._review_warnings()
-            assert "contains [']" in warning and "shell-injection" in warning
+            assert "contains [' |]" in warning and "shell-injection" in warning
             assert QUOTED not in warning
 
     def test_harmless_identifier_runs(self):
