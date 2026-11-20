@@ -102,6 +102,28 @@ def test_breakout(tmp_path, command, breakout, requires):
 
 
 @pytest.mark.parametrize(
+    "script,reported",
+    [
+        ("#!/bin/sh\ntool ${free}\n", True),
+        # A comment ends with its line, and the next line is a new command.
+        ("#!/bin/sh\n# ${free}\ntool '$input'\n", False),
+        ("#!/bin/sh\n# note\ntool ${free}\n", True),
+    ],
+)
+def test_shell_script_configfile_has_lines(tmp_path, script, reported):
+    configfiles = f'<configfile name="script"><![CDATA[{script}]]></configfile>'
+    report = review(tmp_path, "sh '$script'", configfiles)
+    assert any(f.location == "configfile:script" and f.severity == HIGH for f in report.findings) is reported
+
+
+def test_quote_in_a_here_document_does_not_quote_the_rest_of_the_script(tmp_path):
+    script = "#!/bin/sh\ncat <<EOF\ndon't\nEOF\ntool ${free}\n"
+    configfiles = f'<configfile name="script"><![CDATA[{script}]]></configfile>'
+    finding = high(review(tmp_path, "sh '$script'", configfiles))
+    assert ";" in finding.breakout
+
+
+@pytest.mark.parametrize(
     "command",
     [
         # Template code can write the character that leaves the quotes, whatever the user wrote.

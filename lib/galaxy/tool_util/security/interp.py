@@ -439,7 +439,10 @@ class TemplateAnalysis:
     # -- entry ---------------------------------------------------------------------------------
 
     def run(self) -> None:
-        initial = shell.INITIAL if self.language == "shell" else _Text()
+        if self.language == "shell":
+            initial: shell.ShellState | _Text = shell.INITIAL if self.location == "command" else shell.SCRIPT
+        else:
+            initial = _Text()
         try:
             with recording(self._record):
                 states = self.block(self.template.main.body, frozenset((initial,)), Env())
