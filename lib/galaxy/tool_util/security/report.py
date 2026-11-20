@@ -111,6 +111,9 @@ class Finding:
     # Characters of the value that close or open quotes where it is written, which flips the
     # quoting of the rest of the line for every other value (see Report.writes).
     closes: frozenset[str] = frozenset()
+    # The finding holds only when another value of the template brings a character that closes
+    # or escapes a quote (a value after one that can end in a backslash).
+    needs_closer: bool = False
     # Sources whose value the template rewrites in a way that can bring in a breakout character
     # (str.replace, re.sub, a decoder, an unknown function): their characters decide nothing.
     unchecked: tuple[SourceRef, ...] = ()
@@ -161,6 +164,7 @@ class Report:
                     # Either finding's condition implies the merged one.
                     requires=(first.requires | second.requires if first.requires and second.requires else frozenset()),
                     closes=first.closes | second.closes,
+                    needs_closer=first.needs_closer and second.needs_closer,
                     unchecked=sorted_refs((*first.unchecked, *second.unchecked)),
                 )
                 return

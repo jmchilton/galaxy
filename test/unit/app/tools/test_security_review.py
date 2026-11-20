@@ -370,6 +370,40 @@ def test_quote_from_a_medium_finding_frees_another_value(app, tmp_path, written)
     reviewer(tmp_path, ENFORCE).check_job(tool, job)
 
 
+SCRIPT = """<tool id="script" name="Script" version="1.0" profile="24.0">
+  <command>python '$script'</command>
+  <configfiles><configfile name="script">print('$q', '$x')</configfile></configfiles>
+  <inputs>
+    <param name="q" type="text"><sanitizer><valid initial="string.ascii_letters"><add value="\\"/></valid></sanitizer></param>
+    <param name="x" type="text"><sanitizer><valid initial="string.printable"><remove value="&apos;"/></valid></sanitizer></param>
+  </inputs>
+  <outputs><data name="out" format="txt"/></outputs>
+</tool>
+"""
+
+
+@pytest.mark.parametrize(
+    "q,x,refused",
+    [
+        # q can end in a backslash but does not: x stays inside its string.
+        ("a", 'say "hi" (now)', False),
+        # print('\\', '), print(1), (') runs print(1).
+        ("\\", "), print(1), (", True),
+    ],
+)
+def test_value_after_an_escaped_quote_counts_only_when_one_is_escaped(app, tmp_path, q, x, refused):
+    tool = make_tool(app, tmp_path, SCRIPT, "script.xml")
+    job: Any = SimpleNamespace(job=SimpleNamespace(id=7), consumes_names=False, consumes_identifiers=False)
+    job.param_dict = {
+        name: InputValueWrapper(cast(ToolParameter, tool.inputs[name]), value) for name, value in (("q", q), ("x", x))
+    }
+    if refused:
+        with pytest.raises(ToolInputRejected):
+            reviewer(tmp_path, ENFORCE).check_job(tool, job)
+    else:
+        reviewer(tmp_path, ENFORCE).check_job(tool, job)
+
+
 def test_collection_name_is_checked(app, tmp_path):
     # `$c.name` gives the collection's name, and the review does not tell it from element identifiers.
     tool = make_tool(app, tmp_path)

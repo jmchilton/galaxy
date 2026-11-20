@@ -503,6 +503,9 @@ def find_violations(report: Report, param_dict: dict[str, Any]) -> Iterator[Viol
     for finding in vulnerabilities:
         if finding.severity not in CHECKED_SEVERITIES or not finding.checkable:
             continue
+        if finding.needs_closer and not closers.get(finding.location):
+            # No value of the job escapes the quote this finding is about.
+            continue
         values = own(finding)
         present = frozenset().union(*values.values())
         if not present & finding.breakout or (finding.requires and not present & finding.requires):
