@@ -53,7 +53,6 @@ from galaxy.tool_util.security.report import (
     GROUP_TAGS,
     METADATA,
     OPAQUE,
-    QUOTE_CLOSERS,
     RAW,
     SPECIAL,
     TEXT,
@@ -492,10 +491,14 @@ def find_violations(report: Report, param_dict: dict[str, Any]) -> Iterator[Viol
     for finding in vulnerabilities:
         if not finding.checkable:
             continue
-        quotes = finding.breakout & QUOTE_CLOSERS
+        quotes = finding.closes
         for ref, chars in own(finding).items() if quotes else ():
             if chars & quotes:
                 closers.setdefault(finding.location, {}).setdefault(ref, set()).update(chars & quotes)
+    for location, by_ref in report.closers.items():
+        for ref, quotes in by_ref.items():
+            if ref.accessor != OPAQUE and chars_of(ref) & quotes:
+                closers.setdefault(location, {}).setdefault(ref, set()).update(chars_of(ref) & quotes)
 
     for finding in vulnerabilities:
         if finding.severity not in CHECKED_SEVERITIES or not finding.checkable:

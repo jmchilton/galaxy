@@ -149,6 +149,14 @@ def test_writes_record_what_does_harm_outside_quotes(tmp_path):
     assert Report.from_dict(json.loads(json.dumps(report.to_dict()))).writes == report.writes
 
 
+def test_a_quote_left_raw_by_escaping_closes(tmp_path):
+    # repr() writes `"x'"`: its `"` closes the template's double quotes, and the value's own `'`
+    # then opens single quotes that flip the rest of the line.
+    report = review(tmp_path, """echo "${repr(str($quotes))}" && echo '$word'""")
+    (finding,) = [f for f in report.findings if f.kind == "vulnerability" and f.refs == (SourceRef(TEXT, "quotes"),)]
+    assert finding.closes == frozenset("'\"") and finding.checkable
+
+
 def test_writes_are_left_out_when_a_value_is_rewritten(tmp_path):
     report = review(tmp_path, """echo '${str($no_quote).replace("Q", ";")}' && echo '${free}'""")
     assert "command" not in report.writes
