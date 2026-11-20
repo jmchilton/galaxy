@@ -188,7 +188,16 @@ class _Text:
     quote: str = ""
     esc: bool = False
     escaped: str = ""  # as ShellState.escaped
+    evaluated: bool = False  # the current string is code the script runs: eval('...'), parse(text = '...')
 
+
+# What opens a string that the script itself runs as code, by configfile language: the text before the quote.
+_EVALUATED_STRING = {
+    "python": re.compile(r"(?<![\w.])(eval|exec|compile)\s*\(\s*[rRbBuUfF]{0,2}$"),
+    "R": re.compile(r"(?<![\w.])(parse\s*\(\s*text\s*=|str2lang\s*\(|str2expression\s*\()\s*$"),
+    "sh": re.compile(r"(?<![\w.-])(eval|(ba|da|z)?sh\s+-c)\s+$"),
+    "perl": re.compile(r"(?<![\w$])eval\s*\(?\s*$"),
+}
 
 States = frozenset[Any]
 _COLLECTOR = "_captureCollector_"
@@ -668,11 +677,13 @@ class TemplateAnalysis:
             return states
         if self.language == "shell":
             return frozenset(shell.feed(state, text, self.events) for state in states)
-        return frozenset(self._feed_text(state, text) for state in states)
+        return frozenset(self._feed_text(state, text, self.language) for state in states)
 
     @staticmethod
-    def _feed_text(state: _Text, text: str) -> _Text:
-        quote, esc, escaped = state.quote, state.esc, state.escaped
+    def _feed_text(state: _Text, text: str, language: str = "") -> _Text:
+        quote, esc, escaped, evaluated = state.quote, state.esc, state.escaped, state.evaluated
+        opener = _EVALUATED_STRING.get(language)
+        code = ""  # program text of this chunk before the current position, outside strings
         for c in text:
             if c == "\n" and not esc:
                 # Only a value on the same line is taken to follow the escaped quote: a Python string
@@ -686,9 +697,13 @@ class TemplateAnalysis:
             elif quote:
                 if c == quote or c == "\n":
                     quote = ""
+                    evaluated = False
             elif c in "'\"":
                 quote = c
-        return _Text(quote, esc, escaped)
+                evaluated = bool(opener and opener.search(code[-40:]))
+            if not quote:
+                code = "" if c == "\n" else code + c
+        return _Text(quote, esc, escaped, evaluated)
 
     def write_placeholder(self, node: ast.expr | None, raw_expr: str | None, states: States, env: Env) -> States:
         if isinstance(node, ast.Call) and not self._capture:
@@ -736,9 +751,9 @@ class TemplateAnalysis:
             after_config: set[_Text] = set()
             for state in states:
                 escaped = bool(state.quote) and state.escaped == state.quote
-                self.judge_config(text, state.quote, raw_expr, escaped)
+                self.judge_config(text, state.quote, raw_expr, escaped, state.evaluated)
                 if self._can_escape_config_quote(text, state.quote):
-                    state = _Text(state.quote, state.esc, state.quote)
+                    state = _Text(state.quote, state.esc, state.quote, state.evaluated)
                 after_config.add(state)
             return frozenset(after_config)
         out = set()
@@ -846,9 +861,28 @@ class TemplateAnalysis:
         for verdict in verdicts:
             self.finding(verdict, text, context.describe(), raw_expr)
 
-    def judge_config(self, text: AV, quote: str, raw_expr: str | None, escaped: bool = False) -> None:
-        """``escaped``: an earlier user value in the same kind of string can end in a backslash."""
+    def judge_config(
+        self, text: AV, quote: str, raw_expr: str | None, escaped: bool = False, evaluated: bool = False
+    ) -> None:
+        """``escaped``: an earlier user value in the same kind of string can end in a backslash.
+        ``evaluated``: the string is code that the script runs (``eval('...')``)."""
         chars = text.chars
+        if evaluated and self.language in CODE_LANGUAGES:
+            # Escaping only keeps the value inside the string; the script then runs the string.
+            verdict = charsets.code(self.language, chars, "")
+            if verdict:
+                self.finding(
+                    Verdict(
+                        "configfile-injection",
+                        verdict.severity,
+                        verdict.chars,
+                        f"{verdict.why} when it runs the string",
+                    ),
+                    text,
+                    f"inside a {quote}...{quote} string that the {self.language} script evaluates as code",
+                    raw_expr,
+                )
+                return
         if text.quoted == "json" or (text.quoted == "pyrepr" and self.language == "python"):
             # Escaped by json.dumps, or a Python list written into Python code.
             return
