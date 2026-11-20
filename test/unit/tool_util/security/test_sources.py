@@ -138,12 +138,21 @@ def test_literal_elements_joined_with_a_value_are_not_the_users(tmp_path, comman
     assert finding.unchecked and not finding.checkable
 
 
-def test_requires_only_with_a_single_user_value(tmp_path):
-    # `echo '$x' && echo '$y'`: a quote in x leaves the `;` of y unquoted.
-    report = review(tmp_path, "echo '${free}' && echo '${text.value}'")
-    findings = [f for f in report.findings if f.severity == HIGH]
-    assert len(findings) == 2
-    assert all(f.breakout == frozenset("'") and not f.requires for f in findings)
+def test_writes_record_what_does_harm_outside_quotes(tmp_path):
+    # `echo '$x' && echo '$y'`: a quote in x leaves the `;` of y unquoted. `no_quote` has no finding
+    # (it cannot leave its quotes), but its `;` does harm once another value's quote frees it.
+    report = review(tmp_path, "echo '${free}' && echo '${no_quote}' && echo '$word'")
+    writes = report.writes["command"]
+    assert writes[SourceRef(TEXT, "free")] == SHELL_EXEC
+    assert writes[SourceRef(TEXT, "no_quote")] == SHELL_EXEC
+    assert writes[SourceRef(TEXT, "word")] == frozenset()
+    assert Report.from_dict(json.loads(json.dumps(report.to_dict()))).writes == report.writes
+
+
+def test_writes_are_left_out_when_a_value_is_rewritten(tmp_path):
+    report = review(tmp_path, """echo '${str($no_quote).replace("Q", ";")}' && echo '${free}'""")
+    assert "command" not in report.writes
+    assert not any(f.checkable for f in report.findings if f.kind == "vulnerability")
 
 
 def test_a_rewritten_value_makes_the_whole_template_uncheckable(tmp_path):
