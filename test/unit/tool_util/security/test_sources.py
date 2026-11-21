@@ -359,6 +359,21 @@ def test_parameter_named_without_its_nesting_is_looked_up_in_each_when_block(tmp
     assert refs(report) == {SourceRef(TEXT, "c.x"), SourceRef(TEXT, "c.s.x")}
 
 
+def test_many_narrowings_of_a_conditional_are_reviewed_in_time(tmp_path):
+    # Each #if/#elif on the selector narrows the conditional; a template with many of them
+    # inside a repeat once took minutes.
+    cases = range(6)
+    options = "".join(f'<option value="v{i}">v{i}</option>' for i in cases)
+    whens = "".join(f'<when value="v{i}"><param name="p{i}" type="text"/></when>' for i in cases)
+    inputs = f'<repeat name="r" title="r"><conditional name="c"><param name="sel" type="select">{options}</param>{whens}</conditional></repeat>'
+    blocks = "".join(
+        f"#if $t.c.sel == 'v{b % 6}'\necho '$t.c.p{b % 6}'\n#elif $t.c.sel == 'v{(b + 1) % 6}'\necho '$t.c.p{(b + 1) % 6}'\n#end if\n"
+        for b in range(12)
+    )
+    report = review_with_inputs(tmp_path, f"#for $t in $r\n{blocks}#end for", inputs, timeout=5)
+    assert refs(report) == {SourceRef(TEXT, f"r.c.p{i}") for i in cases}
+
+
 def test_template_without_such_parts_is_checkable(tmp_path):
     report = review(tmp_path, "echo '$input.element_identifier'")
     assert report.unchecked_locations == {}

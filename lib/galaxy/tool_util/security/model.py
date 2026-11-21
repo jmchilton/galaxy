@@ -209,6 +209,33 @@ def _quoted(a: AV, b: AV) -> str:
     return kind
 
 
+def _merge_narrowed(nodes: tuple[Node, ...]) -> tuple[Node, ...]:
+    """The nodes with the narrowed copies of one conditional merged into one, narrowed to all their values.
+
+    An attribute of the merged conditional is a parameter of one of their ``<when>`` blocks, as it
+    is of one of the copies (:meth:`Group.attr` looks in each block).
+    """
+    narrowed: dict[Group, list[Group]] = {}
+    for node in nodes:
+        if isinstance(node, Group) and node.selector:
+            narrowed.setdefault(node._origin or node, []).append(node)
+    if all(len(copies) == 1 for copies in narrowed.values()):
+        return nodes
+    merged: dict[Node, Node] = {}
+    for origin, copies in narrowed.items():
+        if len(copies) > 1:
+            values = frozenset().union(*(copy.case_values for copy in copies))
+            whole = origin if values == origin.case_values else origin.restrict(set(values))
+            for copy in copies:
+                merged[copy] = whole or origin
+    out: list[Node] = []
+    for node in nodes:
+        node = merged.get(node, node)
+        if node not in out:
+            out.append(node)
+    return tuple(out)
+
+
 def join(*values: AV | None) -> AV:
     present = [v for v in values if v is not None]
     if not present:
@@ -217,7 +244,8 @@ def join(*values: AV | None) -> AV:
     for other in present[1:]:
         if other is out or other == out:
             continue
-        nodes = out.nodes + tuple(n for n in other.nodes if n not in out.nodes)
+        known = set(out.nodes)
+        nodes = _merge_narrowed(out.nodes + tuple(n for n in other.nodes if n not in known))
         items = None
         if out.items is not None and other.items is not None and len(out.items) == len(other.items):
             items = tuple(join(a, b) for a, b in zip(out.items, other.items))
@@ -280,17 +308,33 @@ class Group(Node):
     selector: str = ""
     cases: dict[Node, str] = field(default_factory=dict)
     case_values: frozenset[str] = frozenset()
+    # find() and restrict() results: a template looks up the same names and narrows the same
+    # conditionals many times, and one object per narrowing keeps values from piling up copies.
+    _found: dict[str, tuple[Node, ...]] = field(default_factory=dict, repr=False)
+    _restricted: dict[frozenset[str], Group] = field(default_factory=dict, repr=False)
+    # The conditional a restricted one was narrowed from.
+    _origin: Group | None = field(default=None, repr=False)
 
     def add(self, name: str | None, node: Node) -> None:
         if name:
             self.children.setdefault(name, []).append(node)
+            self._found.clear()
+            self._restricted.clear()
 
     def restrict(self, values: set[str]) -> Group | None:
         """The conditional when its test parameter has one of these values, None for an unknown value."""
-        if not self.selector or not values <= self.case_values:
+        key = frozenset(values)
+        if not self.selector or not key <= self.case_values:
             return None
+        # Narrowing a narrowed conditional is narrowing the original one to fewer values.
+        origin = self._origin or self
+        if key not in origin._restricted:
+            origin._restricted[key] = origin._restrict(key)
+        return origin._restricted[key]
+
+    def _restrict(self, values: frozenset[str]) -> Group:
         # Still a conditional: an `#else if` on the same selector narrows it further.
-        restricted = Group(self.path, selector=self.selector, case_values=frozenset(values))
+        restricted = Group(self.path, selector=self.selector, case_values=values, _origin=self)
         for name, nodes in self.children.items():
             for node in nodes:
                 if node not in self.cases:
@@ -318,14 +362,16 @@ class Group(Node):
         return AV(nodes=tuple(nodes)) if nodes else None
 
     def find(self, name: str) -> list[Node]:
-        found = list(self.children.get(name, []))
-        for nodes in self.children.values():
-            for node in nodes:
-                if isinstance(node, Group):
-                    found.extend(node.find(name))
-                elif isinstance(node, Repeat):
-                    found.extend(node.item.find(name))
-        return found
+        if name not in self._found:
+            found = list(self.children.get(name, []))
+            for nodes in self.children.values():
+                for node in nodes:
+                    if isinstance(node, Group):
+                        found.extend(node.find(name))
+                    elif isinstance(node, Repeat):
+                        found.extend(node.item.find(name))
+            self._found[name] = tuple(found)
+        return list(self._found[name])
 
 
 @dataclass(eq=False)
