@@ -127,20 +127,43 @@ def _matched_chars(old: Any) -> charsets.Chars:
     return charsets.probe(old) | (frozenset("\n") if "\r" in old else charsets.NONE)
 
 
+# How a quote character moves the quote state of shell text: none (""), single or double quotes.
+_QUOTE_MOVES = {("", "'"): "'", ("", '"'): '"', ("'", "'"): "", ('"', '"'): ""}
+
+
+def _after_text(states: frozenset[str], text: str) -> frozenset[str]:
+    after = set()
+    for state in states:
+        for char in text:
+            state = _QUOTE_MOVES.get((state, char), state)
+        after.add(state)
+    return frozenset(after)
+
+
 def _kept_literal_chars(item: AV, separator: AV) -> charsets.Chars:
     """The literal text each element of a join writes around its own value (`"'%s'" % x`).
 
-    Writing two elements and the separator between them shows every quote state a longer join
-    reaches only when their text quotes with one kind of quote and escapes nothing: with both
-    kinds, three elements can reach a third. That holds for elements that are one of several
-    strings too, each written in both places.
+    The join is written as two elements and the separator between them. That shows every quote
+    state a longer join reaches when a third element can only start in a quote state the first or
+    the second started in, from wherever the join is written. An element can be one of several
+    strings; its values move no quotes (their own quotes are theirs to be checked for).
     """
     if not item.tainted or separator.parts is None or separator.tainted:
         return charsets.NONE
-    pieces = [part for string in item.alts or (item,) for part in string.parts or ()] + list(separator.parts)
-    literal = "".join(part for part in pieces if isinstance(part, str))
-    if len(set(literal) & set("'\"")) > 1 or set(literal) & set("\\`$"):
+    texts = ["".join(part for part in string.parts or () if isinstance(part, str)) for string in item.alts or (item,)]
+    between = "".join(part for part in separator.parts if isinstance(part, str))
+    literal = "".join(texts) + between
+    if set(literal) & set("\\`$"):
         return charsets.NONE
+
+    def next_starts(starts: frozenset[str]) -> frozenset[str]:
+        return _after_text(frozenset().union(*(_after_text(starts, text) for text in texts)), between)
+
+    for state in ("", "'", '"'):
+        first = frozenset((state,))
+        second = next_starts(first)
+        if not next_starts(second) <= first | second:
+            return charsets.NONE
     return charsets.probe(literal)
 
 
