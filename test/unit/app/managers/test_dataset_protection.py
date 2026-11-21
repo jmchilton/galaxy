@@ -604,9 +604,12 @@ def test_jobs_with_protected_inputs_are_detected(tmp_path):
 
 def test_only_tools_keeping_decrypted_data_in_galaxy_decrypt_inputs():
     file_sources = FileSourceConfigFile(name="file_sources", content=FileSourceConfigFileContent())
-    assert _can_decrypt_inputs(cast(Tool, Bunch(tool_type="default", config_files=[])))
-    assert not _can_decrypt_inputs(cast(Tool, Bunch(tool_type="interactive", config_files=[])))
-    assert not _can_decrypt_inputs(cast(Tool, Bunch(tool_type="default", config_files=[file_sources])))
+    assert _can_decrypt_inputs(cast(Tool, Bunch(tool_type="default", config_files=[], credentials=None)))
+    assert not _can_decrypt_inputs(cast(Tool, Bunch(tool_type="interactive", config_files=[], credentials=None)))
+    assert not _can_decrypt_inputs(
+        cast(Tool, Bunch(tool_type="default", config_files=[file_sources], credentials=None))
+    )
+    assert not _can_decrypt_inputs(cast(Tool, Bunch(tool_type="default", config_files=[], credentials=[object()])))
 
 
 def _grant_on(dataset, user_id, **grant_data):
@@ -632,7 +635,7 @@ def test_jobs_refuse_extra_files_protected_for_another_user(tmp_path, creator_ex
     manager = _manager()
     manager.inputs_needing_decryption = mock.MagicMock(return_value=[output])
     manager.get_usable_grant = mock.MagicMock(return_value=own_grant)
-    tool = cast(Tool, Bunch(tool_type="default", config_files=[]))
+    tool = cast(Tool, Bunch(tool_type="default", config_files=[], credentials=None))
 
     if refused:
         with pytest.raises(RequestParameterInvalidException, match="encrypted by a job of another user"):
@@ -654,7 +657,7 @@ def test_jobs_refuse_extra_files_whose_authorization_expires(tmp_path):
     manager = _manager()
     manager.inputs_needing_decryption = mock.MagicMock(return_value=[output])
     manager.get_usable_grant = mock.MagicMock(return_value=grant)
-    tool = cast(Tool, Bunch(tool_type="default", config_files=[]))
+    tool = cast(Tool, Bunch(tool_type="default", config_files=[], credentials=None))
 
     with pytest.raises(RequestParameterInvalidException, match="can't be decrypted anymore"):
         manager.check_job_inputs(cast(User, Bunch(id=2)), tool, {})
@@ -767,7 +770,7 @@ def test_grants_expiring_before_a_job_can_end_are_refused_when_requested(tmp_pat
     manager = _manager(walltime=timedelta(hours=48))
     manager.get_grant = mock.MagicMock(return_value=grant)
     manager.inputs_needing_decryption = mock.MagicMock(return_value=[output])
-    tool = cast(Tool, Bunch(tool_type="default", config_files=[]))
+    tool = cast(Tool, Bunch(tool_type="default", config_files=[], credentials=None))
 
     assert not manager.grant_status(cast(User, Bunch(id=1)), cast(DatasetInstance, output)).ready
     with pytest.raises(RequestParameterInvalidException, match="not authorized to decrypt it in jobs"):

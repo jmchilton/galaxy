@@ -110,7 +110,7 @@ decrypts and encrypts the data. The following are **outside** the protection:
 - **Tools.** A tool can write the plaintext anywhere it can reach, including the
   network. Only make vetted tools available on destinations running protected
   jobs, and block network egress from jobs. Galaxy only refuses tools it gives
-  the user's file sources to, such as the remote export tool.
+  the user's file sources or credentials to, such as the remote export tool.
 - **Output names and collection element identifiers.** They are stored in the
   database in clear. Tools set them through `galaxy.json` or the names of the
   files they write, which can come from the data, for example sample names read
@@ -391,7 +391,8 @@ Limitations:
 - Only regular command-line tools can decrypt data. Interactive tools, data
   managers, expression tools and other special tool types are refused, as are
   tools given the user's file sources (`<file_sources>` config files), such as
-  the remote export tool. They would write the decrypted data out of Galaxy.
+  the remote export tool, and tools declaring `<credentials>` for external
+  services. They would write the decrypted data out of Galaxy.
   Inputs of parameters accepting Crypt4GH formats are passed encrypted to any tool.
 - The standard output and error of tools decrypting data may contain decrypted
   data, so they are not stored with the job or the outputs, and messages about

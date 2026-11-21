@@ -156,7 +156,10 @@ def _set_grant_data(grant: DatasetProtectionGrant, grant_data: Crypt4GHGrantData
 def _can_decrypt_inputs(tool: "Tool") -> bool:
     if tool.tool_type not in PROTECTED_TOOL_TYPES:
         return False
-    # Tools given the user's file sources (e.g. export_remote) would send the decrypted data out of Galaxy.
+    # Tools given the user's file sources (e.g. export_remote) or credentials for external services would
+    # send the decrypted data out of Galaxy.
+    if tool.credentials:
+        return False
     return not any(isinstance(config_file, FileSourceConfigFile) for config_file in tool.config_files)
 
 
