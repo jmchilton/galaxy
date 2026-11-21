@@ -28,6 +28,7 @@ from galaxy.tool_util.security.report import (
     RAW,
     SPECIAL,
     TEXT,
+    USER_PREFERENCE,
 )
 from .test_review import review
 
@@ -569,3 +570,9 @@ def test_escaped_quote_stays_in_the_word_of_a_nested_program(tmp_path, command):
     # The shell reads '"'"' inside the single-quoted word; the program in it gets the quote.
     findings = [f for f in review(tmp_path, command).findings if f.severity == HIGH]
     assert {f.rule for f in findings} == {"nested-interpreter"}
+
+
+def test_user_preference_is_checkable(tmp_path):
+    finding = high(review(tmp_path, """echo "${__user__.extra_preferences.get('account|name', '')}" """))
+    assert finding.refs == (SourceRef(USER_PREFERENCE, None, "account|name"),)
+    assert finding.checkable

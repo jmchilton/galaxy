@@ -51,6 +51,7 @@ from .report import (
     SourceRef,
     SPECIAL,
     TEXT,
+    USER_PREFERENCE,
 )
 from .validators import text_constraint
 
@@ -634,6 +635,40 @@ def dataset_content(datasets: tuple[Data, ...]) -> AV:
     return join(*contents)
 
 
+_USER_OBJECT = tainted(PROBE, source("attribute of the $__user__ object (not sanitized)", OPAQUE))
+
+
+@dataclass(eq=False)
+class User(Node):
+    """``$__user__``: the user's model object. Its preferences are the user's to set."""
+
+    path: str = "__user__"
+
+    def text(self) -> AV:
+        return CLEAN
+
+    def attr(self, name: str) -> AV | None:
+        if name == "extra_preferences":
+            return AV(nodes=(UserPreferences("__user__.extra_preferences"),))
+        return AV(nodes=(Opaque(f"__user__.{name}", _USER_OBJECT),))
+
+
+@dataclass(eq=False)
+class UserPreferences(Opaque):
+    """``$__user__.extra_preferences``: ``.get(name)`` is one preference."""
+
+    value: AV = field(default_factory=lambda: _USER_OBJECT)
+
+    def attr(self, name: str) -> AV | None:
+        if name == "get":
+            return AV(bound=(AV(nodes=(self,)), "__preference__"))
+        return super().attr(name)
+
+
+def user_preference(name: str) -> AV:
+    return tainted(PROBE, source(f"user preference '{name}' (not sanitized)", USER_PREFERENCE, key=name))
+
+
 def file_content() -> AV:
     """What ``open(path)`` gives a template: the content of a file, which is a dataset unless shown otherwise."""
     content = tainted(PROBE, source("content of a file the template reads with open() (not sanitized)", OPAQUE))
@@ -745,7 +780,7 @@ class Model:
     root: Group
     sanitize: bool = True
     configfiles: dict[str, str] = field(default_factory=dict)
-    specials: dict[str, Special] = field(default_factory=dict)
+    specials: dict[str, Node] = field(default_factory=dict)
     # Template macros: Cheetah text the template can read in with `#include source=$name#`.
     templates: dict[str, str] = field(default_factory=dict)
     _job_parameters: dict[str, Opaque] = field(default_factory=dict, repr=False)
@@ -952,8 +987,7 @@ def build_model(tool_source: ToolSource) -> Model:
     for name in _USER_SPECIALS:
         chars = DEFAULT_SANITIZED if tool_sanitize else PROBE
         model.specials[name] = Special(name, value=tainted(chars, source(f"${name}", SPECIAL, key=name)))
-    model.specials["__user__"] = Special(
-        "__user__", opaque=tainted(PROBE, source("attribute of the $__user__ object (not sanitized)", OPAQUE))
-    )
+
+    model.specials["__user__"] = User()
     model.specials["__app__"] = Special("__app__", opaque=CLEAN)
     return model

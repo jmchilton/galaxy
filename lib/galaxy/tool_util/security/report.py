@@ -42,8 +42,20 @@ METADATA = "metadata"  # a metadata element of the input datasets (key)
 GROUP_TAGS = "group_tags"  # the group: tags of the input datasets
 SPECIAL = "special"  # a value Galaxy adds for the user, such as $__user_email__ (key)
 DATASET_CONTENT = "dataset_content"  # the content of the input datasets, which the template reads with open()
+USER_PREFERENCE = "user_preference"  # a preference the user set, $__user__.extra_preferences (key)
 OPAQUE = "opaque"  # an object the template can read anything from: no single value to compare
-ACCESSORS = (TEXT, RAW, ELEMENT_IDENTIFIER, DATASET_ATTRIBUTE, METADATA, GROUP_TAGS, SPECIAL, DATASET_CONTENT, OPAQUE)
+ACCESSORS = (
+    TEXT,
+    RAW,
+    ELEMENT_IDENTIFIER,
+    DATASET_ATTRIBUTE,
+    METADATA,
+    GROUP_TAGS,
+    SPECIAL,
+    DATASET_CONTENT,
+    USER_PREFERENCE,
+    OPAQUE,
+)
 
 
 @dataclass(frozen=True)

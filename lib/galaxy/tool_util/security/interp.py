@@ -51,6 +51,7 @@ from .model import (
     SAFE_SPECIALS,
     Special,
     stringify,
+    user_preference,
 )
 from .report import (
     Finding,
@@ -1741,6 +1742,11 @@ class TemplateAnalysis:
             attribute_name = _const(arg_nodes[0]) if arg_nodes else None
             if isinstance(attribute_name, str):
                 return self._autocall(attribute(receiver, attribute_name), env)
+        if name == "__preference__":
+            # $__user__.extra_preferences.get('name', default)
+            preference = _const(arg_nodes[0]) if arg_nodes else None
+            found = user_preference(preference) if isinstance(preference, str) else stringify(receiver)
+            return join(found, *(contents(a) for a in args[1:] + keywords))
         if name in _CLEAN_METHODS:
             return CLEAN
         if receiver.helper:
