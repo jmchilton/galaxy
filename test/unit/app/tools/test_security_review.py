@@ -618,6 +618,8 @@ SCRIPT_LINE = """<tool id="script_line" name="Script line" version="1.0" profile
     [
         ("echo $q", "x\nid", True),
         ("echo $q", "x id", False),
+        # The template makes a newline of the carriage return.
+        ("#set $v = str($q).replace('\\r', '\\n')\necho $v", "x\rid", True),
     ],
 )
 def test_newline_in_a_shell_script_starts_a_command(app, tmp_path, script, q, expected):

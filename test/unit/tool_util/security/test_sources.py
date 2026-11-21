@@ -480,3 +480,10 @@ def test_newline_starts_a_command_in_a_shell_script(tmp_path):
     script = review(tmp_path, "bash '$script'", configfiles='<configfile name="script">echo $free</configfile>')
     assert "\n" in high(script).breakout
     assert "\n" not in high(review(tmp_path, "echo $free")).breakout
+
+
+def test_newline_a_replace_makes_of_a_carriage_return_is_checked(tmp_path):
+    configfile = """<configfile name="script">#set $v = str($free).replace('\\r', '\\n')\necho $v</configfile>"""
+    finding = high(review(tmp_path, "bash '$script'", configfiles=configfile))
+    assert "\n" in finding.breakout
+    assert finding.checkable
