@@ -555,6 +555,9 @@ class Collection(Node):
             return AV(bound=(AV(elem=pair), "__value__"))
         if name == "values":
             return AV(bound=(AV(elem=self.element()), "__value__"))
+        if name == "get_datasets_for_group":
+            # The datasets of the collection, at any depth, whose tags name the group.
+            return AV(bound=(AV(elem=AV(nodes=(Data(self.path, sanitize=self.sanitize),))), "__value__"))
         if name in ("element_identifiers_extensions_paths_and_metadata_files", "sample_sheet_row"):
             return AV(nodes=(Opaque(f"{self.path}.{name}", self._identifier()),))
         if name == "get_all_staging_paths":
@@ -566,7 +569,7 @@ class Collection(Node):
             name
             in (
                 "safe_element_identifier is_collection all_paths all_metadata_files has_single_item"
-                " is_input_supplied collection serialize paths_as_file get_datasets_for_group"
+                " is_input_supplied collection serialize paths_as_file"
             ).split()
         ):
             return CLEAN
