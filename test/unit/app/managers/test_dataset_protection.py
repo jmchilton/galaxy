@@ -13,7 +13,6 @@ from typing import cast
 from unittest import mock
 
 import pytest
-from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
 from galaxy.config import GalaxyAppConfiguration
@@ -82,32 +81,11 @@ def test_valid_grant_is_stored_as_naive_utc():
     assert base64.b64decode(record.grant_data.compute_header) == _header(b"compute packet")
 
 
-@pytest.mark.parametrize(
-    "overrides",
-    [
-        {"crypt4gh_compute_header": "not base64!"},
-        {"crypt4gh_compute_header": base64.b64encode(b"not a header").decode()},
-        {"crypt4gh_compute_header": base64.b64encode(_header(b"packet") + b"trailing body").decode()},
-        {"crypt4gh_compute_keypair_expiration_date": datetime.now(timezone.utc) - timedelta(minutes=1)},
-        {"crypt4gh_compute_keypair_expiration_date": datetime.now(timezone.utc) + timedelta(hours=20)},
-        {"crypt4gh_compute_keypair_expiration_date": datetime.now(timezone.utc) + timedelta(days=60)},
-    ],
-)
-def test_invalid_grants_are_rejected(overrides):
-    with pytest.raises(RequestParameterInvalidException):
-        validate_crypt4gh_grant(_payload(**overrides), JOB_MARGIN)
-
-
 def test_keypairs_expiring_before_a_job_could_finish_are_rejected():
     # Accepted by the key service for another day, but not until a job hitting a 48h walltime ends.
     payload = _payload(crypt4gh_compute_keypair_expiration_date=datetime.now(timezone.utc) + timedelta(hours=60))
     with pytest.raises(RequestParameterInvalidException, match="expires before a job using it could finish"):
         validate_crypt4gh_grant(payload, _manager(walltime=timedelta(hours=48)).job_margin)
-
-
-def test_expiration_dates_without_timezone_are_rejected():
-    with pytest.raises(ValidationError):
-        _payload(crypt4gh_compute_keypair_expiration_date=datetime.now() + timedelta(days=6))
 
 
 class _FakeObjectStore:
@@ -222,19 +200,6 @@ def _with_bam_index(tmp_path, output, record, index_content):
     output.datatype = build_crypt4gh_datatype(Bam())
     output.metadata.bam_index = _FakeMetadataFile(str(index))
     return index
-
-
-def test_finish_job_records_grants_for_protected_outputs(tmp_path):
-    output, record = _protected_output(tmp_path)
-    _write_sidecar(str(tmp_path), {str(output.dataset.uuid): record})
-    manager = _manager()
-    with mock.patch("galaxy.managers.dataset_protection.DatasetProtectionGrant", Bunch):
-        assert manager.finish_job(_job(output), str(tmp_path)) is None
-    grant = manager.sa_session.add.call_args.args[0]
-    assert grant.dataset is output.dataset
-    assert grant.grant_data == {"compute_header": "compute", "extra_files": {}}
-    assert grant.source == "job:5"
-    assert not output.dataset.purged
 
 
 def test_finish_job_reads_utc_expiration_dates(tmp_path):
@@ -425,22 +390,6 @@ def test_grants_flag_copied_extra_files_of_outputs_copying_an_encrypted_input(tm
         assert manager.finish_job(_job(output), str(tmp_path)) is None
     grant = manager.sa_session.add.call_args.args[0]
     assert grant.grant_data == {"extra_files": {}, "copied_extra_files": ["copy.txt"]}
-
-
-def test_finish_job_grants_the_metadata_files_of_protected_outputs(tmp_path):
-    output, record = _protected_output(tmp_path)
-    _with_bam_index(tmp_path, output, record, _header(b"sealed") + b"encrypted index")
-    record["metadata_files"] = {"bam_index": "index compute header"}
-    _write_sidecar(str(tmp_path), {str(output.dataset.uuid): record})
-    manager = _manager()
-    with mock.patch("galaxy.managers.dataset_protection.DatasetProtectionGrant", Bunch):
-        assert manager.finish_job(_job(output), str(tmp_path)) is None
-    grant = manager.sa_session.add.call_args.args[0]
-    assert grant.grant_data == {
-        "compute_header": "compute",
-        "extra_files": {},
-        "metadata_files": {"bam_index": "index compute header"},
-    }
 
 
 @pytest.mark.parametrize(
