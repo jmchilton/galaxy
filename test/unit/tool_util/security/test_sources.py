@@ -464,6 +464,13 @@ def test_dataset_of_a_data_input_by_its_position_is_a_dataset(tmp_path, name):
     assert refs(report) == {SourceRef(ELEMENT_IDENTIFIER, "input")}
 
 
+def test_datasets_of_a_group_are_datasets_of_the_collection(tmp_path):
+    command = "#for $f in $flat.get_datasets_for_group($free)\necho '$f.element_identifier'\n#end for"
+    finding = high(review(tmp_path, command))
+    assert finding.refs == (SourceRef(ELEMENT_IDENTIFIER, "flat"),)
+    assert finding.checkable
+
+
 def test_value_put_into_a_dict_with_setitem_is_followed(tmp_path):
     command = "#import json\n#set $d = {}\n$d.__setitem__('k', $input.element_identifier)\necho '#echo json.dumps($d)#'"
     assert SourceRef(ELEMENT_IDENTIFIER, "input") in refs(review(tmp_path, command))
