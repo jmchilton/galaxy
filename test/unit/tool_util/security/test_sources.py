@@ -462,3 +462,8 @@ def test_job_parameter_of_a_tool_without_sanitizing_is_checked(tmp_path):
 def test_dataset_of_a_data_input_by_its_position_is_a_dataset(tmp_path, name):
     report = review(tmp_path, f"echo '${name}.element_identifier'")
     assert refs(report) == {SourceRef(ELEMENT_IDENTIFIER, "input")}
+
+
+def test_value_put_into_a_dict_with_setitem_is_followed(tmp_path):
+    command = "#import json\n#set $d = {}\n$d.__setitem__('k', $input.element_identifier)\necho '#echo json.dumps($d)#'"
+    assert SourceRef(ELEMENT_IDENTIFIER, "input") in refs(review(tmp_path, command))
