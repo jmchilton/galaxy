@@ -1422,6 +1422,15 @@ def test_get_data_head_disk_store_reads_the_start_of_the_file():
         assert object_store.get_data_head(MockDataset(1), 100) == b"the stored data"
 
 
+def test_get_data_head_distributed_store_reads_metadata_files_by_alt_name():
+    with TestConfig(DISTRIBUTED_TEST_CONFIG) as (directory, object_store):
+        dataset = MockDataset(1)
+        location = {"extra_dir": "_metadata_files", "extra_dir_at_root": True, "alt_name": "metadata_1.dat"}
+        working_path = directory.write("the metadata file", "job_working_directory/example_metadata")
+        object_store.update_from_file(dataset, file_name=working_path, create=True, **location)
+        assert object_store.get_data_head(dataset, 12, **location) == b"the metadata"
+
+
 def test_get_data_head_disk_store_fails_for_a_missing_object():
     with TestConfig(DISK_TEST_CONFIG) as (directory, object_store):
         with pytest.raises(ObjectNotFound):

@@ -283,6 +283,14 @@ def _read_report(job_directory: str, relative_path: str, default: str) -> str | 
         return f.read().strip() or default
 
 
+def _read_stored_header(head: bytes) -> bytes | None:
+    """The Crypt4GH header at the start of stored data, ``None`` if it doesn't start with one."""
+    try:
+        return read_crypt4gh_header(io.BytesIO(head))
+    except ValueError:
+        return None
+
+
 def _parse_key_expiration(value: str) -> datetime:
     """Expiration date reported by the key service, as naive UTC. Raises ``ValidationError`` without a timezone."""
     # datetime.fromisoformat() only accepts a 'Z' suffix from Python 3.11 on.
@@ -851,12 +859,8 @@ class DatasetProtectionManager:
         assert dataset and dataset.object_store
         # The stored data is checked independently of the compute host, read from the object store's backend:
         # Galaxy's cached copy of data written from another host (e.g. by Pulsar to a cloud store) can be stale.
-        head = dataset.object_store.get_data_head(dataset, MAX_CRYPT4GH_HEADER_SIZE)
-        try:
-            stored_header = read_crypt4gh_header(io.BytesIO(head))
-        except ValueError:
-            return False
-        if hashlib.sha256(stored_header).hexdigest() != record.header_sha256:
+        stored_header = _read_stored_header(dataset.object_store.get_data_head(dataset, MAX_CRYPT4GH_HEADER_SIZE))
+        if stored_header is None or hashlib.sha256(stored_header).hexdigest() != record.header_sha256:
             return False
         if dataset.extra_files_path_exists() and os.path.isdir(extra_files_path := dataset.extra_files_path):
             for relpath in iter_relpaths(extra_files_path):
@@ -865,7 +869,9 @@ class DatasetProtectionManager:
         for name in dataset_instance.metadata_file_types:
             metadata_file = dataset_instance.metadata.get(name)
             if metadata_file and (
-                name not in record.metadata_files or not check_crypt4gh(metadata_file.get_file_name())
+                name not in record.metadata_files
+                # Like the primary file, without pulling the whole file (e.g. a BAM index) into the cache.
+                or _read_stored_header(metadata_file.get_data_head(MAX_CRYPT4GH_HEADER_SIZE)) is None
             ):
                 return False
         return True

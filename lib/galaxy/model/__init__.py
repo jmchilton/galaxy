@@ -11802,6 +11802,13 @@ class MetadataFile(Base, StorableObject, Serializable):
         identifier = getattr(self, store_by)
         return object_store, f"metadata_{identifier}.dat"
 
+    def get_data_head(self, size: int) -> bytes:
+        """The first ``size`` bytes of the metadata file, read from the object store's backend, not its cache."""
+        object_store, alt_name = self._object_store_and_alt_name()
+        return object_store.get_data_head(
+            self, size, extra_dir="_metadata_files", extra_dir_at_root=True, alt_name=alt_name
+        )
+
     def get_file_name(self, sync_cache: bool = True, auth: ObjectStoreAuth | None = None) -> str:
         # Ensure the directory structure and the metadata file object exist
         try:

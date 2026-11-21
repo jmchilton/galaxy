@@ -437,7 +437,7 @@ class ObjectStore(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def get_data_head(self, obj, size: int) -> bytes:
+    def get_data_head(self, obj, size: int, **kwargs) -> bytes:
         """Return the first `size` bytes of `obj` (fewer if it is smaller) as stored in the backing store.
 
         Unlike `get_data`, caching stores read these bytes from their backend instead of their cache: the
@@ -837,10 +837,10 @@ class BaseObjectStore(ObjectStore):
         # Stores that cannot stream their objects remotely (e.g. disk) get this no-op default.
         return None
 
-    def get_data_head(self, obj, size: int) -> bytes:
+    def get_data_head(self, obj, size: int, **kwargs) -> bytes:
         if size <= 0:
             return b""
-        return self._invoke("get_data_head", obj, size=size)
+        return self._invoke("get_data_head", obj, size=size, **kwargs)
 
     def get_concrete_store_backends(self) -> list[ConcreteObjectStore]:
         return self._invoke("get_concrete_store_backends")

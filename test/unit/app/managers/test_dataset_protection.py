@@ -206,6 +206,10 @@ class _FakeMetadataFile:
     def get_file_name(self):
         return self.path
 
+    def get_data_head(self, size):
+        with open(self.path, "rb") as f:
+            return f.read(size)
+
     def purge(self):
         os.remove(self.path)
 
