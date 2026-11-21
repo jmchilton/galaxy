@@ -50,6 +50,7 @@ from galaxy.tool_util.security.report import (
     RAW,
     SPECIAL,
     TEXT,
+    USER_PREFERENCE,
     VULNERABILITY,
 )
 from galaxy.tools.wrappers import (
@@ -393,6 +394,12 @@ def source_values(ref: SourceRef, param_dict: dict[str, Any]) -> Iterator[str]:
         if ref.key and (value := param_dict.get(ref.key)) is not None:
             yield str(value)
         return
+    if ref.accessor == USER_PREFERENCE:
+        user = param_dict.get("__user__")
+        preferences = getattr(getattr(user, "obj", user), "extra_preferences", None) or {}
+        if ref.key and (value := preferences.get(ref.key)) is not None:
+            yield str(value)
+        return
     for value in _resolve(param_dict, ref.param_path):
         try:
             yield from _accessor_values(ref, value)
@@ -498,6 +505,8 @@ _DESCRIPTIONS = {
 def _describe(ref: SourceRef) -> str:
     if ref.accessor == SPECIAL:
         return f"the account value {ref.key}"
+    if ref.accessor == USER_PREFERENCE:
+        return f"your preference '{ref.key}'"
     if ref.accessor == DATASET_ATTRIBUTE:
         what = "the name" if ref.key == "name" else f"the {ref.key}"
         return f"{what} of a dataset of input '{ref.param}'"
