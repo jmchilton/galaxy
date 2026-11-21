@@ -636,6 +636,17 @@ class TestCrypt4GHSubmissionRefusalIntegration(BaseCrypt4GHExecutionIntegrationT
         assert "not authorized to decrypt" in response.json()["err_msg"]
         assert self.service.requests == []
 
+    def test_tools_that_could_send_decrypted_data_out_of_galaxy_are_refused(self, history_id):
+        dataset = self._upload_authorized(history_id, PLAINTEXT_1)
+        # Given the user's file sources, or credentials for an external service.
+        for tool_id in ("crypt4gh_file_sources_input", "crypt4gh_credentials_input"):
+            response = self.dataset_populator.run_tool_raw(
+                tool_id, {"input1": {"src": "hda", "id": dataset["id"]}}, history_id
+            )
+            self._assert_status_code_is(response, 400)
+            assert "can't be used with encrypted datasets" in response.json()["err_msg"], tool_id
+        assert self.service.requests == []
+
 
 class TestCrypt4GHRemoteToolEvaluationIntegration(BaseCrypt4GHExecutionIntegrationTestCase):
     @classmethod

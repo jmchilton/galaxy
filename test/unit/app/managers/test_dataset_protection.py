@@ -28,7 +28,6 @@ from galaxy.job_execution.compute_environment import ComputeEnvironment
 from galaxy.job_execution.protection.outputs import SIDECAR_FILE
 from galaxy.job_execution.protection.stage import CLEANUP_FAILURE_FILE
 from galaxy.managers.dataset_protection import (
-    _can_decrypt_inputs,
     _extra_files_expire,
     DatasetProtectionManager,
     JOB_TTL_MARGIN,
@@ -41,10 +40,6 @@ from galaxy.model import (
     User,
 )
 from galaxy.schema.dataset_protection import Crypt4GHGrantPayload
-from galaxy.tool_util_models.tool_source import (
-    FileSourceConfigFile,
-    FileSourceConfigFileContent,
-)
 from galaxy.tools import Tool
 from galaxy.util.bunch import Bunch
 
@@ -554,16 +549,6 @@ def test_jobs_with_protected_inputs_are_detected(tmp_path):
     assert not manager.has_protected_inputs(Bunch(input_datasets=input_datasets, input_library_datasets=[]))
     job = Bunch(input_datasets=input_datasets, input_library_datasets=[Bunch(dataset=protected)])
     assert manager.has_protected_inputs(job)
-
-
-def test_only_tools_keeping_decrypted_data_in_galaxy_decrypt_inputs():
-    file_sources = FileSourceConfigFile(name="file_sources", content=FileSourceConfigFileContent())
-    assert _can_decrypt_inputs(cast(Tool, Bunch(tool_type="default", config_files=[], credentials=None)))
-    assert not _can_decrypt_inputs(cast(Tool, Bunch(tool_type="interactive", config_files=[], credentials=None)))
-    assert not _can_decrypt_inputs(
-        cast(Tool, Bunch(tool_type="default", config_files=[file_sources], credentials=None))
-    )
-    assert not _can_decrypt_inputs(cast(Tool, Bunch(tool_type="default", config_files=[], credentials=[object()])))
 
 
 def _grant_on(dataset, user_id, **grant_data):
