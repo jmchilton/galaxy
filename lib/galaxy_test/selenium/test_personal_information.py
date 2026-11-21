@@ -16,10 +16,6 @@ class TestManageInformation(SeleniumTestCase):
         api_key_input = self.components.preferences.api_key_input.wait_for_visible()
         input_value = api_key_input.get_attribute("value")
         assert new_api_key == input_value
-        # Hover the input to view the key
-        self.hover(api_key_input)
-        hover_value = api_key_input.get_attribute("value")
-        assert new_api_key == hover_value
         # The key is masked until the show/hide button reveals it
         show_hide_button = self.components.preferences.api_key_show_hide_button
         assert api_key_input.get_attribute("type") == "password"
