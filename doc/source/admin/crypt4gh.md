@@ -393,7 +393,8 @@ Limitations:
   tools given the user's file sources (`<file_sources>` config files), such as
   the remote export tool, and tools declaring `<credentials>` for external
   services. They would write the decrypted data out of Galaxy.
-  Inputs of parameters accepting Crypt4GH formats are passed encrypted to any tool.
+  Inputs of parameters accepting Crypt4GH formats, or matching only as binary
+  data (e.g. `format="binary"`), are passed encrypted to any tool.
 - The standard output and error of tools decrypting data may contain decrypted
   data, so they are not stored with the job or the outputs, and messages about
   error patterns (`<stdio>` regexes) they matched don't quote them. The job's

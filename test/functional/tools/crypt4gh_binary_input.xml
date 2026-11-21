@@ -1,0 +1,12 @@
+<!-- Test tool for Crypt4GH support: encrypted datasets match binary inputs as the encrypted file. -->
+<tool id="crypt4gh_binary_input" name="crypt4gh_binary_input" version="1.0.0" profile="24.0">
+    <command><![CDATA[
+head -c 8 '$input1' > '$output1'
+    ]]></command>
+    <inputs>
+        <param name="input1" type="data" format="binary" label="Binary dataset"/>
+    </inputs>
+    <outputs>
+        <data name="output1" format="txt"/>
+    </outputs>
+</tool>

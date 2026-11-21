@@ -345,6 +345,16 @@ def _format_ext(format: Any) -> str:
     return format if isinstance(format, str) else format.file_ext
 
 
+def _reads_encrypted(input: BaseDataToolParameter, dataset_instance: DatasetInstance) -> bool:
+    """Whether the tool reads an encrypted input dataset as it is stored."""
+    if any(is_crypt4gh_file_ext(ext) for ext in input.extensions):
+        return True
+    # Typed wrappers also match formats their wrapper class does (e.g. 'binary'): they matched as the
+    # encrypted file, unless their inner format matches too.
+    inner_datatype = getattr(dataset_instance.datatype, "crypt4gh_inner_datatype", None)
+    return inner_datatype is not None and not inner_datatype.matches_any(input.formats)
+
+
 def _read_datasets(
     input: BaseDataToolParameter, dataset_instance: DatasetInstance
 ) -> list[tuple[DatasetInstance, bool]]:
@@ -353,7 +363,7 @@ def _read_datasets(
     Explicit conversions (``<conversion>``) are passed to the tool next to the input.
     """
     # Implicit conversions replace the input in the job parameters already.
-    read = [(dataset_instance, any(is_crypt4gh_file_ext(ext) for ext in input.extensions))]
+    read = [(dataset_instance, _reads_encrypted(input, dataset_instance))]
     if isinstance(input, DataToolParameter):
         for _, conversion_ext, conversion_datatypes in input.conversions:
             if converted_dataset := _existing_conversion(dataset_instance, conversion_datatypes):

@@ -588,6 +588,17 @@ steps:
         # Not a protected job, regular cleanup rules apply.
         assert self._job_directory_exists(job["id"])
 
+    def test_binary_inputs_get_the_encrypted_file(self, history_id):
+        # Encrypted datasets are binary: they match as the encrypted file, which needs no authorization.
+        dataset, _ = self._upload_encrypted(history_id, PLAINTEXT_1)
+        response = self.dataset_populator.run_tool_raw(
+            "crypt4gh_binary_input", {"input1": {"src": "hda", "id": dataset["id"]}}, history_id
+        )
+        job, output = self._wait_for_job(history_id, response)
+        assert job["state"] == "ok", job
+        assert self.dataset_populator.get_history_dataset_content(history_id, dataset=output) == "crypt4gh"
+        assert self.service.requests == []
+
 
 class TestCrypt4GHSubmissionRefusalIntegration(BaseCrypt4GHExecutionIntegrationTestCase):
     """Jobs refused before any of them reaches a runner, independent of the destination."""
