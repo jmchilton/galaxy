@@ -1739,6 +1739,9 @@ class TemplateAnalysis:
 def unresolved_names(template: CompiledTemplate, model: Model) -> set[str]:
     """Names the template reads that are neither tool inputs nor set in the template."""
     assigned: set[str] = set(template.helpers)
+    for imported in template.imports:
+        if isinstance(imported, (ast.Import, ast.ImportFrom)):
+            assigned.update((alias.asname or alias.name).split(".")[0] for alias in imported.names)
     read: set[str] = set()
     methods = [template.main, *template.helpers.values()]
     for method in methods:
