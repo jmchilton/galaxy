@@ -155,6 +155,15 @@ class BaseCrypt4GHExecutionIntegrationTestCase(integration_util.IntegrationTestC
         assert content.startswith(b"crypt4gh"), f"{dataset['name']} is not encrypted"
         return decrypt(content, self.user.secret)
 
+    def _assert_plaintext_not_served(self, dataset: dict) -> None:
+        response = self._get(f"datasets/{dataset['id']}/display")
+        assert PLAINTEXT_1 not in response.content
+        # Any error page passes the check above, show that nothing but encrypted data is served.
+        assert response.status_code != 200 or not response.content or response.content.startswith(b"crypt4gh"), (
+            response.status_code,
+            response.content[:200],
+        )
+
     def _ready(self, dataset_id: str) -> bool:
         return self._get(f"datasets/{dataset_id}/protection").json()["ready"]
 
@@ -321,8 +330,7 @@ class TestCrypt4GHExecutionIntegration(BaseCrypt4GHExecutionIntegrationTestCase)
         job, output = self._wait_for_job(history_id, response)
         assert job["state"] == "error"
         assert "Tools writing unnamed outputs can't be used with encrypted datasets." in output["misc_info"]
-        response = self._get(f"datasets/{output['id']}/display")
-        assert PLAINTEXT_1.decode() not in response.text
+        self._assert_plaintext_not_served(output)
 
     def test_outputs_can_be_used_in_further_jobs(self, history_id):
         dataset = self._upload_authorized(history_id, PLAINTEXT_1)
@@ -748,8 +756,7 @@ class TestCrypt4GHMetadataRetryIntegration(BaseCrypt4GHExecutionIntegrationTestC
 
         assert job["state"] == "error"
         assert output["purged"], output
-        response = self._get(f"datasets/{output['id']}/display")
-        assert PLAINTEXT_1.decode() not in response.text
+        self._assert_plaintext_not_served(output)
 
 
 class TestCrypt4GHJobLimitsIntegration(BaseCrypt4GHExecutionIntegrationTestCase):
@@ -768,8 +775,7 @@ class TestCrypt4GHJobLimitsIntegration(BaseCrypt4GHExecutionIntegrationTestCase)
 
         assert job["state"] == "error"
         assert "grew too large" in output["misc_info"]
-        response = self._get(f"datasets/{output['id']}/display")
-        assert PLAINTEXT_1.decode() not in response.text
+        self._assert_plaintext_not_served(output)
 
 
 class TestCrypt4GHTaskSplittingIntegration(BaseCrypt4GHExecutionIntegrationTestCase):
