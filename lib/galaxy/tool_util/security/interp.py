@@ -1106,7 +1106,8 @@ class TemplateAnalysis:
                         verdict._replace(rule="nested-interpreter", why=f"in the nested shell, {verdict.why}")
                     )
             elif context.lang == "sed" and context.sed is not None:
-                if verdict := sed.verdict(chars, context.sed):
+                # With --sandbox, GNU sed refuses a program with e, r, w or the e and w flags of s.
+                if not context.sandbox and (verdict := sed.verdict(chars, context.sed)):
                     verdicts.append(verdict)
             elif context.lang:
                 if verdict := charsets.code(context.lang, chars, context.inner):
