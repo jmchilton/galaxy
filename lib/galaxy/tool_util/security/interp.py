@@ -1772,4 +1772,4 @@ PY_NAMES = frozenset(
         " re os sys json math shlex time string itertools collections getVar varExists hasVar self unicode"
         " basestring"
     ).split()
-)
+) | frozenset(name for name in _CLEAN_FUNCTIONS | _STRING_FUNCTIONS | _CONTAINER_FUNCTIONS if "." not in name)

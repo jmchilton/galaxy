@@ -319,6 +319,13 @@ def test_imported_module_is_not_an_unanalysed_part(tmp_path, command):
     assert report.unchecked_locations == {}
 
 
+@pytest.mark.parametrize("call", ["$hex($count)", "$oct($count)", "${divmod($count, 2)[0]}", "${frozenset($free)}"])
+def test_builtin_the_analysis_models_is_not_an_unanalysed_part(tmp_path, call):
+    report = review(tmp_path, f"echo {call} '$input.element_identifier'")
+    assert report.unanalyzed == []
+    assert report.unchecked_locations == {}
+
+
 @pytest.mark.parametrize("include", ["#include source=$pre#", "#include source=${pre}"])
 def test_included_template_macro_is_analysed_in_place(tmp_path, include):
     macros = """<macros><template name="pre"><![CDATA[echo '${free}' &&]]></template></macros>"""
