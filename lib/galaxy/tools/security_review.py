@@ -322,6 +322,9 @@ def find_violations(report: Report, param_dict: dict[str, Any]) -> Iterator[Viol
             for value in source_values(ref, param_dict):
                 chars.update(value)
                 escapes_template = escapes_template or (len(value) - len(value.rstrip("\\"))) % 2 == 1
+            if "\r" in chars:
+                # Templates turn carriage returns into newlines (replace("\\r", "\\n")).
+                chars.add("\n")
             if not escapes_template:
                 chars.discard("\\")
             chars_by_ref[ref] = frozenset(chars)
