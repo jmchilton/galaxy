@@ -498,3 +498,10 @@ def test_str_method_gives_the_string_of_the_value(tmp_path, value):
     report = review(tmp_path, command)
     assert refs(report) == {SourceRef(ELEMENT_IDENTIFIER, "input")}
     assert high(report).checkable
+
+
+@pytest.mark.parametrize("value", ["$input.unsanitized.metadata.delimiter", "$input.unsanitized.ext"])
+def test_what_galaxy_sets_on_the_dataset_model_is_clean(tmp_path, value):
+    report = review(tmp_path, f"echo '{value}' '$input.element_identifier'")
+    assert refs(report) == {SourceRef(ELEMENT_IDENTIFIER, "input")}
+    assert high(report).checkable

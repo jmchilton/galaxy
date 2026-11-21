@@ -482,7 +482,7 @@ class Data(Node):
             return AV(nodes=(Metadata(self.path, self),))
         if name == "unsanitized":
             raw_model = source(f"raw model of dataset '{self.path}'", OPAQUE, self.path)
-            return AV(nodes=(Opaque(f"{self.path}.unsanitized", tainted(PROBE, raw_model)),))
+            return AV(nodes=(RawDataset(f"{self.path}.unsanitized", tainted(PROBE, raw_model)),))
         if name == "dataset":
             return AV(nodes=(DatasetObject(self.path, self),))
         if name == "single_item":
@@ -493,6 +493,34 @@ class Data(Node):
 
     def element(self) -> AV | None:
         return AV(nodes=(self,))
+
+
+# Attributes of a dataset model that Galaxy sets itself: its type, its id, its paths and state.
+_RAW_DATASET_CLEAN = frozenset(
+    "ext extension id hid extra_files_path get_file_name file_name get_size has_data state".split()
+)
+
+
+@dataclass(eq=False)
+class RawDataset(Opaque):
+    """``$input.unsanitized``: the dataset model itself, whose strings are not sanitized."""
+
+    def attr(self, name: str) -> AV | None:
+        if name in _RAW_DATASET_CLEAN:
+            return CLEAN
+        if name == "metadata":
+            return AV(nodes=(RawMetadata(f"{self.path}.metadata", self.value),))
+        return super().attr(name)
+
+
+@dataclass(eq=False)
+class RawMetadata(Opaque):
+    """The metadata of a dataset model: Galaxy computes some of it from the file."""
+
+    def attr(self, name: str) -> AV | None:
+        if name in _METADATA_CLEAN or name.endswith(("_index", "Col")):
+            return CLEAN
+        return super().attr(name)
 
 
 @dataclass(eq=False)
