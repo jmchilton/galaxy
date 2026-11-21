@@ -411,3 +411,8 @@ def test_path_functions_keep_the_value_checkable(tmp_path, command):
 def test_join_of_quoted_elements(tmp_path, command, checkable):
     findings = [f for f in review(tmp_path, command).findings if f.severity == HIGH]
     assert findings and all(f.checkable is checkable for f in findings)
+
+
+def test_value_that_is_a_parameter_or_a_list_has_the_elements_of_both(tmp_path):
+    command = "#if $free\n#set $l = $text\n#else\n#set $l = [$input.element_identifier]\n#end if\n#for $e in $l\necho '$e'\n#end for"
+    assert SourceRef(ELEMENT_IDENTIFIER, "input") in refs(review(tmp_path, command))
