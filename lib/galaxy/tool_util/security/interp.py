@@ -1818,6 +1818,11 @@ class TemplateAnalysis:
             self._introduce(text)
             self._introduce(passed)
             return AV(chars=text.chars | passed.chars, sources=text.sources | passed.sources, whole=False)
+        if name in ("encode", "decode") and not keywords and len(arg_nodes) <= 1:
+            codec = _const(arg_nodes[0]) if arg_nodes else "utf-8"
+            if isinstance(codec, str) and codec.lower().replace("_", "-") in ("utf-8", "utf8", "ascii"):
+                # The bytes of the text in UTF-8, or the text of such bytes: the same characters.
+                return AV(chars=text.chars, sources=text.sources, whole=text.whole, quoted=text.quoted)
         # strip, lower, encode... keep whatever the value could contain.
         if name not in _PRESERVING_METHODS:
             self._introduce(text)
