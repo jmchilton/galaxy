@@ -15,6 +15,7 @@ Cheetah for a class (which would execute the generated module, including ``#impo
 from __future__ import annotations
 
 import ast
+import bisect
 import re
 import warnings
 from collections import Counter
@@ -25,6 +26,7 @@ from dataclasses import (
 from functools import lru_cache
 
 from Cheetah.Compiler import Compiler
+from Cheetah.Parser import Parser
 
 # Directives that execute at parse time. The directive start token cannot change without
 # one of them, so a plain text search over-approximates and cannot be evaded.
@@ -47,8 +49,38 @@ class CompileTimeExecution(Exception):
         self.line = line
 
 
+class LinearParser(Parser):  # type: ignore[misc, unused-ignore]  # Cheetah is untyped
+    """Cheetah's parser with the same answers in time linear in the template.
+
+    Cheetah's source reader finds the line of a position by scanning every line, the start of a line
+    by searching back to the start of the template for a carriage return, and tells whether the text
+    at the current position starts with a token by searching the rest of the template for it.
+    """
+
+    def lineNum(self, pos: int | None = None) -> int | None:
+        if pos is None:
+            pos = self._pos
+        i = bisect.bisect_right(self._BOLs, pos) - 1
+        if i >= 0 and pos <= self._EOLs[i]:
+            return i
+        return None
+
+    def startswith(self, it: str, pos: int | None = None) -> bool:
+        if pos is None or pos == self._pos:
+            return self._src.startswith(it, self._pos)
+        return bool(super().startswith(it, pos))
+
+    def findBOL(self, pos: int | None = None) -> int:
+        if pos is None:
+            pos = self._pos
+        newline = self._src.rfind("\n", 0, pos)
+        return max(newline + 1, self._src.rfind("\r", newline + 1, pos) + 1)
+
+
 class NoCompileTimeSettings(Compiler):  # type: ignore[misc, unused-ignore]  # Cheetah is untyped
     """Second line of defence behind the text search: these two methods are the ``eval``/``exec`` sinks."""
+
+    parserClass = LinearParser
 
     def setCompilerSetting(self, key: str, valueExpr: str) -> None:
         raise CompileTimeExecution("compiler", 0)
