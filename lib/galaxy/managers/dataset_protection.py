@@ -401,6 +401,12 @@ class DatasetProtectionManager:
     ):
         self.sa_session = sa_session
         self.enabled = bool(config.crypt4gh_enabled)
+        if self.enabled and walltime is None:
+            log.warning(
+                "crypt4gh_enabled is set without a walltime job limit: jobs on encrypted data are assumed to finish "
+                "within %s of being dispatched, longer jobs fail once their compute keypair expires.",
+                JOB_TTL_MARGIN,
+            )
         # Outputs are encrypted after the job ran, the key service must still accept the keypair then.
         self.job_margin = KEY_SERVICE_EXPIRY_MARGIN + JOB_TTL_MARGIN + (walltime or timedelta(0))
 
