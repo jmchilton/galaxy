@@ -474,3 +474,9 @@ def test_datasets_of_a_group_are_datasets_of_the_collection(tmp_path):
 def test_value_put_into_a_dict_with_setitem_is_followed(tmp_path):
     command = "#import json\n#set $d = {}\n$d.__setitem__('k', $input.element_identifier)\necho '#echo json.dumps($d)#'"
     assert SourceRef(ELEMENT_IDENTIFIER, "input") in refs(review(tmp_path, command))
+
+
+def test_newline_starts_a_command_in_a_shell_script(tmp_path):
+    script = review(tmp_path, "bash '$script'", configfiles='<configfile name="script">echo $free</configfile>')
+    assert "\n" in high(script).breakout
+    assert "\n" not in high(review(tmp_path, "echo $free")).breakout

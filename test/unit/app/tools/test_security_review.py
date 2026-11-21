@@ -1,3 +1,4 @@
+import contextlib
 import gc
 import logging
 import os
@@ -601,3 +602,27 @@ def test_template_that_pipes_into_a_shell_is_reported_as_not_checked(app, tmp_pa
     assert review is not None and review.unchecked_locations == {"command": "it sends text to a shell to run"}
     assert not review.checked_findings
     assert "values written in command are not checked, it sends text to a shell to run" in caplog.text
+
+
+SCRIPT_LINE = """<tool id="script_line" name="Script line" version="1.0" profile="24.0">
+  <command><![CDATA[bash '$script' > '$out']]></command>
+  <configfiles><configfile name="script"><![CDATA[{script}]]></configfile></configfiles>
+  <inputs><param name="q" type="text"><sanitizer sanitize="false"/></param></inputs>
+  <outputs><data name="out" format="txt"/></outputs>
+</tool>
+"""
+
+
+@pytest.mark.parametrize(
+    "script,q,expected",
+    [
+        ("echo $q", "x\nid", True),
+        ("echo $q", "x id", False),
+    ],
+)
+def test_newline_in_a_shell_script_starts_a_command(app, tmp_path, script, q, expected):
+    tool = make_tool(app, tmp_path, SCRIPT_LINE.format(script=script), "script_line.xml")
+    job: Any = SimpleNamespace(job=SimpleNamespace(id=7), consumes_names=False, consumes_identifiers=False)
+    job.param_dict = {"q": InputValueWrapper(cast(ToolParameter, tool.inputs["q"]), q)}
+    with pytest.raises(ToolInputRejected) if expected else contextlib.nullcontext():
+        reviewer(tmp_path, ENFORCE).check_job(tool, job)
