@@ -117,6 +117,16 @@ def _literal_chars(value: AV) -> charsets.Chars:
     return chars
 
 
+def _matched_chars(old: Any) -> charsets.Chars:
+    """Characters a value holds where str.replace(old, new) puts new text: the job check sees them.
+
+    The job check counts a carriage return as a newline, which replace("\\r", "\\n") makes of it.
+    """
+    if not isinstance(old, str) or not old:
+        return charsets.NONE
+    return charsets.probe(old) | (frozenset("\n") if "\r" in old else charsets.NONE)
+
+
 def _kept_literal_chars(item: AV, separator: AV) -> charsets.Chars:
     """The literal text each element of a join writes around its own value (`"'%s'" % x`).
 
@@ -1691,7 +1701,7 @@ class TemplateAnalysis:
             added = stringify(args[1]).chars | (
                 charsets.probe(second) if isinstance(second, str) and text.tainted else set()
             )
-            self._introduce(text, frozenset(added))
+            self._introduce(text, frozenset(added) - _matched_chars(first_literal))
             escaped = every and first_literal == '"' and second == '\\"' and "\\" not in text.chars
             kept = self._kept_escaping(text, name, arg_nodes, keywords) if not stringify(args[1]).tainted else ""
             return AV(
