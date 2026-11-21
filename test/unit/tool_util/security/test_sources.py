@@ -414,18 +414,21 @@ QUOTED_OR = (
         # Each element quotes its own value: the shell reads the quotes in place.
         ("""#set $l = ' '.join(["'%s'" % r.label.value for r in $rows])\necho $l""", True),
         ("""#set $l = "' '".join(["'%s'" % r.label.value for r in $rows])\necho $l""", True),
-        # With both kinds of quotes, a third element can land in a third quote state.
+        # Elements and a separator that each end in the quote state they start in, with both kinds.
+        ("""#set $l = '" "'.join(["'%s'" % r.label.value for r in $rows])\necho $l""", True),
+        ("""#set $l = ' AND '.join(["c = '\\"'\\"'%s'\\"'\\"'" % r.label.value for r in $rows])\necho '$l'""", True),
+        # Here a third element can land in a third quote state.
         ("""#set $l = ' '.join(["'%s\\"" % r.label.value for r in $rows])\necho $l""", False),
-        ("""#set $l = '" "'.join(["'%s'" % r.label.value for r in $rows])\necho $l""", False),
         # A literal element alone loses its place next to the value.
         ("""#set $l = ''.join(["'", str($free)])\necho $l""", False),
-        # Elements that are one of several strings, all quoting with one kind of quote.
+        # Elements that are one of several strings.
         (QUOTED_OR.format(other="r.label.value"), True),
         (
             """#if $free\n#set $l = $free\n#else\n#set $l = ["'%s'" % r.label.value for r in $rows]\n#end if\necho #echo ' '.join($l)#""",
             True,
         ),
-        (QUOTED_OR.format(other="'\"%s\"' % r.label.value"), False),
+        (QUOTED_OR.format(other="'\"%s\"' % r.label.value"), True),
+        (QUOTED_OR.format(other='"\'%s\\"" % r.label.value'), False),
     ],
 )
 def test_join_of_quoted_elements(tmp_path, command, checkable):
