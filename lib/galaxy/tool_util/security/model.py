@@ -30,6 +30,7 @@ from galaxy.tool_util.parser.interface import (
     ToolSource,
 )
 from galaxy.tool_util.parser.sanitize import ToolParameterSanitizer
+from galaxy.util.xml_macros import template_macro_params
 from .charsets import (
     Chars,
     DEFAULT_SANITIZED,
@@ -634,6 +635,8 @@ class Model:
     sanitize: bool = True
     configfiles: dict[str, str] = field(default_factory=dict)
     specials: dict[str, Special] = field(default_factory=dict)
+    # Template macros: Cheetah text the template can read in with `#include source=$name#`.
+    templates: dict[str, str] = field(default_factory=dict)
 
     def lookup(self, name: str) -> AV | None:
         nodes = self.root.children.get(name)
@@ -786,6 +789,7 @@ def build_model(tool_source: ToolSource) -> Model:
 
     xml_tree: Any = getattr(tool_source, "xml_tree", None)
     if xml_tree is not None:
+        model.templates = {name: text or "" for name, text in template_macro_params(xml_tree.getroot()).items()}
         for elem in xml_tree.findall("./outputs/data"):
             if elem.get("name") and elem.get("name") not in root.children:
                 root.add(elem.get("name"), Data(elem.get("name"), output=True))

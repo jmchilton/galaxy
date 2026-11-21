@@ -317,6 +317,16 @@ def test_imported_module_is_not_an_unanalysed_part(tmp_path, command):
     assert report.unchecked_locations == {}
 
 
+@pytest.mark.parametrize("include", ["#include source=$pre#", "#include source=${pre}"])
+def test_included_template_macro_is_analysed_in_place(tmp_path, include):
+    macros = """<macros><template name="pre"><![CDATA[echo '${free}' &&]]></template></macros>"""
+    report = review(tmp_path, f"{include}\necho '$input.element_identifier'", extra=macros)
+    assert report.unanalyzed == []
+    assert not any(f.rule == "template-include" for f in report.findings)
+    assert SourceRef(TEXT, "free") in refs(report)
+    assert all(f.checkable for f in report.findings if f.kind == "vulnerability")
+
+
 def test_template_without_such_parts_is_checkable(tmp_path):
     report = review(tmp_path, "echo '$input.element_identifier'")
     assert report.unchecked_locations == {}
