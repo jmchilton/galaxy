@@ -77,7 +77,7 @@ class _BudgetExceeded(Exception):
 
 
 _NAME_MAPPER = ("VFFSL", "VFSL", "VFN", "VFL")
-_MUTATORS = frozenset(("append", "extend", "add", "insert", "update", "setdefault", "appendleft"))
+_MUTATORS = frozenset(("append", "extend", "add", "insert", "update", "setdefault", "appendleft", "__setitem__"))
 _CLEAN_FUNCTIONS = frozenset(
     (
         "int float len bool abs round ord hex oct bin sum any all isinstance hasattr callable id hash range"
