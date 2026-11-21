@@ -37,6 +37,8 @@ NONE: Chars = frozenset()
 
 # Start a new command, a substitution or a redirection in an unquoted shell word.
 SHELL_EXEC: Chars = frozenset(";&|$`<>")
+# And a newline, in a shell script.
+SCRIPT_EXEC: Chars = SHELL_EXEC | {"\n"}
 _WHITESPACE: Chars = frozenset(" \t\n")
 # Split or rewrite an unquoted word: extra arguments, globs, quotes, comments.
 SHELL_SPLIT: Chars = frozenset(" \t\n*?[]{}()~#!'\"\\")
@@ -87,9 +89,13 @@ class Verdict(NamedTuple):
     requires: Chars = frozenset()
 
 
-def unquoted(chars: Chars, word_first: Chars | None = None) -> Verdict | None:
-    """``word_first``: probe characters a word of the value can begin with, when narrower than ``chars``."""
-    if hit := chars & SHELL_EXEC:
+def unquoted(chars: Chars, word_first: Chars | None = None, script: bool = False) -> Verdict | None:
+    """``word_first``: probe characters a word of the value can begin with, when narrower than ``chars``.
+
+    ``script``: the value is in a shell script, where a newline ends the command. Galaxy writes the
+    command of a tool on one line.
+    """
+    if hit := chars & (SCRIPT_EXEC if script else SHELL_EXEC):
         return Verdict("shell-injection", HIGH, hit, "can start another command")
     if hit := chars & SHELL_SPLIT:
         dash = "-" in (chars if word_first is None else word_first)
@@ -100,10 +106,10 @@ def unquoted(chars: Chars, word_first: Chars | None = None) -> Verdict | None:
     return None
 
 
-def single_quoted(chars: Chars) -> Verdict | None:
+def single_quoted(chars: Chars, script: bool = False) -> Verdict | None:
     if "'" not in chars:
         return None
-    after = unquoted(chars)
+    after = unquoted(chars, script=script)
     if after and after.rule == "shell-injection":
         return Verdict(
             "shell-injection",
@@ -116,11 +122,12 @@ def single_quoted(chars: Chars) -> Verdict | None:
     return Verdict("argument-injection", MEDIUM, frozenset("'"), "can close the single quotes")
 
 
-def double_quoted(chars: Chars) -> Verdict | None:
+def double_quoted(chars: Chars, script: bool = False) -> Verdict | None:
+    exec_chars = SCRIPT_EXEC if script else SHELL_EXEC
     if "`" in chars or ("$" in chars and "(" in chars):
         hit = chars & frozenset("`$(")
         breakout = hit - {"("}
-        if '"' in chars and chars & SHELL_EXEC:
+        if '"' in chars and chars & exec_chars:
             # Or close the quotes, which starts a command only with a command character after them.
             # `$` and the backtick are command characters themselves.
             return Verdict(
@@ -129,13 +136,13 @@ def double_quoted(chars: Chars) -> Verdict | None:
                 hit,
                 "can run a command substitution inside the double quotes",
                 breakout | {'"'},
-                chars & SHELL_EXEC,
+                chars & exec_chars,
             )
         return Verdict(
             "shell-injection", HIGH, hit, "can run a command substitution inside the double quotes", breakout
         )
     if '"' in chars:
-        after = unquoted(chars)
+        after = unquoted(chars, script=script)
         if after and after.rule == "shell-injection":
             return Verdict(
                 "shell-injection",

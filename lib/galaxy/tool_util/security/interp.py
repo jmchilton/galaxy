@@ -18,6 +18,7 @@ from dataclasses import (
 )
 from typing import (
     Any,
+    Callable,
     FrozenSet,
 )
 
@@ -133,9 +134,9 @@ def _kept_literal_chars(item: AV, separator: AV) -> charsets.Chars:
     return charsets.probe(literal)
 
 
-def _ansi_quoted(chars: charsets.Chars) -> Verdict | None:
+def _ansi_quoted(chars: charsets.Chars, script: bool = False) -> Verdict | None:
     """A value in $'...', where a backslash can escape the closing quote, which is as good as a quote."""
-    verdict = charsets.single_quoted(chars | {"'"} if "\\" in chars else chars)
+    verdict = charsets.single_quoted(chars | {"'"} if "\\" in chars else chars, script)
     if verdict is not None and "\\" in chars:
         verdict = verdict._replace(breakout=_verdict_breakout(verdict) | {"\\"})
     return verdict
@@ -145,17 +146,17 @@ def _verdict_breakout(verdict: Verdict) -> charsets.Chars:
     return verdict.chars if verdict.breakout is None else verdict.breakout
 
 
-def _unquoted_harm(chars: charsets.Chars, language: str) -> charsets.Chars:
+def _unquoted_harm(chars: charsets.Chars, language: str, script: bool) -> charsets.Chars:
     """The characters that run code when a value with these characters is outside any quotes."""
     if language != "shell" and language not in CODE_LANGUAGES:
         # A data file: nothing in it runs.
         return charsets.NONE
-    after = charsets.unquoted(chars) if language == "shell" else charsets.code(language, chars, "")
+    after = charsets.unquoted(chars, script=script) if language == "shell" else charsets.code(language, chars, "")
     return after.chars if after is not None and after.severity in (charsets.HIGH, charsets.CRITICAL) else charsets.NONE
 
 
 def _breakout(
-    verdict: Verdict, text: AV, language: str, escaped: charsets.Chars
+    verdict: Verdict, text: AV, language: str, escaped: charsets.Chars, script: bool
 ) -> tuple[charsets.Chars, charsets.Chars, charsets.Chars]:
     """The characters of the user's value, before any escaping the template applies, that a finding needs.
 
@@ -171,7 +172,7 @@ def _breakout(
     if not breakout & added:
         return breakout, verdict.requires, breakout & QUOTE_CLOSERS
     rest = text.chars - added
-    return (breakout - added) | _unquoted_harm(rest, language), charsets.NONE, text.chars & QUOTE_CLOSERS
+    return (breakout - added) | _unquoted_harm(rest, language, script), charsets.NONE, text.chars & QUOTE_CLOSERS
 
 
 _STRING_FUNCTIONS = frozenset(("str", "unicode", "repr", "format", "basestring"))
@@ -431,6 +432,8 @@ class TemplateAnalysis:
         self.report = report
         self.location = location
         self.language = language
+        # A shell script keeps its lines; Galaxy writes the command on one line.
+        self.script = language == "shell" and location != "command"
         self.events: set[shell.Event] = set()
         # configfile name -> commands that take it as an argument
         self.readers: dict[str, set[str]] = {}
@@ -514,7 +517,9 @@ class TemplateAnalysis:
     def _record_write(self, text: AV) -> None:
         refs = source_refs(text.sources)
         escaped = frozenset().union(*(self._escapes.get(ref, charsets.NONE) for ref in refs))
-        harm = _unquoted_harm(text.chars - _ESCAPING_ADDS.get(text.quoted, charsets.NONE) - escaped, self.language)
+        harm = _unquoted_harm(
+            text.chars - _ESCAPING_ADDS.get(text.quoted, charsets.NONE) - escaped, self.language, self.script
+        )
         for ref in refs:
             self._written[ref] = self._written.get(ref, charsets.NONE) | harm
 
@@ -1024,7 +1029,8 @@ class TemplateAnalysis:
         """``escaped``: an earlier user value in the same kind of quotes can end in a backslash."""
         chars = text.chars
         verdicts: list[Verdict] = []
-        if escaped and (verdict := charsets.unquoted(chars, text.words)):
+        script = self.script
+        if escaped and (verdict := charsets.unquoted(chars, text.words, script)):
             # The earlier value escaped its closing quote, so the quote that opens this value closes
             # that string instead, and this value is written unquoted.
             self.finding(
@@ -1050,12 +1056,12 @@ class TemplateAnalysis:
             elif text.quoted == "dq-escaped" and context.quote == '"' and not context.lang:
                 # The template writes a double quote as \", and the value has no backslash of its own.
                 chars = chars - {'"', "\\"}
-            lexical = {
-                "": lambda c: charsets.unquoted(c, text.words),
-                "'": charsets.single_quoted,
-                '"': charsets.double_quoted,
+            lexical: dict[str, Callable[[charsets.Chars], Verdict | None]] = {
+                "": lambda c: charsets.unquoted(c, text.words, script),
+                "'": lambda c: charsets.single_quoted(c, script),
+                '"': lambda c: charsets.double_quoted(c, script),
                 # In $'...' a backslash can escape the closing quote, which is as good as a quote.
-                shell.ANSI: _ansi_quoted,
+                shell.ANSI: lambda c: _ansi_quoted(c, script),
             }
             if verdict := lexical[context.quote](chars):
                 verdicts.append(verdict)
@@ -1186,7 +1192,7 @@ class TemplateAnalysis:
         value has escaped the closing quote; until then only that quote or a backslash closes it."""
         refs = source_refs(text.sources)
         escaped = frozenset().union(*(self._escapes.get(ref, charsets.NONE) for ref in refs))
-        breakout, requires, closes = _breakout(verdict, text, self.language, escaped)
+        breakout, requires, closes = _breakout(verdict, text, self.language, escaped, self.script)
         source = "; ".join(sorted(text.sources)[:3])
         expr = f" (`{raw_expr}`)" if raw_expr else ""
         severity = verdict.severity
