@@ -551,6 +551,43 @@ steps:
         assert (output["validated_state"], output["validated_state_message"]) == ("unknown", None)
         assert self._decrypted_content(history_id, output) == plaintext
 
+    def test_failed_decryption_fails_the_job_before_the_tool_runs(self, history_id):
+        dataset = self._upload_authorized(history_id, PLAINTEXT_1)
+        self.service.failures["recrypt_header_to_job_key"] = [422]
+
+        job, output = self._wait_for_job(history_id, self._run_cat(history_id, dataset))
+
+        assert job["state"] == "error"
+        assert (
+            "Galaxy failed to prepare this job, so the tool was not run: Could not decrypt the protected inputs"
+            in output["misc_info"]
+        )
+        assert "could not open the header" in output["misc_info"]
+        assert self.service.routes_called() == ["recrypt_header_to_job_key"]
+
+    def test_explicitly_encrypted_inputs_are_not_decrypted(self, history_id):
+        # No authorization needed, the tool reads the encrypted file.
+        dataset, _ = self._upload_encrypted(history_id, PLAINTEXT_1)
+        response = self.dataset_populator.run_tool_raw(
+            "crypt4gh_encrypted_input", {"input1": {"src": "hda", "id": dataset["id"]}}, history_id
+        )
+        job, output = self._wait_for_job(history_id, response)
+        assert job["state"] == "ok", job
+        content = self.dataset_populator.get_history_dataset_content(history_id, dataset=output)
+        assert content == "crypt4gh"
+        assert self.service.requests == []
+        # Not a protected job, regular cleanup rules apply.
+        assert self._job_directory_exists(job["id"])
+
+
+class TestCrypt4GHSubmissionRefusalIntegration(BaseCrypt4GHExecutionIntegrationTestCase):
+    """Jobs refused before any of them reaches a runner, independent of the destination."""
+
+    @classmethod
+    def handle_galaxy_config_kwds(cls, config):
+        super().handle_galaxy_config_kwds(config)
+        config["job_config"] = cls._job_config(limits=[{"type": "walltime", "value": "48:00:00"}])
+
     def test_unauthorized_input_is_refused_before_any_service_call(self, history_id):
         dataset, _ = self._upload_encrypted(history_id, PLAINTEXT_1)
         response = self._run_cat(history_id, dataset)
@@ -598,34 +635,6 @@ steps:
         self._assert_status_code_is(response, 400)
         assert "not authorized to decrypt" in response.json()["err_msg"]
         assert self.service.requests == []
-
-    def test_failed_decryption_fails_the_job_before_the_tool_runs(self, history_id):
-        dataset = self._upload_authorized(history_id, PLAINTEXT_1)
-        self.service.failures["recrypt_header_to_job_key"] = [422]
-
-        job, output = self._wait_for_job(history_id, self._run_cat(history_id, dataset))
-
-        assert job["state"] == "error"
-        assert (
-            "Galaxy failed to prepare this job, so the tool was not run: Could not decrypt the protected inputs"
-            in output["misc_info"]
-        )
-        assert "could not open the header" in output["misc_info"]
-        assert self.service.routes_called() == ["recrypt_header_to_job_key"]
-
-    def test_explicitly_encrypted_inputs_are_not_decrypted(self, history_id):
-        # No authorization needed, the tool reads the encrypted file.
-        dataset, _ = self._upload_encrypted(history_id, PLAINTEXT_1)
-        response = self.dataset_populator.run_tool_raw(
-            "crypt4gh_encrypted_input", {"input1": {"src": "hda", "id": dataset["id"]}}, history_id
-        )
-        job, output = self._wait_for_job(history_id, response)
-        assert job["state"] == "ok", job
-        content = self.dataset_populator.get_history_dataset_content(history_id, dataset=output)
-        assert content == "crypt4gh"
-        assert self.service.requests == []
-        # Not a protected job, regular cleanup rules apply.
-        assert self._job_directory_exists(job["id"])
 
 
 class TestCrypt4GHRemoteToolEvaluationIntegration(BaseCrypt4GHExecutionIntegrationTestCase):
