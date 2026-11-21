@@ -1503,7 +1503,8 @@ class MinimalJobWrapper(HasResourceParameters):
             and job.user
             and job.tool_id
             and not tool_evaluator.consumes_names
-            # Outputs of protected jobs are encrypted for the job's user, never reuse them.
+            # Outputs of protected jobs are encrypted for their job's user. Only the submit-time search
+            # (Tool._may_reuse_job), which checks the user of the cached job, may reuse protected jobs.
             and not job.protection_scheme
         ):
             # search again, now we know tool doesn't require name match
