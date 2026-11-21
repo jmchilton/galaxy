@@ -118,11 +118,13 @@ def _kept_literal_chars(item: AV, separator: AV) -> charsets.Chars:
 
     Writing two elements and the separator between them shows every quote state a longer join
     reaches only when their text quotes with one kind of quote and escapes nothing: with both
-    kinds, three elements can reach a third.
+    kinds, three elements can reach a third. That holds for elements that are one of several
+    strings too, each written in both places.
     """
-    if item.alts or item.parts is None or not item.tainted or separator.parts is None or separator.tainted:
+    if not item.tainted or separator.parts is None or separator.tainted:
         return charsets.NONE
-    literal = "".join(part for part in (*item.parts, *separator.parts) if isinstance(part, str))
+    pieces = [part for string in item.alts or (item,) for part in string.parts or ()] + list(separator.parts)
+    literal = "".join(part for part in pieces if isinstance(part, str))
     if len(set(literal) & set("'\"")) > 1 or set(literal) & set("\\`$"):
         return charsets.NONE
     return charsets.probe(literal)
