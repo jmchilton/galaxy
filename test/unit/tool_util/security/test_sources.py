@@ -505,3 +505,21 @@ def test_what_galaxy_sets_on_the_dataset_model_is_clean(tmp_path, value):
     report = review(tmp_path, f"echo '{value}' '$input.element_identifier'")
     assert refs(report) == {SourceRef(ELEMENT_IDENTIFIER, "input")}
     assert high(report).checkable
+
+
+def test_user_value_a_replace_puts_in_keeps_its_own_source(tmp_path):
+    command = "#set $v = str($free).replace('N', str($word.value))\necho '$v' '$input.element_identifier'"
+    report = review(tmp_path, command)
+    assert report.unchecked_locations == {}
+    assert all(f.checkable for f in report.findings if f.severity == HIGH)
+
+
+def test_literal_text_of_a_built_replacement_is_the_templates(tmp_path):
+    command = "#set $v = str($free).replace('a', \"'\" + str($letters))\necho '$v'"
+    findings = [f for f in review(tmp_path, command).findings if f.severity == HIGH]
+    assert findings and not any(f.checkable for f in findings)
+
+
+def test_getattr_of_a_name_is_the_attribute(tmp_path):
+    report = review(tmp_path, "echo '${input.__getattr__('name')}'", extra=UNSANITIZED)
+    assert refs(report) == {SourceRef(DATASET_ATTRIBUTE, "input", "name")}

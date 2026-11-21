@@ -1685,6 +1685,10 @@ class TemplateAnalysis:
             return receiver
         if name == "__lambda__":
             return join(receiver, *(contents(a) for a in args + keywords))
+        if name == "__getattr__":
+            attribute_name = _const(arg_nodes[0]) if arg_nodes else None
+            if isinstance(attribute_name, str):
+                return self._autocall(attribute(receiver, attribute_name), env)
         if name in _CLEAN_METHODS:
             return CLEAN
         if receiver.helper:
@@ -1721,15 +1725,25 @@ class TemplateAnalysis:
             every = len(args) == 2 and not keywords
             removed = {first_literal} if every and isinstance(first_literal, str) and len(first_literal) == 1 else set()
             second = _const(arg_nodes[1]) if len(arg_nodes) > 1 else None
-            added = stringify(args[1]).chars | (
-                charsets.probe(second) if isinstance(second, str) and text.tainted else set()
+            replacement = stringify(args[1])
+            # What the template writes in: its literal text, and values no user controls. A user value
+            # brings its own characters under its own source, which the job check reads too.
+            written = _literal_chars(replacement) | (
+                charsets.probe(second) if isinstance(second, str) else charsets.NONE
             )
-            self._introduce(text, frozenset(added) - _matched_chars(first_literal))
+            if not replacement.tainted:
+                written = written | replacement.chars
+            if text.tainted or replacement.tainted:
+                introduced = frozenset(written) - _matched_chars(first_literal)
+                self._introduce(text, introduced)
+                self._introduce(replacement, introduced)
+            else:
+                written = charsets.NONE
             escaped = every and first_literal == '"' and second == '\\"' and "\\" not in text.chars
-            kept = self._kept_escaping(text, name, arg_nodes, keywords) if not stringify(args[1]).tainted else ""
+            kept = self._kept_escaping(text, name, arg_nodes, keywords) if not replacement.tainted else ""
             return AV(
-                chars=(text.chars - removed) | added,
-                sources=text.sources | stringify(args[1]).sources,
+                chars=(text.chars - removed) | replacement.chars | written,
+                sources=text.sources | replacement.sources,
                 quoted="dq-escaped" if escaped else kept,
             )
         if name == "lstrip" and isinstance(first_literal, str) and len(args) == 1:
