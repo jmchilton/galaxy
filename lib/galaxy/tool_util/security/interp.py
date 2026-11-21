@@ -37,6 +37,8 @@ from .model import (
     concat,
     CONDITIONAL,
     contents,
+    Data,
+    dataset_content,
     element,
     file_content,
     Group,
@@ -1542,7 +1544,10 @@ class TemplateAnalysis:
         if _SERVER_SINK.match(name):
             self.server_sink(name, join(*(stringify(a) for a in args + keywords)))
         if name == "open":
-            return CLEAN if self._galaxy_file(node) else file_content()
+            if self._galaxy_file(node):
+                return CLEAN
+            datasets = self._opened_datasets(node, env)
+            return dataset_content(datasets) if datasets else file_content()
         if name in ("int", "float") and len(node.args) == 1 and not node.keywords and not self._speculative:
             # Rendering stops when the conversion fails: afterwards the value is a number.
             self.apply_narrowing(node.args[0], lambda v, n=name: _number(v, n), env)
@@ -1635,6 +1640,48 @@ class TemplateAnalysis:
         for value in args + keywords:
             self._introduce(contents(value))
         return join(*(contents(a) for a in args + keywords))
+
+    def _opened_datasets(self, node: ast.Call, env: Env) -> tuple[Data, ...]:
+        """The input datasets ``open()`` reads: `open($x)`, `open(str($x))`, `open($x.__str__)`, `open($x.file_name)`."""
+        if len(node.args) != 1 or node.keywords:
+            return ()
+        argument = node.args[0]
+        if (
+            isinstance(argument, ast.Call)
+            and isinstance(argument.func, ast.Name)
+            and argument.func.id in ("str", "unicode")
+            and len(argument.args) == 1
+        ):
+            argument = argument.args[0]
+        if isinstance(argument, ast.Call) and not argument.args and not argument.keywords:
+            # `$x.get_file_name()`: the call of a name the template looks up.
+            argument = argument.func
+        path = self._looked_up_path(argument)
+        if path is None:
+            return ()
+        parts = path.split(".")
+        while len(parts) > 1 and parts[-1] in ("__str__", "file_name", "get_file_name"):
+            parts.pop()
+        value = self.resolve(".".join(parts), env, False)
+        datasets = tuple(n for n in value.nodes if isinstance(n, Data) and not n.output)
+        if not datasets or len(datasets) != len(value.nodes) or value.tainted:
+            return ()
+        return datasets
+
+    @staticmethod
+    def _looked_up_path(node: ast.expr) -> str | None:
+        """The dotted name a Cheetah lookup reads: `VFFSL(SL, "a.b")`, `VFN(VFFSL(SL, "a"), "b")`."""
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and len(node.args) > 1):
+            return None
+        name = _const(node.args[1])
+        if not isinstance(name, str):
+            return None
+        if node.func.id in ("VFFSL", "VFSL"):
+            return name
+        if node.func.id == "VFN":
+            inner = TemplateAnalysis._looked_up_path(node.args[0])
+            return f"{inner}.{name}" if inner is not None else None
+        return None
 
     @staticmethod
     def _galaxy_file(node: ast.Call) -> bool:

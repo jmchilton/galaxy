@@ -37,10 +37,12 @@ from galaxy.tool_util.security import (
 from galaxy.tool_util.security.charsets import (
     CRITICAL,
     HIGH,
+    PROBE,
     show,
 )
 from galaxy.tool_util.security.report import (
     DATASET_ATTRIBUTE,
+    DATASET_CONTENT,
     ELEMENT_IDENTIFIER,
     GROUP_TAGS,
     METADATA,
@@ -438,6 +440,25 @@ def _accessor_values(ref: SourceRef, value: Any) -> Iterator[str]:
     elif accessor == GROUP_TAGS:
         for dataset in _datasets(value):
             yield from (str(group) for group in dataset.groups)
+    elif accessor == DATASET_CONTENT:
+        for dataset in _datasets(value):
+            # The path the template opens.
+            yield from _file_text(str(dataset))
+
+
+# The most of a dataset the check reads; a bigger one counts as holding every character.
+CONTENT_LIMIT = 64 * 1024 * 1024
+
+
+def _file_text(path: str) -> Iterator[str]:
+    read = 0
+    with open(path, "rb") as fh:
+        while chunk := fh.read(1024 * 1024):
+            read += len(chunk)
+            if read > CONTENT_LIMIT:
+                yield "".join(sorted(PROBE))
+                return
+            yield chunk.decode("utf-8", errors="replace")
 
 
 def _identifiers(value: Any) -> Iterator[str]:
@@ -470,6 +491,7 @@ _DESCRIPTIONS = {
     RAW: "the value of",
     ELEMENT_IDENTIFIER: "an element identifier or the name of",
     GROUP_TAGS: "a group tag of a dataset of",
+    DATASET_CONTENT: "the content of a dataset of",
 }
 
 

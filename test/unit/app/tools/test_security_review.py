@@ -43,6 +43,7 @@ from galaxy.tools.security_review import (
 )
 from galaxy.tools.wrappers import (
     DatasetCollectionWrapper,
+    DatasetFilenameWrapper,
     DatasetListWrapper,
     InputValueWrapper,
 )
@@ -626,5 +627,26 @@ def test_newline_in_a_shell_script_starts_a_command(app, tmp_path, script, q, ex
     tool = make_tool(app, tmp_path, SCRIPT_LINE.format(script=script), "script_line.xml")
     job: Any = SimpleNamespace(job=SimpleNamespace(id=7), consumes_names=False, consumes_identifiers=False)
     job.param_dict = {"q": InputValueWrapper(cast(ToolParameter, tool.inputs["q"]), q)}
+    with pytest.raises(ToolInputRejected) if expected else contextlib.nullcontext():
+        reviewer(tmp_path, ENFORCE).check_job(tool, job)
+
+
+OPEN_FILE = """<tool id="open_file" name="Open file" version="1.0" profile="24.0">
+  <command><![CDATA[#set $n = open(str($n_file)).read().strip()
+tool --n $n > '$out']]></command>
+  <inputs><param name="n_file" type="data" format="txt"/></inputs>
+  <outputs><data name="out" format="txt"/></outputs>
+</tool>
+"""
+
+
+@pytest.mark.parametrize("content,expected", [("15\n", False), ("15; id\n", True)])
+def test_content_of_a_dataset_the_template_opens_is_checked(app, tmp_path, content, expected):
+    path = tmp_path / "n.txt"
+    path.write_text(content)
+    tool = make_tool(app, tmp_path, OPEN_FILE, "open_file.xml")
+    hda = model.HistoryDatasetAssociation(extension="txt", dataset=model.Dataset(external_filename=str(path)))
+    job: Any = SimpleNamespace(job=SimpleNamespace(id=7), consumes_names=False, consumes_identifiers=False)
+    job.param_dict = {"n_file": DatasetFilenameWrapper(hda, datatypes_registry=app.datatypes_registry)}
     with pytest.raises(ToolInputRejected) if expected else contextlib.nullcontext():
         reviewer(tmp_path, ENFORCE).check_job(tool, job)
