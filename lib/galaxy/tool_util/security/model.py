@@ -699,6 +699,20 @@ class Model:
     specials: dict[str, Special] = field(default_factory=dict)
     # Template macros: Cheetah text the template can read in with `#include source=$name#`.
     templates: dict[str, str] = field(default_factory=dict)
+    _job_parameters: dict[str, Opaque] = field(default_factory=dict, repr=False)
+
+    def job_parameter(self, name: str) -> AV:
+        """A name that is not a tool input: only a job parameter of that name can give it a value.
+
+        Galaxy puts every parameter of the job into the namespace, sanitized like a text parameter.
+        A regular job only has the parameters of the tool's inputs, and the template fails where it
+        reads any other name.
+        """
+        if name not in self._job_parameters:
+            chars = DEFAULT_SANITIZED if self.sanitize else PROBE
+            value = tainted(chars, source(f"job parameter ${name}, which is not a tool input", SPECIAL, key=name))
+            self._job_parameters[name] = Opaque(f"${name}", value)
+        return AV(nodes=(self._job_parameters[name],))
 
     def lookup(self, name: str) -> AV | None:
         nodes = self.root.children.get(name)
@@ -708,7 +722,16 @@ class Model:
             return AV(nodes=(self.specials[name],))
         # Old tools address nested parameters by their bare name.
         found = self.root.find(name)
-        return AV(nodes=tuple(found)) if found else None
+        if found:
+            return AV(nodes=tuple(found))
+        # Galaxy also adds each dataset of a multiple data input by its position: $input1, $input2.
+        end = len(name)
+        while end > 1 and name[end - 1].isdigit():
+            end -= 1
+            datasets = [node for node in self.root.children.get(name[:end], ()) if isinstance(node, Data)]
+            if datasets:
+                return AV(nodes=tuple(datasets))
+        return None
 
 
 def _user_select(input_source: InputSource) -> str | None:

@@ -8,6 +8,7 @@ it walks every branch, keeps for each variable the characters a user could put i
 from __future__ import annotations
 
 import ast
+import builtins
 import dataclasses
 import re
 import time
@@ -19,6 +20,8 @@ from typing import (
     Any,
     FrozenSet,
 )
+
+from Cheetah.Template import Template
 
 from . import (
     charsets,
@@ -463,6 +466,9 @@ class TemplateAnalysis:
                 for alias in node.names:
                     if alias.asname:
                         self._imported[alias.asname] = alias.name
+                    else:
+                        top = alias.name.split(".")[0]
+                        self._imported[top] = top
 
     # -- entry ---------------------------------------------------------------------------------
 
@@ -1299,8 +1305,10 @@ class TemplateAnalysis:
             found = self.model.lookup(first)
             if found is not None:
                 value = found
-            else:
+            elif first in self._imported or first in TEMPLATE_NAMES:
                 value = AV(py=self._imported.get(first, first))
+            else:
+                value = self.model.job_parameter(first)
         for part in parts[1:]:
             value = self._autocall(value, env) if autocall else value
             value = attribute(value, part)
@@ -1739,7 +1747,7 @@ class TemplateAnalysis:
 
 
 def unresolved_names(template: CompiledTemplate, model: Model) -> set[str]:
-    """Names the template reads that are neither tool inputs nor set in the template."""
+    """Names of the template's own machinery that it reads, which the analysis does not follow."""
     assigned: set[str] = set(template.helpers)
     for imported in template.imports:
         if isinstance(imported, (ast.Import, ast.ImportFrom)):
@@ -1762,7 +1770,11 @@ def unresolved_names(template: CompiledTemplate, model: Model) -> set[str]:
                     path = _const(node.args[1]) if len(node.args) > 1 else None
                     if isinstance(path, str):
                         read.add(path.split(".")[0])
-    return {name for name in read if name not in assigned and model.lookup(name) is None and name not in PY_NAMES}
+    return {
+        name
+        for name in read
+        if name not in assigned and model.lookup(name) is None and name not in PY_NAMES and name in TEMPLATE_NAMES
+    }
 
 
 PY_NAMES = frozenset(
@@ -1773,3 +1785,19 @@ PY_NAMES = frozenset(
         " basestring"
     ).split()
 ) | frozenset(name for name in _CLEAN_FUNCTIONS | _STRING_FUNCTIONS | _CONTAINER_FUNCTIONS if "." not in name)
+
+# Names a template resolves without the job: Python's builtins, the globals of the module Cheetah
+# compiles a template into, the attributes of the template object and the locals of its method.
+TEMPLATE_NAMES = (
+    PY_NAMES
+    | frozenset(dir(builtins))
+    | frozenset(dir(Template))
+    | frozenset(
+        (
+            "CacheRegion DummyResponse DummyResponseFailure DummyTransaction ErrorCatchers Filters NotFound Template"
+            " TransformerResponse TransformerTransaction VFFSL VFN VFSL builtin currentTime exists getmtime logging"
+            " os sys time types unicode valueForName valueFromFrameOrSearchList valueFromSearchList templateAPIClass"
+            " SL trans write _filter _v _dummyTrans"
+        ).split()
+    )
+)
