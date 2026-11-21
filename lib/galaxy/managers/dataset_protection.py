@@ -586,23 +586,33 @@ class DatasetProtectionManager:
         """
         try:
             to_decrypt = self.inputs_needing_decryption(tool, param_values)
+            self._usable_grants(user, tool, to_decrypt, skip_not_ready=True)
         except ProtectionError as e:
             raise RequestParameterInvalidException(str(e))
+
+    def _usable_grants(
+        self, user: User | None, tool: "Tool", to_decrypt: list[DatasetInstance], skip_not_ready: bool = False
+    ) -> list[DatasetProtectionGrant]:
+        """The grants decrypting ``to_decrypt`` in a job of ``tool``, raises :class:`ProtectionError` if any can't."""
         if not to_decrypt:
-            return
+            return []
         if not _can_decrypt_inputs(tool):
-            raise RequestParameterInvalidException(_unsupported_tool_message(tool))
+            raise ProtectionError(_unsupported_tool_message(tool))
+        grants: list[DatasetProtectionGrant] = []
         for dataset_instance in to_decrypt:
-            if dataset_instance.state != DatasetInstance.states.OK:
+            if skip_not_ready and dataset_instance.state != DatasetInstance.states.OK:
                 continue
             grant = self.get_usable_grant(user, dataset_instance) if user else None
             if grant is None:
-                raise RequestParameterInvalidException(
-                    f"Dataset '{_shown_name(dataset_instance)}' is encrypted and you are not authorized to decrypt it in jobs, "
-                    "or your authorization expires before this job could finish. Authorize the dataset (key icon)."
+                raise ProtectionError(
+                    f"You are not authorized to decrypt dataset '{_shown_name(dataset_instance)}' in jobs, or your "
+                    "authorization expires before this job can finish. Authorize the dataset (key icon) and run the "
+                    "job again."
                 )
             if refusal := _grant_refusal(grant, dataset_instance, self.job_margin):
-                raise RequestParameterInvalidException(refusal)
+                raise ProtectionError(refusal)
+            grants.append(grant)
+        return grants
 
     def authorize_job(
         self,
@@ -620,8 +630,7 @@ class DatasetProtectionManager:
         to_decrypt, passed_encrypted = self._protected_inputs(tool, param_values)
         if not to_decrypt:
             return None
-        if not _can_decrypt_inputs(tool):
-            raise ProtectionError(_unsupported_tool_message(tool))
+        grants = self._usable_grants(job.user, tool, to_decrypt)
         job_directory = os.path.dirname(compute_environment.config_directory().rstrip("/"))
         # Only jobs decrypting data depend on their destination.
         destination = get_destination()
@@ -629,21 +638,10 @@ class DatasetProtectionManager:
         assert destination.recryptor
 
         inputs_directory = protected_inputs_directory(job_directory)
-        protected_inputs: list[ProtectedInput] = []
-        grants: list[DatasetProtectionGrant] = []
-        for dataset_instance in to_decrypt:
-            grant = self.get_usable_grant(job.user, dataset_instance) if job.user else None
-            if grant is None:
-                raise ProtectionError(
-                    f"You are not authorized to decrypt dataset '{_shown_name(dataset_instance)}', or your authorization "
-                    "expires before this job can finish. Authorize the dataset again (key icon) and rerun the job."
-                )
-            if refusal := _grant_refusal(grant, dataset_instance, self.job_margin):
-                raise ProtectionError(refusal)
-            grants.append(grant)
-            protected_inputs.append(
-                self._protected_input(dataset_instance, grant, compute_environment, inputs_directory)
-            )
+        protected_inputs = [
+            self._protected_input(dataset_instance, grant, compute_environment, inputs_directory)
+            for dataset_instance, grant in zip(to_decrypt, grants)
+        ]
 
         job.protection_scheme = CRYPT4GH_SCHEME
         creates_metadata_files = any(protected_input.created_metadata_files for protected_input in protected_inputs)

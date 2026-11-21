@@ -778,5 +778,5 @@ def test_grants_expiring_before_a_job_can_end_are_refused_when_requested(tmp_pat
     tool = cast(Tool, Bunch(tool_type="default", config_files=[], credentials=None))
 
     assert not manager.grant_status(cast(User, Bunch(id=1)), cast(DatasetInstance, output)).ready
-    with pytest.raises(RequestParameterInvalidException, match="not authorized to decrypt it in jobs"):
+    with pytest.raises(RequestParameterInvalidException, match="not authorized to decrypt dataset .* in jobs"):
         manager.check_job_inputs(cast(User, Bunch(id=1)), tool, {})
