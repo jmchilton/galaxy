@@ -88,11 +88,11 @@ from galaxy.util import now
 from galaxy.util.crypt4gh import (
     check_crypt4gh,
     is_crypt4gh_file_ext,
-    iter_relpaths,
     MAX_CRYPT4GH_HEADER_SIZE,
     read_crypt4gh_header,
     unwrap_crypt4gh_file_ext,
 )
+from galaxy.util.path import iter_relpaths
 
 if TYPE_CHECKING:
     from galaxy.job_execution.compute_environment import ComputeEnvironment

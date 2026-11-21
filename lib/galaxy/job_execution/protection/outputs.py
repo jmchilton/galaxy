@@ -32,10 +32,10 @@ from galaxy.datatypes.crypt4gh import metadata_file_names
 from galaxy.util.crypt4gh import (
     check_crypt4gh,
     CRYPT4GH_FILE_EXT,
-    iter_relpaths,
     unwrap_crypt4gh_file_ext,
     wrap_crypt4gh_file_ext,
 )
+from galaxy.util.path import iter_relpaths
 from . import (
     CRYPT4GH_SCHEME,
     ProtectionError,

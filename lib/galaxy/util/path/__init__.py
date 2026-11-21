@@ -194,6 +194,13 @@ def safe_walk(path, allowlist=None):
         yield (dirpath, dirnames, filenames)
 
 
+def iter_relpaths(directory: str) -> Iterator[str]:
+    """Paths of the files in *directory* and its subdirectories, relative to *directory*."""
+    for root, _, filenames in walk(directory):
+        for filename in filenames:
+            yield relpath(join(root, filename), directory)
+
+
 def unsafe_walk(path: GenericPath, allowlist: AllowListT = None, username: str | None = None):  # type: ignore[valid-type]  # GenericPath is TypeVar-based
     """Walk a path and ensure that none of its contents are symlinks outside the path.
 
@@ -485,6 +492,7 @@ __all__ = (
     "extensions",
     "get_ext",
     "has_ext",
+    "iter_relpaths",
     "join",
     "joinext",
     "safe_contains",

@@ -6,9 +6,7 @@ and manage the ``<inner_ext>.c4gh`` wrapper-extension convention used by the
 Galaxy datatype registry.
 """
 
-import os
 import struct
-from collections.abc import Iterator
 from typing import (
     Any,
     IO,
@@ -159,17 +157,6 @@ def read_crypt4gh_header(stream_or_path: str | IO[bytes]) -> bytes:
     finally:
         if close_stream:
             stream.close()
-
-
-def iter_relpaths(directory: str) -> Iterator[str]:
-    """Paths of the files in *directory* and its subdirectories, relative to *directory*.
-
-    Extra files of encrypted datasets are encrypted, decrypted and verified file by file:
-    every place handling them must agree on which files there are.
-    """
-    for root, _, filenames in os.walk(directory):
-        for filename in filenames:
-            yield os.path.relpath(os.path.join(root, filename), directory)
 
 
 def check_crypt4gh(file_path: str) -> bool:

@@ -36,9 +36,9 @@ from pydantic import (
 
 from galaxy.util.crypt4gh import (
     check_crypt4gh,
-    iter_relpaths,
     read_crypt4gh_header,
 )
+from galaxy.util.path import iter_relpaths
 from galaxy.util.requests import Session
 from . import (
     ProtectedFile,

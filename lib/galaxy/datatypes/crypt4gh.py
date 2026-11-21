@@ -38,10 +38,10 @@ from galaxy.objectstore import ObjectStoreAuth
 from galaxy.util.crypt4gh import (
     check_crypt4gh,
     CRYPT4GH_FILE_EXT,
-    iter_relpaths,
     read_crypt4gh_header,
     unwrap_crypt4gh_file_ext,
 )
+from galaxy.util.path import iter_relpaths
 
 if TYPE_CHECKING:
     from galaxy.webapps.base.webapp import GalaxyWebTransaction
