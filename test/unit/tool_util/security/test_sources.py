@@ -302,6 +302,21 @@ def test_path_of_a_file_galaxy_writes_is_checkable(tmp_path, configfiles):
     assert high(report).checkable
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "#import pipes\necho ${pipes.quote(str($free))}",
+        "#if $free\n    #import pipes\n    echo ${pipes.quote(str($free))}\n#end if",
+        "#import pipes as p\necho ${p.quote(str($free))}",
+        "#from pipes import quote\necho ${quote(str($free))}",
+    ],
+)
+def test_imported_module_is_not_an_unanalysed_part(tmp_path, command):
+    report = review(tmp_path, f"{command} '$input.element_identifier'")
+    assert report.unanalyzed == []
+    assert report.unchecked_locations == {}
+
+
 def test_template_without_such_parts_is_checkable(tmp_path):
     report = review(tmp_path, "echo '$input.element_identifier'")
     assert report.unchecked_locations == {}
