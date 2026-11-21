@@ -277,8 +277,8 @@ def test_timeout(tmp_path, monkeypatch):
 @pytest.mark.parametrize(
     "command,reason",
     [
-        # Whatever $unknown holds is not followed: it may bring the quote that frees another value.
-        ("echo '$unknown' '$input.element_identifier'", "parts of it were not analysed"),
+        # Whatever the template object holds is not followed: it may bring the quote that frees another value.
+        ("echo '$searchList' '$input.element_identifier'", "parts of it were not analysed"),
         # Letters alone are a command once the shell reads them.
         ("echo '${free}' | sh", "it sends text to a shell to run"),
     ],
@@ -436,3 +436,29 @@ def test_join_of_quoted_elements(tmp_path, command, checkable):
 def test_value_that_is_a_parameter_or_a_list_has_the_elements_of_both(tmp_path):
     command = "#if $free\n#set $l = $text\n#else\n#set $l = [$input.element_identifier]\n#end if\n#for $e in $l\necho '$e'\n#end for"
     assert SourceRef(ELEMENT_IDENTIFIER, "input") in refs(review(tmp_path, command))
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "echo '$unknown' '$input.element_identifier'",
+        "#for $k in $unknown.keys()\necho '$unknown[$k].name' '$input.element_identifier'\n#end for",
+    ],
+)
+def test_name_that_is_not_a_tool_input_is_a_job_parameter(tmp_path, command):
+    report = review(tmp_path, command)
+    assert report.unanalyzed == []
+    assert high(report).checkable
+    assert not any(SourceRef(SPECIAL, None, "unknown") in f.refs for f in report.findings if f.severity == HIGH)
+
+
+def test_job_parameter_of_a_tool_without_sanitizing_is_checked(tmp_path):
+    finding = high(review(tmp_path, "echo '$unknown'", extra=UNSANITIZED))
+    assert finding.refs == (SourceRef(SPECIAL, None, "unknown"),)
+    assert finding.checkable
+
+
+@pytest.mark.parametrize("name", ["input1", "input12"])
+def test_dataset_of_a_data_input_by_its_position_is_a_dataset(tmp_path, name):
+    report = review(tmp_path, f"echo '${name}.element_identifier'")
+    assert refs(report) == {SourceRef(ELEMENT_IDENTIFIER, "input")}
