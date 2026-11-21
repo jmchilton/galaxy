@@ -102,7 +102,6 @@ class BaseCrypt4GHExecutionIntegrationTestCase(integration_util.IntegrationTestC
     def _authorize(
         self,
         dataset_id: str,
-        encrypted: bytes,
         expires_in: timedelta = timedelta(days=7),
         user: Keypair | None = None,
         status_code: int = 200,
@@ -110,7 +109,9 @@ class BaseCrypt4GHExecutionIntegrationTestCase(integration_util.IntegrationTestC
         """Do what the browser does with the user-side recryptor service."""
         user = user or self.user
         key_ref = self.service.get_compute_key_info(user.public, expires_in=expires_in)
-        recrypted = self.service.user_recrypt(encrypted, user, key_ref)
+        # The key icon sends the header the API exposes to the user service.
+        details = self._get(f"datasets/{dataset_id}", data={"view": "detailed"}).json()
+        recrypted = self.service.user_recrypt_header(details["metadata_crypt4gh_header"], user, key_ref)
         payload = {
             "scheme": "crypt4gh",
             "crypt4gh_compute_header": recrypted["crypt4gh_header"],
@@ -122,8 +123,8 @@ class BaseCrypt4GHExecutionIntegrationTestCase(integration_util.IntegrationTestC
         return response
 
     def _upload_authorized(self, history_id: str, plaintext: bytes, name: str = "reads.fastqsanger.c4gh") -> dict:
-        dataset, encrypted = self._upload_encrypted(history_id, plaintext, name=name)
-        self._authorize(dataset["id"], encrypted)
+        dataset, _ = self._upload_encrypted(history_id, plaintext, name=name)
+        self._authorize(dataset["id"])
         return dataset
 
     def _run_cat(self, history_id: str, input1: dict, *others: dict):
@@ -423,8 +424,8 @@ steps:
         assert self._decrypted_content(history_id, output) == b"read1\n"
 
     def test_conversions_are_converted_again_once_their_authorization_expired(self, history_id):
-        dataset, encrypted = self._upload_encrypted(history_id, b">read1\nACGT\n", name="reads.fasta.c4gh")
-        self._authorize(dataset["id"], encrypted)
+        dataset, _ = self._upload_encrypted(history_id, b">read1\nACGT\n", name="reads.fasta.c4gh")
+        self._authorize(dataset["id"])
         first, _ = self._wait_for_job(history_id, self._run_explicit_conversion(history_id, dataset))
         assert first["state"] == "ok", first
         # The user can renew the authorization of the dataset, not the one of its hidden conversion.
@@ -477,14 +478,14 @@ steps:
         dataset = self.dataset_populator.new_dataset(
             history_id, content=io.BytesIO(encrypted), name="reads.fastqsanger.c4gh", file_type="auto", wait=True
         )
-        self._authorize(dataset["id"], encrypted)
+        self._authorize(dataset["id"])
         first, _ = self._wait_for_job(history_id, self._run_cat(history_id, dataset))
         assert first["state"] == "ok", first
         self.dataset_populator.make_public(history_id)
 
         with self._different_user("crypt4gh_cache_recipient@bx.psu.edu"):
             # The file is encrypted for the recipient too, who authorizes it with their own key.
-            self._authorize(dataset["id"], encrypted, user=recipient)
+            self._authorize(dataset["id"], user=recipient)
             recipient_history_id = self.dataset_populator.new_history()
             response = self.dataset_populator.run_tool_raw(
                 "cat", {"input1": {"src": "hda", "id": dataset["id"]}}, recipient_history_id, use_cached_job=True
@@ -634,9 +635,9 @@ class TestCrypt4GHSubmissionRefusalIntegration(BaseCrypt4GHExecutionIntegrationT
         assert self.service.requests == []
 
     def test_keypair_expiring_before_a_job_could_finish_is_refused_when_authorizing(self, history_id):
-        dataset, encrypted = self._upload_encrypted(history_id, PLAINTEXT_1)
+        dataset, _ = self._upload_encrypted(history_id, PLAINTEXT_1)
         # Accepted by the key service right now, but expires before a job hitting the 48h walltime would be done.
-        response = self._authorize(dataset["id"], encrypted, expires_in=timedelta(hours=30), status_code=400)
+        response = self._authorize(dataset["id"], expires_in=timedelta(hours=30), status_code=400)
 
         assert "expires before a job using it could finish" in response.json()["err_msg"]
         response = self._run_cat(history_id, dataset)

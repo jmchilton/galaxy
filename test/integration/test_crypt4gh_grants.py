@@ -96,6 +96,9 @@ class TestCrypt4GHGrantsIntegration(integration_util.IntegrationTestCase):
         assert status["protected"] is True
         assert status["scheme"] == "crypt4gh"
         assert status["ready"] is False
+        # What the key icon sends the user's key service to authorize the dataset.
+        details = self._get(f"datasets/{dataset['id']}", data={"view": "detailed"}).json()
+        assert details["metadata_crypt4gh_header"] == base64.b64encode(USER_HEADER).decode()
 
     def _change_datatype(self, history_id: str, dataset_id: str, datatype: str):
         return self._put(f"histories/{history_id}/contents/{dataset_id}", {"datatype": datatype}, json=True)

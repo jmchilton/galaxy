@@ -119,9 +119,13 @@ class MockRecryptorService:
 
     def user_recrypt(self, encrypted: bytes, user: Keypair, key_ref: str) -> dict[str, str]:
         """What the user-side service (Service A) returns for a dataset encrypted to ``user``."""
-        compute = self.keypairs[key_ref]
         user_header, _ = split_header(encrypted)
-        compute_header = recrypt_header(user_header, user.secret, compute.keypair.public)
+        return self.user_recrypt_header(base64.b64encode(user_header).decode(), user, key_ref)
+
+    def user_recrypt_header(self, user_header: str, user: Keypair, key_ref: str) -> dict[str, str]:
+        """What the user-side service returns for the base64 header the browser sends it."""
+        compute = self.keypairs[key_ref]
+        compute_header = recrypt_header(base64.b64decode(user_header), user.secret, compute.keypair.public)
         return {
             "crypt4gh_header": base64.b64encode(compute_header).decode(),
             "crypt4gh_compute_keypair_id": key_ref,
