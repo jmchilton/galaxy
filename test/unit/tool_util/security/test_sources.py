@@ -548,3 +548,17 @@ def test_utf8_bytes_of_a_value_keep_it_checkable(tmp_path, codec):
     report = review(tmp_path, command)
     assert report.unchecked_locations == {}
     assert all(f.checkable for f in report.findings if f.severity == HIGH)
+
+
+@pytest.mark.parametrize(
+    "command,expected",
+    [
+        ("sed -e '$free' '$input'", True),
+        ("sed --sandbox -e '$free' '$input'", False),
+        # GNU sed reads every option before it runs, but the review only knows the options before the program.
+        ("sed -e '$free' --sandbox '$input'", True),
+    ],
+)
+def test_sandboxed_sed_program_runs_nothing(tmp_path, command, expected):
+    rules = {f.rule for f in review(tmp_path, command.replace("$free", "$letters")).findings}
+    assert ("nested-interpreter" in rules) is expected

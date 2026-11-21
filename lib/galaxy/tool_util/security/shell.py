@@ -65,6 +65,7 @@ class Frame(NamedTuple):
     quote: str = ""
     inner: str = ""  # quote state inside the program text of a nested interpreter
     sed: Optional[SedState] = None  # where the program text of a sed command has got to
+    sandbox: bool = False  # sed --sandbox: the program can neither run commands nor open files
     cmd: str | None = None  # "?" when the command word contains a placeholder
     wrapper: bool = False
     piped: bool = False
@@ -106,6 +107,7 @@ class Context:
     # The value starts an argument that does not follow an option: a leading dash makes it one.
     option_position: bool = False
     sed: Optional[SedState] = None  # where in a sed program the value lands
+    sandbox: bool = False  # the sed program cannot run commands or open files
 
     def describe(self) -> str:
         where = {
@@ -231,7 +233,7 @@ class _Lexer:
         if name in WRAPPERS:
             self.set(wrapper=True)
             return
-        self.set(cmd=name, wrapper=False, has_args=False)
+        self.set(cmd=name, wrapper=False, has_args=False, sandbox=False)
         if name == "eval":
             self.set(code_all="sh")
         elif name in _AWK:
@@ -263,6 +265,8 @@ class _Lexer:
                 self.set(expect="code:sed", script="")
             elif text in ("-f", "--file"):
                 self.set(expect="scriptfile", script="")
+            elif text == "--sandbox":
+                self.set(sandbox=True)
         elif cmd == "find" and text in ("-exec", "-execdir", "-ok", "-okdir"):
             # What follows is a command of its own.
             self.set(cmd=None, has_args=False)
@@ -270,7 +274,15 @@ class _Lexer:
     def new_command(self, piped: bool = False) -> None:
         self.end_word()
         self.set(
-            cmd=None, wrapper=False, piped=piped, expect="", script="", code_all="", has_args=False, after_option=False
+            cmd=None,
+            wrapper=False,
+            piped=piped,
+            expect="",
+            script="",
+            code_all="",
+            has_args=False,
+            after_option=False,
+            sandbox=False,
         )
 
     # -- characters ----------------------------------------------------------------------------
@@ -407,9 +419,10 @@ class _Lexer:
         f = self.top
         lang = inner = ""
         sed_state = None
+        sandbox = False
         for frame in reversed(self.frames):
             if frame.role.startswith("code:"):
-                lang, inner, sed_state = frame.role[5:], frame.inner, frame.sed
+                lang, inner, sed_state, sandbox = frame.role[5:], frame.inner, frame.sed, frame.sandbox
                 break
         role = f.role
         if role == "cmd" and _ASSIGNMENT.match(f.word or ""):
@@ -429,6 +442,7 @@ class _Lexer:
             first_arg,
             option_position,
             sed_state,
+            sandbox,
         )
 
 
