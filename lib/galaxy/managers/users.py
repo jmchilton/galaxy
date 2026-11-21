@@ -17,6 +17,7 @@ from typing import (
 from markupsafe import escape
 from sqlalchemy import (
     and_,
+    delete,
     exc,
     false,
     select,
@@ -348,6 +349,10 @@ class UserManager(base.ModelManager, deletable.PurgableManagerMixin):
         # Delete UserAuthnzTokens, unlinking any external identities
         for authnz in user.social_auth:
             self.session().delete(authnz)
+        # Delete grants to decrypt protected datasets, they hold bearer capabilities
+        self.session().execute(
+            delete(model.DatasetProtectionGrant).where(model.DatasetProtectionGrant.user_id == user.id)
+        )
         compliance_log = logging.getLogger(COMPLIANCE_LOGGER_NAME)
         compliance_log.info(f"delete-user-event: {user.id}")
         # Maybe there is some case in the future where an admin needs

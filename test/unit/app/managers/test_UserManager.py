@@ -617,6 +617,29 @@ class TestUserManager(BaseTestCase):
 
         assert self._oidc_tokens_for(user2) == []
 
+    def test_purge_deletes_dataset_protection_grants(self):
+        self.trans.app.config.allow_user_deletion = True
+        user2 = self.user_manager.create(**user2_data)
+        dataset = model.Dataset()
+        self.trans.sa_session.add(
+            model.DatasetProtectionGrant(
+                user=user2,
+                dataset=dataset,
+                scheme="crypt4gh",
+                key_ref="key",
+                expires_at=now(),
+                grant_data={"compute_header": "header"},
+                source="user",
+            )
+        )
+        self.trans.sa_session.commit()
+
+        self.user_manager.delete(user2)
+        self.user_manager.purge(user2)
+
+        stmt = select(model.DatasetProtectionGrant).where(model.DatasetProtectionGrant.user_id == user2.id)
+        assert list(self.trans.sa_session.scalars(stmt)) == []
+
     def test_purge_logs_compliance_event_with_user_id(self, caplog):
         self.log("purging a user should log the user ID, not their PII, to the compliance logger")
         self.trans.app.config.allow_user_deletion = True

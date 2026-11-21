@@ -34,7 +34,7 @@ def upgrade() -> None:
         create_table(
             grant_table_name,
             sa.Column("id", sa.Integer, primary_key=True),
-            sa.Column("user_id", sa.Integer, sa.ForeignKey("galaxy_user.id"), index=True, nullable=False),
+            sa.Column("user_id", sa.Integer, sa.ForeignKey("galaxy_user.id"), nullable=False),
             sa.Column("dataset_id", sa.Integer, sa.ForeignKey("dataset.id"), index=True, nullable=False),
             sa.Column("scheme", sa.String(32), nullable=False),
             sa.Column("key_ref", sa.String(255), nullable=False),

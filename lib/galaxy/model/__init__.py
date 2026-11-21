@@ -13589,10 +13589,11 @@ class DatasetProtectionGrant(Base):
     """
 
     __tablename__ = "dataset_protection_grant"
+    # The unique constraint's index also serves lookups by user.
     __table_args__ = (UniqueConstraint("user_id", "dataset_id", "scheme"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("galaxy_user.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("galaxy_user.id"))
     dataset_id: Mapped[int] = mapped_column(ForeignKey("dataset.id"), index=True)
     scheme: Mapped[str] = mapped_column(String(32))
     key_ref: Mapped[str] = mapped_column(String(255))
