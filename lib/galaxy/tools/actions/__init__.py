@@ -549,7 +549,12 @@ class DefaultToolAction(ToolAction):
             all_permissions,
         ) = self._collect_inputs(tool, trans, incoming, history, current_user_roles, collection_info)
         assert history  # tell type system we've set history and it is no longer optional
-        if not skip and completed_job is None:
+        if (
+            not skip
+            and completed_job is None
+            # In memory, inp_data holds collection elements too: most jobs skip walking the parameters.
+            and any(app.dataset_protection.is_protected(data) for data in inp_data.values() if data)
+        ):
             # Skipped and reused jobs don't decrypt anything.
             app.dataset_protection.check_job_inputs(trans.user, tool, incoming)
         # Build name for output datasets based on tool name and input names

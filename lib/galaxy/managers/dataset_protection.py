@@ -551,6 +551,9 @@ class DatasetProtectionManager:
             if not isinstance(input, BaseDataToolParameter):
                 return
             for input_instance in _dataset_instances(value):
+                if not self.is_protected(input_instance):
+                    # Only conversions of protected datasets are protected, don't look them up.
+                    continue
                 for dataset_instance, read_encrypted in _read_datasets(input, input_instance):
                     dataset = dataset_instance.dataset
                     if dataset is None or not self.is_protected(dataset_instance):
