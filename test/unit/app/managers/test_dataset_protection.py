@@ -161,6 +161,7 @@ def _manager(walltime=None):
         cast(GalaxyAppConfiguration, Bunch(crypt4gh_enabled=True)), mock.MagicMock(), walltime
     )
     manager.get_grant = mock.MagicMock(return_value=None)  # type: ignore[method-assign]
+    manager._get_grants = mock.MagicMock(return_value={})  # type: ignore[method-assign]
     return manager
 
 

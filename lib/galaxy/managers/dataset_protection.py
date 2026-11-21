@@ -113,6 +113,8 @@ JOB_TTL_MARGIN = timedelta(hours=1)
 KEY_SERVICE_EXPIRY_MARGIN = timedelta(days=1)
 # The key service issues keypairs valid for 7 days, anything far beyond is not a real expiration.
 MAX_GRANT_LIFETIME = timedelta(days=31)
+# Bound the IN lists of grant lookups for large output collections.
+GRANT_QUERY_CHUNK_SIZE = 1000
 
 
 class ExtraFilesKey(BaseModel):
@@ -421,6 +423,17 @@ class DatasetProtectionManager:
     def get_grant(self, user: User, dataset: Dataset) -> DatasetProtectionGrant | None:
         stmt = select(DatasetProtectionGrant).filter_by(user_id=user.id, dataset_id=dataset.id, scheme=CRYPT4GH_SCHEME)
         return self.sa_session.scalars(stmt).one_or_none()
+
+    def _get_grants(self, user: User, dataset_ids: list[int]) -> dict[int, DatasetProtectionGrant]:
+        grants: dict[int, DatasetProtectionGrant] = {}
+        for start in range(0, len(dataset_ids), GRANT_QUERY_CHUNK_SIZE):
+            stmt = select(DatasetProtectionGrant).where(
+                DatasetProtectionGrant.user_id == user.id,
+                DatasetProtectionGrant.scheme == CRYPT4GH_SCHEME,
+                DatasetProtectionGrant.dataset_id.in_(dataset_ids[start : start + GRANT_QUERY_CHUNK_SIZE]),
+            )
+            grants.update((grant.dataset_id, grant) for grant in self.sa_session.scalars(stmt))
+        return grants
 
     def _get_or_create_grant(self, user: User, dataset: Dataset) -> DatasetProtectionGrant:
         grant = self.get_grant(user, dataset)
@@ -862,9 +875,20 @@ class DatasetProtectionManager:
         protected: list[tuple[DatasetInstance, ProtectedOutput]],
     ) -> None:
         assert job.user
+        datasets = {
+            dataset_instance.dataset.id: dataset_instance.dataset
+            for dataset_instance, _ in protected
+            if dataset_instance.dataset
+        }
+        # One query for all outputs, the session doesn't autoflush: grants added in this loop are found here.
+        grants = self._get_grants(job.user, list(datasets))
         for dataset_instance, record in protected:
             assert dataset_instance.dataset
-            grant = self._get_or_create_grant(job.user, dataset_instance.dataset)
+            grant = grants.get(dataset_instance.dataset.id)
+            if grant is None:
+                grant = DatasetProtectionGrant(user=job.user, dataset=dataset_instance.dataset, scheme=CRYPT4GH_SCHEME)
+                self.sa_session.add(grant)
+                grants[dataset_instance.dataset.id] = grant
             grant.key_ref = key_ref
             grant.expires_at = expires_at
             grant_data = Crypt4GHGrantData(
