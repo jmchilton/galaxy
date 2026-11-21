@@ -395,6 +395,12 @@ def test_path_functions_keep_the_value_checkable(tmp_path, command):
     assert finding.breakout == frozenset("'")
 
 
+QUOTED_OR = (
+    "#set $l = []\n#for r in $rows\n#if len(r.label.value) > 1\n#silent $l.append(\"'%s'\" % r.label.value)\n"
+    "#else\n#silent $l.append({other})\n#end if\n#end for\necho #echo ' '.join($l)#"
+)
+
+
 @pytest.mark.parametrize(
     "command,checkable",
     [
@@ -406,6 +412,13 @@ def test_path_functions_keep_the_value_checkable(tmp_path, command):
         ("""#set $l = '" "'.join(["'%s'" % r.label.value for r in $rows])\necho $l""", False),
         # A literal element alone loses its place next to the value.
         ("""#set $l = ''.join(["'", str($free)])\necho $l""", False),
+        # Elements that are one of several strings, all quoting with one kind of quote.
+        (QUOTED_OR.format(other="r.label.value"), True),
+        (
+            """#if $free\n#set $l = $free\n#else\n#set $l = ["'%s'" % r.label.value for r in $rows]\n#end if\necho #echo ' '.join($l)#""",
+            True,
+        ),
+        (QUOTED_OR.format(other="'\"%s\"' % r.label.value"), False),
     ],
 )
 def test_join_of_quoted_elements(tmp_path, command, checkable):
