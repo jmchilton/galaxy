@@ -118,7 +118,7 @@ class BaseCrypt4GHExecutionIntegrationTestCase(integration_util.IntegrationTestC
             "crypt4gh_compute_keypair_id": recrypted["crypt4gh_compute_keypair_id"],
             "crypt4gh_compute_keypair_expiration_date": recrypted["crypt4gh_compute_keypair_expiration_date"],
         }
-        response = self._put(f"datasets/{dataset_id}/protection", payload, json=True)
+        response = self.dataset_populator.set_dataset_protection_raw(dataset_id, payload)
         self._assert_status_code_is(response, status_code)
         return response
 
@@ -166,7 +166,7 @@ class BaseCrypt4GHExecutionIntegrationTestCase(integration_util.IntegrationTestC
         )
 
     def _ready(self, dataset_id: str) -> bool:
-        return self._get(f"datasets/{dataset_id}/protection").json()["ready"]
+        return self.dataset_populator.get_dataset_protection(dataset_id)["ready"]
 
     def _expire_grants(self, dataset_id: str) -> None:
         hda = self._app.model.session.get(HistoryDatasetAssociation, self._app.security.decode_id(dataset_id))
@@ -623,11 +623,7 @@ class TestCrypt4GHSubmissionRefusalIntegration(BaseCrypt4GHExecutionIntegrationT
         self.dataset_populator.make_public(history_id)
         with self._different_user("crypt4gh_recipient@bx.psu.edu"):
             recipient_history_id = self.dataset_populator.new_history()
-            copy = self._post(
-                f"histories/{recipient_history_id}/contents",
-                {"source": "hda", "content": dataset["id"], "type": "dataset"},
-                json=True,
-            ).json()
+            copy = self.dataset_populator.copy_hda(recipient_history_id, dataset["id"])
             # Running on the shared dataset directly or on a copy is refused alike.
             for target in (dataset, copy):
                 response = self._run_cat(recipient_history_id, target)

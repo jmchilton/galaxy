@@ -64,22 +64,10 @@ class TestCrypt4GHGrantsIntegration(integration_util.IntegrationTestCase):
             wait=True,
         )
 
-    def _protection(self, dataset_id: str) -> dict:
-        response = self._get(f"datasets/{dataset_id}/protection")
-        response.raise_for_status()
-        return response.json()
-
     def _grant(self, dataset_id: str, payload: dict | None = None):
-        return self._put(
-            f"datasets/{dataset_id}/protection", grant_payload() if payload is None else payload, json=True
+        return self.dataset_populator.set_dataset_protection_raw(
+            dataset_id, grant_payload() if payload is None else payload
         )
-
-    def _copy_to_history(self, history_id: str, dataset_id: str) -> dict:
-        response = self._post(
-            f"histories/{history_id}/contents", {"source": "hda", "content": dataset_id, "type": "dataset"}, json=True
-        )
-        response.raise_for_status()
-        return response.json()
 
     def _grants_for_dataset(self, dataset_id: str) -> list[DatasetProtectionGrant]:
         sa_session = self._app.model.session
@@ -92,7 +80,7 @@ class TestCrypt4GHGrantsIntegration(integration_util.IntegrationTestCase):
     def test_upload_is_protected_but_not_ready(self, history_id):
         dataset = self._upload_protected(history_id)
         assert dataset["extension"] == "fastqsanger.c4gh"
-        status = self._protection(dataset["id"])
+        status = self.dataset_populator.get_dataset_protection(dataset["id"])
         assert status["protected"] is True
         assert status["scheme"] == "crypt4gh"
         assert status["ready"] is False
@@ -110,7 +98,7 @@ class TestCrypt4GHGrantsIntegration(integration_util.IntegrationTestCase):
         assert "only be changed to another encrypted datatype" in response.json()["err_msg"]
         response = self._change_datatype(history_id, dataset["id"], "c4gh")
         self._assert_status_code_is(response, 200)
-        assert self._protection(dataset["id"])["protected"] is True
+        assert self.dataset_populator.get_dataset_protection(dataset["id"])["protected"] is True
 
     def test_redetecting_the_datatype_keeps_the_inner_datatype(self, history_id):
         dataset = self._upload_protected(history_id)
@@ -165,7 +153,7 @@ class TestCrypt4GHGrantsIntegration(integration_util.IntegrationTestCase):
 
     def test_plain_dataset_is_not_protected(self, history_id):
         dataset = self.dataset_populator.new_dataset(history_id, content="1\t2\n", wait=True)
-        assert self._protection(dataset["id"]) == {
+        assert self.dataset_populator.get_dataset_protection(dataset["id"]) == {
             "protected": False,
             "scheme": None,
             "ready": False,
@@ -180,7 +168,7 @@ class TestCrypt4GHGrantsIntegration(integration_util.IntegrationTestCase):
         self._assert_status_code_is(response, 200)
         assert response.json()["ready"] is True
         assert response.json()["expires_at"]
-        assert self._protection(dataset["id"])["ready"] is True
+        assert self.dataset_populator.get_dataset_protection(dataset["id"])["ready"] is True
 
         # The compute header is a bearer capability, it must not be exposed anywhere.
         details = self._get(f"datasets/{dataset['id']}", data={"view": "detailed"}).json()
@@ -214,14 +202,14 @@ class TestCrypt4GHGrantsIntegration(integration_util.IntegrationTestCase):
         ):
             response = self._grant(dataset["id"], grant_payload(**invalid))
             assert response.status_code in (400, 422), f"{invalid} -> {response.status_code}"
-        assert self._protection(dataset["id"])["ready"] is False
+        assert self.dataset_populator.get_dataset_protection(dataset["id"])["ready"] is False
 
     def test_owner_copy_keeps_grant(self, history_id):
         dataset = self._upload_protected(history_id)
         self._assert_status_code_is(self._grant(dataset["id"]), 200)
         other_history_id = self.dataset_populator.new_history()
-        copy = self._copy_to_history(other_history_id, dataset["id"])
-        assert self._protection(copy["id"])["ready"] is True
+        copy = self.dataset_populator.copy_hda(other_history_id, dataset["id"])
+        assert self.dataset_populator.get_dataset_protection(copy["id"])["ready"] is True
 
     def test_shared_copy_does_not_carry_grant(self, history_id):
         dataset = self._upload_protected(history_id)
@@ -230,14 +218,14 @@ class TestCrypt4GHGrantsIntegration(integration_util.IntegrationTestCase):
 
         with self._different_user("crypt4gh_recipient@bx.psu.edu"):
             # Read access to the shared dataset does not include the owner's grant ...
-            assert self._protection(dataset["id"])["ready"] is False
+            assert self.dataset_populator.get_dataset_protection(dataset["id"])["ready"] is False
             recipient_history_id = self.dataset_populator.new_history()
-            copy = self._copy_to_history(recipient_history_id, dataset["id"])
+            copy = self.dataset_populator.copy_hda(recipient_history_id, dataset["id"])
             # ... and neither does a copy in the recipient's own history.
-            assert self._protection(copy["id"])["ready"] is False
+            assert self.dataset_populator.get_dataset_protection(copy["id"])["ready"] is False
             # The recipient can only register a grant of their own.
             self._assert_status_code_is(self._grant(copy["id"]), 200)
-            assert self._protection(copy["id"])["ready"] is True
+            assert self.dataset_populator.get_dataset_protection(copy["id"])["ready"] is True
 
         grants = self._grants_for_dataset(dataset["id"])
         assert len(grants) == 2
@@ -248,14 +236,14 @@ class TestCrypt4GHGrantsIntegration(integration_util.IntegrationTestCase):
         self.dataset_populator.make_private(history_id, dataset["id"])
         with self._different_user("crypt4gh_stranger@bx.psu.edu"):
             self._assert_status_code_is(self._grant(dataset["id"]), 403)
-            self._assert_status_code_is(self._get(f"datasets/{dataset['id']}/protection"), 403)
+            self._assert_status_code_is(self.dataset_populator.get_dataset_protection_raw(dataset["id"]), 403)
 
     def test_purge_disables_grants(self, history_id):
         dataset = self._upload_protected(history_id)
         self._assert_status_code_is(self._grant(dataset["id"]), 200)
-        assert self._protection(dataset["id"])["ready"] is True
+        assert self.dataset_populator.get_dataset_protection(dataset["id"])["ready"] is True
         self.dataset_populator.delete_dataset(history_id, dataset["id"], purge=True, wait_for_purge=True)
-        assert self._protection(dataset["id"])["ready"] is False
+        assert self.dataset_populator.get_dataset_protection(dataset["id"])["ready"] is False
         self._assert_status_code_is(self._grant(dataset["id"]), 400)
 
 
@@ -275,6 +263,6 @@ class TestCrypt4GHGrantsDisabledIntegration(integration_util.IntegrationTestCase
             wait=True,
         )
         assert not dataset["extension"].endswith("c4gh")
-        assert self._get(f"datasets/{dataset['id']}/protection").json()["protected"] is False
-        response = self._put(f"datasets/{dataset['id']}/protection", grant_payload(), json=True)
+        assert self.dataset_populator.get_dataset_protection(dataset["id"])["protected"] is False
+        response = self.dataset_populator.set_dataset_protection_raw(dataset["id"], grant_payload())
         self._assert_status_code_is(response, 403)

@@ -1207,6 +1207,17 @@ class BaseDatasetPopulator(BasePopulator):
     def copy_history(self, history_id, name="API Test Copied History", **kwds) -> Response:
         return self._post("histories", data={"name": name, "history_id": history_id, **kwds})
 
+    def get_dataset_protection_raw(self, dataset_id: str) -> Response:
+        return self._get(f"datasets/{dataset_id}/protection")
+
+    def get_dataset_protection(self, dataset_id: str) -> dict[str, Any]:
+        response = self.get_dataset_protection_raw(dataset_id)
+        api_asserts.assert_status_code_is_ok(response)
+        return response.json()
+
+    def set_dataset_protection_raw(self, dataset_id: str, payload: dict[str, Any]) -> Response:
+        return self._put(f"datasets/{dataset_id}/protection", payload, json=True)
+
     def copy_hda(self, history_id: str, hda_id: str, **kwds) -> dict[str, Any]:
         """Copy an existing HDA into history_id, reusing its underlying Dataset."""
         payload = {"source": "hda", "content": hda_id, **kwds}
