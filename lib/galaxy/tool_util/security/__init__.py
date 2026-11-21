@@ -62,6 +62,26 @@ _RUNS_TEXT = frozenset(("capability-pipe-to-shell",))
 _HEREDOC = re.compile(r"(?<!<)<<(?!<)")
 
 
+# `#include source=$name#` (or `${name}`, ending at the line end without the closing `#`).
+_INCLUDE = re.compile(r"#include[ \t]+source[ \t]*=[ \t]*\$(?:\{(\w+)\}|(\w+)(?![\w.\[(]))[ \t]*#?")
+
+
+def _include_templates(source: str, templates: dict[str, str]) -> str:
+    """The template with each ``#include`` of a template macro replaced by the macro's text.
+
+    Cheetah reads the included text as template code, so it is analysed in place. Lines after an
+    include are numbered in the expanded text.
+    """
+    if not templates:
+        return source
+    for _ in range(10):
+        expanded = _INCLUDE.sub(lambda m: templates.get(m.group(1) or m.group(2), m.group(0)), source)
+        if expanded == source:
+            break
+        source = expanded
+    return source
+
+
 def _compile(source: str, location: str, report: Report) -> CompiledTemplate | None:
     try:
         return compile_template(source)
@@ -92,7 +112,7 @@ def _analyse(
     source: str, location: str, language: str, model: Model, report: Report, deadline: float | None
 ) -> TemplateAnalysis | None:
     _check_deadline(deadline)
-    template = _compile(source, location, report)
+    template = _compile(_include_templates(source, model.templates), location, report)
     if template is None:
         return None
     PythonAudit(report, location, model).template(template)
