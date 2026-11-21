@@ -7,8 +7,10 @@ import time
 
 import pytest
 
+from galaxy.tool_util.parser import get_tool_source
 from galaxy.tool_util.security import (
     Report,
+    review_tool_source,
     ReviewTimeout,
     SourceRef,
 )
@@ -325,6 +327,22 @@ def test_included_template_macro_is_analysed_in_place(tmp_path, include):
     assert not any(f.rule == "template-include" for f in report.findings)
     assert SourceRef(TEXT, "free") in refs(report)
     assert all(f.checkable for f in report.findings if f.kind == "vulnerability")
+
+
+def test_converted_dataset_is_a_dataset(tmp_path):
+    inputs = '<param name="vcf" type="data" format="vcf"><conversion name="vcf_index" type="tabix"/></param>'
+    path = tmp_path / "conversion.xml"
+    path.write_text(
+        f"""<tool id="t" name="t" version="1" profile="24.2">
+  <command><![CDATA[ln -s '$vcf_index' i.tbi && echo '$vcf_index.element_identifier']]></command>
+  <inputs>{inputs}</inputs>
+  <outputs/>
+</tool>"""
+    )
+    report = review_tool_source(get_tool_source(str(path)))
+    assert report.unanalyzed == []
+    assert refs(report) == {SourceRef(ELEMENT_IDENTIFIER, "vcf_index")}
+    assert high(report).checkable
 
 
 def test_template_without_such_parts_is_checkable(tmp_path):
