@@ -17,6 +17,7 @@ from contextlib import contextmanager
 from dataclasses import (
     dataclass,
     field,
+    replace,
 )
 from typing import (
     Any,
@@ -656,7 +657,10 @@ def raw(value: AV) -> AV:
 def element(value: AV, strict: bool = False) -> AV:
     """An element of the value when iterated or indexed."""
     if value.nodes:
-        return join(*(node.element() or CLEAN for node in value.nodes))
+        # A value that is a parameter or a list (or a string) has the elements of each.
+        rest = replace(value, nodes=())
+        own = [element(rest, strict)] if rest.tainted or rest.elem is not None or rest.items is not None else []
+        return join(*(node.element() or CLEAN for node in value.nodes), *own)
     if value.elem is not None:
         return value.elem
     if value.items is not None:
