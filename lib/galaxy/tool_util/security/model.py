@@ -797,6 +797,12 @@ def build_model(tool_source: ToolSource) -> Model:
             model.configfiles[configfile.name] = configfile.content or ""
             if configfile.name not in root.children:
                 root.add(configfile.name, Special(f"configfile:{configfile.name}"))
+    # Paths of the files Galaxy writes itself: the job's inputs as JSON, the file sources config.
+    generated = [c.name for c in tool_source.parse_input_configfiles()]
+    generated += [c.name for c in tool_source.parse_file_sources()]
+    for name in generated:
+        if name and name not in root.children:
+            root.add(name, Special(name))
 
     for name in _SAFE_SPECIALS:
         model.specials[name] = Special(name)

@@ -288,6 +288,20 @@ def test_template_no_character_test_can_judge(tmp_path, command, reason):
     assert "command" not in report.writes
 
 
+@pytest.mark.parametrize(
+    "configfiles",
+    [
+        '<inputs name="params"/>',
+        '<inputs name="params" filename="params.json" data_style="paths"/>',
+        '<file_sources name="params"/>',
+    ],
+)
+def test_path_of_a_file_galaxy_writes_is_checkable(tmp_path, configfiles):
+    report = review(tmp_path, "tool --params '$params' '$input.element_identifier'", configfiles)
+    assert report.unchecked_locations == {}
+    assert high(report).checkable
+
+
 def test_template_without_such_parts_is_checkable(tmp_path):
     report = review(tmp_path, "echo '$input.element_identifier'")
     assert report.unchecked_locations == {}
