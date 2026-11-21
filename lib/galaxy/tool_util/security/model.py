@@ -675,6 +675,9 @@ def element(value: AV, strict: bool = False) -> AV:
 
 
 def attribute(value: AV, name: str) -> AV:
+    if name == "__str__":
+        # `$x.__str__` is str($x), whatever x is.
+        return AV(bound=(stringify(value), "__value__"))
     if value.nodes:
         return join(*(node.attr(name) or CLEAN for node in value.nodes))
     if value.py:

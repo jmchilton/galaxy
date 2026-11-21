@@ -490,3 +490,11 @@ def test_newline_a_replace_makes_of_a_carriage_return_is_checked(tmp_path):
     finding = high(review(tmp_path, "bash '$script'", configfiles=configfile))
     assert "\n" in finding.breakout
     assert finding.checkable
+
+
+@pytest.mark.parametrize("value", ["$input.__str__", "$input.__str__()"])
+def test_str_method_gives_the_string_of_the_value(tmp_path, value):
+    command = f"#import os\n#set $n = os.path.basename({value}).replace('.', '_')\necho $n '$input.element_identifier'"
+    report = review(tmp_path, command)
+    assert refs(report) == {SourceRef(ELEMENT_IDENTIFIER, "input")}
+    assert high(report).checkable
