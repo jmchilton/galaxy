@@ -46,6 +46,7 @@ from galaxy.tools.wrappers import (
     DatasetFilenameWrapper,
     DatasetListWrapper,
     InputValueWrapper,
+    RawObjectWrapper,
 )
 
 ECHO_IDS = """<tool id="echo_ids" name="Echo identifiers" version="1.0" profile="24.0">
@@ -648,5 +649,22 @@ def test_content_of_a_dataset_the_template_opens_is_checked(app, tmp_path, conte
     hda = model.HistoryDatasetAssociation(extension="txt", dataset=model.Dataset(external_filename=str(path)))
     job: Any = SimpleNamespace(job=SimpleNamespace(id=7), consumes_names=False, consumes_identifiers=False)
     job.param_dict = {"n_file": DatasetFilenameWrapper(hda, datatypes_registry=app.datatypes_registry)}
+    with pytest.raises(ToolInputRejected) if expected else contextlib.nullcontext():
+        reviewer(tmp_path, ENFORCE).check_job(tool, job)
+
+
+USER_PREFERENCE = """<tool id="user_preference" name="User preference" version="1.0" profile="24.0">
+  <command><![CDATA[echo "${__user__.extra_preferences.get('account|name', '')}" > '$out']]></command>
+  <inputs/>
+  <outputs><data name="out" format="txt"/></outputs>
+</tool>
+"""
+
+
+@pytest.mark.parametrize("name,expected", [("me@example.org", False), ("$(id)", True)])
+def test_user_preference_is_checked(app, tmp_path, name, expected):
+    tool = make_tool(app, tmp_path, USER_PREFERENCE, "user_preference.xml")
+    job: Any = SimpleNamespace(job=SimpleNamespace(id=7), consumes_names=False, consumes_identifiers=False)
+    job.param_dict = {"__user__": RawObjectWrapper(SimpleNamespace(extra_preferences={"account|name": name}))}
     with pytest.raises(ToolInputRejected) if expected else contextlib.nullcontext():
         reviewer(tmp_path, ENFORCE).check_job(tool, job)
