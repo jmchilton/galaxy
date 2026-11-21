@@ -20,6 +20,7 @@ from galaxy.tool_util.security.charsets import (
 )
 from galaxy.tool_util.security.report import (
     DATASET_ATTRIBUTE,
+    DATASET_CONTENT,
     ELEMENT_IDENTIFIER,
     GROUP_TAGS,
     METADATA,
@@ -505,6 +506,22 @@ def test_what_galaxy_sets_on_the_dataset_model_is_clean(tmp_path, value):
     report = review(tmp_path, f"echo '{value}' '$input.element_identifier'")
     assert refs(report) == {SourceRef(ELEMENT_IDENTIFIER, "input")}
     assert high(report).checkable
+
+
+@pytest.mark.parametrize(
+    "opened", ["open(str($input))", "open($input.__str__)", "open($input.file_name)", "open($input.get_file_name())"]
+)
+def test_content_of_a_dataset_the_template_opens_is_checkable(tmp_path, opened):
+    report = review(tmp_path, f"#set $n = {opened}.read().strip()\ntool --n $n")
+    (finding,) = [f for f in report.findings if f.rule == "shell-injection"]
+    assert finding.refs == (SourceRef(DATASET_CONTENT, "input"),)
+    assert finding.checkable
+
+
+def test_content_of_another_file_the_template_opens_is_opaque(tmp_path):
+    report = review(tmp_path, "#set $n = open(str($text)).read().strip()\ntool --n $n")
+    (finding,) = [f for f in report.findings if f.rule == "shell-injection"]
+    assert finding.refs == (SourceRef(OPAQUE),)
 
 
 def test_user_value_a_replace_puts_in_keeps_its_own_source(tmp_path):
