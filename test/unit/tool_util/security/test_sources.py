@@ -562,3 +562,10 @@ def test_utf8_bytes_of_a_value_keep_it_checkable(tmp_path, codec):
 def test_sandboxed_sed_program_runs_nothing(tmp_path, command, expected):
     rules = {f.rule for f in review(tmp_path, command.replace("$free", "$letters")).findings}
     assert ("nested-interpreter" in rules) is expected
+
+
+@pytest.mark.parametrize("command", ["sed -e 's/x/$sq/' '$input'", "sh -c 'echo $sq'"])
+def test_escaped_quote_stays_in_the_word_of_a_nested_program(tmp_path, command):
+    # The shell reads '"'"' inside the single-quoted word; the program in it gets the quote.
+    findings = [f for f in review(tmp_path, command).findings if f.severity == HIGH]
+    assert {f.rule for f in findings} == {"nested-interpreter"}
