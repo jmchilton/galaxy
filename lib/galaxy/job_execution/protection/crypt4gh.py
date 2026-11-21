@@ -49,6 +49,9 @@ from . import (
     STATE_FILENAME,
 )
 
+# ``crypt4gh`` is a conditional dependency (installed with ``crypt4gh_enabled``), it is imported where it is
+# used so that this module still imports where it isn't installed.
+
 log = logging.getLogger(__name__)
 
 # The crypt4gh library logs private, shared and session keys at DEBUG level.
