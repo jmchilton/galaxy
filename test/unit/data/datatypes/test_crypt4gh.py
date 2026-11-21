@@ -87,6 +87,8 @@ def test_extension_helpers():
     assert is_crypt4gh_file_ext("crypt4gh")
     assert is_crypt4gh_file_ext("fastqsanger.c4gh")
     assert not is_crypt4gh_file_ext("fastqsanger")
+    assert not is_crypt4gh_file_ext("cfoo4gh")
+    assert not is_crypt4gh_file_ext("fastqsanger.cx4gh")
     assert wrap_crypt4gh_file_ext("fastqsanger") == "fastqsanger.c4gh"
     assert wrap_crypt4gh_file_ext("fastqsanger.c4gh") == "fastqsanger.c4gh"
     assert unwrap_crypt4gh_file_ext("fastqsanger.c4gh") == "fastqsanger"

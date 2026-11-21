@@ -9,7 +9,6 @@ Galaxy datatype registry.
 import os
 import struct
 from collections.abc import Iterator
-from re import fullmatch
 from typing import (
     Any,
     IO,
@@ -20,6 +19,7 @@ CRYPT4GH_MAGIC = b"crypt4gh"
 CRYPT4GH_VERSION = 1
 CRYPT4GH_FILE_EXT = "c4gh"
 CRYPT4GH_SUFFIX = f".{CRYPT4GH_FILE_EXT}"
+GENERIC_CRYPT4GH_FILE_EXTS = frozenset((CRYPT4GH_FILE_EXT, "crypt4gh"))
 # Headers hold a packet per recipient and edit list, far below this. Headers are stored in metadata,
 # don't read whole files declaring larger ones. Its base64 encoding is at most 64 KiB.
 MAX_CRYPT4GH_HEADER_SIZE = 48 * 1024
@@ -34,12 +34,12 @@ class DatatypeFilenameLookup(Protocol):
 
 
 def _is_generic_crypt4gh_file_ext(file_ext: str) -> bool:
-    """Return True for bare wrapper extensions like ``c4gh``, ``crypt4gh``."""
-    return fullmatch(r"c[^.]*4gh", file_ext) is not None
+    """Return True for the bare wrapper extensions ``c4gh`` and ``crypt4gh``."""
+    return file_ext in GENERIC_CRYPT4GH_FILE_EXTS
 
 
 def _unwrap_crypt4gh_suffix(value: str) -> str | None:
-    """Strip a trailing ``.c4gh`` (or similar) suffix and return the inner stem."""
+    """Strip a trailing ``.c4gh`` (or ``.crypt4gh``) suffix and return the inner stem."""
     if not value:
         return None
     stem, sep, suffix = value.rpartition(".")
@@ -86,7 +86,7 @@ def preserve_crypt4gh_inner_file_ext(
     """Preserve a known wrapper extension during datatype re-detection.
 
     Re-detection from object-store paths often loses the original filename
-    suffix and can only sniff a generic ``c*4gh`` wrapper.  When that
+    suffix and can only sniff a generic ``c4gh`` wrapper.  When that
     happens, keep the more specific wrapper if we already know it from the
     dataset extension or from computed ``crypt4gh_inner_ext`` metadata.
     """
