@@ -540,3 +540,11 @@ def test_literal_text_of_a_built_replacement_is_the_templates(tmp_path):
 def test_getattr_of_a_name_is_the_attribute(tmp_path):
     report = review(tmp_path, "echo '${input.__getattr__('name')}'", extra=UNSANITIZED)
     assert refs(report) == {SourceRef(DATASET_ATTRIBUTE, "input", "name")}
+
+
+@pytest.mark.parametrize("codec", ["", "'utf-8'", "'ascii'"])
+def test_utf8_bytes_of_a_value_keep_it_checkable(tmp_path, codec):
+    command = f"#import json\n#set $j = json.dumps(str($input.element_identifier)).encode({codec}).decode()\necho '$j' '$free'"
+    report = review(tmp_path, command)
+    assert report.unchecked_locations == {}
+    assert all(f.checkable for f in report.findings if f.severity == HIGH)
