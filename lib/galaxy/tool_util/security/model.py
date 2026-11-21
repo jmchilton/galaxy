@@ -778,6 +778,11 @@ def _add_inputs(group: Group, input_sources: list[InputSource], prefix: str, too
             group.add(name, conditional)
         elif input_type == "param":
             group.add(name, _value(input_source, path, tool_sanitize))
+            if (input_source.get("type") or "") in ("data", "hidden_data"):
+                # Galaxy adds the dataset converted for a <conversion> next to the parameter.
+                for conversion, _ in input_source.parse_conversion_tuples():
+                    if conversion and conversion not in group.children:
+                        group.add(conversion, Data(f"{prefix}{conversion}", sanitize=tool_sanitize))
 
 
 def build_model(tool_source: ToolSource) -> Model:
