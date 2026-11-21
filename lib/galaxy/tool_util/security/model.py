@@ -41,6 +41,7 @@ from .charsets import (
 )
 from .report import (
     DATASET_ATTRIBUTE,
+    DATASET_CONTENT,
     ELEMENT_IDENTIFIER,
     GROUP_TAGS,
     METADATA,
@@ -620,6 +621,17 @@ class Special(Node):
         if self.opaque is not None:
             return AV(nodes=(Opaque(f"{self.path}.{name}", self.opaque),))
         return CLEAN
+
+
+def dataset_content(datasets: tuple[Data, ...]) -> AV:
+    """What ``open()`` of an input dataset gives a template: its content, which the job check can read too."""
+    contents = []
+    for data in datasets:
+        content = tainted(
+            PROBE, source(f"content of dataset '{data.path}' (not sanitized)", DATASET_CONTENT, data.path)
+        )
+        contents.append(AV(nodes=(Opaque(f"{data.path} content", content),)))
+    return join(*contents)
 
 
 def file_content() -> AV:
