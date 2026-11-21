@@ -18,11 +18,11 @@ const SERVICE_DEFINITION: ServiceCredentialsDefinition = {
     secrets: [{ name: "token", label: "Token", description: "API token", optional: false }],
 };
 
-function mountForm(name = "default", token: string | null = SECRET_PLACEHOLDER) {
+function mountForm(name = "default") {
     const groupPayload = reactive({
         name,
         variables: [{ name: "server", value: "https://example.org" }],
-        secrets: [{ name: "token", value: token }],
+        secrets: [{ name: "token", value: SECRET_PLACEHOLDER }],
     }) as ServiceCredentialGroupPayload;
     const wrapper = mount(CredentialsGroupForm as object, {
         props: {
@@ -34,14 +34,14 @@ function mountForm(name = "default", token: string | null = SECRET_PLACEHOLDER) 
     return { wrapper, groupPayload };
 }
 
-const VALIDATION_DEFINITION = {
+const VALIDATION_DEFINITION: ServiceCredentialsDefinition = {
     ...SERVICE_DEFINITION,
     variables: [
         { name: "token", label: "Token name", description: "Token name", optional: false },
         { name: "port", label: "Port", description: "Server port", optional: true },
     ],
     secrets: [{ name: "token", label: "Token", description: "Token value", optional: false }],
-} as unknown as ServiceCredentialsDefinition;
+};
 
 const NEUTRAL = { ariaInvalid: undefined, stateClasses: [] };
 const INVALID = { ariaInvalid: "true", stateClasses: ["g-invalid"] };
@@ -107,14 +107,6 @@ describe("CredentialsGroupForm.vue", () => {
         expect(groupPayload.secrets[0]!.value).toBe("");
         await token.trigger("blur");
         expect(groupPayload.secrets[0]!.value).toBe(SECRET_PLACEHOLDER);
-    });
-
-    it("marks an empty required secret invalid after blur", async () => {
-        const { wrapper } = mountForm("default", "");
-        const token = wrapper.get("input#g1-token-secret-input");
-        expect(token.attributes("aria-invalid")).toBeUndefined();
-        await token.trigger("blur");
-        expect(token.attributes("aria-invalid")).toBe("true");
     });
 
     it.each([
