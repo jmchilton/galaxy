@@ -109,6 +109,17 @@ class TestCrypt4GHGrantsIntegration(integration_util.IntegrationTestCase):
         self._assert_status_code_is(response, 200)
         assert self._protection(dataset["id"])["protected"] is True
 
+    def test_redetecting_the_datatype_keeps_the_inner_datatype(self, history_id):
+        dataset = self._upload_protected(history_id)
+        # Redetected by the change_datatype task: sniffing encrypted data can only tell it is encrypted.
+        payload = {"operation": "change_datatype", "params": {"type": "change_datatype", "datatype": "auto"}}
+        response = self._put(f"histories/{history_id}/contents/bulk", payload, json=True)
+        self._assert_status_code_is(response, 200)
+        assert response.json()["success_count"] == 1, response.json()
+        self.dataset_populator.wait_for_history(history_id)
+        details = self.dataset_populator.get_history_dataset_details(history_id, content_id=dataset["id"])
+        assert details["extension"] == "fastqsanger.c4gh"
+
     def test_plain_datasets_cant_get_an_encrypted_datatype(self, history_id):
         dataset = self.dataset_populator.new_dataset(history_id, content="1\t2\n", wait=True)
         response = self._change_datatype(history_id, dataset["id"], "tabular.c4gh")
