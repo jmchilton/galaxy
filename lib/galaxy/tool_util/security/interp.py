@@ -1085,12 +1085,16 @@ class TemplateAnalysis:
                 chars = chars | {"'"}
             elif text.quoted == "pyrepr" and text.tainted:
                 chars = chars | (REPR_PUNCTUATION if "'" in chars else REPR_PUNCTUATION - {'"'})
-            elif text.quoted == "sq-escaped" and context.quote == "'" and not context.lang:
+            # What the shell reads of the word. A program inside it still gets the quote.
+            outer = chars
+            if text.quoted == "sq-escaped" and context.quote == "'":
                 # The sanitizer writes a quote as '"'"', which stays inside the single-quoted word.
-                chars = chars - {"'"}
-            elif text.quoted == "dq-escaped" and context.quote == '"' and not context.lang:
+                outer = chars - {"'"}
+            elif text.quoted == "dq-escaped" and context.quote == '"':
                 # The template writes a double quote as \", and the value has no backslash of its own.
-                chars = chars - {'"', "\\"}
+                outer = chars - {'"', "\\"}
+            if not context.lang:
+                chars = outer
             lexical: dict[str, Callable[[charsets.Chars], Verdict | None]] = {
                 "": lambda c: charsets.unquoted(c, text.words, script),
                 "'": lambda c: charsets.single_quoted(c, script),
@@ -1098,7 +1102,7 @@ class TemplateAnalysis:
                 # In $'...' a backslash can escape the closing quote, which is as good as a quote.
                 shell.ANSI: lambda c: _ansi_quoted(c, script),
             }
-            if verdict := lexical[context.quote](chars):
+            if verdict := lexical[context.quote](outer):
                 verdicts.append(verdict)
             if context.lang == "sh":
                 if verdict := lexical[context.inner](chars):
