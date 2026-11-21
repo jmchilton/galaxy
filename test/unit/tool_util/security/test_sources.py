@@ -329,20 +329,34 @@ def test_included_template_macro_is_analysed_in_place(tmp_path, include):
     assert all(f.checkable for f in report.findings if f.kind == "vulnerability")
 
 
-def test_converted_dataset_is_a_dataset(tmp_path):
-    inputs = '<param name="vcf" type="data" format="vcf"><conversion name="vcf_index" type="tabix"/></param>'
-    path = tmp_path / "conversion.xml"
+def review_with_inputs(tmp_path, command: str, inputs: str, timeout: float | None = None) -> Report:
+    path = tmp_path / "inputs.xml"
     path.write_text(
         f"""<tool id="t" name="t" version="1" profile="24.2">
-  <command><![CDATA[ln -s '$vcf_index' i.tbi && echo '$vcf_index.element_identifier']]></command>
+  <command><![CDATA[{command}]]></command>
   <inputs>{inputs}</inputs>
   <outputs/>
 </tool>"""
     )
-    report = review_tool_source(get_tool_source(str(path)))
+    return review_tool_source(get_tool_source(str(path)), timeout=timeout)
+
+
+def test_converted_dataset_is_a_dataset(tmp_path):
+    inputs = '<param name="vcf" type="data" format="vcf"><conversion name="vcf_index" type="tabix"/></param>'
+    report = review_with_inputs(tmp_path, "ln -s '$vcf_index' i.tbi && echo '$vcf_index.element_identifier'", inputs)
     assert report.unanalyzed == []
     assert refs(report) == {SourceRef(ELEMENT_IDENTIFIER, "vcf_index")}
     assert high(report).checkable
+
+
+def test_parameter_named_without_its_nesting_is_looked_up_in_each_when_block(tmp_path):
+    inputs = """<conditional name="c">
+  <param name="sel" type="select"><option value="a">a</option><option value="b">b</option></param>
+  <when value="a"><param name="x" type="text"/></when>
+  <when value="b"><section name="s"><param name="x" type="text"/></section></when>
+</conditional>"""
+    report = review_with_inputs(tmp_path, "#if $c.sel in ['a', 'b']\necho '$c.x'\n#end if", inputs)
+    assert refs(report) == {SourceRef(TEXT, "c.x"), SourceRef(TEXT, "c.s.x")}
 
 
 def test_template_without_such_parts_is_checkable(tmp_path):

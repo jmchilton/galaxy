@@ -301,8 +301,20 @@ class Group(Node):
         return restricted
 
     def attr(self, name: str) -> AV | None:
-        # A template may name a parameter without the conditionals it is nested in.
-        nodes = self.children.get(name) or self.find(name)
+        # A template may name a parameter without the conditionals it is nested in: in each
+        # <when> block, a parameter of the block itself, or else one nested deeper in it.
+        nodes = list(self.children.get(name, []))
+        if not self.selector:
+            nodes = nodes or self.find(name)
+        elif not any(node not in self.cases for node in nodes):
+            named = {self.cases[node] for node in nodes}
+            without = {value for value in self.case_values if value not in named} or (set() if nodes else None)
+            for child in (node for group in self.children.values() for node in group):
+                if without is None or child not in self.cases or self.cases[child] in without:
+                    if isinstance(child, Group):
+                        nodes.extend(n for n in child.find(name) if n not in nodes)
+                    elif isinstance(child, Repeat):
+                        nodes.extend(n for n in child.item.find(name) if n not in nodes)
         return AV(nodes=tuple(nodes)) if nodes else None
 
     def find(self, name: str) -> list[Node]:
