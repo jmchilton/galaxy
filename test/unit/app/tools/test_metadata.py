@@ -595,7 +595,17 @@ class TestMetadata(TestCase, tools_support.UsesTools):
 
         assert self._exported_dataset_state(output_dataset) == model.Dataset.states.ERROR
 
-    def _run_from_work_dir_output(self, stray_files, write_output=True):
+    def test_extended_metadata_from_work_dir_glob_mismatch_without_fallback(self):
+        # Params from older Galaxy versions carry no fallback path.
+        output_dataset = self._run_from_work_dir_output(2, fallback=False)
+
+        assert self._exported_dataset_state(output_dataset) == model.Dataset.states.ERROR
+        assert self.metadata_compute_strategy
+        assert not self.metadata_compute_strategy.external_metadata_set_successfully(
+            output_dataset, "out_file1", self.app.model.session, working_directory=self.job_working_directory
+        )
+
+    def _run_from_work_dir_output(self, stray_files, write_output=True, fallback=True):
         self.app.config.metadata_strategy = "extended"
         source_file_name = os.path.join(galaxy_directory(), "test/functional/tools/for_workflows/cat.xml")
         self._init_tool_for_path(source_file_name)
@@ -608,7 +618,7 @@ class TestMetadata(TestCase, tools_support.UsesTools):
                 output_dataset.dataset.id,
                 output_dataset.dataset.get_file_name(sync_cache=False),
                 false_path=os.path.join(self.tool_working_directory, "stray.*.txt"),
-                fallback_path=output_path,
+                fallback_path=output_path if fallback else None,
             )
         ]
         command = self.metadata_command({"out_file1": output_dataset}, output_fnames=output_fnames)
