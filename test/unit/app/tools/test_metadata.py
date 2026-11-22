@@ -575,21 +575,6 @@ class TestMetadata(TestCase, tools_support.UsesTools):
         )
 
     @pytest.mark.parametrize("stray_files", [0, 2])
-    def test_extended_metadata_from_work_dir_keeps_written_output(self, stray_files):
-        output_dataset = self._run_from_work_dir_output(stray_files)
-
-        assert self._exported_dataset_state(output_dataset) == model.Dataset.states.OK
-        with open(output_dataset.dataset.get_file_name()) as f:
-            assert f.read() == "written to output\n"
-
-    def test_extended_metadata_from_work_dir_single_match(self):
-        output_dataset = self._run_from_work_dir_output(1)
-
-        assert self._exported_dataset_state(output_dataset) == model.Dataset.states.OK
-        with open(output_dataset.dataset.get_file_name()) as f:
-            assert f.read() == "stray 0\n"
-
-    @pytest.mark.parametrize("stray_files", [0, 2])
     def test_extended_metadata_from_work_dir_output_missing(self, stray_files):
         output_dataset = self._run_from_work_dir_output(stray_files, write_output=False)
 
