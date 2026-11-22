@@ -482,7 +482,13 @@ class DatasetFilenameWrapper(ToolParameterValueWrapper):
 
     @property
     def all_metadata_files(self) -> list[tuple[str, str]]:
-        return self.unsanitized.get_metadata_file_paths_and_extensions() if self else []
+        """``(file extension, path)`` of each metadata file, with paths as ``$input.metadata.<name>`` renders them."""
+        if not self:
+            return []
+        return [
+            (file_ext, _job_metadata_path(self.compute_environment, self.unsanitized, path))
+            for file_ext, path in self.unsanitized.get_metadata_file_paths_and_extensions()
+        ]
 
     def serialize(self, invalid_chars: Sequence[str] = ("/",)) -> dict[str, Any]:
         return data_input_to_staging_path_and_source_path(self, invalid_chars=invalid_chars) if self else {}
@@ -688,7 +694,6 @@ class DatasetCollectionWrapper(ToolParameterValueWrapper, HasDatasets):
         super().__init__()
         self.job_working_directory = job_working_directory
         self._dataset_elements_cache: dict[str, list[DatasetFilenameWrapper]] = {}
-        self._element_identifiers_extensions_paths_and_metadata_files: list[list[Any]] | None = None
         self.datatypes_registry = datatypes_registry
         kwargs["datatypes_registry"] = datatypes_registry
         self.tool_evaluator = tool_evaluator
@@ -716,6 +721,8 @@ class DatasetCollectionWrapper(ToolParameterValueWrapper, HasDatasets):
         element_instances: dict[str, DatasetCollectionElementWrapper] = {}
 
         element_instance_list: list[DatasetCollectionElementWrapper] = []
+        # Parallel to element_instance_list; element_instances keeps only the last of repeated identifiers.
+        element_identifiers: list[str] = []
         rows: dict[str, SampleSheetRow | None] = {}
         for dataset_collection_element in elements:
             element_object = dataset_collection_element.element_object
@@ -735,10 +742,12 @@ class DatasetCollectionWrapper(ToolParameterValueWrapper, HasDatasets):
 
             element_instances[element_identifier] = element_wrapper
             element_instance_list.append(element_wrapper)
+            element_identifiers.append(element_identifier)
 
         self.__rows = rows
         self.__element_instances = element_instances
         self.__element_instance_list = element_instance_list
+        self.__element_identifiers = element_identifiers
 
     def sample_sheet_row(self, element_identifier: str) -> SampleSheetRow | None:
         return self.__rows[element_identifier]
@@ -781,26 +790,34 @@ class DatasetCollectionWrapper(ToolParameterValueWrapper, HasDatasets):
 
     @property
     def all_paths(self) -> list[str]:
-        return [path for _, _, path, _ in self.element_identifiers_extensions_paths_and_metadata_files]
+        """Each dataset's path as the job sees it, the same as ``#for $e in $collection`` renders ``$e``."""
+        return [str(element) for _, element in self._dataset_elements_with_identifiers()]
 
     @property
-    def all_metadata_files(self) -> list[list[str]]:
-        return [
-            metadata_files for _, _, _, metadata_files in self.element_identifiers_extensions_paths_and_metadata_files
-        ]
+    def all_metadata_files(self) -> list[list[tuple[str, str]]]:
+        return [element.all_metadata_files for _, element in self._dataset_elements_with_identifiers()]
 
     @property
     def element_identifiers_extensions_paths_and_metadata_files(
         self,
     ) -> list[list[Any]]:
-        if self._element_identifiers_extensions_paths_and_metadata_files is None:
-            if self.collection:
-                result = self.collection.element_identifiers_extensions_paths_and_metadata_files
-                self._element_identifiers_extensions_paths_and_metadata_files = result
-                return result
+        """Identifiers, extension, path and metadata files of each dataset, nested collections flattened."""
+        return [
+            [identifiers, element.unsanitized.extension, str(element), element.all_metadata_files]
+            for identifiers, element in self._dataset_elements_with_identifiers()
+        ]
+
+    def _dataset_elements_with_identifiers(
+        self, parent_identifiers: tuple[str, ...] = ()
+    ) -> Iterator[tuple[tuple[str, ...], DatasetFilenameWrapper]]:
+        if not self.__input_supplied:
+            return
+        for identifier, element in zip(self.__element_identifiers, self.__element_instance_list):
+            identifiers = (*parent_identifiers, identifier)
+            if isinstance(element, DatasetCollectionWrapper):
+                yield from element._dataset_elements_with_identifiers(identifiers)
             else:
-                return []
-        return self._element_identifiers_extensions_paths_and_metadata_files
+                yield identifiers, element
 
     def get_all_staging_paths(
         self,
@@ -808,7 +825,8 @@ class DatasetCollectionWrapper(ToolParameterValueWrapper, HasDatasets):
         include_collection_name: bool = False,
     ) -> list[str]:
         safe_element_identifiers = []
-        for element_identifiers, extension, *_ in self.element_identifiers_extensions_paths_and_metadata_files:
+        for element_identifiers, element in self._dataset_elements_with_identifiers():
+            extension = element.unsanitized.extension
             datatype = self.datatypes_registry.get_datatype_by_extension(extension)
             if datatype:
                 extension = getattr(datatype, "file_ext_export_alias", extension)

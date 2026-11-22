@@ -1,0 +1,50 @@
+<tool id="collection_input_paths" name="collection_input_paths" version="0.1.0" profile="24.0">
+    <description>prints the input and metadata file paths each accessor gives the tool</description>
+    <command><![CDATA[
+echo 'FOR_LOOP:#for $e in $input1# $e#end for#' > '$out' &&
+echo 'ALL_PATHS:#for $p in $input1.all_paths# $p#end for#' >> '$out' &&
+echo 'COLL_SERIALIZE_SOURCE:#for $s in $input1.serialize()# $s["source_path"]#end for#' >> '$out' &&
+echo 'COLL_FOR_METADATA_PARAM:#for $e in $input1# $e.metadata.bam_index#end for#' >> '$out' &&
+echo 'COLL_ALL_METADATA_FILES:#for $mfs in $input1.all_metadata_files##for $mf in $mfs# $mf[1]#end for##end for#' >> '$out' &&
+echo 'COLL_SERIALIZE_METADATA:#for $s in $input1.serialize()##for $m in $s["metadata_files"]# $m["source_path"]#end for##end for#' >> '$out' &&
+echo 'SINGLE: $single' >> '$out' &&
+echo 'SINGLE_METADATA_PARAM: $single.metadata.bam_index' >> '$out' &&
+echo 'SINGLE_ALL_METADATA_FILES:#for $mf in $single.all_metadata_files# $mf[1]#end for#' >> '$out' &&
+echo 'SINGLE_SERIALIZE_METADATA:#for $m in $single.serialize()["metadata_files"]# $m["source_path"]#end for#' >> '$out' &&
+cp '$json_paths' '$json_out'
+    ]]></command>
+    <configfiles>
+        <inputs name="json_paths" data_style="paths" />
+    </configfiles>
+    <inputs>
+        <param name="input1" type="data_collection" collection_type="list" format="bam" />
+        <param name="single" type="data" format="bam" />
+    </inputs>
+    <outputs>
+        <data name="out" format="txt" />
+        <data name="json_out" format="json" />
+    </outputs>
+    <tests>
+        <test>
+            <param name="input1">
+                <collection type="list">
+                    <element name="e1" value="1.bam" ftype="bam" />
+                    <element name="e2" value="1.bam" ftype="bam" />
+                </collection>
+            </param>
+            <param name="single" value="1.bam" ftype="bam" />
+            <output name="out">
+                <assert_contents>
+                    <has_line_matching expression="ALL_PATHS: \S+\.dat \S+\.dat" />
+                    <has_line_matching expression="COLL_ALL_METADATA_FILES: \S+\.dat \S+\.dat" />
+                    <has_line_matching expression="SINGLE_ALL_METADATA_FILES: \S+\.dat" />
+                </assert_contents>
+            </output>
+            <output name="json_out">
+                <assert_contents>
+                    <has_text text="&quot;input1&quot;: [" />
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+</tool>
