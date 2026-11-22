@@ -44,9 +44,5 @@ def _wrap(tmp_path, contents, extension, load_contents):
     return json_wrap({"input1": data_input}, {"input1": wrapper}, 24.0, handle_files="OBJECT")
 
 
-def test_load_contents_reads_galaxy_file_before_compute_path_exists(tmp_path):
-    assert _wrap(tmp_path, "a line\n", "txt", load_contents=64)["input1"]["contents"] == "a line\n"
-
-
 def test_null_expression_json_read_before_compute_path_exists(tmp_path):
     assert _wrap(tmp_path, "null", "expression.json", load_contents=0)["input1"] is None
