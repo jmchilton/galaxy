@@ -2,6 +2,8 @@
 
 import os
 
+import pytest
+
 from galaxy_test.base.populators import DatasetPopulator
 from galaxy_test.driver import integration_util
 
@@ -30,11 +32,12 @@ class TestEmbeddedExtendedMetadataRewriteParametersPulsar(integration_util.Integ
         super().handle_galaxy_config_kwds(config)
         EmbeddedExtendedMetadataRewriteParametersPulsarIntegrationInstance.handle_galaxy_config_kwds(config)
 
-    def test_from_work_dir_output_not_written_is_empty(self):
+    @pytest.mark.parametrize("stray_files", [0, 2])
+    def test_from_work_dir_output_not_written_is_empty(self, stray_files):
         populator = DatasetPopulator(self.galaxy_interactor)
         with populator.test_history() as history_id:
             result = populator.run_tool(
-                "from_work_dir_glob_output_written", {"stray_files": 0, "write_output": False}, history_id
+                "from_work_dir_glob_output_written", {"stray_files": stray_files, "write_output": False}, history_id
             )
             populator.wait_for_job(result["jobs"][0]["id"], assert_ok=True)
             output_id = result["outputs"][0]["id"]
