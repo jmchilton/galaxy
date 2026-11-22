@@ -2465,6 +2465,12 @@ class MinimalJobWrapper(HasResourceParameters):
                 # exec_after_process and the final commit below have run.
                 if object_import_tracker.job_states_by_id.get(job.id) == job.states.ERROR:
                     final_job_state = job.states.ERROR
+                if final_job_state != job.states.ERROR:
+                    # The node exports outputs purged during the job in error state, it can't tell them from missing ones.
+                    for dataset_assoc in job.output_datasets + job.output_library_datasets:
+                        dataset = dataset_assoc.dataset.dataset
+                        if dataset.purged and dataset.state == Dataset.states.ERROR:
+                            dataset.state = Dataset.states.OK
             except store.FileTracebackException as e:
                 self.sa_session.rollback()
                 job.traceback = e.traceback

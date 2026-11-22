@@ -11,6 +11,7 @@ def purge_while_job_running(
     dataset_populator: DatasetPopulator,
     sleep_param: int = 5,
     job_working_directory: Callable[[str], str] | None = None,
+    expected_state: str | None = None,
 ):
     """Purge the outputs of a running ``all_output_types`` job.
 
@@ -83,6 +84,8 @@ def purge_while_job_running(
             )
             # Make sure that we don't revert state while finishing job
             assert output_details["purged"], f"expected output '{output_name}' to be purged, but it is not purged."
+            if expected_state:
+                assert output_details["state"] == expected_state, output_details["state"]
             assert not output_details.get("file_name")
 
         for file_name in hda_filenames:

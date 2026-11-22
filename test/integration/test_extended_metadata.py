@@ -380,7 +380,10 @@ class TestExtendedMetadataIntegration(integration_util.IntegrationTestCase):
     def test_purge_while_job_running(self):
         # The longer sleep keeps the job running while all outputs are purged.
         purge_while_job_running(
-            self.dataset_populator, sleep_param=15, job_working_directory=self._job_working_directory
+            self.dataset_populator,
+            sleep_param=15,
+            job_working_directory=self._job_working_directory,
+            expected_state="ok",
         )
 
     def _job_working_directory(self, job_id: str) -> str:
