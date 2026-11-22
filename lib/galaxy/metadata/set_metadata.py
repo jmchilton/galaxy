@@ -481,11 +481,11 @@ def set_metadata_portable(
             dataset.metadata_deferred = is_deferred
             if not is_deferred:
                 external_filename = unnamed_id_to_path.get(dataset_instance_id, dataset_filename_override)
-                if dataset_filename_fallback and not os.path.exists(external_filename):
-                    # Same as the from_work_dir copy in the job script: unless exactly
-                    # one file matches, keep what the tool wrote to the output path.
+                if not os.path.exists(external_filename):
                     matches = glob.glob(external_filename)
-                    if len(matches) != 1:
+                    if dataset_filename_fallback and len(matches) != 1:
+                        # Same as the from_work_dir copy in the job script: unless exactly
+                        # one file matches, keep what the tool wrote to the output path.
                         if matches:
                             log.warning(
                                 "%s files matched by output glob '%s', using '%s'",
@@ -494,8 +494,7 @@ def set_metadata_portable(
                                 dataset_filename_fallback,
                             )
                         external_filename = dataset_filename_fallback
-                if not os.path.exists(external_filename):
-                    matches = glob.glob(external_filename)
+                        matches = []
                     if matches:
                         assert len(matches) == 1, f"{len(matches)} file(s) matched by output glob '{external_filename}'"
                         external_filename = matches[0]
@@ -506,6 +505,9 @@ def set_metadata_portable(
                             external_filename, os.path.join(tool_job_working_directory, "working")
                         )
                         dataset.dataset.created_from_basename = created_from_basename
+                    elif os.path.exists(external_filename):
+                        # The tool wrote the output to the fallback path.
+                        pass
                     elif os.path.exists(dataset_path_to_extra_path(external_filename)):
                         # Only output is extra files dir, but no primary output file, that's fine,
                         # but make sure we create an empty primary output file. It's a little
