@@ -23,6 +23,8 @@ from galaxy.util import safe_makedirs
 if TYPE_CHECKING:
     from sqlalchemy.orm.scoping import scoped_session
 
+    from galaxy.job_execution.datasets import DatasetPath
+
 log = getLogger(__name__)
 
 SET_METADATA_SCRIPT = """
@@ -214,10 +216,10 @@ class PortableDirectoryMetadataGenerator(MetadataCollectionStrategy):
                 dataset, _metadata_path, metadata_dir, kwds, real_metadata_object=self.write_object_store_conf
             )
 
-            file_name = dataset.get_file_name(sync_cache=False)
+            dataset_path = _get_dataset_path(output_fnames, dataset.get_file_name(sync_cache=False))
             outputs[name] = {
-                "filename_override": _get_filename_override(output_fnames, file_name),
-                "filename_fallback": _get_filename_fallback(output_fnames, file_name),
+                "filename_override": (dataset_path.false_path or dataset_path.real_path) if dataset_path else "",
+                "filename_fallback": dataset_path.fallback_path if dataset_path else None,
                 "validate": validate_outputs,
                 # False for existing datasets, whose content must stay where it is.
                 "groom_directory_content": groom_directory_content,
@@ -378,18 +380,10 @@ def _initialize_metadata_inputs(dataset, path_for_part, tmp_dir, kwds, real_meta
     return filename_out, filename_results_code, filename_kwds, filename_override_metadata
 
 
-def _get_filename_override(output_fnames, file_name):
-    if output_fnames:
-        for dataset_path in output_fnames:
-            if dataset_path.real_path == file_name:
-                return dataset_path.false_path or dataset_path.real_path
-    return ""
-
-
-def _get_filename_fallback(output_fnames, file_name):
+def _get_dataset_path(output_fnames: "list[DatasetPath] | None", file_name: str) -> "DatasetPath | None":
     for dataset_path in output_fnames or []:
         if dataset_path.real_path == file_name:
-            return dataset_path.fallback_path
+            return dataset_path
     return None
 
 
