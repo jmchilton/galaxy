@@ -556,6 +556,26 @@ def test_collection_wrapper_path_accessors_follow_compute_environment():
     ]
 
 
+def test_collection_wrapper_metadata_files_are_loaded_and_rewritten_once():
+    compute_environment = StagingComputeEnvironment()
+    wrapper = _list_paired_wrapper(cast(ComputeEnvironment, compute_environment))
+    forward = wrapper.sample1.forward
+    forward.unsanitized.get_metadata_file_paths_and_extensions = Mock(
+        wraps=forward.unsanitized.get_metadata_file_paths_and_extensions
+    )
+    rewritten = [("bai", "/job/inputs/metadata_forward_bai.dat")]
+    for _ in range(3):
+        assert wrapper.all_metadata_files == [rewritten, []]
+        assert wrapper.element_identifiers_extensions_paths_and_metadata_files[0][3] == rewritten
+        assert wrapper.serialize()[0]["metadata_files"][0]["source_path"] == rewritten[0][1]
+    # Each access would otherwise query every metadata file again, which adds up over a large collection.
+    assert forward.unsanitized.get_metadata_file_paths_and_extensions.call_count == 1
+    assert compute_environment.metadata_rewrites == ["/galaxy/forward_bai.dat"]
+    # A template changing the list it got doesn't change what later accessors return.
+    forward.all_metadata_files.pop()
+    assert forward.all_metadata_files == rewritten
+
+
 def _drilldown_parameter(tool):
     xml = XML("""<param name="some_name" type="drill_down" display="checkbox" hierarchy="recurse" multiple="true">
         <options>

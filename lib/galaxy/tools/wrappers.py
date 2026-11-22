@@ -9,7 +9,10 @@ from collections.abc import (
     KeysView,
     Sequence,
 )
-from functools import total_ordering
+from functools import (
+    cached_property,
+    total_ordering,
+)
 from typing import (
     Any,
     cast,
@@ -483,12 +486,17 @@ class DatasetFilenameWrapper(ToolParameterValueWrapper):
     @property
     def all_metadata_files(self) -> list[tuple[str, str]]:
         """``(file extension, path)`` of each metadata file, with paths as ``$input.metadata.<name>`` renders them."""
+        return list(self._job_metadata_files)
+
+    @cached_property
+    def _job_metadata_files(self) -> tuple[tuple[str, str], ...]:
+        # Cached, so repeated access neither reloads the metadata files nor repeats their rewrites.
         if not self:
-            return []
-        return [
+            return ()
+        return tuple(
             (file_ext, _job_metadata_path(self.compute_environment, self.unsanitized, path))
             for file_ext, path in self.unsanitized.get_metadata_file_paths_and_extensions()
-        ]
+        )
 
     def serialize(self, invalid_chars: Sequence[str] = ("/",)) -> dict[str, Any]:
         return data_input_to_staging_path_and_source_path(self, invalid_chars=invalid_chars) if self else {}
