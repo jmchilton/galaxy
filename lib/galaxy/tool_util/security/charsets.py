@@ -12,6 +12,7 @@ Sanitizers are not re-modelled here. :func:`sanitized` runs the real
 
 from __future__ import annotations
 
+import re
 import string
 from typing import (
     Any,
@@ -21,7 +22,10 @@ from typing import (
 )
 
 from galaxy.tool_util.parser.sanitize import ToolParameterSanitizer
-from galaxy.util import sanitize_param
+from galaxy.util import (
+    mapped_chars,
+    sanitize_param,
+)
 
 try:
     import re._constants as sre_constants  # type: ignore[import-not-found, unused-ignore]
@@ -87,6 +91,29 @@ class Verdict(NamedTuple):
     # When not empty, the value must also contain one of these: closing single quotes starts a
     # command only with a command character after the quote.
     requires: Chars = frozenset()
+
+
+# Characters that can leave a value's place somewhere: in the shell, in a string of a program, or
+# unquoted in Python or R code, where a call needs no quotes (eval(chr(105) + chr(100))). Not "?":
+# it is Galaxy's unknown dbkey, and in the shell it only globs.
+NOT_PLAIN = frozenset("'\"`$;&|<>\\\n\r\t(){}[]%#*")
+# Galaxy's sanitizer writes these for the characters it maps; templates often turn them back.
+_SANITIZER_TOKENS = re.compile("|".join(re.escape(token) for token in sorted(set(mapped_chars.values()))))
+_TOKEN_CHARS = {token: char for char, token in mapped_chars.items()}
+# A word that starts with a dash can be read as an option.
+_OPTION_WORD = re.compile(r"(?:^|\s)-")
+
+
+def not_plain(value: str) -> frozenset[str]:
+    """What keeps a value from being plain: its characters, or "-" for a word read as an option.
+
+    A sanitizer token counts as the character it stands for, which is what the user wrote.
+    """
+    harm = set(value) & NOT_PLAIN
+    if _OPTION_WORD.search(value):
+        harm.add("-")
+    harm.update(_TOKEN_CHARS[token] for token in _SANITIZER_TOKENS.findall(value))
+    return frozenset(harm)
 
 
 def unquoted(chars: Chars, word_first: Chars | None = None, script: bool = False) -> Verdict | None:

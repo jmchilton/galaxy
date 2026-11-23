@@ -717,17 +717,17 @@ def test_user_preference_is_checked(app, tmp_path, name, expected):
 
 REWRITING = ECHO_IDS.replace("echo '${word.value}'", "echo ${str($word).replace('__gt__', '>')}")
 PIPING = ECHO_IDS.replace("echo '${word.value}' >> '$out'", "echo '${word.value}' | sh >> '$out'")
+PERL = ECHO_IDS.replace("echo '${word.value}' >> '$out'", "perl -e 'print ${word.value};' >> '$out'")
 SAFE_REPLACE = ECHO_IDS.replace("echo '${word.value}'", "echo '${str($word.value).replace(' ', '_')}'")
+
+
+def unsure(contents: str = ECHO_IDS) -> str:
+    """The tool with a part the analysis does not follow: the review is unsure of what it writes."""
+    return contents.replace("]]></command>", "\necho '$searchList' >> '$out'\n]]></command>", 1)
 
 
 def broken(*args, **kwds):
     raise RuntimeError("analyser bug")
-
-
-def unreviewed(tmp_path, monkeypatch) -> ToolSecurityReviewer:
-    """A reviewer whose reviews fail: every job gets the strict check."""
-    monkeypatch.setattr(security_review, "review_tool_source", broken)
-    return reviewer(tmp_path, ENFORCE)
 
 
 def strict_refusal(r: ToolSecurityReviewer, tool: Tool, job: Any) -> str:
@@ -736,39 +736,39 @@ def strict_refusal(r: ToolSecurityReviewer, tool: Tool, job: Any) -> str:
     return str(e.value)
 
 
-def test_strict_when_unsure_checks_an_unreviewed_tool_strictly(app, tmp_path, monkeypatch):
-    tool = make_tool(app, tmp_path)
-    r = unreviewed(tmp_path, monkeypatch)
+def test_strict_when_unsure_runs_plain_values_only(app, tmp_path):
+    tool = make_tool(app, tmp_path, unsure(), "unsure.xml")
+    r = reviewer(tmp_path, ENFORCE)
     r.check_job(tool, evaluator(app, tool, ["sample_1.fastq", "FastQC on data 1: RawData"], word="My title"))
     message = strict_refusal(r, tool, evaluator(app, tool, ["sample (1)"]))
     assert message.startswith("This job was not run: an element identifier or the name of input 'input' contains [( )]")
-    assert "because the security review of this tool failed" in message
+    assert "because this tool writes values in places that no check of their characters can judge (command)" in message
     assert "Echo identifiers" in message and "echo_ids" in message
+    # With strict_when_unsure off the same job runs.
+    reviewer(tmp_path, ENFORCE, strict_when_unsure=False).check_job(tool, evaluator(app, tool, ["sample (1)"]))
 
 
 @pytest.mark.parametrize(
     "identifier,harm",
     [
         ("a;b", ";"),
-        ("x__gt__y", "__gt__"),
+        ("x__gt__y", ">"),
         ("a -rf", "-"),
         ("-x", "-"),
         ("a\tb", "tab"),
         ("50%", "%"),
     ],
 )
-def test_strict_check_refuses_what_can_leave_any_place(app, tmp_path, monkeypatch, identifier, harm):
-    tool = make_tool(app, tmp_path)
-    r = unreviewed(tmp_path, monkeypatch)
-    assert f"contains [{harm}]" in strict_refusal(r, tool, evaluator(app, tool, [identifier]))
+def test_strict_check_refuses_what_can_leave_any_place(app, tmp_path, identifier, harm):
+    tool = make_tool(app, tmp_path, unsure(), "unsure.xml")
+    assert f"contains [{harm}]" in strict_refusal(reviewer(tmp_path, ENFORCE), tool, evaluator(app, tool, [identifier]))
 
 
-def test_strict_check_reads_dataset_names(app, tmp_path, monkeypatch):
-    tool = make_tool(app, tmp_path)
-    r = unreviewed(tmp_path, monkeypatch)
+def test_strict_check_reads_dataset_names(app, tmp_path):
+    tool = make_tool(app, tmp_path, unsure(), "unsure.xml")
     job = evaluator(app, tool, ["a"])
     next(iter(job.param_dict["input"])).unsanitized.name = "Trimmomatic on data 1 (R1 paired)"
-    assert "the name of a dataset of input 'input' contains [( )]" in strict_refusal(r, tool, job)
+    assert "the name of a dataset of input 'input' contains" in strict_refusal(reviewer(tmp_path, ENFORCE), tool, job)
 
 
 READS_MORE = ECHO_IDS.replace(
@@ -777,112 +777,120 @@ READS_MORE = ECHO_IDS.replace(
 )
 
 
-def test_strict_check_reads_what_the_template_names(app, tmp_path, monkeypatch):
+def test_strict_check_reads_what_the_template_names(app, tmp_path):
     def job_with(info: str, preference: str) -> Any:
         job = evaluator(app, tool, ["a"])
         next(iter(job.param_dict["input"])).unsanitized.info = info
         job.param_dict["__user__"] = RawObjectWrapper(SimpleNamespace(extra_preferences={"account|name": preference}))
         return job
 
-    r = unreviewed(tmp_path, monkeypatch)
-    # A template that names neither: a tool's output summary and a password do not count.
-    tool = make_tool(app, tmp_path)
-    r.check_job(tool, job_with("95.3% overall alignment rate", "a&b"))
-    tool = make_tool(app, tmp_path, READS_MORE, "reads_more.xml")
-    message = strict_refusal(r, tool, job_with("95.3% overall alignment rate", "a&b"))
-    assert "the info of a dataset of input 'input' contains [%]" in message
-    assert "your preference 'account|name' contains [&]" in message
-
-
-def test_strict_when_unsure_checks_a_tool_whose_source_cannot_be_read_strictly(app, tmp_path, monkeypatch):
-    monkeypatch.setattr(security_review, "reviewed_tool_source", broken)
-    tool = make_tool(app, tmp_path)
     r = reviewer(tmp_path, ENFORCE)
-    r.check_job(tool, evaluator(app, tool, ["a b"]))
-    assert "the security review of this tool failed" in strict_refusal(r, tool, evaluator(app, tool, ["a;b"]))
-
-
-def test_strict_when_unsure_refuses_any_value_when_the_template_changes_values(app, tmp_path):
-    tool = make_tool(app, tmp_path, REWRITING, "unchecked.xml")
-    message = strict_refusal(reviewer(tmp_path, ENFORCE), tool, evaluator(app, tool, ["a"], word="b"))
-    assert "its templates can change values (.replace)" in message
-    assert "no check of their characters can judge (command)" in message
-    # With strict_when_unsure off the same job runs.
-    reviewer(tmp_path, ENFORCE, strict_when_unsure=False).check_job(tool, evaluator(app, tool, ["a"], word="b"))
-
-
-@pytest.mark.parametrize("new", ["'$'", "'$a'", '"x$"'])
-def test_replace_that_brings_a_dollar_leaves_nothing_plain(app, tmp_path, monkeypatch, new):
-    contents = ECHO_IDS.replace("echo '${word.value}'", f"#set $v = str($word.value).replace('x', {new})\necho $v")
-    tool = make_tool(app, tmp_path, contents, "dollar.xml")
-    assert security_review.template_transforms(tool) == [".replace"]
-    message = strict_refusal(unreviewed(tmp_path, monkeypatch), tool, evaluator(app, tool, ["a"], word="x"))
-    assert "its templates can change values (.replace)" in message
-
-
-@pytest.mark.parametrize(
-    "rewrite",
-    [
-        "#import re\n#set $v = $re.sub('x', ';', str($word.value))",
-        "#set $v = str.replace(str($word.value), 'x', ';')",
-    ],
-)
-def test_other_rewrites_leave_nothing_plain(app, tmp_path, rewrite):
-    contents = ECHO_IDS.replace("echo '${word.value}'", f"{rewrite}\necho $v")
-    assert security_review.template_transforms(make_tool(app, tmp_path, contents, "rewrite.xml"))
+    # A template that names neither: a tool's output summary and a password do not count.
+    tool = make_tool(app, tmp_path, unsure(), "unsure.xml")
+    r.check_job(tool, job_with('aligned "95.3%"', "a&b"))
+    tool = make_tool(app, tmp_path, unsure(READS_MORE), "reads_more.xml")
+    message = strict_refusal(r, tool, job_with('aligned "95.3%"', "a&b"))
+    # The template writes the info as Galaxy sanitizes it, and the check reads it the same way.
+    assert "the info of a dataset of input 'input' contains [\"]" in message
+    assert "your preference 'account|name' contains [&]" in message
 
 
 USER_EMAIL = ECHO_IDS.replace("echo '${word.value}'", "echo $__user_email__")
 
 
-def test_strict_check_reads_the_email_a_template_names(app, tmp_path, monkeypatch):
+def test_strict_check_reads_the_email_a_template_names(app, tmp_path):
     def job_with(email: str) -> Any:
         job = evaluator(app, tool, ["a"])
         job.param_dict["__user_email__"] = email
         return job
 
-    r = unreviewed(tmp_path, monkeypatch)
-    tool = make_tool(app, tmp_path)
+    r = reviewer(tmp_path, ENFORCE)
+    tool = make_tool(app, tmp_path, unsure(), "unsure.xml")
     r.check_job(tool, job_with("a`b`@example.org"))
-    tool = make_tool(app, tmp_path, USER_EMAIL, "user_email.xml")
+    tool = make_tool(app, tmp_path, unsure(USER_EMAIL), "user_email.xml")
     r.check_job(tool, job_with("me@example.org"))
     assert "your email address contains [`]" in strict_refusal(r, tool, job_with("a`b`@example.org"))
 
 
-def test_replace_with_plain_text_keeps_values_plain(app, tmp_path):
-    tool = make_tool(app, tmp_path, SAFE_REPLACE, "safe_replace.xml")
-    assert security_review.template_transforms(tool) == []
-    assert security_review.template_transforms(make_tool(app, tmp_path, REWRITING, "unchecked.xml")) == [".replace"]
-    assert security_review.template_transforms(make_tool(app, tmp_path, OPEN_FILE, "open_file.xml")) == ["open"]
-
-
-def test_strict_when_unsure_checks_values_it_cannot_judge_strictly(app, tmp_path):
-    tool = make_tool(app, tmp_path, PIPING, "unchecked.xml")
-    r = reviewer(tmp_path, ENFORCE)
-    r.check_job(tool, evaluator(app, tool, ["a"], word="b"))
-    message = strict_refusal(r, tool, evaluator(app, tool, ["a"], word="a|b"))
-    assert "this tool writes values in places that no check of their characters can judge (command)" in message
-    assert "the value of input 'word' contains [|]" in message
-
-
-PIPING_SELECT = PIPING.replace(
-    "echo '${word.value}' | sh",
-    "echo '${word.value}' $mode | sh",
-).replace(
-    '<param name="word" type="text"/>',
-    """<param name="word" type="text"/>
+PIPING_SELECT = unsure(
+    ECHO_IDS.replace("echo '${word.value}'", "echo '${word.value}' $mode").replace(
+        '<param name="word" type="text"/>',
+        """<param name="word" type="text"/>
     <param name="mode" type="select">
       <option value="--fast">fast</option>
       <option value="--very-sensitive">sensitive</option>
     </param>""",
+    )
 )
 
 
 def test_strict_check_leaves_select_options_the_tool_defines_alone(app, tmp_path):
-    tool = make_tool(app, tmp_path, PIPING_SELECT, "piping_select.xml")
+    tool = make_tool(app, tmp_path, PIPING_SELECT, "unsure_select.xml")
     job = evaluator(app, tool, ["a"], word="b")
     job.param_dict["mode"] = SelectToolParameterWrapper(cast(SelectToolParameter, tool.inputs["mode"]), "--fast")
     reviewer(tmp_path, ENFORCE).check_job(tool, job)
+
+
+@pytest.mark.parametrize("patched", ["review_tool_source", "reviewed_tool_source"])
+def test_strict_when_unsure_refuses_every_job_of_a_tool_it_could_not_review(app, tmp_path, monkeypatch, patched):
+    monkeypatch.setattr(security_review, patched, broken)
+    tool = make_tool(app, tmp_path)
+    message = strict_refusal(reviewer(tmp_path, ENFORCE), tool, evaluator(app, tool, ["a"], word="b"))
+    assert "the security review of this tool failed, and nothing is known about what its templates do" in message
+
+
+@pytest.mark.parametrize(
+    "contents,why",
+    [
+        (REWRITING, "its templates change values with .replace"),
+        (OPEN_FILE, "its templates run code or read data the job does not carry (open)"),
+        (PIPING, "letters alone can be code where it writes values (command)"),
+        (PERL, "letters alone can be code where it writes values (command)"),
+    ],
+)
+def test_strict_when_unsure_refuses_every_job_when_no_value_can_be_plain(app, tmp_path, contents, why):
+    tool = make_tool(app, tmp_path, unsure(contents), "unchecked.xml")
+    if contents is OPEN_FILE:
+        job: Any = SimpleNamespace(job=SimpleNamespace(id=7), consumes_names=False, consumes_identifiers=False)
+        job.param_dict = {}
+    else:
+        job = evaluator(app, tool, ["a"], word="b")
+    message = strict_refusal(reviewer(tmp_path, ENFORCE), tool, job)
+    assert why in message
+    assert message.startswith("This job was not run: this Galaxy server cannot check any value for tool")
+
+
+@pytest.mark.parametrize("new", ["'$'", "'$a'", '"x$"'])
+def test_replace_that_brings_a_dollar_is_a_rewrite(app, tmp_path, new):
+    contents = ECHO_IDS.replace("echo '${word.value}'", f"#set $v = str($word.value).replace('x', {new})\necho $v")
+    review = reviewer(tmp_path).review(make_tool(app, tmp_path, contents, "dollar.xml"))
+    assert review is not None and review.report is not None
+    assert review.report.rewrites == {"command": [".replace"]}
+
+
+@pytest.mark.parametrize(
+    "rewrite,name",
+    [
+        ("#import re\n#set $v = $re.sub('x', ';', str($word.value))", "re.sub"),
+        ("#set $v = str.replace(str($word.value), 'x', ';')", ".replace"),
+        ("#set $v = chr(36) + str($word.value)", "chr"),
+        ("#set $v = str($word.value).encode('rot13').decode('rot13')", "decode"),
+    ],
+)
+def test_other_rewrites(app, tmp_path, rewrite, name):
+    contents = ECHO_IDS.replace("echo '${word.value}'", f"{rewrite}\necho $v")
+    review = reviewer(tmp_path).review(make_tool(app, tmp_path, contents, "rewrite.xml"))
+    assert review is not None and review.report is not None
+    assert name in review.report.rewrites["command"]
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [SAFE_REPLACE, ECHO_IDS.replace("echo '${word.value}'", "base64 --decode '${word.value}'; date +%c")],
+)
+def test_plain_replacements_and_shell_text_are_no_rewrites(app, tmp_path, contents):
+    review = reviewer(tmp_path).review(make_tool(app, tmp_path, contents, "plain.xml"))
+    assert review is not None and review.report is not None and review.report.rewrites == {}
 
 
 def test_strict_when_unsure_checks_strictly_when_the_check_fails(app, tmp_path, monkeypatch):
@@ -915,7 +923,7 @@ def test_strict_when_unsure_names_the_harmful_value_first(app, tmp_path):
 
 
 def test_strict_when_unsure_in_log_mode_warns_and_lets_the_job_run(app, tmp_path, caplog):
-    tool = make_tool(app, tmp_path, PIPING, "unchecked.xml")
+    tool = make_tool(app, tmp_path, unsure(), "unsure.xml")
     reviewer(tmp_path, LOG).check_job(tool, evaluator(app, tool, ["a"], word="a|b"))
     warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
     assert warnings == [
@@ -928,7 +936,7 @@ def test_strict_when_unsure_in_log_mode_warns_and_lets_the_job_run(app, tmp_path
 
 def test_strict_check_errors_fail_the_job_only_in_enforce_mode(app, tmp_path, monkeypatch, caplog):
     monkeypatch.setattr(security_review, "strict_violations", broken)
-    tool = make_tool(app, tmp_path, PIPING, "unchecked.xml")
+    tool = make_tool(app, tmp_path, unsure(), "unsure.xml")
     reviewer(tmp_path, LOG).check_job(tool, evaluator(app, tool, ["a"]))
     assert "the strict check of the values of job 7 of tool echo_ids failed" in caplog.text
     message = strict_refusal(reviewer(tmp_path, ENFORCE), tool, evaluator(app, tool, ["a"]))

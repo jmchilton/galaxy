@@ -2727,19 +2727,23 @@ galaxy:
   # characters can judge, or the check itself fails. With ``true`` (the
   # default), Galaxy checks such jobs strictly: every value the job
   # carries must be plain. That is the values of text and select
-  # parameters, element identifiers, dataset names, and the dataset
-  # attributes, tags, metadata and user preferences that the templates
-  # name. A plain value has no quotes, no ``$ ; & | < > \ ( ) { } [ ] %
-  # # *``, no newline or tab, no word that starts with ``-``, and none
-  # of Galaxy's sanitizer tokens such as ``__gt__``. If the tool's
-  # templates can change values (``open()``, ``decode``, ``chr()``, a
-  # ``.replace`` that brings such a character), no value counts as
-  # plain. Galaxy logs a warning for each job that fails the strict
-  # check, and with ``tool_security_review: enforce`` also fails the
-  # job, with a message that names the values. Set to ``false`` to run
-  # such jobs without a check. Tools without a command template,
-  # user-defined tools and expression tools are not reviewed and are not
-  # affected.
+  # parameters whose options users can choose, element identifiers,
+  # dataset names, and the dataset attributes, group tags, metadata,
+  # account values and user preferences that the templates name. A plain
+  # value has no quotes, no ``$ ; & | < > \ ( ) { } [ ] % # *``, no
+  # newline or tab, no word that starts with ``-``, and none of Galaxy's
+  # sanitizer tokens such as ``__gt__``. No value counts as plain, and
+  # every job of the tool fails the strict check, when the review
+  # failed, when the templates can change values or read text the job
+  # does not carry (``chr()``, a decoder, ``re.sub``, a ``.replace``
+  # that brings such a character, ``open()``, ``$__app__``), or when
+  # letters alone can be code where the tool writes a value (a shell it
+  # pipes text into, a sed command, unquoted Perl or Ruby code). Galaxy
+  # logs a warning for each job that fails the strict check, and with
+  # ``tool_security_review: enforce`` also fails the job, with a message
+  # that names the values or the reason. Set to ``false`` to run such
+  # jobs without a check. Tools without a command template, user-defined
+  # tools and expression tools are not reviewed and are not affected.
   #tool_security_review_strict_when_unsure: true
 
   # In the past Galaxy would preserve its Python environment when

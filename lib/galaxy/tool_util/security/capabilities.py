@@ -28,6 +28,7 @@ from .charsets import (
     INFO,
     LOW,
     MEDIUM,
+    not_plain,
 )
 from .model import Model
 from .report import (
@@ -76,6 +77,14 @@ _REFLECTION_ATTRS = re.compile(
     r"|loader|spec|module|closure|func|self|wrapped)__|func_globals|gi_frame|f_globals|f_locals|f_back|f_builtins)$"
 )
 _MODEL_ATTRS = frozenset("unsanitized sa_session api_keys object_store galaxy_session security creating_job".split())
+# Calls whose result can hold characters that the value they read did not: a plain value can come
+# out of them unsafe.
+_REWRITE_CALLS = frozenset(
+    "chr unichr fromhex unhexlify translate unquote unquote_plus unquote_to_bytes b64decode b32decode b16decode"
+    " b85decode a85decode urlsafe_b64decode standard_b64decode decodebytes a2b_base64 a2b_hex a2b_qp".split()
+)
+# Codecs whose decode() keeps the characters of the text that encode() was given.
+_KEEPING_CODECS = frozenset(("utf-8", "utf8", "utf_8", "ascii"))
 
 
 class PythonAudit:
@@ -174,6 +183,11 @@ class PythonAudit:
         line: int | None = None
         seen: set[int] = set()
         for node in ast.walk(tree):
+            self.note_names(node)
+            if rewrite := self.rewrite(node):
+                found = self.report.rewrites.setdefault(self.location, [])
+                if rewrite not in found:
+                    found.append(rewrite)
             if template is not None and isinstance(node, ast.stmt):
                 line = template.template_line(node) or line
             if isinstance(node, ast.Store) or id(node) in seen:
@@ -236,6 +250,61 @@ class PythonAudit:
         if attrs and isinstance(node, ast.Attribute):
             return ["$"] + attrs[::-1]
         return None
+
+    def rewrite(self, node: ast.AST) -> str | None:
+        """The name of the rewrite a node is, when it can turn a plain value into one that is not."""
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mod):
+            if isinstance(node.left, ast.Constant) and isinstance(node.left.value, str) and "%c" in node.left.value:
+                return "%c"
+            return None
+        if not isinstance(node, ast.Call):
+            return None
+        chain = self.chain(node.func, set())
+        if not chain:
+            return None
+        name = chain[-1]
+        if name in _REWRITE_CALLS:
+            return name
+        if name in ("sub", "subn") and (chain[0] == "re" or chain[:1] == ["$"]):
+            return f"re.{name}"
+        if name == "decode":
+            codec = node.args[0] if node.args else None
+            keeps = codec is None or (isinstance(codec, ast.Constant) and str(codec.value).lower() in _KEEPING_CODECS)
+            return None if keeps and chain[0] != "codecs" else "decode"
+        if name == "replace":
+            if chain == ["str", "replace"] or len(node.args) < 2:
+                return ".replace"
+            new = node.args[1]
+            plain = (
+                isinstance(new, ast.Constant)
+                and isinstance(new.value, str)
+                and not not_plain(new.value)
+                and "-" not in new.value
+                and not any(c.isspace() for c in new.value)
+            )
+            return None if plain else ".replace"
+        return None
+
+    def note_names(self, node: ast.AST) -> None:
+        """Record the names a template mentions: which attributes, metadata and account values it can read."""
+        names: list[str] = []
+        if isinstance(node, ast.Name):
+            names.append(node.id)
+        elif isinstance(node, ast.Attribute):
+            names.append(node.attr)
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            path = node.args[1] if len(node.args) > 1 else None
+            if (
+                node.func.id in ("VFFSL", "VFSL", "VFN")
+                and isinstance(path, ast.Constant)
+                and isinstance(path.value, str)
+            ):
+                names.extend(path.value.split("."))
+            elif node.func.id == "getattr" and isinstance(path, ast.Constant) and isinstance(path.value, str):
+                names.append(path.value)
+        for name in names:
+            if name not in self.report.names:
+                self.report.names.append(name)
 
     @staticmethod
     def is_get_var(func: ast.expr) -> bool:

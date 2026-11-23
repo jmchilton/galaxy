@@ -40,8 +40,11 @@ from .model import (
 from .report import (
     CAPABILITY,
     Finding,
+    NOT_ANALYSED,
     Report,
     ReviewTimeout,
+    RUNS_TEXT,
+    RUNS_TEXT_RULES,
     sorted_refs,
     Source,
     SourceRef,
@@ -56,7 +59,6 @@ from .template import (
 __all__ = ("Finding", "Report", "ReviewTimeout", "review_tool_source", "Source", "SourceRef")
 
 # Capabilities that send text a template writes to a program that runs it.
-_RUNS_TEXT = frozenset(("capability-pipe-to-shell",))
 
 # A here-document (`<<WORD`, `<<-WORD`), not the here-string `<<<`. An arithmetic `<<` matches too.
 _HEREDOC = re.compile(r"(?<!<)<<(?!<)")
@@ -183,10 +185,10 @@ def _mark_unchecked_locations(report: Report) -> None:
     for note in report.unanalyzed:
         location, separator, _ = note.partition(": ")
         if separator and (location == "command" or location.startswith("configfile:")):
-            report.unchecked_locations.setdefault(location, "parts of it were not analysed")
+            report.unchecked_locations.setdefault(location, NOT_ANALYSED)
     for finding in report.findings:
-        if finding.rule in _RUNS_TEXT:
-            report.unchecked_locations.setdefault(finding.location, "it sends text to a shell to run")
+        if finding.rule in RUNS_TEXT_RULES:
+            report.unchecked_locations.setdefault(finding.location, RUNS_TEXT)
     if not report.unchecked_locations:
         return
     report.findings = [
