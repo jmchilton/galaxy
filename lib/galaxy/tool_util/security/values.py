@@ -19,6 +19,7 @@ from dataclasses import (
 from typing import (
     Callable,
     Iterator,
+    List,
     Optional,
 )
 
@@ -451,7 +452,8 @@ def element(value: AV, strict: bool = False) -> AV:
 
 # What calling a bound value does: (receiver, positional arguments, keyword arguments, the positional
 # argument nodes) -> the result, or None when the call is not one it knows.
-BoundCall = Callable[["AV", list["AV"], list["AV"], list[ast.expr]], Optional["AV"]]
+# typing.List: the alias is evaluated when the module loads, and the package supports Python 3.8.
+BoundCall = Callable[["AV", List["AV"], List["AV"], List[ast.expr]], Optional["AV"]]
 
 
 def returns_receiver(receiver: AV, args: list[AV], keywords: list[AV], nodes: list[ast.expr]) -> AV:
