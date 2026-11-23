@@ -335,6 +335,14 @@ class ToolSecurityReviewer:
         consumes = (evaluator.consumes_names, evaluator.consumes_identifiers)
         try:
             harmful = list(strict_violations(tool, evaluator.param_dict))
+        except Exception:
+            # Only enforce mode may fail a job, and then with a message for the user.
+            log.exception(
+                "Tool security review: the strict check of the values of job %s of tool %s failed", job_id, tool.id
+            )
+            if self.mode == ENFORCE:
+                raise ToolInputRejected(strict_failed_message(tool, reason))
+            return
         finally:
             evaluator.consumes_names, evaluator.consumes_identifiers = consumes
         if not harmful:
@@ -808,6 +816,14 @@ def unchecked_message(tool: "Tool", reason: str, transforms: list[str]) -> str:
     return (
         f"This job was not run: {reason}, and its templates can change values ({', '.join(transforms)}), so this"
         f" Galaxy server cannot check any value for tool '{tool.name}' ({tool.id} version {tool.version})."
+        " Please contact the administrators of this server."
+    )
+
+
+def strict_failed_message(tool: "Tool", reason: str) -> str:
+    return (
+        f"This job was not run: {reason}, and checking its values strictly failed, so this Galaxy server cannot"
+        f" check any value for tool '{tool.name}' ({tool.id} version {tool.version})."
         " Please contact the administrators of this server."
     )
 

@@ -927,6 +927,15 @@ def test_strict_when_unsure_in_log_mode_warns_and_lets_the_job_run(app, tmp_path
     ]
 
 
+def test_strict_check_errors_fail_the_job_only_in_enforce_mode(app, tmp_path, monkeypatch, caplog):
+    monkeypatch.setattr(security_review, "strict_violations", broken)
+    tool = make_tool(app, tmp_path, PIPING, "unchecked.xml")
+    reviewer(tmp_path, LOG).check_job(tool, evaluator(app, tool, ["a"]))
+    assert "the strict check of the values of job 7 of tool echo_ids failed" in caplog.text
+    message = strict_refusal(reviewer(tmp_path, ENFORCE), tool, evaluator(app, tool, ["a"]))
+    assert "checking its values strictly failed" in message
+
+
 def test_strict_when_unsure_leaves_tools_without_a_template_alone(app, tmp_path):
     tool = make_tool(app, tmp_path, NO_COMMAND)
     job: Any = SimpleNamespace(job=SimpleNamespace(id=7))
