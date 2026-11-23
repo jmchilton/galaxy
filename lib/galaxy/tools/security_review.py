@@ -11,8 +11,8 @@ Before a job's command line is built, :meth:`ToolSecurityReviewer.check_job` com
 the job's inputs with the tool's high and critical findings: a value that contains a character that
 can leave its place is logged (``log``) or fails the job (``enforce``).
 
-With ``fail_closed``, a job that the review cannot check (no review, a finding no character test can
-decide, an error in the check) gets a stricter check instead: every value the job carries must be
+A job that the review cannot check (no review, a finding no character test can decide, an error in
+the check) gets a stricter check instead, unless ``strict_when_unsure`` is off: every value the job carries must be
 plain, without a character that can leave its place anywhere. A template that changes values
 (``open()``, ``decode``, ``chr()``, a ``.replace`` that brings such a character) makes even plain
 values unsafe, so such a job is refused outright.
@@ -145,12 +145,12 @@ def reviewed_tool_source(tool: "Tool") -> Optional[ToolSource]:
 class ToolSecurityReviewer:
     """Reviews tools when their jobs are prepared, and checks job values against the reviews."""
 
-    def __init__(self, mode: str, fail_closed: bool = False) -> None:
+    def __init__(self, mode: str, strict_when_unsure: bool = True) -> None:
         if mode not in MODES:
             raise ValueError(f"tool_security_review must be one of {', '.join(MODES)}, not '{mode}'")
         self.mode = mode
         # Check a job the review cannot check with the strict character set.
-        self.fail_closed = fail_closed
+        self.strict_when_unsure = strict_when_unsure
         # Keyed by the Tool object: a review lives as long as the tool it is about.
         self._reviews: WeakKeyDictionary[Tool, ToolReview] = WeakKeyDictionary()
         self._tool_locks: WeakKeyDictionary[Tool, threading.Lock] = WeakKeyDictionary()
@@ -160,7 +160,7 @@ class ToolSecurityReviewer:
     def from_config(cls, config: Any) -> "ToolSecurityReviewer":
         return cls(
             mode=config.tool_security_review,
-            fail_closed=bool(config.tool_security_review_fail_closed),
+            strict_when_unsure=bool(config.tool_security_review_strict_when_unsure),
         )
 
     @property
@@ -274,7 +274,7 @@ class ToolSecurityReviewer:
             try:
                 violations = list(find_violations(review.report, evaluator.param_dict))
             except Exception:
-                # Without fail_closed, the check must never be the reason a job fails.
+                # Without strict_when_unsure, the check must never be the reason a job fails.
                 log.exception("Job %s: checking values against the security review of tool %s failed", job_id, tool.id)
                 self._cannot_check(tool, evaluator, "checking the job's values against the security review failed")
                 return
@@ -305,9 +305,9 @@ class ToolSecurityReviewer:
             )
 
     def _cannot_check(self, tool: "Tool", evaluator: "ToolEvaluator", reason: str) -> None:
-        """A job the review cannot judge: without fail_closed it runs; with it, its values must all be plain."""
+        """A job the review cannot judge: its values must all be plain, unless strict_when_unsure is off."""
         job_id = evaluator.job.id
-        if not self.fail_closed:
+        if not self.strict_when_unsure:
             log.debug("Job %s of tool %s: values are not checked, %s", job_id, tool.id, reason)
             return
         if transforms := template_transforms(tool):
