@@ -32,6 +32,7 @@ from typing import (
 )
 from weakref import WeakKeyDictionary
 
+from galaxy.model.metadata import FileParameter
 from galaxy.tool_util.parser import get_tool_source
 from galaxy.tool_util.parser.interface import ToolSource
 from galaxy.tool_util.parser.xml import XmlToolSource
@@ -64,16 +65,10 @@ from galaxy.tool_util.security.report import (
     USER_PREFERENCE,
     VULNERABILITY,
 )
-from galaxy.tools.parameters.basic import SelectToolParameter
-from galaxy.tools.parameters.dynamic_options import (
-    DataMetaFilter,
-    DynamicOptions,
-)
 from galaxy.tools.wrappers import (
     DatasetCollectionWrapper,
     DatasetFilenameWrapper,
     DatasetListWrapper,
-    SelectToolParameterWrapper,
     ToolParameterValueWrapper,
 )
 
@@ -320,9 +315,17 @@ class ToolSecurityReviewer:
                 evaluator,
                 review.report,
                 f"this tool writes values in places that no check of their characters can judge ({', '.join(unchecked)})",
+                unchecked,
             )
 
-    def _cannot_check(self, tool: "Tool", evaluator: "ToolEvaluator", report: Optional[Report], reason: str) -> None:
+    def _cannot_check(
+        self,
+        tool: "Tool",
+        evaluator: "ToolEvaluator",
+        report: Optional[Report],
+        reason: str,
+        locations: Optional[list[str]] = None,
+    ) -> None:
         """A job the review cannot judge: its values must all be plain, unless strict_when_unsure is off."""
         job_id = evaluator.job.id
         if not self.strict_when_unsure:
@@ -343,7 +346,7 @@ class ToolSecurityReviewer:
         assert report is not None  # _no_plain_value refuses a job without a report
         try:
             with _keeping_consumes(evaluator):
-                harmful = list(strict_violations(tool, report, evaluator.param_dict))
+                harmful = list(strict_violations(report, locations, evaluator.param_dict))
         except Exception:
             # Only enforce mode may fail a job, and then with a message for the user.
             log.exception(
@@ -602,18 +605,16 @@ _DESCRIPTIONS = {
 }
 
 
-# The account values a template can write: the names that read each one, and its description.
-_ACCOUNT_VALUES = {
-    "__user_email__": (frozenset(("__user_email__", "userEmail", "email")), "your email address"),
-    "__user_name__": (frozenset(("__user_name__", "username")), "your user name"),
+_ACCOUNT_DESCRIPTIONS = {
+    "__user_email__": "your email address",
+    "userEmail": "your email address",
+    "__user_name__": "your user name",
 }
 
 
 def _describe(ref: SourceRef) -> str:
     if ref.accessor == SPECIAL:
-        if ref.key in _ACCOUNT_VALUES:
-            return _ACCOUNT_VALUES[ref.key][1]
-        return f"the account value {ref.key}"
+        return _ACCOUNT_DESCRIPTIONS.get(ref.key or "", f"the account value {ref.key}")
     if ref.accessor == USER_PREFERENCE:
         return f"your preference '{ref.key}'"
     if ref.accessor == DATASET_ATTRIBUTE:
@@ -655,10 +656,15 @@ def _no_plain_value(report: Optional[Report]) -> list[str]:
 
 
 def strict_violations(
-    tool: "Tool", report: Report, param_dict: dict[str, Any]
+    report: Report, locations: Optional[list[str]], param_dict: dict[str, Any]
 ) -> Iterator[tuple[SourceRef, frozenset[str]]]:
-    """The sources of a job whose values are not plain, with what keeps them from being plain."""
-    for ref in _job_refs(tool, param_dict, frozenset(report.names)):
+    """The sources the templates read in ``locations`` (all when None) whose job values are not plain,
+    with what keeps them from being plain."""
+    refs: dict[SourceRef, None] = {}
+    for location in report.reads if locations is None else locations:
+        for ref in report.reads.get(location, ()):
+            refs.update(dict.fromkeys(_expanded(ref, param_dict)))
+    for ref in refs:
         harm: frozenset[str] = frozenset()
         for value in source_values(ref, param_dict):
             harm |= not_plain(value)
@@ -666,78 +672,26 @@ def strict_violations(
             yield ref, harm
 
 
-def _job_refs(tool: "Tool", param_dict: dict[str, Any], names: frozenset[str]) -> list[SourceRef]:
-    """The sources of the values a user controls in a job, read like the sources of findings.
-
-    Element identifiers, dataset names and parameter values always count. A dataset attribute, group
-    tag, metadata element, account value or user preference counts when the templates name it: these
-    often hold text such as a tool's output summary, and a template reads them only by name.
-    """
-    refs: dict[SourceRef, None] = {}
-
-    def walk(path: str, value: Any) -> None:
-        if isinstance(value, (DatasetCollectionWrapper, DatasetListWrapper, DatasetFilenameWrapper)):
-            refs[SourceRef(ELEMENT_IDENTIFIER, path)] = None
-            refs[SourceRef(DATASET_ATTRIBUTE, path, "name")] = None
-            for attribute in ("info", "created_from_basename", "dbkey"):
-                if attribute in names:
-                    refs[SourceRef(DATASET_ATTRIBUTE, path, attribute)] = None
-            if names & {"groups", "group", "group_tags"}:
-                refs[SourceRef(GROUP_TAGS, path)] = None
-            if "metadata" in names:
-                # A template that looks metadata up by a computed name can read any of it.
-                every = "getattr" in names or "items" in names
-                for dataset in _datasets(value):
-                    for key in dataset.unsanitized.metadata.spec:
-                        if every or key in names:
-                            refs[SourceRef(METADATA, path, key)] = None
-        elif isinstance(value, SelectToolParameterWrapper) and not _user_defines_options(value.input):
-            # Galaxy accepts only the options the tool or the admin defines.
-            return
-        elif isinstance(value, (ToolParameterValueWrapper, str)):
-            refs[SourceRef(RAW, path)] = None
-        elif isinstance(value, dict):
-            for key, item in value.items():
-                if not key.startswith("__"):
-                    walk(f"{path}.{key}", item)
-        elif isinstance(value, list):
-            for item in value:
-                walk(path, item)
-
-    for name in tool.inputs:
-        if name in param_dict:
-            walk(name, param_dict[name])
-    for key, (readers, _) in _ACCOUNT_VALUES.items():
-        if names & readers:
-            refs[SourceRef(SPECIAL, key=key)] = None
-    if "extra_preferences" in names:
-        for key in _preferences(param_dict):
-            refs[SourceRef(USER_PREFERENCE, key=key)] = None
-    return list(refs)
+def _expanded(ref: SourceRef, param_dict: dict[str, Any]) -> Iterator[SourceRef]:
+    """The source, or for any metadata element or any preference (``key=None``) each one the job has."""
+    if ref.accessor == METADATA and ref.key is None:
+        keys: dict[str, None] = {}
+        for value in _resolve(param_dict, ref.param_path):
+            for dataset in _datasets(value):
+                spec = dataset.unsanitized.metadata.spec
+                # A file metadata element holds a path Galaxy makes.
+                keys.update(dict.fromkeys(key for key in spec if not isinstance(spec[key].param, FileParameter)))
+        yield from (SourceRef(METADATA, ref.param, key) for key in keys)
+    elif ref.accessor == USER_PREFERENCE and ref.key is None:
+        yield from (SourceRef(USER_PREFERENCE, key=key) for key in _preferences(param_dict))
+    else:
+        yield ref
 
 
 def _preferences(param_dict: dict[str, Any]) -> dict[str, Any]:
     """The preferences of the job's user, from the wrapped user object Galaxy puts in the namespace."""
     user = param_dict.get("__user__")
     return getattr(getattr(user, "obj", user), "extra_preferences", None) or {}
-
-
-# Selects whose options come from what users give: their datasets, their columns, their tags, their builds.
-_USER_SELECT_TYPES = frozenset(("data_column", "group_tag", "genomebuild"))
-
-
-def _user_defines_options(param: SelectToolParameter) -> bool:
-    """The options of the select come from user data, as ``model._user_select`` decides for the review."""
-    if param.type in _USER_SELECT_TYPES or param.dynamic_options:
-        return True
-    options = param.options
-    if not isinstance(options, DynamicOptions):
-        return False
-    return bool(
-        options.dataset_ref_name
-        or options.from_url_options
-        or any(isinstance(f, DataMetaFilter) for f in options.filters)
-    )
 
 
 def unchecked_message(tool: "Tool", reason: str, why: list[str]) -> str:

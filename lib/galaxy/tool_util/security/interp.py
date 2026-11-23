@@ -580,6 +580,8 @@ class TemplateAnalysis:
             ref.accessor == OPAQUE or self._introduced.get(ref, charsets.NONE) & (QUOTE_CLOSERS | harm)
             for ref, harm in self._written.items()
         )
+        reads = self.report.reads.setdefault(self.location, [])
+        reads.extend(ref for ref in self._written if ref.accessor != OPAQUE and ref not in reads)
         if not poisoned:
             for recorded, into in ((self._written, self.report.writes), (self._closers, self.report.closers)):
                 if recorded:

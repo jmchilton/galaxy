@@ -274,6 +274,10 @@ class Node:
     def element(self) -> AV | None:
         return None
 
+    def sources(self, names: frozenset[str]) -> Iterator[SourceRef]:
+        """The user-controlled sources the node can give a template that mentions ``names``."""
+        return iter(())
+
 
 @dataclass(eq=False)
 class Group(Node):
@@ -339,6 +343,11 @@ class Group(Node):
                         nodes.extend(n for n in child.item.find(name) if n not in nodes)
         return AV(nodes=tuple(nodes)) if nodes else None
 
+    def sources(self, names: frozenset[str]) -> Iterator[SourceRef]:
+        for nodes in self.children.values():
+            for node in nodes:
+                yield from node.sources(names)
+
     def find(self, name: str) -> list[Node]:
         if name not in self._found:
             found = list(self.children.get(name, []))
@@ -359,6 +368,9 @@ class Repeat(Node):
 
     def element(self) -> AV | None:
         return AV(nodes=(self.item,))
+
+    def sources(self, names: frozenset[str]) -> Iterator[SourceRef]:
+        return self.item.sources(names)
 
 
 def stringify(value: AV) -> AV:
