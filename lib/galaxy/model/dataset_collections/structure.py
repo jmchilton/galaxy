@@ -1,6 +1,15 @@
 """Module for reasoning about structure of and matching hierarchical collections of data."""
 
+from abc import (
+    ABC,
+    abstractmethod,
+)
+from collections.abc import (
+    Callable,
+    Iterator,
+)
 from typing import (
+    Any,
     TYPE_CHECKING,
     TypeAlias,
 )
@@ -8,64 +17,105 @@ from typing import (
 from galaxy.model import DatasetCollectionElement
 
 if TYPE_CHECKING:
+    from galaxy.managers.collections import DatasetCollectionManager
     from galaxy.model import (
         DatasetCollection,
         HistoryDatasetCollectionAssociation,
     )
-    from .type_description import CollectionTypeDescription
+    from galaxy.tool_util.parser.output_objects import ToolOutputCollection
+    from galaxy.tool_util_models.sample_sheet import SampleSheetColumnDefinitions
+    from .type_description import (
+        CollectionTypeDescription,
+        CollectionTypeLike,
+    )
 
     CollectionLike: TypeAlias = DatasetCollectionElement | HistoryDatasetCollectionAssociation
+
+# Per-element ``when`` values of a conditional step; a single entry applies to every element.
+WhenValues: TypeAlias = list[bool | None]
+# One mapped execution: the element sliced from each input, and its ``when`` value.
+CollectionSlice: TypeAlias = tuple[dict[str, DatasetCollectionElement], bool | None]
 
 
 class Leaf:
     children_known = True
 
-    def __len__(self):
+    def __len__(self) -> int:
         return 1
 
     @property
-    def is_leaf(self):
+    def is_leaf(self) -> bool:
         return True
 
-    def clone(self):
+    def clone(self) -> "Leaf":
         return self
 
-    def multiply(self, other_structure):
+    def multiply(self, other_structure: "Structure") -> "Structure":
         return other_structure.clone()
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "Leaf[]"
 
 
 leaf = Leaf()
 
 
-class BaseTree:
-    def __init__(self, collection_type_description):
+class BaseTree(ABC):
+    """Structure of a collection: enumerated (``Tree``) or known only by type (``UninitializedTree``)."""
+
+    children_known: bool
+    when_values: WhenValues | None = None
+
+    def __init__(self, collection_type_description: "CollectionTypeDescription") -> None:
         self.collection_type_description = collection_type_description
+
+    @property
+    def is_leaf(self) -> bool:
+        return False
+
+    @abstractmethod
+    def __len__(self) -> int: ...
+
+    @abstractmethod
+    def walk_collections(self, collection_dict: dict[str, "DatasetCollection"]) -> Iterator[CollectionSlice]: ...
+
+    @abstractmethod
+    def compatible_shape(self, other_structure: "BaseTree") -> bool: ...
+
+    @abstractmethod
+    def clone(self) -> "BaseTree": ...
+
+    @abstractmethod
+    def multiply(self, other_structure: "Structure") -> "BaseTree": ...
+
+
+# Any collection structure: a single dataset or a (possibly unenumerated) tree.
+Structure: TypeAlias = Leaf | BaseTree
 
 
 class UninitializedTree(BaseTree):
     children_known = False
 
-    def clone(self):
+    def __len__(self) -> int:
+        raise _unknown_children("compute the cardinality")
+
+    def walk_collections(self, collection_dict: dict[str, "DatasetCollection"]) -> Iterator[CollectionSlice]:
+        raise _unknown_children("walk the elements")
+
+    def compatible_shape(self, other_structure: BaseTree) -> bool:
+        raise _unknown_children("compare the shape")
+
+    def clone(self) -> "UninitializedTree":
         return self
 
-    @property
-    def is_leaf(self):
-        return False
-
-    def __len__(self):
-        raise Exception("Unknown length")
-
-    def multiply(self, other_structure):
-        if other_structure.is_leaf:
+    def multiply(self, other_structure: Structure) -> "UninitializedTree":
+        if isinstance(other_structure, Leaf):
             return self.clone()
 
         new_collection_type = self.collection_type_description.multiply(other_structure.collection_type_description)
         return UninitializedTree(new_collection_type)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"UninitializedTree[collection_type={self.collection_type_description}]"
 
 
@@ -73,27 +123,33 @@ class Tree(BaseTree):
     children_known = True
 
     def __init__(
-        self, children, collection_type_description, when_values=None, columns_metadata=None, column_definitions=None
-    ):
+        self,
+        children: list[tuple[str | None, Structure]],
+        collection_type_description: "CollectionTypeDescription",
+        when_values: WhenValues | None = None,
+        columns_metadata: dict[str | None, Any] | None = None,
+        column_definitions: "SampleSheetColumnDefinitions | None" = None,
+    ) -> None:
         super().__init__(collection_type_description)
         self.children = children
         self.when_values = when_values
-        # columns_metadata is a dict mapping element_identifier to columns data
+        # columns_metadata maps element_identifier (nullable in the model) to columns data
         self.columns_metadata = columns_metadata or {}
         self.column_definitions = column_definitions
 
     @staticmethod
-    def for_dataset_collection(dataset_collection, collection_type_description):
-        children = []
-        columns_metadata = {}
+    def for_dataset_collection(
+        dataset_collection: "DatasetCollection", collection_type_description: "CollectionTypeDescription"
+    ) -> "Tree":
+        children: list[tuple[str | None, Structure]] = []
+        columns_metadata: dict[str | None, Any] = {}
         for element in dataset_collection.elements:
             if collection_type_description.has_subcollections():
-                child_collection = element.child_collection
                 subcollection_type_description = (
                     collection_type_description.subcollection_type_description()
                 )  # Type description of children
                 tree = Tree.for_dataset_collection(
-                    child_collection, collection_type_description=subcollection_type_description
+                    _child_collection(element), collection_type_description=subcollection_type_description
                 )
                 children.append((element.element_identifier, tree))
             else:
@@ -108,15 +164,11 @@ class Tree(BaseTree):
             column_definitions=dataset_collection.column_definitions,
         )
 
-    def walk_collections(self, collection_dict):
-        return self._walk_collections(collection_dict)
-
-    def _walk_collections(self, collection_dict):
+    def walk_collections(self, collection_dict: dict[str, "DatasetCollection"]) -> Iterator[CollectionSlice]:
         for index, (_identifier, substructure) in enumerate(self.children):
-
-            def get_element(collection):
-                return collection[index]  # noqa: B023
-
+            elements: dict[str, DatasetCollectionElement] = {
+                name: collection[index] for name, collection in collection_dict.items()
+            }
             when_value = None
             if self.when_values:
                 if len(self.when_values) == 1:
@@ -124,49 +176,49 @@ class Tree(BaseTree):
                 else:
                     when_value = self.when_values[index]
 
-            if substructure.is_leaf:
-                yield dict_map(get_element, collection_dict), when_value
+            if isinstance(substructure, Leaf):
+                yield elements, when_value
             else:
-                sub_collections = dict_map(lambda collection: get_element(collection).child_collection, collection_dict)
-                for element, _when_value in substructure._walk_collections(sub_collections):
-                    yield element, when_value
+                sub_collections = {name: _child_collection(element) for name, element in elements.items()}
+                for sub_elements, _when_value in substructure.walk_collections(sub_collections):
+                    yield sub_elements, when_value
 
-    @property
-    def is_leaf(self):
-        return False
-
-    def compatible_shape(self, other_structure):
+    def compatible_shape(self, other_structure: BaseTree) -> bool:
         """Symmetric sibling-matching check.
 
         Both sides have already passed connection-time edge validation;
         here we only compare shape. Uses ``compatible`` (not ``accepts``)
         so order of arrival does not change the answer.
         """
+        if not isinstance(other_structure, Tree):
+            raise _unknown_children("compare the shape")
+
         if not self.collection_type_description.compatible(other_structure.collection_type_description):
             return False
 
         if len(self.children) != len(other_structure.children):
             return False
 
-        for my_child, other_child in zip(self.children, other_structure.children):
-            # At least one is nested collection...
-            if my_child[1].is_leaf != other_child[1].is_leaf:
+        for (_, my_child), (_, other_child) in zip(self.children, other_structure.children):
+            if isinstance(my_child, Leaf) and isinstance(other_child, Leaf):
+                continue
+            # A dataset never matches a nested collection.
+            if isinstance(my_child, Leaf) or isinstance(other_child, Leaf):
                 return False
-
-            if not my_child[1].is_leaf and not my_child[1].compatible_shape(other_child[1]):
+            if not my_child.compatible_shape(other_child):
                 return False
 
         return True
 
-    def __len__(self):
+    def __len__(self) -> int:
         return sum(len(c[1]) for c in self.children)
 
-    def multiply(self, other_structure):
-        if other_structure.is_leaf:
+    def multiply(self, other_structure: Structure) -> "Tree":
+        if isinstance(other_structure, Leaf):
             return self.clone()
 
         new_collection_type = self.collection_type_description.multiply(other_structure.collection_type_description)
-        new_children = []
+        new_children: list[tuple[str | None, Structure]] = []
         for identifier, structure in self.children:
             new_children.append((identifier, structure.multiply(other_structure)))
 
@@ -178,8 +230,8 @@ class Tree(BaseTree):
             column_definitions=self.column_definitions,
         )
 
-    def clone(self):
-        cloned_children = [(_[0], _[1].clone()) for _ in self.children]
+    def clone(self) -> "Tree":
+        cloned_children: list[tuple[str | None, Structure]] = [(_[0], _[1].clone()) for _ in self.children]
         return Tree(
             cloned_children,
             self.collection_type_description,
@@ -187,11 +239,16 @@ class Tree(BaseTree):
             column_definitions=self.column_definitions,
         )
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"Tree[collection_type={self.collection_type_description},children=({','.join(f'{identifier_and_element[0]}={identifier_and_element[1]}' for identifier_and_element in self.children)})]"
 
 
-def tool_output_to_structure(get_sliced_input_collection_structure, tool_output, collections_manager):
+def tool_output_to_structure(
+    get_sliced_input_collection_structure: Callable[[str], BaseTree],
+    tool_output: "ToolOutputCollection",
+    collections_manager: "DatasetCollectionManager",
+) -> Structure:
+    tree: Structure
     if not tool_output.collection:
         tree = leaf
     else:
@@ -222,8 +279,14 @@ def tool_output_to_structure(get_sliced_input_collection_structure, tool_output,
     return tree
 
 
-def dict_map(func, input_dict):
-    return {k: func(v) for k, v in input_dict.items()}
+def _child_collection(element: DatasetCollectionElement) -> "DatasetCollection":
+    child_collection = element.child_collection
+    assert child_collection is not None
+    return child_collection
+
+
+def _unknown_children(operation: str) -> NotImplementedError:
+    return NotImplementedError(f"Cannot {operation} of a collection whose children are not known")
 
 
 def get_collection(
@@ -254,8 +317,8 @@ def get_collection(
 def get_structure(
     collection: "DatasetCollection",
     collection_type_description: "CollectionTypeDescription",
-    leaf_subcollection_type: str | None = None,
-):
+    leaf_subcollection_type: "CollectionTypeLike | None" = None,
+) -> BaseTree:
     """Build a Tree (or UninitializedTree) describing a collection's shape.
 
     ``collection_type_description`` controls the depth of the tree:
