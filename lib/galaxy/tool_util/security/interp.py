@@ -1828,26 +1828,16 @@ class TemplateAnalysis:
         return ""
 
 
-def unresolved_names(template: CompiledTemplate, model: Model) -> set[str]:
-    """Names of the template's own machinery that it reads, which the analysis does not follow."""
-    assigned: set[str] = set(template.helpers)
+def unresolved_names(template: CompiledTemplate, model: Model, assigned: set[str], read: set[str]) -> set[str]:
+    """Names of the template's own machinery that it reads, which the analysis does not follow.
+
+    ``assigned``: the names the template binds itself (helpers, arguments, #set and loop variables,
+    stored keys); ``read``: the first names of what it looks up in the namespace.
+    """
+    assigned = set(assigned)
     for imported in template.imports:
         if isinstance(imported, (ast.Import, ast.ImportFrom)):
             assigned.update((alias.asname or alias.name).split(".")[0] for alias in imported.names)
-    read: set[str] = set()
-    methods = [template.main, *template.helpers.values()]
-    for method in methods:
-        assigned.update(method.args)
-        for stmt in method.body:
-            for node in ast.walk(stmt):
-                if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
-                    assigned.add(node.id)
-                elif isinstance(node, ast.Subscript) and isinstance(node.ctx, ast.Store):
-                    key = _const(node.slice)
-                    if isinstance(key, str):
-                        assigned.add(key)
-                elif lookup := name_lookup(node, NAMESPACE_LOOKUPS):
-                    read.add(lookup[1].split(".")[0])
     return {
         name
         for name in read

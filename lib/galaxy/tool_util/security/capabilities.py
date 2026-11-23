@@ -105,6 +105,9 @@ class PythonAudit:
         self.location = location
         # The names the template mentions: which attributes, metadata and account values it reads.
         self.names: set[str] = set()
+        # Keys the template stores into dicts, and the first names of what it looks up in the namespace.
+        self.stored_keys: set[str] = set()
+        self.namespace_reads: set[str] = set()
         self.model = model
         self.assigned = assigned or set()
         # Local name -> dotted origin, from `import os as o` and `from os import system`.
@@ -129,16 +132,22 @@ class PythonAudit:
         )
 
     def template(self, template: CompiledTemplate) -> None:
-        for node in template.imports:
-            self.import_(node, template.template_line(node))
+        for imported in template.imports:
+            self.import_(imported, template.template_line(imported))
         self.assigned.update(template.helpers)
         for method in [template.main, *template.helpers.values()]:
             self.assigned.update(method.args)
             for stmt in method.body:
-                # Loop and #set variables shadow builtins of the same name ($file, $input, $dir).
-                self.assigned.update(
-                    node.id for node in ast.walk(stmt) if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
-                )
+                for node in ast.walk(stmt):
+                    if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+                        # Loop and #set variables shadow builtins of the same name ($file, $input, $dir).
+                        self.assigned.add(node.id)
+                    elif isinstance(node, ast.Subscript) and isinstance(node.ctx, ast.Store):
+                        key = node.slice
+                        if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                            self.stored_keys.add(key.value)
+                    elif lookup := name_lookup(node, NAMESPACE_LOOKUPS):
+                        self.namespace_reads.add(lookup[1].split(".")[0])
         for method in [template.main, *template.helpers.values()]:
             for stmt in method.body:
                 self.walk(stmt, template)
