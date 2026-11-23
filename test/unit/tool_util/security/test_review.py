@@ -830,3 +830,26 @@ def test_conditional_built_at_run_time_is_any_value(tmp_path):
     report = review_tool_source(get_tool_source(path))
     findings = [f for f in report.findings if f.rule == "shell-injection"]
     assert findings and not any(f.checkable for f in findings)
+
+
+@pytest.mark.parametrize("program", ["perl -e 'print $word;'", "ruby -e 'puts $word'"])
+def test_letters_alone_are_code_in_perl_and_ruby(tmp_path, program):
+    report = review(tmp_path, program)
+    findings = [f for f in report.findings if f.rule == "nested-interpreter"]
+    assert findings and not any(f.checkable for f in findings)
+
+
+@pytest.mark.parametrize(
+    "program,interpolating",
+    [
+        ("""perl -e 'print "$free";'""", {"$", "@"}),
+        ("""ruby -e 'puts "$free"'""", {"#"}),
+        ("""python -c 'print("$free")'""", set()),
+    ],
+)
+def test_double_quoted_strings_that_run_code(tmp_path, program, interpolating):
+    report = review(tmp_path, program)
+    breakout = set().union(*(f.breakout for f in report.findings if f.rule == "nested-interpreter"))
+    assert interpolating <= breakout
+    if not interpolating:
+        assert not breakout & {"$", "@", "#"}

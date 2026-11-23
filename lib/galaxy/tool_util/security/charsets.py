@@ -172,6 +172,12 @@ _CODE_BREAK: dict[str, tuple[Chars, Chars]] = {
 # The quotes that start a string literal in a language, where they differ from '...' and "...".
 STRING_QUOTES = {"sed": "", "awk": '"'}
 _CODE_DEFAULT: tuple[Chars, Chars] = (frozenset("'\"`;()"), PROBE - frozenset("_-.,:=+@%/^"))
+# Languages whose code needs no quote or bracket to run a command: Perl's qx/id/ or `system id`,
+# Ruby's %x[id]. Letters alone can be code there.
+_LETTER_CODE = frozenset(("perl", "ruby"))
+# Characters that run code inside a "..." string of a language that interpolates expressions:
+# Perl's @{[ ... ]} and ${\ ... }, Ruby's #{...}, PHP's {${...}}.
+_INTERPOLATION = {"perl": frozenset("$@"), "ruby": frozenset("#"), "php": frozenset("${")}
 
 
 def code(lang: str, chars: Chars, quote: str = "") -> Verdict | None:
@@ -181,13 +187,28 @@ def code(lang: str, chars: Chars, quote: str = "") -> Verdict | None:
         # Not a string in this language: sed has none, awk only "...".
         quote = ""
     if quote and lang != "sh":
-        # Inside a string literal of the nested program only its delimiter and the escape character matter.
-        if quote in chars:
-            return Verdict("nested-interpreter", HIGH, frozenset(quote), f"can end the string and inject {lang} code")
+        # Inside a string literal of the nested program only its delimiter and the escape character
+        # matter, and in a "..." string of a language that interpolates, what starts an expression.
+        interpolation = _INTERPOLATION.get(lang, frozenset()) if quote == '"' else frozenset()
+        if hit := chars & (interpolation | {quote}):
+            why = (
+                f"can end the string and inject {lang} code"
+                if quote in hit
+                else f"can run {lang} code inside the string"
+            )
+            return Verdict("nested-interpreter", HIGH, hit, why)
         if "\\" in chars:
             # A syntax error by itself; code only when a second user-controlled string follows on the line.
             return Verdict("nested-interpreter", LOW, frozenset("\\"), "can escape the closing quote of the string")
         return None
+    if lang in _LETTER_CODE:
+        return Verdict(
+            "nested-interpreter",
+            HIGH,
+            chars,
+            f"is read as {lang} code, where letters alone can run a command",
+            frozenset(),
+        )
     if hit := chars & high:
         return Verdict("nested-interpreter", HIGH, hit, f"can inject {lang} code")
     if hit := chars & medium:
