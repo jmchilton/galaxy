@@ -141,6 +141,10 @@ describe("terminalFactory", () => {
         expect(terminals["list:paired_or_unpaired collection input"]?.["f1"]).toBeInstanceOf(InputCollectionTerminal);
         expect(terminals["filter_failed"]?.["input"]).toBeInstanceOf(InputCollectionTerminal);
         expect(terminals["filter_failed"]?.["output"]).toBeInstanceOf(OutputCollectionTerminal);
+        expect(terminals["subworkflow"]?.["mapped_dataset"]).toBeInstanceOf(InputTerminal);
+        expect(terminals["subworkflow"]?.["inner_collection"]).toBeInstanceOf(InputCollectionTerminal);
+        expect(terminals["subworkflow"]?.["inherited_mapping_output"]).toBeInstanceOf(OutputTerminal);
+        expect(terminals["subworkflow"]?.["local_mapping_output"]).toBeInstanceOf(OutputCollectionTerminal);
     });
     it("throws error on invalid terminalSource", () => {
         const stores = useStores();
@@ -1022,6 +1026,62 @@ describe("canAccept", () => {
         expect(rebuildTerminal(filterFailedOutput).collectionType).toStrictEqual(
             new CollectionTypeDescription("list:paired_or_unpaired"),
         );
+    });
+
+    describe("subworkflow map over", () => {
+        function collectionOutput(label: string) {
+            return terminals[label]!["output"] as OutputCollectionTerminal;
+        }
+
+        function datasetInput() {
+            return rebuildTerminal(terminals["subworkflow"]!["mapped_dataset"] as InputTerminal);
+        }
+
+        function collectionInput() {
+            return rebuildTerminal(terminals["subworkflow"]!["inner_collection"] as InputCollectionTerminal);
+        }
+
+        /** Connect ``output`` to a subworkflow input, as the editor only does once ``canAccept`` allows it. */
+        function connectAccepted(input: InputTerminal | InputCollectionTerminal, output: OutputCollectionTerminal) {
+            expect(input.canAccept(output).canAccept).toBe(true);
+            input.connect(output);
+        }
+
+        /** Map over of the downstream step consuming one of the subworkflow's outputs. */
+        function consumedMapOver(consumerLabel: string, outputName: string) {
+            const consumerIn = terminals[consumerLabel]!["input"] as InputTerminal;
+            consumerIn.connect(rebuildTerminal(terminals["subworkflow"]![outputName] as OutputTerminal));
+            return rebuildTerminal(consumerIn).mapOver;
+        }
+
+        /** The data output maps over a list, and the list output over a list:list. */
+        function expectEveryOutputMappedOverList() {
+            expect(consumedMapOver("simple data", "inherited_mapping_output")).toEqual({
+                collectionType: "list",
+                isCollection: true,
+                rank: 1,
+            });
+            expect(consumedMapOver("simple data 2", "local_mapping_output")).toEqual({
+                collectionType: "list:list",
+                isCollection: true,
+                rank: 2,
+            });
+        }
+
+        it("maps every output over a list connected to one dataset input", () => {
+            connectAccepted(datasetInput(), collectionOutput("list input"));
+            expectEveryOutputMappedOverList();
+        });
+
+        it.each([
+            ["dataset input first", [datasetInput, collectionInput]],
+            ["collection input first", [collectionInput, datasetInput]],
+        ])("consumes a list on the collection input while mapping over it on the dataset input (%s)", (_, inputs) => {
+            inputs.forEach((input) => connectAccepted(input(), collectionOutput("list input")));
+            expect(datasetInput().getInvalidConnectedTerminals()).toEqual([]);
+            expect(collectionInput().getInvalidConnectedTerminals()).toEqual([]);
+            expectEveryOutputMappedOverList();
+        });
     });
 });
 
