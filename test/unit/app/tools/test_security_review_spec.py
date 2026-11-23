@@ -6,6 +6,7 @@ import pytest
 
 from galaxy.app_unittest_utils.security_review_spec import (
     EVALUATORS,
+    JobOutcome,
     SpecJobRunner,
 )
 from galaxy.tool_util.security.spec import (
@@ -22,7 +23,11 @@ WARNING_CODES = re.compile(r"^Tool security review \(([^)]*)\)")
 
 
 def _params(jobs):
-    return [pytest.param(*job, id=f"{job[0]}-{job[1]}-{job[2]}") for job in jobs]
+    return [pytest.param(*job, id=f"{job.case_id}-{job.color}-{job.position}") for job in jobs]
+
+
+def _warned_codes(outcome: JobOutcome) -> set[str]:
+    return {code for w in outcome.warnings if (m := WARNING_CODES.match(w)) for code in m.group(1).split(", ")}
 
 
 @pytest.fixture
@@ -34,23 +39,27 @@ def runner(tmp_path):
 @pytest.mark.parametrize("case_id,color,index,job", _params(JOBS))
 def test_job(runner, case_id, color, index, job, evaluator):
     outcome = runner(case_id).run(job, evaluator=evaluator)
+    codes = expected_codes(CASES[case_id], job)
     assert outcome.rejected is job.expect.rejected, outcome.message
-    assert outcome.codes == expected_codes(CASES[case_id], job)
+    assert outcome.codes == codes
+    assert _warned_codes(outcome) == {code.value for code in codes}
+    if outcome.rejected:
+        # Galaxy keeps the first 255 characters of a job's info.
+        assert outcome.message and outcome.message.startswith(
+            f"[{', '.join(code.value for code in codes)}] This job was not run: "
+        )
     for fragment in job.expect.message_contains:
         assert outcome.message and fragment in outcome.message
-    if outcome.rejected:
-        assert outcome.warnings
 
 
-@pytest.mark.parametrize("case_id,color,index,job", _params(j for j in JOBS if j[3].expect.rejected))
-def test_log_mode_runs_and_warns(runner, case_id, color, index, job):
+@pytest.mark.parametrize("case_id,color,index,job", _params(JOBS))
+def test_log_mode_runs_and_warns_with_the_codes(runner, case_id, color, index, job):
     outcome = runner(case_id).run(job, mode=LOG)
     assert not outcome.rejected
-    warned = {code for w in outcome.warnings if (m := WARNING_CODES.match(w)) for code in m.group(1).split(", ")}
-    assert warned == {code.value for code in expected_codes(CASES[case_id], job)}
+    assert _warned_codes(outcome) == {code.value for code in expected_codes(CASES[case_id], job)}
 
 
-@pytest.mark.parametrize("case_id,color,index,job", _params(j for j in JOBS if j[3].harm))
+@pytest.mark.parametrize("case_id,color,index,job", _params(j for j in JOBS if j.job.harm))
 def test_harm(runner, case_id, color, index, job):
     harmed, returncode = runner(case_id).harms(job)
     assert harmed is (color == "red")

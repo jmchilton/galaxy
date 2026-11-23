@@ -36,6 +36,8 @@ def test_every_case_has_jobs():
     for case_id, case in CASES.items():
         assert case.green, case_id
         assert bool(case.red) == (case.code is not None), case_id
+        assert all(job.expect.rejected for job in case.red), case_id
+        assert not any(job.expect.rejected or job.expect.codes for job in case.green), case_id
 
 
 @pytest.mark.parametrize("code", list(RefusalCode))

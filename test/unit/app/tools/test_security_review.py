@@ -2,7 +2,6 @@ import contextlib
 import gc
 import logging
 import os
-import re
 import threading
 import time
 from decimal import Decimal
@@ -857,15 +856,15 @@ def test_strict_when_unsure_refuses_every_job_of_a_tool_it_could_not_review(app,
 
 
 @pytest.mark.parametrize(
-    "contents,why",
+    "contents,why,code",
     [
-        (REWRITING, "its templates change values with .replace"),
-        (OPEN_FILE, "its templates run code or read data the job does not carry (open)"),
-        (PIPING, "letters alone can be code where it writes values (command)"),
-        (PERL, "letters alone can be code where it writes values (command)"),
+        (REWRITING, "its templates change values with .replace", "uncheckable-rewrites"),
+        (OPEN_FILE, "its templates run code or read data the job does not carry (open)", "uncheckable-template-code"),
+        (PIPING, "letters alone can be code where it writes values (command)", "uncheckable-letters-are-code"),
+        (PERL, "letters alone can be code where it writes values (command)", "uncheckable-letters-are-code"),
     ],
 )
-def test_strict_when_unsure_refuses_every_job_when_no_value_can_be_plain(app, tmp_path, contents, why):
+def test_strict_when_unsure_refuses_every_job_when_no_value_can_be_plain(app, tmp_path, contents, why, code):
     tool = make_tool(app, tmp_path, unsure(contents), "unchecked.xml")
     if contents is OPEN_FILE:
         job: Any = SimpleNamespace(job=SimpleNamespace(id=7), consumes_names=False, consumes_identifiers=False)
@@ -874,9 +873,7 @@ def test_strict_when_unsure_refuses_every_job_when_no_value_can_be_plain(app, tm
         job = evaluator(app, tool, ["a"], word="b")
     message = strict_refusal(reviewer(tmp_path, ENFORCE), tool, job)
     assert why in message
-    assert re.match(
-        r"\[uncheckable-[a-z-]+\] This job was not run: this Galaxy server cannot check any value for tool", message
-    )
+    assert message.startswith(f"[{code}] This job was not run: this Galaxy server cannot check any value for tool")
 
 
 def test_rewrites_in_several_templates_are_named_once(app, tmp_path):
