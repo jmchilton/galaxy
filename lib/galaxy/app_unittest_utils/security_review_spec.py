@@ -175,6 +175,7 @@ class SpecJobRunner:
         completed = subprocess.run(
             ["bash", "-c", outcome.command_line],
             cwd=working_directory,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             timeout=30,

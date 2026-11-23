@@ -345,15 +345,21 @@ class User(Node):
         return AV(nodes=(Opaque(f"__user__.{name}", _USER_OBJECT),))
 
 
+_DICT_ATTRIBUTES = frozenset(dir(dict))
+
+
 @dataclass(eq=False)
 class UserPreferences(Opaque):
-    """``$__user__.extra_preferences``: ``.get(name)`` is one preference."""
+    """``$__user__.extra_preferences``: ``.get(name)``, ``[name]`` and ``.name`` are one preference."""
 
     value: AV = field(default_factory=lambda: _USER_OBJECT)
 
     def attr(self, name: str) -> AV | None:
         if name == "get":
             return AV(bound=(AV(nodes=(self,)), gets_preference))
+        if name not in _DICT_ATTRIBUTES:
+            # A subscript, or a Cheetah name that is not a dict method, reads the preference of that name.
+            return user_preference(name)
         return super().attr(name)
 
 

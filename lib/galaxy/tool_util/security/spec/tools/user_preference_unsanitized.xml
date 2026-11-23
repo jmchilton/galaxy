@@ -1,0 +1,9 @@
+<tool id="spec_user_preference_unsanitized" name="Unsanitized user preference" version="1.0" profile="24.0">
+    <description>turns the sanitizer off and writes preferences the user set</description>
+    <command><![CDATA[echo '${__user__.extra_preferences["spec|label"]}' '$__user__.extra_preferences.label' > '$out']]></command>
+    <options sanitize="false"/>
+    <inputs/>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

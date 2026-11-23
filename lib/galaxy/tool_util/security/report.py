@@ -47,6 +47,8 @@ NOT_ANALYSED = "parts of it were not analysed"
 RUNS_TEXT = "it sends text to a shell to run"
 # Capability findings of a template that sends text to a program that runs it.
 RUNS_TEXT_RULES = frozenset(("capability-pipe-to-shell",))
+# The capability finding of a tool that turns the sanitizer off.
+SANITIZE_OFF = "tool-sanitize-off"
 # Capabilities with which a template runs code or reads text that the job does not carry.
 CODE_CAPABILITIES = frozenset(
     (

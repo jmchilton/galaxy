@@ -17,6 +17,7 @@ class RefusalCode(str, Enum):
     UNCHECKABLE_REWRITES = "uncheckable-rewrites"
     UNCHECKABLE_TEMPLATE_CODE = "uncheckable-template-code"
     UNCHECKABLE_LETTERS_ARE_CODE = "uncheckable-letters-are-code"
+    UNCHECKABLE_UNTRACED_VALUE = "uncheckable-untraced-value"
     UNCHECKABLE_STRICT_CHECK_ERROR = "uncheckable-strict-check-error"
 
 
@@ -41,6 +42,8 @@ DESCRIPTIONS = {
     " (imports, `open()`, `$__app__`, the models behind `.unsanitized`).",
     RefusalCode.UNCHECKABLE_LETTERS_ARE_CODE: "Letters alone can be code where the tool writes a value: the program"
     " to run, text piped to a shell, or unquoted Perl or Ruby code.",
+    RefusalCode.UNCHECKABLE_UNTRACED_VALUE: "The templates write a value the review cannot trace to one input or"
+    " preference (the user object read in a loop, a conditional built at run time), so no check sees it.",
     RefusalCode.UNCHECKABLE_STRICT_CHECK_ERROR: "The strict check itself failed (a bug), so none of the job's"
     " values could be checked.",
 }
