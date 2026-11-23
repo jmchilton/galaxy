@@ -11,6 +11,7 @@ from dataclasses import (
     dataclass,
     field,
 )
+from typing import Iterator
 
 from .charsets import (
     default_chars,
@@ -23,6 +24,9 @@ from .report import (
     GROUP_TAGS,
     METADATA,
     OPAQUE,
+    source_refs,
+    SourceRef,
+    SPECIAL,
     USER_PREFERENCE,
 )
 from .values import (
@@ -67,6 +71,10 @@ class Value(Node):
     def element(self) -> AV | None:
         return self.as_element if self.as_element is not None else self.as_text
 
+    def sources(self, names: frozenset[str]) -> Iterator[SourceRef]:
+        for value in (self.as_text, self.as_raw, self.as_element or CLEAN):
+            yield from source_refs(value.sources)
+
 
 @dataclass(eq=False)
 class Opaque(Node):
@@ -96,6 +104,24 @@ _DATA_CLEAN = frozenset(
 _METADATA_CLEAN = frozenset(
     "columns data_lines comment_lines sequences column_types delimiter blocks bases number_of_models".split()
 )
+
+
+# Dataset attributes a template reads by name, which hold text a user chose.
+_NAMED_ATTRIBUTES = ("info", "created_from_basename", "dbkey")
+
+
+def dataset_sources(path: str, names: frozenset[str]) -> Iterator[SourceRef]:
+    """What a template can read of the datasets of an input: identifiers and names always, other
+    attributes, group tags and metadata when it names them (``key=None``: any metadata element)."""
+    yield SourceRef(ELEMENT_IDENTIFIER, path)
+    yield SourceRef(DATASET_ATTRIBUTE, path, "name")
+    for attribute in _NAMED_ATTRIBUTES:
+        if attribute in names:
+            yield SourceRef(DATASET_ATTRIBUTE, path, attribute)
+    if names & {"groups", "group", "group_tags"}:
+        yield SourceRef(GROUP_TAGS, path)
+    if "metadata" in names:
+        yield SourceRef(METADATA, path)
 
 
 @dataclass(eq=False)
@@ -144,6 +170,9 @@ class Data(Node):
 
     def element(self) -> AV | None:
         return AV(nodes=(self,))
+
+    def sources(self, names: frozenset[str]) -> Iterator[SourceRef]:
+        return iter(()) if self.output else dataset_sources(self.path, names)
 
 
 # Attributes of a dataset model that Galaxy sets itself: its type, its id, its paths and state.
@@ -255,6 +284,9 @@ class Collection(Node):
         # Anything else is an element looked up by its identifier ($pair.forward).
         return self.element()
 
+    def sources(self, names: frozenset[str]) -> Iterator[SourceRef]:
+        return iter(()) if self.output else dataset_sources(self.path, names)
+
 
 @dataclass(eq=False)
 class Special(Node):
@@ -287,6 +319,10 @@ def dataset_content(datasets: tuple[Data, ...]) -> AV:
 _USER_OBJECT = tainted(PROBE, source("attribute of the $__user__ object (not sanitized)", OPAQUE))
 
 
+# The attributes of the user object that Galaxy also puts into the namespace as account values.
+USER_ACCOUNT_ATTRIBUTES = {"email": "__user_email__", "username": "__user_name__"}
+
+
 @dataclass(eq=False)
 class User(Node):
     """``$__user__``: the user's model object. Its preferences are the user's to set."""
@@ -299,6 +335,9 @@ class User(Node):
     def attr(self, name: str) -> AV | None:
         if name == "extra_preferences":
             return AV(nodes=(UserPreferences("__user__.extra_preferences"),))
+        if name in USER_ACCOUNT_ATTRIBUTES:
+            key = USER_ACCOUNT_ATTRIBUTES[name]
+            return tainted(PROBE, source(f"${key}", SPECIAL, key=key))
         return AV(nodes=(Opaque(f"__user__.{name}", _USER_OBJECT),))
 
 

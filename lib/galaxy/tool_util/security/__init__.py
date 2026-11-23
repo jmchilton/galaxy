@@ -106,11 +106,15 @@ def _compile(source: str, location: str, report: Report) -> CompiledTemplate | N
     return None
 
 
-def _analyse(source: str, location: str, language: str, model: Model, report: Report) -> TemplateAnalysis | None:
+def _analyse(
+    source: str, location: str, language: str, model: Model, report: Report, names: dict[str, set[str]]
+) -> TemplateAnalysis | None:
     template = _compile(_include_templates(source, model.templates), location, report)
     if template is None:
         return None
-    PythonAudit(report, location, model).template(template)
+    audit = PythonAudit(report, location, model)
+    audit.template(template)
+    names[location] = audit.names
     for name in sorted(unresolved_names(template, model)):
         report.unanalyzed.append(f"{location}: ${name} is not a tool input, its value was not followed")
     analysis = TemplateAnalysis(model, template, report, location, language)
@@ -134,10 +138,11 @@ def review_tool_source(tool_source: ToolSource) -> Report:
         return report
     model = build_model(tool_source)
     readers: dict[str, set[str]] = {}
+    names: dict[str, set[str]] = {}
 
     command = tool_source.parse_command()
     if command:
-        analysis = _analyse(command, "command", "shell", model, report)
+        analysis = _analyse(command, "command", "shell", model, report, names)
         if analysis is not None:
             audit_shell_events(analysis.events, report, "command")
             readers = analysis.readers
@@ -149,13 +154,18 @@ def review_tool_source(tool_source: ToolSource) -> Report:
             # A shell script is read like the command, with its quoting and nested programs. The
             # body of a here-document is not shell code, and a quote in it would throw the rest
             # off: such a script is read string by string, a line at a time.
-            analysis = _analyse(content, location, "shell", model, report)
+            analysis = _analyse(content, location, "shell", model, report, names)
             if analysis is not None:
                 audit_shell_events(analysis.events, report, location)
         else:
-            _analyse(content, location, language, model, report)
+            _analyse(content, location, language, model, report, names)
 
     _mark_unchecked_locations(report)
+    for location, reason in report.unchecked_locations.items():
+        if reason == NOT_ANALYSED:
+            # Parts of the template were not followed: what it writes there is any input it names.
+            reads = report.reads.setdefault(location, [])
+            reads.extend(ref for ref in model.sources(frozenset(names.get(location, ()))) if ref not in reads)
     xml_tree = getattr(tool_source, "xml_tree", None)
     if xml_tree is not None:
         audit_tool_xml(xml_tree, report)

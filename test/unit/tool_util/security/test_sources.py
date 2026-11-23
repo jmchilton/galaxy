@@ -56,7 +56,9 @@ def refs(report: Report) -> set[SourceRef]:
         ("echo '${column.value}'", "", SourceRef(RAW, "column")),
         ("echo '$__user_email__'", UNSANITIZED, SourceRef(SPECIAL, None, "__user_email__")),
         ("echo '$input.unsanitized.name'", "", SourceRef(OPAQUE, "input")),
-        ("echo '$__user__.username'", "", SourceRef(OPAQUE)),
+        ("echo '$__user__.username'", "", SourceRef(SPECIAL, None, "__user_name__")),
+        ("echo '$__user__.email'", "", SourceRef(SPECIAL, None, "__user_email__")),
+        ("echo '$__user__.addresses'", "", SourceRef(OPAQUE)),
         ("echo '${opts.adv.deep.element_identifier}'", "", SourceRef(ELEMENT_IDENTIFIER, "opts.adv.deep")),
         ("#for $r in $rows\necho '${r.label.value}'\n#end for", "", SourceRef(RAW, "rows.label")),
     ],
@@ -549,3 +551,21 @@ def test_user_preference_is_checkable(tmp_path):
     finding = high(review(tmp_path, """echo "${__user__.extra_preferences.get('account|name', '')}" """))
     assert finding.refs == (SourceRef(USER_PREFERENCE, None, "account|name"),)
     assert finding.checkable
+
+
+def test_reads_name_what_each_template_writes(tmp_path):
+    report = review(tmp_path, "echo '$input.element_identifier' '$text' > '$out'")
+    assert set(report.reads["command"]) == {SourceRef(ELEMENT_IDENTIFIER, "input"), SourceRef(TEXT, "text")}
+
+
+def test_reads_of_a_template_not_followed_name_the_inputs_it_mentions(tmp_path):
+    command = "echo '$searchList' '$input.info' '$input.metadata.comments' '${__user__.extra_preferences.get(\"a\")}'"
+    reads = set(review(tmp_path, command).reads["command"])
+    assert {
+        SourceRef(DATASET_ATTRIBUTE, "input", "info"),
+        SourceRef(METADATA, "input"),
+        SourceRef(USER_PREFERENCE),
+        SourceRef(ELEMENT_IDENTIFIER, "flat"),
+    } <= reads
+    assert SourceRef(DATASET_ATTRIBUTE, "flat", "info") in reads
+    assert not any(ref.accessor == OPAQUE for ref in reads)

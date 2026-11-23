@@ -166,9 +166,10 @@ class Report:
     # Template code that can turn a plain value into one that is not (chr(), a decoder, re.sub, a
     # .replace whose new text is not plain), by location.
     rewrites: dict[str, list[str]] = field(default_factory=dict)
-    # The variable and attribute names the templates mention: which dataset attributes, metadata
-    # elements and account values a template can read.
-    names: list[str] = field(default_factory=list)
+    # The sources of the user values each template (location) reads, also where no character test
+    # can judge them: what the strict check of a job reads. METADATA and USER_PREFERENCE with
+    # key=None stand for any metadata element and any preference.
+    reads: dict[str, list[SourceRef]] = field(default_factory=dict)
 
     def add(self, finding: Finding) -> None:
         for i, existing in enumerate(self.findings):
@@ -220,7 +221,7 @@ class Report:
             "closers": _by_location(self.closers),
             "unchecked_locations": dict(sorted(self.unchecked_locations.items())),
             "rewrites": {location: sorted(found) for location, found in sorted(self.rewrites.items())},
-            "names": sorted(self.names),
+            "reads": {location: [asdict(ref) for ref in refs] for location, refs in sorted(self.reads.items())},
         }
 
 
