@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import re
 import sys
-import time
 from dataclasses import replace
 
 from Cheetah.Parser import ParseError
@@ -42,7 +41,6 @@ from .report import (
     Finding,
     NOT_ANALYSED,
     Report,
-    ReviewTimeout,
     RUNS_TEXT,
     RUNS_TEXT_RULES,
     sorted_refs,
@@ -56,7 +54,7 @@ from .template import (
     CompileTimeExecution,
 )
 
-__all__ = ("Finding", "Report", "ReviewTimeout", "review_tool_source", "Source", "SourceRef")
+__all__ = ("Finding", "Report", "review_tool_source", "Source", "SourceRef")
 
 # Capabilities that send text a template writes to a program that runs it.
 
@@ -110,17 +108,14 @@ def _compile(source: str, location: str, report: Report) -> CompiledTemplate | N
     return None
 
 
-def _analyse(
-    source: str, location: str, language: str, model: Model, report: Report, deadline: float | None
-) -> TemplateAnalysis | None:
-    _check_deadline(deadline)
+def _analyse(source: str, location: str, language: str, model: Model, report: Report) -> TemplateAnalysis | None:
     template = _compile(_include_templates(source, model.templates), location, report)
     if template is None:
         return None
     PythonAudit(report, location, model).template(template)
     for name in sorted(unresolved_names(template, model)):
         report.unanalyzed.append(f"{location}: ${name} is not a tool input, its value was not followed")
-    analysis = TemplateAnalysis(model, template, report, location, language, deadline=deadline)
+    analysis = TemplateAnalysis(model, template, report, location, language)
     try:
         analysis.run()
     except RecursionError:
@@ -128,18 +123,12 @@ def _analyse(
     return analysis
 
 
-def _check_deadline(deadline: float | None) -> None:
-    if deadline is not None and time.thread_time() > deadline:
-        raise ReviewTimeout()
-
-
-def review_tool_source(tool_source: ToolSource, timeout: float | None = None) -> Report:
+def review_tool_source(tool_source: ToolSource) -> Report:
     """The security review of a tool.
 
-    ``timeout``: seconds of CPU time the review may take in this thread; past it, :class:`ReviewTimeout`
-    is raised. Time spent waiting for other threads (a job handler's) or processes does not count.
+    The work on one template is bounded by the analysis' step budget: a template past it counts as
+    not fully analysed.
     """
-    deadline = time.thread_time() + timeout if timeout is not None else None
     report = Report(tool_id=tool_source.parse_id())
     if sys.version_info < (3, 9):
         # The analysis needs ast.unparse and the subscript syntax tree of Python 3.9.
@@ -150,7 +139,7 @@ def review_tool_source(tool_source: ToolSource, timeout: float | None = None) ->
 
     command = tool_source.parse_command()
     if command:
-        analysis = _analyse(command, "command", "shell", model, report, deadline)
+        analysis = _analyse(command, "command", "shell", model, report)
         if analysis is not None:
             audit_shell_events(analysis.events, report, "command")
             readers = analysis.readers
@@ -162,11 +151,11 @@ def review_tool_source(tool_source: ToolSource, timeout: float | None = None) ->
             # A shell script is read like the command, with its quoting and nested programs. The
             # body of a here-document is not shell code, and a quote in it would throw the rest
             # off: such a script is read string by string, a line at a time.
-            analysis = _analyse(content, location, "shell", model, report, deadline)
+            analysis = _analyse(content, location, "shell", model, report)
             if analysis is not None:
                 audit_shell_events(analysis.events, report, location)
         else:
-            _analyse(content, location, language, model, report, deadline)
+            _analyse(content, location, language, model, report)
 
     _mark_unchecked_locations(report)
     xml_tree = getattr(tool_source, "xml_tree", None)

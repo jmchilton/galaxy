@@ -28,10 +28,6 @@ CAPABILITY = "capability"
 QUOTE_CLOSERS = frozenset("'\"`\\")
 
 
-class ReviewTimeout(Exception):
-    """The review ran past the deadline it was given."""
-
-
 # How a template reads a user-controlled value (SourceRef.accessor). Each names the value Galaxy
 # puts into the template namespace, so the value of a job can be compared with a finding.
 TEXT = "text"  # the parameter as written by `$param`: the sanitized string
@@ -44,20 +40,6 @@ SPECIAL = "special"  # a value Galaxy adds for the user, such as $__user_email__
 DATASET_CONTENT = "dataset_content"  # the content of the input datasets, which the template reads with open()
 USER_PREFERENCE = "user_preference"  # a preference the user set, $__user__.extra_preferences (key)
 OPAQUE = "opaque"  # an object the template can read anything from: no single value to compare
-ACCESSORS = (
-    TEXT,
-    RAW,
-    ELEMENT_IDENTIFIER,
-    DATASET_ATTRIBUTE,
-    METADATA,
-    GROUP_TAGS,
-    SPECIAL,
-    DATASET_CONTENT,
-    USER_PREFERENCE,
-    OPAQUE,
-)
-
-
 # Why the values of a location cannot be checked (Report.unchecked_locations).
 NOT_ANALYSED = "parts of it were not analysed"
 RUNS_TEXT = "it sends text to a shell to run"
@@ -240,32 +222,6 @@ class Report:
             "rewrites": {location: sorted(found) for location, found in sorted(self.rewrites.items())},
             "names": sorted(self.names),
         }
-
-    @classmethod
-    def from_dict(cls, as_dict: dict[str, Any]) -> Report:
-        """The report :meth:`to_dict` wrote."""
-        report = cls(
-            tool_id=as_dict.get("tool_id"),
-            unanalyzed=list(as_dict.get("unanalyzed") or []),
-            unchecked_locations=dict(as_dict.get("unchecked_locations") or {}),
-            rewrites={location: list(found) for location, found in (as_dict.get("rewrites") or {}).items()},
-            names=list(as_dict.get("names") or []),
-        )
-        for f in as_dict.get("findings") or []:
-            f = dict(f)
-            f["more_lines"] = tuple(f.get("more_lines") or ())
-            f["refs"] = tuple(SourceRef(**ref) for ref in f.get("refs") or ())
-            f["unchecked"] = tuple(SourceRef(**ref) for ref in f.get("unchecked") or ())
-            f["breakout"] = frozenset(f.get("breakout") or ())
-            f["requires"] = frozenset(f.get("requires") or ())
-            f["closes"] = frozenset(f.get("closes") or ())
-            report.findings.append(Finding(**f))
-        for name in ("writes", "closers"):
-            for entry in as_dict.get(name) or []:
-                getattr(report, name).setdefault(entry["location"], {})[SourceRef(**entry["ref"])] = frozenset(
-                    entry["chars"]
-                )
-        return report
 
 
 def _by_location(chars_by_location: dict[str, dict[SourceRef, frozenset[str]]]) -> list[dict[str, Any]]:

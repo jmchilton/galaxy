@@ -11,7 +11,6 @@ import ast
 import builtins
 import dataclasses
 import re
-import time
 from dataclasses import (
     dataclass,
     field,
@@ -46,7 +45,6 @@ from .report import (
     OPAQUE,
     QUOTE_CLOSERS,
     Report,
-    ReviewTimeout,
     source_refs,
     SourceRef,
     VULNERABILITY,
@@ -465,7 +463,6 @@ class TemplateAnalysis:
         report: Report,
         location: str = "command",
         language: str = "shell",
-        deadline: float | None = None,
     ):
         self.model = model
         self.template = template
@@ -490,8 +487,6 @@ class TemplateAnalysis:
         self._written: dict[SourceRef, charsets.Chars] = {}
         # Quote characters of values that an escaping's own quote leaves outside their string.
         self._closers: dict[SourceRef, charsets.Chars] = {}
-        # time.thread_time() after which the analysis stops with ReviewTimeout.
-        self._deadline = deadline
         self._in_capture_region = 0
         self._noted: set[str] = set()
         self._line: int | None = None
@@ -636,8 +631,6 @@ class TemplateAnalysis:
         self._steps += 1
         if self._steps > _MAX_STEPS:
             raise _BudgetExceeded()
-        if self._deadline is not None and time.thread_time() > self._deadline:
-            raise ReviewTimeout()
         line = self.template.template_line(stmt)
         if line is not None:
             self._line = line

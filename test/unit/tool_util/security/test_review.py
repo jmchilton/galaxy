@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 import pytest
 
@@ -98,7 +97,7 @@ def review(
     configfiles: str = "",
     extra: str = "",
     tool_attrs: str = "",
-    timeout: Optional[float] = None,
+    inputs: str = "",
 ) -> Report:
     path = os.path.join(tmp_path, "tool.xml")
     with open(path, "w") as fh:
@@ -106,12 +105,12 @@ def review(
             f"""<tool id="t" name="t" version="1" profile="24.2" {tool_attrs}>
   <command><![CDATA[{command}]]></command>
   <configfiles>{configfiles}</configfiles>
-  <inputs>{INPUTS}</inputs>
+  <inputs>{inputs or INPUTS}</inputs>
   <outputs><data name="out" format="txt"/></outputs>
   {extra}
 </tool>"""
         )
-    return review_tool_source(get_tool_source(path), timeout=timeout)
+    return review_tool_source(get_tool_source(path))
 
 
 def rules(report: Report, kind: str = "vulnerability") -> set[tuple[str, str]]:
