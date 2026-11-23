@@ -100,6 +100,8 @@ class PythonAudit:
     def __init__(self, report: Report, location: str, model: Model | None = None, assigned: set[str] | None = None):
         self.report = report
         self.location = location
+        # The names the template mentions: which attributes, metadata and account values it reads.
+        self.names: set[str] = set()
         self.model = model
         self.assigned = assigned or set()
         # Local name -> dotted origin, from `import os as o` and `from os import system`.
@@ -299,9 +301,7 @@ class PythonAudit:
             names.extend(lookup[1].split("."))
         elif lookup := name_lookup(node, _GETATTR):
             names.append(lookup[1])
-        for name in names:
-            if name not in self.report.names:
-                self.report.names.append(name)
+        self.names.update(names)
 
     @staticmethod
     def is_get_var(func: ast.expr) -> bool:

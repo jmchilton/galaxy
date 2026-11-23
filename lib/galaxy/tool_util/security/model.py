@@ -33,13 +33,16 @@ from .nodes import (
     Opaque,
     Special,
     User,
+    USER_ACCOUNT_ATTRIBUTES,
     Value,
 )
 from .report import (
     OPAQUE,
     RAW,
+    SourceRef,
     SPECIAL,
     TEXT,
+    USER_PREFERENCE,
 )
 from .validators import text_constraint
 from .values import (
@@ -90,6 +93,20 @@ class Model:
             value = tainted(chars, source(f"job parameter ${name}, which is not a tool input", SPECIAL, key=name))
             self._job_parameters[name] = Opaque(f"${name}", value)
         return AV(nodes=(self._job_parameters[name],))
+
+    def sources(self, names: frozenset[str]) -> list[SourceRef]:
+        """The user-controlled sources a template that mentions ``names`` can read: the tool's
+        inputs, and the account values and preferences it names (``key=None``: any preference)."""
+        refs = dict.fromkeys(self.root.sources(names))
+        for name in _USER_SPECIALS:
+            if name in names:
+                refs[SourceRef(SPECIAL, key=name)] = None
+        for attribute, key in USER_ACCOUNT_ATTRIBUTES.items():
+            if attribute in names:
+                refs[SourceRef(SPECIAL, key=key)] = None
+        if "extra_preferences" in names:
+            refs[SourceRef(USER_PREFERENCE)] = None
+        return list(refs)
 
     def lookup(self, name: str) -> AV | None:
         nodes = self.root.children.get(name)
