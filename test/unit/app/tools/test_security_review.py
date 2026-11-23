@@ -752,6 +752,15 @@ def test_strict_when_unsure_refuses_any_value_when_the_template_changes_values(a
     reviewer(tmp_path, ENFORCE, strict_when_unsure=False).check_job(tool, evaluator(app, tool, ["a"], word="b"))
 
 
+@pytest.mark.parametrize("new", ["'$'", "'$a'", '"x$"'])
+def test_replace_that_brings_a_dollar_leaves_nothing_plain(app, tmp_path, monkeypatch, new):
+    contents = ECHO_IDS.replace("echo '${word.value}'", f"#set $v = str($word.value).replace('x', {new})\necho $v")
+    tool = make_tool(app, tmp_path, contents, "dollar.xml")
+    assert security_review.template_transforms(tool) == [".replace"]
+    message = strict_refusal(unreviewed(tmp_path, monkeypatch), tool, evaluator(app, tool, ["a"], word="x"))
+    assert "its templates can change values (.replace)" in message
+
+
 def test_replace_with_plain_text_keeps_values_plain(app, tmp_path):
     tool = make_tool(app, tmp_path, SAFE_REPLACE, "safe_replace.xml")
     assert security_review.template_transforms(tool) == []
