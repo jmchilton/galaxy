@@ -7131,6 +7131,52 @@ input1:
             )
             assert "0\n" == self.dataset_populator.get_history_dataset_content(history_id)
 
+    @skip_without_tool("empty_list")
+    @skip_without_tool("identifier_source")
+    @pytest.mark.parametrize("empty_first", [True, False])
+    def test_empty_list_linked_with_nonempty_list_fails_to_match(self, history_id, empty_first):
+        empty_input, nonempty_input = ("inputA", "inputB") if empty_first else ("inputB", "inputA")
+        summary = self._run_workflow(
+            f"""
+class: GalaxyWorkflow
+inputs:
+  input1: data
+  list_input:
+    type: collection
+    collection_type: list
+steps:
+  empty_list:
+    tool_id: empty_list
+    in:
+      input1: input1
+  identifier_source:
+    tool_id: identifier_source
+    in:
+      {empty_input}: empty_list/output
+      {nonempty_input}: list_input
+""",
+            test_data="""
+input1:
+  value: 1.bed
+  type: File
+list_input:
+  collection_type: list
+  elements:
+    - identifier: el1
+      content: A
+""",
+            history_id=history_id,
+            wait=True,
+            assert_ok=False,
+        )
+        invocation = self.workflow_populator.get_invocation(summary.invocation_id)
+        assert invocation["state"] == "failed"
+        assert len(invocation["messages"]) == 1
+        message = invocation["messages"][0]
+        assert message["reason"] == "unexpected_failure"
+        assert message["details"] == "Cannot match collection types."
+        assert message["workflow_step_id"] == 3
+
     def test_subworkflow_map_over_data_column(self):
         with self.dataset_populator.test_history() as history_id:
             self._run_workflow(

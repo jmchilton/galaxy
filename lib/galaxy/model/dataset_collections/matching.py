@@ -97,7 +97,7 @@ class MatchingCollections:
         structure = get_structure(
             child_collection, collection_type_description, leaf_subcollection_type=subcollection_type
         )
-        if not self.linked_structure:
+        if self.linked_structure is None:
             self.linked_structure = structure
             self.collections[input_name] = hdca
             self.subcollection_types[input_name] = subcollection_type

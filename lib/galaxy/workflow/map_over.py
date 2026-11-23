@@ -83,7 +83,7 @@ class MapOverPlanner:
                     consumed_collection_types,
                     dataset_collection_type_descriptions,
                 )
-                if not progress.subworkflow_structure and history_query.direct_match(data):
+                if progress.subworkflow_structure is None and history_query.direct_match(data):
                     continue
 
                 subcollection_type_description = history_query.can_map_over(data) or None
@@ -95,7 +95,7 @@ class MapOverPlanner:
                         subcollection_type_description, remaining_outer_types
                     )
                     collections_to_match.add(name, data, subcollection_type=subcollection_type_description)
-                elif is_data_param and progress.subworkflow_structure:
+                elif is_data_param and progress.subworkflow_structure is not None:
                     collections_to_match.add(name, data, subcollection_type=subcollection_type_description)
                 continue
 
@@ -112,7 +112,7 @@ class MapOverPlanner:
         """
         declared = input_dict.get("collection_types")
         if not declared:
-            if progress.subworkflow_structure:
+            if progress.subworkflow_structure is not None:
                 declared = [progress.subworkflow_structure.collection_type_description.collection_type]
             elif collection_type := input_dict.get("collection_type"):
                 declared = [collection_type]
@@ -127,7 +127,7 @@ class MapOverPlanner:
         to be accounted for by ``_consume_outer_structure``.
         """
         remaining_outer_types: list[str] = []
-        if progress.subworkflow_structure:
+        if progress.subworkflow_structure is not None:
             remaining_outer_types = progress.subworkflow_structure.collection_type_description.collection_type.split(
                 ":"
             )
