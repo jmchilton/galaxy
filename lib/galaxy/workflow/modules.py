@@ -55,7 +55,10 @@ from galaxy.model import (
 )
 from galaxy.model.base import ensure_object_added_to_session
 from galaxy.model.dataset_collections.adapters import PromoteCollectionElementToCollectionAdapter
-from galaxy.model.dataset_collections.type_description import COLLECTION_TYPE_DESCRIPTION_FACTORY
+from galaxy.model.dataset_collections.type_description import (
+    COLLECTION_TYPE_DESCRIPTION_FACTORY,
+    CollectionTypeDescription,
+)
 from galaxy.model.dataset_collections.types.sample_sheet_util import validate_column_definitions
 from galaxy.objectstore import ObjectStorePopulator
 from galaxy.schema.credentials import (
@@ -1027,6 +1030,7 @@ class SubWorkflowModule(WorkflowModule):
         all_inputs = self.get_all_inputs()
         collection_info = self.plan_map_over(progress, step, all_inputs)
 
+        iteration_elements_iter: Iterable[tuple[dict[str, model.DatasetCollectionElement] | None, bool | None]]
         if collection_info:
             iteration_elements_iter = collection_info.slice_collections()
         else:
@@ -3279,6 +3283,7 @@ class ToolModule(WorkflowModule):
         collection_info = self.plan_map_over(progress, step, all_inputs)
 
         param_combinations = []
+        iteration_elements_iter: Iterable[tuple[dict[str, model.DatasetCollectionElement] | None, bool | None]]
         if collection_info:
             iteration_elements_iter = collection_info.slice_collections()
         else:
@@ -3320,7 +3325,7 @@ class ToolModule(WorkflowModule):
                     ):
                         mapping_type = collection_info.subcollection_mapping_type(prefixed_name)
                         if (
-                            hasattr(mapping_type, "collection_type")
+                            isinstance(mapping_type, CollectionTypeDescription)
                             and mapping_type.collection_type == "single_datasets"
                         ):
                             replacement = PromoteCollectionElementToCollectionAdapter(replacement)
@@ -3365,6 +3370,7 @@ class ToolModule(WorkflowModule):
                     step_input_name = step_input.name
                     if step_input_name in execution_state.inputs:
                         continue
+                    value: Any
                     if step_input_name in all_inputs_by_name:
                         if step_input_name and "|" in step_input_name:
                             # Nested tool inputs have flat connection names but are already represented
@@ -3381,10 +3387,9 @@ class ToolModule(WorkflowModule):
                             value = progress.replacement_for_connection(step_input.connections[0], is_data=True)
                     extra_step_state[step_input_name] = value
 
-                if when_value is not False:
-                    when_value = evaluate_value_from_expressions(
-                        progress, step, execution_state=execution_state, extra_step_state=extra_step_state
-                    )
+                when_value = evaluate_value_from_expressions(
+                    progress, step, execution_state=execution_state, extra_step_state=extra_step_state
+                )
             if when_value is not None:
                 # Track this more formally ?
                 execution_state.inputs["__when_value__"] = when_value

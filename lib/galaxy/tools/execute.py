@@ -10,6 +10,7 @@ import typing
 from abc import abstractmethod
 from collections.abc import (
     Callable,
+    Iterable,
     Sequence,
 )
 from typing import (
@@ -32,6 +33,7 @@ from galaxy.model.dataset_collections.structure import (
     get_collection,
     get_structure,
     tool_output_to_structure,
+    Tree,
 )
 from galaxy.schema.credentials import CredentialsContext
 from galaxy.tool_util.parameters.state import (
@@ -569,7 +571,7 @@ class ExecutionTracker:
 
     @staticmethod
     def _collection_info_to_collection_hids_element_ids(
-        items: list[model.DatasetCollectionElement | model.HistoryDatasetCollectionAssociation],
+        items: Iterable[model.DatasetCollectionElement | model.HistoryDatasetCollectionAssociation],
     ) -> tuple[list[int], list[str]]:
         element_ids = []
         collection_hids = []
@@ -673,7 +675,7 @@ class ExecutionTracker:
                 collection_type_description = collection_type_descriptions.for_collection_type(
                     source_collection.collection.collection_type
                 )
-                _structure = structure.for_dataset_collection(
+                _structure = Tree.for_dataset_collection(
                     source_collection.collection, collection_type_description=collection_type_description
                 )
                 if structure.compatible_shape(_structure):
