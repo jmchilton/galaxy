@@ -129,7 +129,8 @@ class MatchingCollections:
         effective_structure: Structure = leaf
         for unlinked_structure in self.unlinked_structures:
             effective_structure = effective_structure.multiply(unlinked_structure)
-        effective_structure = effective_structure.multiply(self.linked_structure or leaf)
+        linked_structure = self.linked_structure
+        effective_structure = effective_structure.multiply(leaf if linked_structure is None else linked_structure)
         if isinstance(effective_structure, Leaf):
             return None
         effective_structure.when_values = self.when_values
