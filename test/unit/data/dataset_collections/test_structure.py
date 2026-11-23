@@ -14,7 +14,7 @@ from .test_matching import (
     pair_instance,
 )
 
-factory = CollectionTypeDescriptionFactory(None)
+factory = CollectionTypeDescriptionFactory()
 
 
 def test_get_structure_simple():

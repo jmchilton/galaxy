@@ -24,15 +24,20 @@ lattice diagram and worked examples.
 
 import re
 from typing import (
+    cast,
     TYPE_CHECKING,
     TypeAlias,
 )
 
 from galaxy.exceptions import RequestParameterInvalidException
-from .registry import DATASET_COLLECTION_TYPES_REGISTRY
+from .registry import (
+    DATASET_COLLECTION_TYPES_REGISTRY,
+    DatasetCollectionTypesRegistry,
+)
 
 if TYPE_CHECKING:
     from galaxy.tool_util_models.tool_source import FieldDict
+    from .types import BaseDatasetCollectionType
 
 
 COLLECTION_TYPE_REGEX = re.compile(
@@ -41,13 +46,13 @@ COLLECTION_TYPE_REGEX = re.compile(
 
 
 class CollectionTypeDescriptionFactory:
-    def __init__(self, type_registry=DATASET_COLLECTION_TYPES_REGISTRY):
+    def __init__(self, type_registry: DatasetCollectionTypesRegistry = DATASET_COLLECTION_TYPES_REGISTRY) -> None:
         # taking in type_registry though not using it, because we will someday
         # I think.
         self.type_registry = type_registry
 
     def for_collection_type(
-        self, collection_type, fields: str | list["FieldDict"] | None = None
+        self, collection_type: "CollectionTypeLike", fields: str | list["FieldDict"] | None = None
     ) -> "CollectionTypeDescription":
         assert collection_type is not None
         return CollectionTypeDescription(collection_type, self, fields=fields)
@@ -65,7 +70,7 @@ class CollectionTypeDescription:
         collection_type: "CollectionTypeLike",
         collection_type_description_factory: CollectionTypeDescriptionFactory,
         fields: str | list["FieldDict"] | None = None,
-    ):
+    ) -> None:
         if isinstance(collection_type, CollectionTypeDescription):
             self.collection_type = collection_type.collection_type
         else:
@@ -74,19 +79,21 @@ class CollectionTypeDescription:
         self.fields = fields
         self.__has_subcollections = self.collection_type.find(":") > 0
 
-    def child_collection_type(self):
+    def child_collection_type(self) -> str:
         rank_collection_type = self.rank_collection_type()
         return self.collection_type[len(rank_collection_type) + 1 :]
 
-    def child_collection_type_description(self):
+    def child_collection_type_description(self) -> "CollectionTypeDescription":
         child_collection_type = self.child_collection_type()
         return self.collection_type_description_factory.for_collection_type(child_collection_type)
 
-    def effective_collection_type_description(self, subcollection_type):
+    def effective_collection_type_description(
+        self, subcollection_type: "CollectionTypeLike"
+    ) -> "CollectionTypeDescription":
         effective_collection_type = self.effective_collection_type(subcollection_type)
         return self.collection_type_description_factory.for_collection_type(effective_collection_type)
 
-    def effective_collection_type(self, subcollection_type):
+    def effective_collection_type(self, subcollection_type: "CollectionTypeLike") -> str:
         if hasattr(subcollection_type, "collection_type"):
             subcollection_type = subcollection_type.collection_type
 
@@ -126,7 +133,7 @@ class CollectionTypeDescription:
 
         return self.collection_type[: -(len(subcollection_type) + 1)]
 
-    def can_map_over(self, other_collection_type) -> bool:
+    def can_map_over(self, other_collection_type: "CollectionTypeLike") -> bool:
         """Asymmetric nesting check: can this collection be mapped over to
         feed an input requiring ``other_collection_type``?
 
@@ -176,7 +183,7 @@ class CollectionTypeDescription:
             return True
         return False
 
-    def accepts(self, other_collection_type) -> bool:
+    def accepts(self, other_collection_type: "CollectionTypeLike") -> bool:
         """Asymmetric direct-edge check: does an input slot of type ``self``
         accept an output of type ``other_collection_type``?
 
@@ -211,7 +218,7 @@ class CollectionTypeDescription:
 
         return False
 
-    def compatible(self, other_collection_type) -> bool:
+    def compatible(self, other_collection_type: "CollectionTypeLike") -> bool:
         """Symmetric sibling-matching check: do ``self`` and ``other`` match
         such that they could drive a common map-over over sibling inputs of
         a single tool?
@@ -224,41 +231,43 @@ class CollectionTypeDescription:
 
         See ``types/collection_semantics.yml`` "Type Compatibility Algebra".
         """
-        if not hasattr(other_collection_type, "collection_type"):
-            other_collection_type = self.collection_type_description_factory.for_collection_type(other_collection_type)
-        return self.accepts(other_collection_type) or other_collection_type.accepts(self)
+        if hasattr(other_collection_type, "collection_type"):
+            other_description = cast(CollectionTypeDescription, other_collection_type)
+        else:
+            other_description = self.collection_type_description_factory.for_collection_type(other_collection_type)
+        return self.accepts(other_description) or other_description.accepts(self)
 
-    def subcollection_type_description(self):
+    def subcollection_type_description(self) -> "CollectionTypeDescription":
         if not self.__has_subcollections:
             raise ValueError(f"Cannot generate subcollection type description for flat type {self.collection_type}")
         subcollection_type = self.collection_type.split(":", 1)[1]
         return self.collection_type_description_factory.for_collection_type(subcollection_type)
 
-    def has_subcollections(self):
+    def has_subcollections(self) -> bool:
         return self.__has_subcollections
 
-    def rank_collection_type(self):
+    def rank_collection_type(self) -> str:
         """Return the top-level collection type corresponding to this
         collection type. For instance the "rank" type of a list of paired
         data ("list:paired") is "list".
         """
         return self.collection_type.split(":")[0]
 
-    def rank_type_plugin(self):
+    def rank_type_plugin(self) -> "BaseDatasetCollectionType":
         return self.collection_type_description_factory.type_registry.get(self.rank_collection_type())
 
     @property
-    def dimension(self):
+    def dimension(self) -> int:
         return len(self.collection_type.split(":")) + 1
 
-    def multiply(self, other_collection_type) -> "CollectionTypeDescription":
+    def multiply(self, other_collection_type: "CollectionTypeLike") -> "CollectionTypeDescription":
         collection_type = map_over_collection_type(self, other_collection_type)
         return self.collection_type_description_factory.for_collection_type(collection_type)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"CollectionTypeDescription[{self.collection_type}]"
 
-    def validate(self):
+    def validate(self) -> None:
         """Validate that this collection type is a valid Galaxy collection type."""
         if COLLECTION_TYPE_REGEX.match(self.collection_type) is None:
             raise RequestParameterInvalidException(f"Invalid collection type: [{self.collection_type}]")
@@ -268,7 +277,9 @@ class CollectionTypeDescription:
 CollectionTypeLike: TypeAlias = str | CollectionTypeDescription
 
 
-def map_over_collection_type(mapped_over_collection_type, target_collection_type):
+def map_over_collection_type(
+    mapped_over_collection_type: CollectionTypeLike, target_collection_type: CollectionTypeLike | None
+) -> str:
     if hasattr(mapped_over_collection_type, "collection_type"):
         mapped_over_collection_type = mapped_over_collection_type.collection_type
 

@@ -3,7 +3,7 @@ import pytest
 from galaxy.exceptions import RequestParameterInvalidException
 from galaxy.model.dataset_collections.type_description import CollectionTypeDescriptionFactory
 
-factory = CollectionTypeDescriptionFactory(None)
+factory = CollectionTypeDescriptionFactory()
 
 
 def c_t(collection_type: str):
