@@ -1,0 +1,16 @@
+<tool id="spec_job_metadata" name="Version of the creating tool" version="1.0" profile="24.0">
+    <description>writes the version of the tool that made a dataset</description>
+    <command><![CDATA[
+#if $input.creating_job
+echo '${input.creating_job.tool_version}' > '$out'
+#else
+echo unknown > '$out'
+#end if
+    ]]></command>
+    <inputs>
+        <param name="input" type="data" format="txt"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

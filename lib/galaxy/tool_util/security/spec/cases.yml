@@ -124,6 +124,7 @@ dataset_content_shell_injection:
   tool: dataset_content_first_line.xml
   code: shell-injection
   review:
+    patterns: [file-access]
     serious_rules: [shell-injection]
     findings:
       - {rule: shell-injection, accessor: dataset_content, param: input, checkable: true}
@@ -164,6 +165,7 @@ user_preference_shell_injection:
   tool: user_preference_unsanitized.xml
   code: shell-injection
   review:
+    patterns: [user-object]
     serious_rules: [shell-injection]
     findings:
       - {rule: shell-injection, accessor: user_preference, key: "spec|label", checkable: true}
@@ -319,6 +321,7 @@ raw_dataset_model:
   tool: raw_dataset_model.xml
   code: uncheckable-template-code
   review:
+    patterns: [model-access]
     serious_rules: [shell-injection]
     findings:
       - {rule: shell-injection, accessor: opaque, param: input, checkable: false}
@@ -401,6 +404,7 @@ rewrites_and_template_code:
   tool: rewrites_and_template_code.xml
   code: uncheckable-rewrites
   review:
+    patterns: [template-code]
     rewrites: true
     serious_rules: [shell-injection]
     findings:
@@ -420,6 +424,7 @@ template_code:
   tool: template_code.xml
   code: uncheckable-template-code
   review:
+    patterns: [template-code]
     unchecked_locations: {command: parts of it were not analysed}
     findings:
       - {rule: template-exec, severity: critical}
@@ -439,6 +444,7 @@ user_object_unsanitized:
   tool: user_preferences_unsanitized_loop.xml
   code: uncheckable-template-code
   review:
+    patterns: [user-object]
     findings:
       - {rule: template-app-access, severity: medium}
       - {rule: shell-injection, accessor: opaque, checkable: false}
@@ -518,4 +524,54 @@ strict_check_failed:
       collections:
         input:
           elements: [{identifier: sample1}]
+      expect: {rejected: false}
+
+reflection_bypass:
+  doc: >-
+    A known bypass. Read by name through `getattr`, the unsanitized dataset model is out of the review's
+    sight: it reports no finding the job check could compare values with, so the job runs whatever the
+    dataset is named, and a name that closes the quotes starts a command.
+  tool: reflection_getattr.xml
+  known_bypass: true
+  review:
+    patterns: [reflection]
+    serious_rules: []
+  green:
+    - datasets:
+        input: {name: reads.fq}
+      harm: true
+      expect: {rejected: false}
+
+app_model_read:
+  doc: >-
+    The application object reaches any data of the server. The review flags the read but follows no value
+    of it; this job runs because it writes a count.
+  tool: app_model.xml
+  review:
+    patterns: [app-access]
+    serious_rules: []
+  green:
+    - harm: true
+      expect: {rejected: false}
+
+job_metadata_read:
+  doc: The tool version of the job that made a dataset is set by the server, so the job runs.
+  tool: job_metadata.xml
+  review:
+    patterns: [job-metadata]
+    serious_rules: []
+  green:
+    - datasets:
+        input: {name: reads.fq}
+      harm: true
+      expect: {rejected: false}
+
+server_config_read:
+  doc: An id the server encodes is the server's value, so the job runs.
+  tool: server_config.xml
+  review:
+    patterns: [server-config]
+    serious_rules: []
+  green:
+    - harm: true
       expect: {rejected: false}

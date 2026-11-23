@@ -1,4 +1,4 @@
-"""Render the refusal codes and their spec cases as the Markdown section of the admin docs.
+"""Render the refusal codes, the access patterns and their spec cases as the Markdown section of the admin docs.
 
 ``python -m galaxy.tool_util.security.spec.docs`` prints the section.
 """
@@ -11,6 +11,7 @@ from typing import (
 import yaml
 
 from galaxy.tool_util.parser import get_tool_source
+from galaxy.tool_util.security import patterns
 from galaxy.tool_util.security.codes import (
     DESCRIPTIONS,
     RefusalCode,
@@ -40,15 +41,42 @@ def refusal_codes_markdown(cases: Dict[str, SpecCase]) -> str:
         "",
     ]
     for case_id, case in cases.items():
-        if case.code is None:
+        if case.code is None and not case.review.patterns:
             lines += _case(case_id, case)
+    lines += _patterns(cases)
     lines.append(END)
     return "\n".join(lines) + "\n"
 
 
-def _case(case_id: str, case: SpecCase) -> List[str]:
+def _patterns(cases: Dict[str, SpecCase]) -> List[str]:
+    lines = [
+        "## Access patterns",
+        "",
+        "The review also reports reads it cannot follow to a value of the job. The job check refuses no job for",
+        "them alone: a job is refused only when the review also sees the value written where it can do harm.",
+        "A case marked as a known bypass is a tool whose jobs run whatever their values.",
+        "",
+    ]
+    groups = (
+        ("Reads the job check cannot see", [c for c in patterns.PatternCode if c not in patterns.SERVER_VALUES]),
+        ("Reads of values the server sets", [c for c in patterns.PatternCode if c in patterns.SERVER_VALUES]),
+    )
+    for title, codes in groups:
+        lines += [f"### {title}", ""]
+        for code in codes:
+            lines += [f"#### `{code.value}`", "", patterns.DESCRIPTIONS[code], ""]
+            shown = [case_id for case_id, case in cases.items() if code in case.review.patterns]
+            if refused := [case_id for case_id in shown if cases[case_id].code is not None]:
+                lines += [f"Refused cases with it: {', '.join(f'`{case_id}`' for case_id in refused)}.", ""]
+            for case_id in shown:
+                if cases[case_id].code is None:
+                    lines += _case(case_id, cases[case_id], level="#####")
+    return lines
+
+
+def _case(case_id: str, case: SpecCase, level: str = "####") -> List[str]:
     command = (get_tool_source(tool_path(case.tool)).parse_command() or "").strip()
-    lines = [f"#### {case_id}", "", case.doc, "", f"Tool `{case.tool}`:", "", "```", command, "```", ""]
+    lines = [f"{level} {case_id}", "", case.doc, "", f"Tool `{case.tool}`:", "", "```", command, "```", ""]
     for color, jobs in (("Refused", case.red), ("Runs", case.green)):
         for job in jobs:
             title = f"{color}{': ' + job.doc if job.doc else ''}"

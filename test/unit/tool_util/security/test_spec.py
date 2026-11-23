@@ -8,6 +8,10 @@ from galaxy.tool_util.security.codes import (
     DESCRIPTIONS,
     RefusalCode,
 )
+from galaxy.tool_util.security.patterns import (
+    DESCRIPTIONS as PATTERN_DESCRIPTIONS,
+    PatternCode,
+)
 from galaxy.tool_util.security.spec import (
     load_cases,
     review_problems,
@@ -45,6 +49,17 @@ def test_every_code_has_red_and_green_jobs(code):
     cases = [case for case in CASES.values() if case.code == code]
     assert any(case.red for case in cases) and any(case.green for case in cases)
     assert DESCRIPTIONS[code]
+
+
+@pytest.mark.parametrize("code", list(PatternCode))
+def test_every_pattern_has_a_case(code):
+    assert any(code in case.review.patterns for case in CASES.values())
+    assert PATTERN_DESCRIPTIONS[code]
+
+
+def test_known_bypasses_are_documented_as_such():
+    for case_id, case in CASES.items():
+        assert case.known_bypass == case.doc.startswith("A known bypass."), case_id
 
 
 def test_docs_list_the_codes_and_cases():
