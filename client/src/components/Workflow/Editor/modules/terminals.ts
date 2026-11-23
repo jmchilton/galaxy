@@ -1000,6 +1000,10 @@ type TerminalOf<T extends TerminalSourceAndInvalid> = T extends InvalidInputTerm
                   ? InvalidOutputTerminal
                   : never;
 
+function declaredCollectionTypes(input: DataCollectionStepInput): string[] | null {
+    return input.collection_types ?? (input.collection_type ? [input.collection_type] : null);
+}
+
 export function terminalFactory<T extends TerminalSourceAndInvalid>(
     stepId: number,
     terminalSource: T,
@@ -1039,7 +1043,7 @@ export function terminalFactory<T extends TerminalSourceAndInvalid>(
             } else if (terminalSource.input_type === "dataset_collection") {
                 return new InputCollectionTerminal({
                     ...terminalArgs,
-                    collection_types: terminalSource.collection_types,
+                    collection_types: declaredCollectionTypes(terminalSource),
                     input: {
                         ...inputArgs,
                     },

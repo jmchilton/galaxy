@@ -1,6 +1,5 @@
 import { computed, ref } from "vue";
 
-import type { FieldDict, SampleSheetColumnDefinitions } from "@/api";
 import { isWorkflowInput } from "@/components/Workflow/constants";
 import type { CollectionTypeDescriptor } from "@/components/Workflow/Editor/modules/collectionTypeDescription";
 import { analyzeInputReferences, expressionReferencesInput } from "@/components/Workflow/Editor/modules/whenExpression";
@@ -77,9 +76,10 @@ export interface DataStepInput extends BaseStepInput {
 
 export interface DataCollectionStepInput extends BaseStepInput {
     input_type: "dataset_collection";
-    collection_types: string[];
-    fields: FieldDict[];
-    column_definitions: SampleSheetColumnDefinitions;
+    /** Collection types a tool step's input accepts. */
+    collection_types?: string[] | null;
+    /** A subworkflow step's input declares the single collection type of its inner input step instead. */
+    collection_type?: string | null;
 }
 
 export interface ParameterStepInput extends Omit<BaseStepInput, "input_type"> {

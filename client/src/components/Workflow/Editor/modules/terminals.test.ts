@@ -1082,6 +1082,15 @@ describe("canAccept", () => {
             expect(collectionInput().getInvalidConnectedTerminals()).toEqual([]);
             expectEveryOutputMappedOverList();
         });
+
+        it("rejects a collection the inner input step's collection type does not accept", () => {
+            expect(collectionInput().canAccept(collectionOutput("paired input")).canAccept).toBe(false);
+        });
+
+        it("maps every output over the outer list of a list:list on the collection input", () => {
+            connectAccepted(collectionInput(), collectionOutput("list:list input"));
+            expectEveryOutputMappedOverList();
+        });
     });
 });
 
