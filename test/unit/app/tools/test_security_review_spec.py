@@ -1,5 +1,7 @@
 """The jobs of the tool security review spec, through the evaluators that prepare real jobs."""
 
+import re
+
 import pytest
 
 from galaxy.app_unittest_utils.security_review_spec import (
@@ -15,6 +17,8 @@ from galaxy.tools.security_review import LOG
 
 CASES = load_cases()
 JOBS = list(iter_jobs(CASES))
+# The codes a warning of the review starts with.
+WARNING_CODES = re.compile(r"^Tool security review \(([^)]*)\)")
 
 
 def _params(jobs):
@@ -42,10 +46,14 @@ def test_job(runner, case_id, color, index, job, evaluator):
 def test_log_mode_runs_and_warns(runner, case_id, color, index, job):
     outcome = runner(case_id).run(job, mode=LOG)
     assert not outcome.rejected
-    for code in expected_codes(CASES[case_id], job):
-        assert any(f"({code.value}" in warning or f", {code.value}" in warning for warning in outcome.warnings)
+    warned = {code for w in outcome.warnings if (m := WARNING_CODES.match(w)) for code in m.group(1).split(", ")}
+    assert warned == {code.value for code in expected_codes(CASES[case_id], job)}
 
 
 @pytest.mark.parametrize("case_id,color,index,job", _params(j for j in JOBS if j[3].harm))
 def test_harm(runner, case_id, color, index, job):
-    assert runner(case_id).harms(job) is (color == "red")
+    harmed, returncode = runner(case_id).harms(job)
+    assert harmed is (color == "red")
+    if color == "green":
+        # A command that does not run shows no harm either.
+        assert returncode == 0

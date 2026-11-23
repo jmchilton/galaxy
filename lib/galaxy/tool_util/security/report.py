@@ -13,6 +13,8 @@ from typing import (
 )
 
 from .charsets import (
+    CRITICAL,
+    HIGH,
     SEVERITIES,
     worst,
 )
@@ -57,6 +59,13 @@ CODE_CAPABILITIES = frozenset(
         "template-model-access",
     )
 )
+
+
+# Findings whose characters are checked in the values of a job. Medium findings (a value that can
+# split into more arguments, close quotes without starting a command, or name another path) are
+# not: the characters they name, a space, a slash or a quote, are common in element identifiers and
+# dataset names, and a warning for each such job would bury the warnings that matter.
+CHECKED_SEVERITIES = frozenset((HIGH, CRITICAL))
 
 
 @dataclass(frozen=True)
@@ -241,3 +250,8 @@ def _finding_to_dict(finding: Finding) -> dict[str, Any]:
     as_dict["requires"] = sorted(finding.requires)
     as_dict["closes"] = sorted(finding.closes)
     return as_dict
+
+
+def serious_findings(report: Report) -> list[Finding]:
+    """The high and critical vulnerability findings, the ones checked against job values, most severe first."""
+    return [f for f in report.sorted() if f.kind == VULNERABILITY and f.severity in CHECKED_SEVERITIES]

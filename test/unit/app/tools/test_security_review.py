@@ -2,6 +2,7 @@ import contextlib
 import gc
 import logging
 import os
+import re
 import threading
 import time
 from decimal import Decimal
@@ -754,7 +755,10 @@ def test_strict_when_unsure_runs_plain_values_only(app, tmp_path):
     r = reviewer(tmp_path, ENFORCE)
     r.check_job(tool, evaluator(app, tool, ["sample_1.fastq", "FastQC on data 1: RawData"], word="My title"))
     message = strict_refusal(r, tool, evaluator(app, tool, ["sample (1)"]))
-    assert message.startswith("This job was not run: an element identifier or the name of input 'input' contains [( )]")
+    assert message.startswith(
+        "[not-plain-unchecked-place] This job was not run: an element identifier or the name of input 'input'"
+        " contains [( )]"
+    )
     assert "because this tool writes values in places that no check of their characters can judge (command)" in message
     assert "Echo identifiers" in message and "echo_ids" in message
     # With strict_when_unsure off the same job runs.
@@ -870,7 +874,9 @@ def test_strict_when_unsure_refuses_every_job_when_no_value_can_be_plain(app, tm
         job = evaluator(app, tool, ["a"], word="b")
     message = strict_refusal(reviewer(tmp_path, ENFORCE), tool, job)
     assert why in message
-    assert message.startswith("This job was not run: this Galaxy server cannot check any value for tool")
+    assert re.match(
+        r"\[uncheckable-[a-z-]+\] This job was not run: this Galaxy server cannot check any value for tool", message
+    )
 
 
 def test_rewrites_in_several_templates_are_named_once(app, tmp_path):
