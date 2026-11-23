@@ -1,3 +1,5 @@
+from typing import TYPE_CHECKING
+
 from galaxy import model
 from .types import (
     BaseDatasetCollectionType,
@@ -7,6 +9,9 @@ from .types import (
     sample_sheet,
 )
 from .types.list import ListDatasetCollectionType
+
+if TYPE_CHECKING:
+    from galaxy.tool_util_models.tool_source import FieldDict
 
 PLUGIN_CLASSES: list[type[BaseDatasetCollectionType]] = [
     ListDatasetCollectionType,
@@ -18,13 +23,13 @@ PLUGIN_CLASSES: list[type[BaseDatasetCollectionType]] = [
 
 
 class DatasetCollectionTypesRegistry:
-    def __init__(self):
-        self.__plugins = {p.collection_type: p() for p in PLUGIN_CLASSES}
+    def __init__(self) -> None:
+        self.__plugins: dict[str, BaseDatasetCollectionType] = {p.collection_type: p() for p in PLUGIN_CLASSES}
 
-    def get(self, plugin_type):
+    def get(self, plugin_type: str) -> BaseDatasetCollectionType:
         return self.__plugins[plugin_type]
 
-    def prototype(self, plugin_type, fields=None):
+    def prototype(self, plugin_type: str, fields: list["FieldDict"] | None = None) -> model.DatasetCollection:
         plugin_type_object = self.get(plugin_type)
         if not hasattr(plugin_type_object, "prototype_elements"):
             raise Exception(f"Cannot pre-determine structure for collection of type {plugin_type}")
