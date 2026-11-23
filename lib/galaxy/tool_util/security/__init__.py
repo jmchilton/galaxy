@@ -23,7 +23,7 @@ from Cheetah.Parser import ParseError
 from galaxy.tool_util.parser.interface import ToolSource
 from .capabilities import (
     audit_shell_events,
-    audit_tool_xml,
+    audit_tool,
     PythonAudit,
 )
 from .charsets import CRITICAL
@@ -166,9 +166,7 @@ def review_tool_source(tool_source: ToolSource) -> Report:
             # Parts of the template were not followed: what it writes there is any input it names.
             reads = report.reads.setdefault(location, [])
             reads.extend(ref for ref in model.sources(frozenset(names.get(location, ()))) if ref not in reads)
-    xml_tree = getattr(tool_source, "xml_tree", None)
-    if xml_tree is not None:
-        audit_tool_xml(xml_tree, report)
+    audit_tool(tool_source, report)
     return report
 
 
