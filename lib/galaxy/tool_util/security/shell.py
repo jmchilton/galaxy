@@ -17,6 +17,7 @@ import re
 from dataclasses import dataclass
 from typing import (
     Any,
+    Callable,
     NamedTuple,
     Optional,
     Tuple,
@@ -52,6 +53,39 @@ FILE_COMMANDS = frozenset(("ln", "cp", "mv", "mkdir", "touch", "tee", "rm", "rmd
 
 _E_FLAG = re.compile(r"^-[A-Za-z0-9]*[eE]$")
 _C_FLAG = re.compile(r"^-[A-Za-z]*c[A-Za-z]*$")
+# The language each interpreter runs, by its command name (python and pypy go by _PYTHON).
+INTERPRETERS = {
+    **dict.fromkeys(SHELLS, "sh"),
+    **dict.fromkeys(_AWK, "awk"),
+    **dict.fromkeys(_SED, "sed"),
+    "Rscript": "R",
+    "R": "R",
+    "perl": "perl",
+    "ruby": "ruby",
+    "node": "javascript",
+    "nodejs": "javascript",
+    "julia": "julia",
+    "php": "php",
+    "lua": "lua",
+}
+CODE_LANGUAGES = frozenset(INTERPRETERS.values()) | {"python"}
+# The option after which an interpreter takes its program as the next word.
+_INLINE_CODE: dict[str, Callable[[str], Any]] = {
+    "sh": _C_FLAG.match,
+    "python": "-c".__eq__,
+    "perl": _E_FLAG.match,
+    "ruby": _E_FLAG.match,
+    "R": "-e".__eq__,
+    "javascript": frozenset(("-e", "-p", "--eval", "--print")).__contains__,
+    "julia": "-e".__eq__,
+    "lua": "-e".__eq__,
+    "php": "-r".__eq__,
+}
+
+
+def language_of(command: str) -> str | None:
+    """The language of the program an interpreter command runs; None for other commands."""
+    return "python" if _PYTHON.match(command) else INTERPRETERS.get(command)
 
 
 # Quote state of $'...': like single quotes, but a backslash escapes the next character.
@@ -243,20 +277,11 @@ class _Lexer:
 
     def end_argument(self, text: str) -> None:
         cmd = self.top.cmd or ""
+        language = language_of(cmd)
+        inline = _INLINE_CODE.get(language or "")
         # After its script operand, an interpreter passes every word to the script: `perl x.pl -e 1`.
-        interpreter_option = not self.top.has_args
-        if cmd in SHELLS and _C_FLAG.match(text) and interpreter_option:
-            self.set(expect="code:sh")
-        elif _PYTHON.match(cmd) and text == "-c" and interpreter_option:
-            self.set(expect="code:python")
-        elif cmd in ("perl", "ruby") and _E_FLAG.match(text) and interpreter_option:
-            self.set(expect=f"code:{cmd}")
-        elif cmd in ("Rscript", "R") and text == "-e" and interpreter_option:
-            self.set(expect="code:R")
-        elif cmd in ("node", "nodejs") and text in ("-e", "-p", "--eval", "--print") and interpreter_option:
-            self.set(expect="code:javascript")
-        elif cmd == "php" and text == "-r" and interpreter_option:
-            self.set(expect="code:php")
+        if inline and not self.top.has_args and inline(text):
+            self.set(expect=f"code:{language}")
         elif cmd in _AWK:
             if text in ("-v", "-F", "--assign", "--field-separator", "-i", "--include"):
                 self.set(expect="optarg")

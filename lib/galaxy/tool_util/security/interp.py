@@ -186,7 +186,7 @@ def _verdict_breakout(verdict: Verdict) -> charsets.Chars:
 
 def _unquoted_harm(chars: charsets.Chars, language: str, script: bool) -> charsets.Chars:
     """The characters that run code when a value with these characters is outside any quotes."""
-    if language != "shell" and language not in CODE_LANGUAGES:
+    if language != "shell" and language not in shell.CODE_LANGUAGES:
         # A data file: nothing in it runs.
         return charsets.NONE
     after = charsets.unquoted(chars, script=script) if language == "shell" else charsets.code(language, chars, "")
@@ -237,40 +237,20 @@ _CLEAN_METHODS = frozenset(
 )
 
 # How a configfile's language is recognised: the command that reads it, or its content.
-_INTERPRETER_LANGUAGES = {
-    "Rscript": "R",
-    "R": "R",
-    "perl": "perl",
-    "ruby": "ruby",
-    "node": "javascript",
-    "julia": "julia",
-    "sh": "sh",
-    "bash": "sh",
-    "zsh": "sh",
-    "source": "sh",
-    ".": "sh",
-    "awk": "awk",
-    "gawk": "awk",
-    "sed": "sed",
-    "php": "php",
-    "lua": "lua",
-}
 _CONTENT_LANGUAGES = (
     ("sh", re.compile(r"^\s*#!\s*/\S*(ba|z|da)?sh\b")),
     ("python", re.compile(r"^\s*#!.*python|^\s*(import \w+|from \w+ import|def \w+\()", re.MULTILINE)),
     ("R", re.compile(r"^\s*#!.*Rscript|\blibrary\(|<-\s|\bsuppressMessages\(", re.MULTILINE)),
     ("perl", re.compile(r"^\s*#!.*perl|^\s*use strict", re.MULTILINE)),
 )
-CODE_LANGUAGES = frozenset(("sh", "python", "R", "perl", "ruby", "javascript", "julia", "awk", "sed", "php", "lua"))
 
 
 def configfile_language(content: str, reader: str | None) -> str:
     """The language of a configfile, "data" when it is not a program."""
-    if reader:
-        if reader.startswith("python") or reader.startswith("pypy"):
-            return "python"
-        if reader in _INTERPRETER_LANGUAGES:
-            return _INTERPRETER_LANGUAGES[reader]
+    if reader in ("source", "."):
+        return "sh"
+    if reader and (language := shell.language_of(reader)):
+        return language
     for language, pattern in _CONTENT_LANGUAGES:
         if pattern.search(content):
             return language
@@ -1040,7 +1020,7 @@ class TemplateAnalysis:
 
     def _can_escape_config_quote(self, text: AV, quote: str) -> bool:
         """The value can end in a backslash that escapes the closing quote of a string in a program."""
-        if not quote or "\\" not in text.chars or self.language not in CODE_LANGUAGES:
+        if not quote or "\\" not in text.chars or self.language not in shell.CODE_LANGUAGES:
             return False
         if text.quoted == "json" or (text.quoted == "pyrepr" and self.language == "python"):
             return False
@@ -1165,7 +1145,7 @@ class TemplateAnalysis:
                 f"inside an f-string {quote}...{quote} of a python script",
                 raw_expr,
             )
-        if evaluated and self.language in CODE_LANGUAGES:
+        if evaluated and self.language in shell.CODE_LANGUAGES:
             # Escaping only keeps the value inside the string; the script then runs the string.
             verdict = charsets.code(self.language, chars, "")
             if verdict:
@@ -1179,7 +1159,7 @@ class TemplateAnalysis:
         if text.quoted == "json" or (text.quoted == "pyrepr" and self.language == "python"):
             # Escaped by json.dumps, or a Python list written into Python code.
             return
-        if escaped and self.language in CODE_LANGUAGES:
+        if escaped and self.language in shell.CODE_LANGUAGES:
             # The earlier value escaped the closing quote of its string; the quote that opens this
             # value's string closes it instead, so this value is program text.
             verdict = charsets.code(self.language, chars, "")
@@ -1195,7 +1175,7 @@ class TemplateAnalysis:
                 )
                 return
         where = f"inside a {quote}...{quote} string" if quote else "outside any string"
-        if self.language in CODE_LANGUAGES:
+        if self.language in shell.CODE_LANGUAGES:
             verdict = charsets.code(self.language, chars, quote)
             if verdict:
                 verdict = verdict._replace(rule="configfile-injection")
