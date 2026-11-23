@@ -27,8 +27,8 @@ $ python -m galaxy.tool_util.security path/to/tool.xml
 
 ## Refusal codes
 
-Every refused job carries one or more codes: the message of the failed job ends with them
-(`Refusal codes: shell-injection.`), and the warning Galaxy logs starts with them
+Every refused job carries one or more codes: the message of the failed job starts with them
+(`[shell-injection] This job was not run: ...`), and so does the warning Galaxy logs
 (`Tool security review (shell-injection): job ...`).
 
 The examples below are the cases of the review's declarative spec,
@@ -90,13 +90,21 @@ collections:
     - identifier: a';touch harm-marker;'
 ```
 
-Runs: Spaces, slashes, dots and a lone quote are common in identifiers and stay in place.
+Runs: Spaces, slashes and dots are common in identifiers and stay in place.
 
 ```
 collections:
   input:
     elements:
     - identifier: sample 1/reads.fq
+```
+
+Runs: A lone quote only splits arguments, a medium finding the check lets through; the command it builds does not parse, which is the tool's bug rather than a way out.
+
+```
+collections:
+  input:
+    elements:
     - identifier: Bob's reads
 ```
 
@@ -121,13 +129,13 @@ datasets:
     - group:a';touch harm-marker;'
 ```
 
-Runs
+Runs: Command characters stay inside the quotes when no quote closes them.
 
 ```
 datasets:
   input:
     tags:
-    - group:treated
+    - group:a;b
     - name:sample1
 ```
 
@@ -152,12 +160,12 @@ datasets:
       '
 ```
 
-Runs
+Runs: Command characters stay inside the quotes when no quote closes them.
 
 ```
 datasets:
   input:
-    content: 'chr1 100 200
+    content: 'chr1;100|200
 
       '
 ```
@@ -351,7 +359,7 @@ config:
 
 ### `not-plain-check-error`
 
-Comparing the job's values with the review failed, and a value is not plain.
+Comparing the job's values with the review's findings failed (a bug), so the job got the strict check instead, and a value is not plain.
 
 #### check_failed
 
@@ -437,6 +445,33 @@ Refused: Even a plain value.
 ```
 inputs:
   word: hello
+```
+
+Runs
+
+```
+inputs:
+  word: hello
+config:
+  strict_when_unsure: false
+```
+
+#### rewrites_and_template_code
+
+A refusal names every reason no value of the tool can be checked.
+
+Tool `rewrites_and_template_code.xml`:
+
+```
+#import subprocess
+echo '${str($word).replace("__sq__", "'").replace("__gt__", ">")}' > '$out'
+```
+
+Refused
+
+```
+inputs:
+  word: x' >harm-marker '
 ```
 
 Runs
@@ -581,7 +616,7 @@ config:
 
 ### `uncheckable-strict-check-error`
 
-The strict check of the job's values failed.
+The strict check itself failed (a bug), so none of the job's values could be checked.
 
 #### strict_check_failed
 
@@ -682,7 +717,7 @@ datasets:
 
 #### user_preference_stays_quoted
 
-Galaxy sanitizes what a template reads from the user object, preferences included. The review counts a preference as written as the user set it; the job check reads it as the template does, so this job runs.
+Unless the tool turns the sanitizer off, Galaxy sanitizes what a template reads from the user object, preferences included. The review counts a preference as written as the user set it; the job check reads it as the template does, so this job runs.
 
 Tool `user_preference.xml`:
 

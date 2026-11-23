@@ -27,6 +27,7 @@ from typing_extensions import Literal
 from galaxy.tool_util.parser import get_tool_source
 from galaxy.tool_util.security import review_tool_source
 from galaxy.tool_util.security.codes import RefusalCode
+from galaxy.tool_util.security.report import serious_findings
 
 SPEC_DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 TOOLS_DIRECTORY = os.path.join(SPEC_DIRECTORY, "tools")
@@ -162,9 +163,7 @@ def review_problems(case: SpecCase) -> List[str]:
         if not any(_matches(want, finding) for finding in report.findings):
             problems.append(f"no finding matches {want.model_dump(exclude_none=True)}")
     if expected.serious_rules is not None:
-        serious = sorted(
-            {f.rule for f in report.findings if f.kind == "vulnerability" and f.severity in ("high", "critical")}
-        )
+        serious = sorted({f.rule for f in serious_findings(report)})
         if serious != sorted(expected.serious_rules):
             problems.append(f"serious rules are {serious}, expected {sorted(expected.serious_rules)}")
     if expected.unchecked_locations is not None and report.unchecked_locations != expected.unchecked_locations:
