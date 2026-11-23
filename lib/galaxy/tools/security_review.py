@@ -812,29 +812,32 @@ def _dataset_values(path: str, dataset: DatasetFilenameWrapper, words: frozenset
         log.debug("Cannot read the metadata of a dataset of input %s: %s", path, e)
 
 
+# Galaxy keeps the first 255 characters of a dataset's info: each message starts with what the user can do.
+
+
 def unchecked_message(tool: "Tool", reason: str, transforms: list[str]) -> str:
     return (
-        f"This job was not run: {reason}, and its templates can change values ({', '.join(transforms)}), so this"
-        f" Galaxy server cannot check any value for tool '{tool.name}' ({tool.id} version {tool.version})."
-        " Please contact the administrators of this server."
+        f"This job was not run: this Galaxy server cannot check any value for tool '{tool.name}' ({tool.id} version"
+        f" {tool.version}). Please contact the administrators of this server. The reason: {reason}, and its"
+        f" templates can change values ({', '.join(transforms)})."
     )
 
 
 def strict_failed_message(tool: "Tool", reason: str) -> str:
     return (
-        f"This job was not run: {reason}, and checking its values strictly failed, so this Galaxy server cannot"
-        f" check any value for tool '{tool.name}' ({tool.id} version {tool.version})."
-        " Please contact the administrators of this server."
+        f"This job was not run: this Galaxy server cannot check any value for tool '{tool.name}' ({tool.id} version"
+        f" {tool.version}). Please contact the administrators of this server. The reason: {reason}, and checking"
+        " its values strictly failed."
     )
 
 
 def strict_message(tool: "Tool", reason: str, harmful: list[tuple[str, frozenset[str]]]) -> str:
     parts = [f"{description} contains [{show(chars)}]" for description, chars in harmful]
     return (
-        f"This job was not run: {reason}, so this Galaxy server allows only plain names and values for tool"
-        f" '{tool.name}' ({tool.id} version {tool.version}), and {', and '.join(parts)}. Use letters, digits,"
-        " spaces and . _ : / = + @ , ! ^ ~ ? in names and values, and do not start a word with -, or contact the"
-        " administrators of this server."
+        f"This job was not run: {', and '.join(parts)}. Use letters, digits, spaces and . _ : / = + @ , ! ^ ~ ? in"
+        " names and values, and do not start a word with -, or contact the administrators of this server. This"
+        f" Galaxy server allows only plain names and values for tool '{tool.name}' ({tool.id} version"
+        f" {tool.version}), because {reason}."
     )
 
 
