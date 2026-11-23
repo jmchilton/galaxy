@@ -25,7 +25,7 @@ lattice diagram and worked examples.
 import re
 from typing import (
     TYPE_CHECKING,
-    Union,
+    TypeAlias,
 )
 
 from galaxy.exceptions import RequestParameterInvalidException
@@ -46,7 +46,9 @@ class CollectionTypeDescriptionFactory:
         # I think.
         self.type_registry = type_registry
 
-    def for_collection_type(self, collection_type, fields: str | list["FieldDict"] | None = None):
+    def for_collection_type(
+        self, collection_type, fields: str | list["FieldDict"] | None = None
+    ) -> "CollectionTypeDescription":
         assert collection_type is not None
         return CollectionTypeDescription(collection_type, self, fields=fields)
 
@@ -60,7 +62,7 @@ class CollectionTypeDescription:
 
     def __init__(
         self,
-        collection_type: Union[str, "CollectionTypeDescription"],
+        collection_type: "CollectionTypeLike",
         collection_type_description_factory: CollectionTypeDescriptionFactory,
         fields: str | list["FieldDict"] | None = None,
     ):
@@ -249,7 +251,7 @@ class CollectionTypeDescription:
     def dimension(self):
         return len(self.collection_type.split(":")) + 1
 
-    def multiply(self, other_collection_type):
+    def multiply(self, other_collection_type) -> "CollectionTypeDescription":
         collection_type = map_over_collection_type(self, other_collection_type)
         return self.collection_type_description_factory.for_collection_type(collection_type)
 
@@ -260,6 +262,10 @@ class CollectionTypeDescription:
         """Validate that this collection type is a valid Galaxy collection type."""
         if COLLECTION_TYPE_REGEX.match(self.collection_type) is None:
             raise RequestParameterInvalidException(f"Invalid collection type: [{self.collection_type}]")
+
+
+# A collection type string or its description; collection type methods accept either.
+CollectionTypeLike: TypeAlias = str | CollectionTypeDescription
 
 
 def map_over_collection_type(mapped_over_collection_type, target_collection_type):
