@@ -26,6 +26,7 @@ from galaxy.job_execution.compute_environment import (
 )
 from galaxy.structured_app import MinimalToolApp
 from galaxy.tool_util.parser import get_tool_source
+from galaxy.tool_util.security.codes import RefusalCode
 from galaxy.tool_util.security.spec import (
     CollectionContext,
     DatasetContext,
@@ -61,6 +62,7 @@ _FAULTS = {
 @dataclass
 class JobOutcome:
     rejected: bool
+    codes: list[RefusalCode] = field(default_factory=list)
     message: Optional[str] = None
     command_line: Optional[str] = None
     warnings: list[str] = field(default_factory=list)
@@ -158,7 +160,7 @@ class SpecJobRunner:
                 try:
                     built = tool_evaluator.build()
                 except ToolInputRejected as e:
-                    return JobOutcome(True, message=str(e), warnings=warnings.messages)
+                    return JobOutcome(True, codes=list(e.codes), message=str(e), warnings=warnings.messages)
         finally:
             logger.removeHandler(warnings)
         command_line = built[0] if evaluator == "full" else None

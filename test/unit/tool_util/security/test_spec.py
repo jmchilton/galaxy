@@ -4,6 +4,10 @@ import os
 
 import pytest
 
+from galaxy.tool_util.security.codes import (
+    DESCRIPTIONS,
+    RefusalCode,
+)
 from galaxy.tool_util.security.spec import (
     load_cases,
     review_problems,
@@ -26,3 +30,10 @@ def test_every_case_has_jobs():
     for case_id, case in CASES.items():
         assert case.green, case_id
         assert bool(case.red) == (case.code is not None), case_id
+
+
+@pytest.mark.parametrize("code", list(RefusalCode))
+def test_every_code_has_red_and_green_jobs(code):
+    cases = [case for case in CASES.values() if case.code == code]
+    assert any(case.red for case in cases) and any(case.green for case in cases)
+    assert DESCRIPTIONS[code]

@@ -26,6 +26,7 @@ from typing_extensions import Literal
 
 from galaxy.tool_util.parser import get_tool_source
 from galaxy.tool_util.security import review_tool_source
+from galaxy.tool_util.security.codes import RefusalCode
 
 SPEC_DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 TOOLS_DIRECTORY = os.path.join(SPEC_DIRECTORY, "tools")
@@ -73,6 +74,8 @@ class ReviewConfig(_Model):
 
 class JobExpectation(_Model):
     rejected: bool
+    # The codes of the refusal; a red job of a case defaults to the case's code.
+    codes: Optional[List[RefusalCode]] = None
     message_contains: List[str] = []
 
 
@@ -116,7 +119,7 @@ class SpecCase(_Model):
     doc: str
     tool: str
     # The refusal the red jobs show; None for a case of jobs that must run.
-    code: Optional[str] = None
+    code: Optional[RefusalCode] = None
     review: ReviewExpectation = ReviewExpectation()
     red: List[JobCase] = []
     green: List[JobCase] = Field(default_factory=list)
@@ -126,6 +129,16 @@ def load_cases(path: str = CASES_PATH) -> Dict[str, SpecCase]:
     with open(path) as fh:
         raw = yaml.safe_load(fh) or {}
     return {case_id: SpecCase.model_validate(case) for case_id, case in raw.items()}
+
+
+def expected_codes(case: SpecCase, job: JobCase) -> List[RefusalCode]:
+    """The codes a job's refusal must carry: none for a job that runs."""
+    if not job.expect.rejected:
+        return []
+    if job.expect.codes is not None:
+        return sorted(job.expect.codes)
+    assert case.code is not None, "a rejected job needs codes or a case code"
+    return [case.code]
 
 
 def tool_path(tool: str) -> str:

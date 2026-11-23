@@ -7,6 +7,7 @@ from galaxy.app_unittest_utils.security_review_spec import (
     SpecJobRunner,
 )
 from galaxy.tool_util.security.spec import (
+    expected_codes,
     iter_jobs,
     load_cases,
 )
@@ -30,6 +31,7 @@ def runner(tmp_path):
 def test_job(runner, case_id, color, index, job, evaluator):
     outcome = runner(case_id).run(job, evaluator=evaluator)
     assert outcome.rejected is job.expect.rejected, outcome.message
+    assert outcome.codes == expected_codes(CASES[case_id], job)
     for fragment in job.expect.message_contains:
         assert outcome.message and fragment in outcome.message
     if outcome.rejected:
@@ -40,7 +42,8 @@ def test_job(runner, case_id, color, index, job, evaluator):
 def test_log_mode_runs_and_warns(runner, case_id, color, index, job):
     outcome = runner(case_id).run(job, mode=LOG)
     assert not outcome.rejected
-    assert outcome.warnings
+    for code in expected_codes(CASES[case_id], job):
+        assert any(f"({code.value}" in warning or f", {code.value}" in warning for warning in outcome.warnings)
 
 
 @pytest.mark.parametrize("case_id,color,index,job", _params(j for j in JOBS if j[3].harm))
