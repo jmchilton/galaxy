@@ -201,7 +201,8 @@ class Report:
     def sorted(self) -> list[Finding]:
         return sorted(
             self.findings,
-            key=lambda f: (-SEVERITIES.index(f.severity), f.kind, f.location, f.line or 0, f.rule),
+            # Down to the message: findings that tie otherwise come in the order the analysis met them.
+            key=lambda f: (-SEVERITIES.index(f.severity), f.kind, f.location, f.line or 0, f.rule, f.message),
         )
 
     @property

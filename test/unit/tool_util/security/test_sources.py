@@ -9,6 +9,7 @@ import pytest
 
 from galaxy.tool_util.parser import get_tool_source
 from galaxy.tool_util.security import (
+    Finding,
     Report,
     review_tool_source,
     SourceRef,
@@ -594,3 +595,9 @@ def test_outputs_of_a_yaml_tool_are_outputs(tmp_path):
     report = review_tool_source(get_tool_source(str(path)))
     assert not any(ref.key == "out" for f in report.findings for ref in f.refs)
     assert report.reads["command"] == []
+
+
+def test_findings_that_tie_sort_by_their_message():
+    first = Finding(rule="r", kind="vulnerability", severity="low", message="b", location="command", line=1)
+    second = Finding(rule="r", kind="vulnerability", severity="low", message="a", location="command", line=1)
+    assert Report(findings=[first, second]).sorted() == Report(findings=[second, first]).sorted() == [second, first]
