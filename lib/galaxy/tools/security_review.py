@@ -11,16 +11,15 @@ Before a job's command line is built, :meth:`ToolSecurityReviewer.check_job` com
 the job's inputs with the tool's high and critical findings: a value that contains a character that
 can leave its place is logged (``log``) or fails the job (``enforce``).
 
-A job that the review cannot check (no review, a finding no character test can decide, an error in
-the check) gets a stricter check instead, unless ``strict_when_unsure`` is off: every value the job carries must be
-plain, without a character that can leave its place anywhere. A template that changes values
-(``open()``, ``decode``, ``chr()``, a ``.replace`` that brings such a character) makes even plain
-values unsafe, so such a job is refused outright.
+A job that the review cannot check (a finding no character test can decide, an error in the check)
+gets a stricter check instead, unless ``strict_when_unsure`` is off: every value the job carries must
+be plain, without a character that can leave its place anywhere. The values come from the same
+sources the findings name, read the same way. No value is plain, and the job is refused outright,
+when the review failed, when the review found template code that can turn a plain value into an
+unsafe one or read text the job does not carry, or where letters alone can be code.
 """
 
-import ast
 import logging
-import re
 import threading
 import time
 from dataclasses import dataclass
@@ -45,10 +44,12 @@ from galaxy.tool_util.security import (
 from galaxy.tool_util.security.charsets import (
     CRITICAL,
     HIGH,
+    not_plain,
     PROBE,
     show,
 )
 from galaxy.tool_util.security.report import (
+    CODE_CAPABILITIES,
     DATASET_ATTRIBUTE,
     DATASET_CONTENT,
     ELEMENT_IDENTIFIER,
@@ -56,6 +57,7 @@ from galaxy.tool_util.security.report import (
     METADATA,
     OPAQUE,
     RAW,
+    RUNS_TEXT_RULES,
     SPECIAL,
     TEXT,
     USER_PREFERENCE,
@@ -73,7 +75,6 @@ from galaxy.tools.wrappers import (
     SelectToolParameterWrapper,
     ToolParameterValueWrapper,
 )
-from galaxy.util import mapped_chars
 
 if TYPE_CHECKING:
     from galaxy.tools import Tool
@@ -273,7 +274,7 @@ class ToolSecurityReviewer:
         if review is None:
             return
         if review.status != ANALYSED or review.report is None:
-            self._cannot_check(tool, evaluator, "the security review of this tool failed")
+            self._cannot_check(tool, evaluator, None, "the security review of this tool failed")
             return
         violations: list[Violation] = []
         if review.checked_findings or review.report.writes:
@@ -285,7 +286,9 @@ class ToolSecurityReviewer:
             except Exception:
                 # Without strict_when_unsure, the check must never be the reason a job fails.
                 log.exception("Job %s: checking values against the security review of tool %s failed", job_id, tool.id)
-                self._cannot_check(tool, evaluator, "checking the job's values against the security review failed")
+                self._cannot_check(
+                    tool, evaluator, review.report, "checking the job's values against the security review failed"
+                )
                 return
             finally:
                 evaluator.consumes_names, evaluator.consumes_identifiers = consumes
@@ -310,31 +313,32 @@ class ToolSecurityReviewer:
             self._cannot_check(
                 tool,
                 evaluator,
+                review.report,
                 f"this tool writes values in places that no check of their characters can judge ({', '.join(unchecked)})",
             )
 
-    def _cannot_check(self, tool: "Tool", evaluator: "ToolEvaluator", reason: str) -> None:
+    def _cannot_check(self, tool: "Tool", evaluator: "ToolEvaluator", report: Optional[Report], reason: str) -> None:
         """A job the review cannot judge: its values must all be plain, unless strict_when_unsure is off."""
         job_id = evaluator.job.id
         if not self.strict_when_unsure:
             log.debug("Job %s of tool %s: values are not checked, %s", job_id, tool.id, reason)
             return
-        if transforms := template_transforms(tool):
+        if why := _no_plain_value(report):
             log.warning(
-                "Tool security review: job %s of tool %s version %s cannot be checked, %s, and the template changes"
-                " values (%s)",
+                "Tool security review: job %s of tool %s version %s cannot be checked, %s, and %s",
                 job_id,
                 tool.id,
                 tool.version,
                 reason,
-                ", ".join(transforms),
+                "; ".join(why),
             )
             if self.mode == ENFORCE:
-                raise ToolInputRejected(unchecked_message(tool, reason, transforms))
+                raise ToolInputRejected(unchecked_message(tool, reason, why))
             return
+        assert report is not None  # _no_plain_value refuses a job without a report
         consumes = (evaluator.consumes_names, evaluator.consumes_identifiers)
         try:
-            harmful = list(strict_violations(tool, evaluator.param_dict))
+            harmful = list(strict_violations(tool, report, evaluator.param_dict))
         except Exception:
             # Only enforce mode may fail a job, and then with a message for the user.
             log.exception(
@@ -348,14 +352,14 @@ class ToolSecurityReviewer:
         if not harmful:
             log.debug("Job %s of tool %s: %s, and every value is plain", job_id, tool.id, reason)
             return
-        for description, chars in harmful:
+        for ref, chars in harmful:
             log.warning(
                 "Tool security review: job %s of tool %s version %s cannot be checked, %s, and %s contains [%s]",
                 job_id,
                 tool.id,
                 tool.version,
                 reason,
-                description,
+                _describe(ref),
                 show(chars),
             )
         if self.mode == ENFORCE:
@@ -589,9 +593,16 @@ _DESCRIPTIONS = {
 }
 
 
+_ACCOUNT_DESCRIPTIONS = {
+    "__user_email__": "your email address",
+    "userEmail": "your email address",
+    "__user_name__": "your user name",
+}
+
+
 def _describe(ref: SourceRef) -> str:
     if ref.accessor == SPECIAL:
-        return f"the account value {ref.key}"
+        return _ACCOUNT_DESCRIPTIONS.get(ref.key or "", f"the account value {ref.key}")
     if ref.accessor == USER_PREFERENCE:
         return f"your preference '{ref.key}'"
     if ref.accessor == DATASET_ATTRIBUTE:
@@ -602,171 +613,102 @@ def _describe(ref: SourceRef) -> str:
     return f"{_DESCRIPTIONS.get(ref.accessor, 'the value of')} input '{ref.param}'"
 
 
-# Characters that can leave a value's place somewhere: in the shell, in a string of a program, or
-# unquoted in Python or R code, where a call needs no quotes (eval(chr(105) + chr(100))). Not "?":
-# it is Galaxy's unknown dbkey, and in the shell it only globs.
-STRICT_DENIED = frozenset("'\"`$;&|<>\\\n\r\t(){}[]%#*")
-# Galaxy's sanitizer writes these for the characters it maps; templates often turn them back.
-_SANITIZER_TOKENS = re.compile("|".join(re.escape(token) for token in sorted(set(mapped_chars.values()))))
-# A word that starts with a dash can be read as an option.
-_OPTION_WORD = re.compile(r"(?:^|\s)-")
-# Template code that can make a plain value unsafe, or read text the job does not carry.
-_TRANSFORMS = re.compile(
-    r"\bopen\s*\(|decode|b64|\b(?:uni)?chr\s*\(|unquote|\beval\s*\(|\bexec\s*\(|__import__|fromhex"
-    r"|\btranslate\s*\(|%c|__app__|creating_job|\bgetVar\s*\(|\bcompile\s*\(|subprocess|os\.popen|os\.system"
-    r"|\bre\.subn?\s*\(|\bfrom\s+re\s+import|\bstr\.replace\s*\("
+def _no_plain_value(report: Optional[Report]) -> list[str]:
+    """Why no value counts as plain for a tool: the strict check refuses its jobs outright."""
+    if report is None:
+        return ["nothing is known about what its templates do"]
+    why = [f"its templates change values with {', '.join(found)}" for found in report.rewrites.values() if found]
+    capabilities = sorted(
+        {
+            f.expr
+            for f in report.findings
+            # Galaxy sanitizes what a template reads from the user object, as it does text values.
+            if f.rule in CODE_CAPABILITIES and f.expr and not f.expr.startswith("__user__")
+        }
+    )
+    if capabilities:
+        why.append(f"its templates run code or read data the job does not carry ({', '.join(capabilities)})")
+    runs = sorted(
+        {
+            f.location
+            for f in report.findings
+            if f.rule in RUNS_TEXT_RULES
+            or (f.kind == VULNERABILITY and f.severity in CHECKED_SEVERITIES and not (f.breakout or f.closes))
+        }
+    )
+    if runs:
+        why.append(f"letters alone can be code where it writes values ({', '.join(runs)})")
+    return why
+
+
+def strict_violations(
+    tool: "Tool", report: Report, param_dict: dict[str, Any]
+) -> Iterator[tuple[SourceRef, frozenset[str]]]:
+    """The sources of a job whose values are not plain, with what keeps them from being plain."""
+    for ref in _job_refs(tool, param_dict, frozenset(report.names)):
+        harm: frozenset[str] = frozenset()
+        for value in source_values(ref, param_dict):
+            harm |= not_plain(value)
+        if harm:
+            yield ref, harm
+
+
+# The account values a template can write, by the names that read them.
+_ACCOUNT_VALUES = (
+    ("__user_email__", frozenset(("__user_email__", "userEmail", "email"))),
+    ("__user_name__", frozenset(("__user_name__", "username"))),
 )
 
 
-def _template_texts(tool: "Tool") -> list[str]:
-    texts = [tool.command or ""]
-    texts.extend(content for cf in tool.config_files if isinstance(content := getattr(cf, "content", None), str))
-    texts.extend(text for text in tool.template_macro_params.values() if text)
-    return texts
+def _job_refs(tool: "Tool", param_dict: dict[str, Any], names: frozenset[str]) -> list[SourceRef]:
+    """The sources of the values a user controls in a job, read like the sources of findings.
 
-
-def template_transforms(tool: "Tool") -> list[str]:
-    """What in the tool's templates can turn a plain value into an unsafe one."""
-    found: set[str] = set()
-    for text in _template_texts(tool):
-        found.update(re.sub(r"[\s(]+", "", match.group(0)) for match in _TRANSFORMS.finditer(text))
-        if _unsafe_replace(text):
-            found.add(".replace")
-    return sorted(found)
-
-
-def _unsafe_replace(text: str) -> bool:
-    """A ``.replace`` whose new text is not a plain literal: it can bring what the strict check refuses."""
-    for match in re.finditer(r"\.replace\s*\(", text):
-        args = _call_arguments(text, match.end())
-        if args is None:
-            return True
-        try:
-            call = ast.parse(f"f({_without_cheetah_dollars(args)})", mode="eval").body
-        except SyntaxError:
-            return True
-        if not isinstance(call, ast.Call) or len(call.args) < 2:
-            return True
-        new = call.args[1]
-        if not (isinstance(new, ast.Constant) and isinstance(new.value, str)):
-            return True
-        if _strict_harm(new.value) or "-" in new.value or any(c.isspace() for c in new.value):
-            return True
-    return False
-
-
-def _without_cheetah_dollars(code: str) -> str:
-    """Python code from a Cheetah expression: the ``$`` of each placeholder goes, a ``$`` in a string stays."""
-    out, quote, i = [], "", 0
-    while i < len(code):
-        c = code[i]
-        if quote:
-            if c == "\\" and i + 1 < len(code):
-                out.append(code[i : i + 2])
-                i += 2
-                continue
-            if c == quote:
-                quote = ""
-        elif c in "'\"":
-            quote = c
-        elif c == "$":
-            i += 1
-            continue
-        out.append(c)
-        i += 1
-    return "".join(out)
-
-
-def _call_arguments(text: str, start: int) -> Optional[str]:
-    depth, quote, i = 1, "", start
-    while i < len(text):
-        c = text[i]
-        if quote:
-            if c == "\\":
-                i += 1
-            elif c == quote:
-                quote = ""
-        elif c in "'\"":
-            quote = c
-        elif c == "(":
-            depth += 1
-        elif c == ")":
-            depth -= 1
-            if depth == 0:
-                return text[start:i]
-        i += 1
-    return None
-
-
-def _strict_harm(value: str) -> frozenset[str]:
-    harm = set(value) & STRICT_DENIED
-    if _OPTION_WORD.search(value):
-        harm.add("-")
-    harm.update(_SANITIZER_TOKENS.findall(value))
-    return frozenset(harm)
-
-
-def strict_violations(tool: "Tool", param_dict: dict[str, Any]) -> Iterator[tuple[str, frozenset[str]]]:
-    """The values of a job that are not plain, with what makes them unsafe."""
-    words = frozenset(word for text in _template_texts(tool) for word in re.findall(r"\w+", text))
-    for description, value in _job_values(tool, param_dict, words):
-        if harm := _strict_harm(value):
-            yield description, harm
-
-
-def _job_values(tool: "Tool", param_dict: dict[str, Any], words: frozenset[str]) -> Iterator[tuple[str, str]]:
-    """The values a user controls that the job carries, described for the user.
-
-    Element identifiers, dataset names and parameter values always count. A dataset attribute, tag,
-    metadata element, the user's email or name, or a user preference counts when the templates name
-    it (``words``): these often hold text such as a tool's output summary, and a template reads them
-    only by name.
+    Element identifiers, dataset names and parameter values always count. A dataset attribute, group
+    tag, metadata element, account value or user preference counts when the templates name it: these
+    often hold text such as a tool's output summary, and a template reads them only by name.
     """
+    refs: dict[SourceRef, None] = {}
+
+    def walk(path: str, value: Any) -> None:
+        if isinstance(value, (DatasetCollectionWrapper, DatasetListWrapper, DatasetFilenameWrapper)):
+            refs[SourceRef(ELEMENT_IDENTIFIER, path)] = None
+            refs[SourceRef(DATASET_ATTRIBUTE, path, "name")] = None
+            for attribute in ("info", "created_from_basename", "dbkey"):
+                if attribute in names:
+                    refs[SourceRef(DATASET_ATTRIBUTE, path, attribute)] = None
+            if names & {"groups", "group", "group_tags"}:
+                refs[SourceRef(GROUP_TAGS, path)] = None
+            if "metadata" in names:
+                # A template that looks metadata up by a computed name can read any of it.
+                every = "getattr" in names or "items" in names
+                for dataset in _datasets(value):
+                    for key in dataset.unsanitized.metadata.spec:
+                        if every or key in names:
+                            refs[SourceRef(METADATA, path, key)] = None
+        elif isinstance(value, SelectToolParameterWrapper) and not _user_defines_options(value.input):
+            # Galaxy accepts only the options the tool or the admin defines.
+            return
+        elif isinstance(value, (ToolParameterValueWrapper, str)):
+            refs[SourceRef(RAW, path)] = None
+        elif isinstance(value, dict):
+            for key, item in value.items():
+                if not key.startswith("__"):
+                    walk(f"{path}.{key}", item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(path, item)
+
     for name in tool.inputs:
         if name in param_dict:
-            yield from _values_of(name, param_dict[name], words)
-    user = param_dict.get("__user__")
-    account = getattr(user, "obj", user)
-    for description, keys, attribute in (
-        ("your email address", ("__user_email__", "userEmail"), "email"),
-        ("your user name", ("__user_name__",), "username"),
-    ):
-        if not words & {*keys, attribute}:
-            continue
-        values = [param_dict.get(key) for key in keys] + [getattr(account, attribute, None)]
-        for value in dict.fromkeys(v for v in values if isinstance(v, str)):
-            yield description, value
-    if "extra_preferences" not in words:
-        return
-    preferences = getattr(account, "extra_preferences", None) or {}
-    for key, value in preferences.items():
-        if value is not None:
-            yield f"your preference '{key}'", str(value)
-
-
-def _values_of(path: str, value: Any, words: frozenset[str]) -> Iterator[tuple[str, str]]:
-    if isinstance(value, (DatasetCollectionWrapper, DatasetListWrapper, DatasetFilenameWrapper)):
-        for identifier in _identifiers(value):
-            yield f"an element identifier or the name of input '{path}'", identifier
-        for dataset in _datasets(value):
-            yield from _dataset_values(path, dataset, words)
-    elif isinstance(value, SelectToolParameterWrapper) and not _user_defines_options(value.input):
-        # Galaxy accepts only the options the tool or the admin defines.
-        return
-    elif isinstance(value, ToolParameterValueWrapper):
-        raw = getattr(value, "value", None)
-        for item in raw if isinstance(raw, (list, tuple)) else [raw]:
-            if isinstance(item, str):
-                yield f"the value of input '{path}'", item
-    elif isinstance(value, dict):
-        for key, item in value.items():
-            if not key.startswith("__"):
-                yield from _values_of(f"{path}.{key}", item, words)
-    elif isinstance(value, list):
-        for item in value:
-            yield from _values_of(path, item, words)
-    elif isinstance(value, str):
-        yield f"the value of input '{path}'", value
+            walk(name, param_dict[name])
+    for key, readers in _ACCOUNT_VALUES:
+        if names & readers:
+            refs[SourceRef(SPECIAL, key=key)] = None
+    if "extra_preferences" in names:
+        user = param_dict.get("__user__")
+        for key in getattr(getattr(user, "obj", user), "extra_preferences", None) or {}:
+            refs[SourceRef(USER_PREFERENCE, key=key)] = None
+    return list(refs)
 
 
 # Selects whose options come from what users give: their datasets, their columns, their tags, their builds.
@@ -787,39 +729,14 @@ def _user_defines_options(param: SelectToolParameter) -> bool:
     )
 
 
-def _dataset_values(path: str, dataset: DatasetFilenameWrapper, words: frozenset[str]) -> Iterator[tuple[str, str]]:
-    hda = dataset.unsanitized
-    for attribute in ("name", "info", "created_from_basename", "dbkey"):
-        if (attribute == "name" or attribute in words) and isinstance(text := getattr(hda, attribute, None), str):
-            yield f"the {attribute} of a dataset of input '{path}'", text
-    if words & {"tags", "tag", "groups", "group"}:
-        for tag in getattr(hda, "tags", None) or []:
-            yield f"a tag of a dataset of input '{path}'", f"{tag.user_tname}:{tag.user_value or ''}"
-    if "metadata" not in words:
-        return
-    try:
-        metadata = hda.metadata
-        # A template that looks metadata up by a computed name can read any of it.
-        every = "getattr" in words or "items" in words
-        for key in metadata.spec:
-            if not (every or key in words):
-                continue
-            item = metadata.get(key)
-            for text in item if isinstance(item, (list, tuple)) else [item]:
-                if isinstance(text, str):
-                    yield f"metadata '{key}' of a dataset of input '{path}'", text
-    except Exception as e:
-        log.debug("Cannot read the metadata of a dataset of input %s: %s", path, e)
-
-
 # Galaxy keeps the first 255 characters of a dataset's info: each message starts with what the user can do.
 
 
-def unchecked_message(tool: "Tool", reason: str, transforms: list[str]) -> str:
+def unchecked_message(tool: "Tool", reason: str, why: list[str]) -> str:
     return (
         f"This job was not run: this Galaxy server cannot check any value for tool '{tool.name}' ({tool.id} version"
-        f" {tool.version}). Please contact the administrators of this server. The reason: {reason}, and its"
-        f" templates can change values ({', '.join(transforms)})."
+        f" {tool.version}). Please contact the administrators of this server. The reason: {reason}, and"
+        f" {'; '.join(why)}."
     )
 
 
@@ -831,8 +748,8 @@ def strict_failed_message(tool: "Tool", reason: str) -> str:
     )
 
 
-def strict_message(tool: "Tool", reason: str, harmful: list[tuple[str, frozenset[str]]]) -> str:
-    parts = [f"{description} contains [{show(chars)}]" for description, chars in harmful]
+def strict_message(tool: "Tool", reason: str, harmful: list[tuple[SourceRef, frozenset[str]]]) -> str:
+    parts = [f"{_describe(ref)} contains [{show(chars)}]" for ref, chars in harmful]
     return (
         f"This job was not run: {', and '.join(parts)}. Use letters, digits, spaces and . _ : / = + @ , ! ^ ~ ? in"
         " names and values, and do not start a word with -, or contact the administrators of this server. This"

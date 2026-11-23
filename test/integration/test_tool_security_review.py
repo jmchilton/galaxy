@@ -27,8 +27,12 @@ echo '$e.element_identifier' >> '$out_file1';
   </outputs>
 </tool>
 """
+UNSURE_TOOL_ID = "security_review_unsure_identifiers"
+# The review does not follow what a template reads from the template object, so it cannot judge
+# what this tool writes: by default the job's values must be plain.
+UNSURE_TOOL = TOOL.replace(TOOL_ID, UNSURE_TOOL_ID).replace("#end for", "#end for\necho '$searchList' >> '$out_file1';")
 PIPING_TOOL_ID = "security_review_pipe_identifiers"
-# The review cannot judge a value sent to a shell to run, so by default the job's values must be plain.
+# A value sent to a shell to run is code whatever its characters: by default every job is refused.
 PIPING_TOOL = TOOL.replace(TOOL_ID, PIPING_TOOL_ID).replace(
     "echo '$e.element_identifier' >> '$out_file1';", "echo 'echo $e.element_identifier' | sh >> '$out_file1';"
 )
@@ -59,11 +63,13 @@ class BaseToolSecurityReviewTestCase(integration_util.IntegrationTestCase):
             fh.write(TOOL)
         with open(os.path.join(tool_dir, "pipe_identifiers.xml"), "w") as fh:
             fh.write(PIPING_TOOL)
+        with open(os.path.join(tool_dir, "unsure_identifiers.xml"), "w") as fh:
+            fh.write(UNSURE_TOOL)
         tool_conf = os.path.join(tool_dir, "tool_conf.xml")
         with open(tool_conf, "w") as fh:
             fh.write(
                 f'<toolbox tool_path="{tool_dir}"><tool file="echo_identifiers.xml"/>'
-                '<tool file="pipe_identifiers.xml"/></toolbox>'
+                '<tool file="pipe_identifiers.xml"/><tool file="unsure_identifiers.xml"/></toolbox>'
             )
         config["tool_config_file"] = f"{config['tool_config_file']},{tool_conf}"
         if cls.mode is not None:
@@ -146,10 +152,10 @@ class TestToolSecurityReviewDefaults(BaseToolSecurityReviewTestCase):
 
     def test_value_the_review_cannot_judge_must_be_plain(self):
         with self.dataset_populator.test_history() as history_id:
-            result = self._assert_runs(history_id, "sample_1", PIPING_TOOL_ID)
+            result = self._assert_runs(history_id, "sample_1", UNSURE_TOOL_ID)
             content = self.dataset_populator.get_history_dataset_content(history_id, dataset_id=result["output"]["id"])
-            assert content.strip() == "sample_1"
-            result = self._run(history_id, "50%", PIPING_TOOL_ID)
+            assert content.startswith("sample_1")
+            result = self._run(history_id, "50%", UNSURE_TOOL_ID)
             assert result["job"]["state"] == "error"
             message = result["output"]["misc_info"]
             # Galaxy keeps the first 255 characters of the message.
@@ -157,6 +163,14 @@ class TestToolSecurityReviewDefaults(BaseToolSecurityReviewTestCase):
                 "This job was not run: an element identifier or the name of input 'input' contains [%]"
             )
             assert "Use letters, digits" in message
+
+    def test_value_sent_to_a_shell_to_run_is_refused_whatever_it_is(self):
+        with self.dataset_populator.test_history() as history_id:
+            result = self._run(history_id, "sample_1", PIPING_TOOL_ID)
+            assert result["job"]["state"] == "error"
+            assert result["output"]["misc_info"].startswith(
+                "This job was not run: this Galaxy server cannot check any value for tool"
+            )
 
 
 class TestToolSecurityReviewNotStrict(BaseToolSecurityReviewTestCase):
@@ -169,4 +183,5 @@ class TestToolSecurityReviewNotStrict(BaseToolSecurityReviewTestCase):
 
     def test_value_the_review_cannot_judge_runs(self):
         with self.dataset_populator.test_history() as history_id:
-            self._assert_runs(history_id, "50%", PIPING_TOOL_ID)
+            self._assert_runs(history_id, "50%", UNSURE_TOOL_ID)
+            self._assert_runs(history_id, "sample_1", PIPING_TOOL_ID)
