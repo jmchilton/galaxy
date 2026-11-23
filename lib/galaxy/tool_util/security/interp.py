@@ -486,7 +486,7 @@ class TemplateAnalysis:
         self._written: dict[SourceRef, charsets.Chars] = {}
         # Quote characters of values that an escaping's own quote leaves outside their string.
         self._closers: dict[SourceRef, charsets.Chars] = {}
-        # time.monotonic() after which the analysis stops with ReviewTimeout.
+        # time.thread_time() after which the analysis stops with ReviewTimeout.
         self._deadline = deadline
         self._in_capture_region = 0
         self._noted: set[str] = set()
@@ -632,7 +632,7 @@ class TemplateAnalysis:
         self._steps += 1
         if self._steps > _MAX_STEPS:
             raise _BudgetExceeded()
-        if self._deadline is not None and time.monotonic() > self._deadline:
+        if self._deadline is not None and time.thread_time() > self._deadline:
             raise ReviewTimeout()
         line = self.template.template_line(stmt)
         if line is not None:
