@@ -35,6 +35,11 @@ def test_lists_of_different_cardinality_do_not_match():
     assert_cannot_match(list_2, list_1)
 
 
+def test_empty_list_does_not_match_non_empty_list():
+    assert_cannot_match(list_instance(ids=[]), list_instance())
+    assert_cannot_match(list_instance(), list_instance(ids=[]))
+
+
 def test_valid_collection_subcollection_matching():
     flat_list = list_instance(ids=["data1", "data2", "data3"])
     nested_list = example_list_of_paired_datasets()
