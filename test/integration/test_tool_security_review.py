@@ -3,6 +3,7 @@
 import logging
 import os
 import tempfile
+from typing import Optional
 
 from galaxy.tools import security_review
 from galaxy_test.base.populators import (
@@ -26,6 +27,11 @@ echo '$e.element_identifier' >> '$out_file1';
   </outputs>
 </tool>
 """
+PIPING_TOOL_ID = "security_review_pipe_identifiers"
+# The review cannot judge a value sent to a shell to run, so by default the job's values must be plain.
+PIPING_TOOL = TOOL.replace(TOOL_ID, PIPING_TOOL_ID).replace(
+    "echo '$e.element_identifier' >> '$out_file1';", "echo 'echo $e.element_identifier' | sh >> '$out_file1';"
+)
 # Leaves the single quotes and pipes into another command: `echo 'a'|'cat' >> out` writes a.
 QUOTED = "a'|'cat"
 
@@ -42,7 +48,8 @@ class _CapturedWarnings(logging.Handler):
 class BaseToolSecurityReviewTestCase(integration_util.IntegrationTestCase):
     dataset_populator: DatasetPopulator
     dataset_collection_populator: DatasetCollectionPopulator
-    mode: str
+    # None leaves the server's default.
+    mode: Optional[str]
 
     @classmethod
     def handle_galaxy_config_kwds(cls, config):
@@ -50,11 +57,17 @@ class BaseToolSecurityReviewTestCase(integration_util.IntegrationTestCase):
         tool_dir = tempfile.mkdtemp()
         with open(os.path.join(tool_dir, "echo_identifiers.xml"), "w") as fh:
             fh.write(TOOL)
+        with open(os.path.join(tool_dir, "pipe_identifiers.xml"), "w") as fh:
+            fh.write(PIPING_TOOL)
         tool_conf = os.path.join(tool_dir, "tool_conf.xml")
         with open(tool_conf, "w") as fh:
-            fh.write(f'<toolbox tool_path="{tool_dir}"><tool file="echo_identifiers.xml"/></toolbox>')
+            fh.write(
+                f'<toolbox tool_path="{tool_dir}"><tool file="echo_identifiers.xml"/>'
+                '<tool file="pipe_identifiers.xml"/></toolbox>'
+            )
         config["tool_config_file"] = f"{config['tool_config_file']},{tool_conf}"
-        config["tool_security_review"] = cls.mode
+        if cls.mode is not None:
+            config["tool_security_review"] = cls.mode
 
     def setUp(self):
         super().setUp()
@@ -67,11 +80,11 @@ class BaseToolSecurityReviewTestCase(integration_util.IntegrationTestCase):
         logging.getLogger(security_review.__name__).removeHandler(self.warnings)
         super().tearDown()
 
-    def _run(self, history_id: str, identifier: str) -> dict:
+    def _run(self, history_id: str, identifier: str, tool_id: str = TOOL_ID) -> dict:
         hdca = self.dataset_collection_populator.create_list_in_history(
             history_id, contents=[(identifier, "x\n")], wait=True
         ).json()["output_collections"][0]
-        run = self.dataset_populator.run_tool(TOOL_ID, {"input": {"src": "hdca", "id": hdca["id"]}}, history_id)
+        run = self.dataset_populator.run_tool(tool_id, {"input": {"src": "hdca", "id": hdca["id"]}}, history_id)
         job_id = run["jobs"][0]["id"]
         self.dataset_populator.wait_for_job(job_id, assert_ok=False)
         output = self.dataset_populator.get_history_dataset_details(
@@ -82,8 +95,8 @@ class BaseToolSecurityReviewTestCase(integration_util.IntegrationTestCase):
     def _review_warnings(self) -> list[str]:
         return [m for m in self.warnings.messages if TOOL_ID in m and "input 'input'" in m]
 
-    def _assert_runs(self, history_id: str, identifier: str) -> dict:
-        result = self._run(history_id, identifier)
+    def _assert_runs(self, history_id: str, identifier: str, tool_id: str = TOOL_ID) -> dict:
+        result = self._run(history_id, identifier, tool_id)
         assert result["job"]["state"] == "ok", result
         return result
 
@@ -126,3 +139,30 @@ class TestToolSecurityReviewLog(BaseToolSecurityReviewTestCase):
         with self.dataset_populator.test_history() as history_id:
             self._assert_runs(history_id, "sample_1")
             assert self._review_warnings() == []
+
+
+class TestToolSecurityReviewDefaults(BaseToolSecurityReviewTestCase):
+    mode = None
+
+    def test_value_the_review_cannot_judge_must_be_plain(self):
+        with self.dataset_populator.test_history() as history_id:
+            result = self._assert_runs(history_id, "sample_1", PIPING_TOOL_ID)
+            content = self.dataset_populator.get_history_dataset_content(history_id, dataset_id=result["output"]["id"])
+            assert content.strip() == "sample_1"
+            result = self._run(history_id, "50%", PIPING_TOOL_ID)
+            assert result["job"]["state"] == "error"
+            message = result["output"]["misc_info"]
+            assert "allows only plain names and values" in message
+
+
+class TestToolSecurityReviewNotStrict(BaseToolSecurityReviewTestCase):
+    mode = "enforce"
+
+    @classmethod
+    def handle_galaxy_config_kwds(cls, config):
+        super().handle_galaxy_config_kwds(config)
+        config["tool_security_review_strict_when_unsure"] = False
+
+    def test_value_the_review_cannot_judge_runs(self):
+        with self.dataset_populator.test_history() as history_id:
+            self._assert_runs(history_id, "50%", PIPING_TOOL_ID)
