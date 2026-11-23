@@ -3725,26 +3725,14 @@ mapping:
           review reports false positives, so check the warnings in ``log`` mode before
           choosing ``enforce``.
 
-      tool_security_review_timeout:
-        type: float
-        default: 5.0
-        required: false
-        desc: |
-          Seconds of CPU time the security review of one tool may take, counted in the
-          thread that reviews it: time spent waiting for the process's other threads or for
-          other processes does not count. Most tools take a few milliseconds and the slowest
-          known ones under two seconds. A tool whose review takes longer is recorded as not
-          reviewed until the process restarts, and its jobs are not checked (see
-          ``tool_security_review_fail_closed``).
-
       tool_security_review_fail_closed:
         type: bool
         default: false
         required: false
         desc: |
           What to do with a job whose input values the security review cannot check: the
-          tool's review did not finish (timeout or error), the tool writes values in places
-          that no check of their characters can judge, or the check itself fails. By default
+          tool's review failed, the tool writes values in places that no check of their
+          characters can judge, or the check itself fails. By default
           such jobs run, and Galaxy logs the reason at debug level. Set to ``true`` to check
           such jobs strictly instead: every value the job carries must be plain. That is
           the values of text and select parameters, element identifiers, dataset names, and

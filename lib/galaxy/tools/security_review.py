@@ -3,8 +3,9 @@
 The review (:mod:`galaxy.tool_util.security`) finds places where a value a user controls can leave
 the quotes or the argument it is written into. A process that prepares jobs reviews a tool when it
 prepares the tool's first job and keeps the review as long as it keeps the tool: a reloaded tool is
-a new object and is reviewed again. A review takes a few milliseconds, at most the configured
-timeout, and is never stored.
+a new object and is reviewed again. A review takes a few milliseconds and at most about two seconds
+of CPU for the largest templates known; it has no time limit, since it runs once per tool and process,
+and the analyser's step budget bounds the work on any one template. It is never stored.
 
 Before a job's command line is built, :meth:`ToolSecurityReviewer.check_job` compares the values of
 the job's inputs with the tool's high and critical findings: a value that contains a character that
@@ -39,7 +40,6 @@ from galaxy.tool_util.security import (
     Finding,
     Report,
     review_tool_source,
-    ReviewTimeout,
     SourceRef,
 )
 from galaxy.tool_util.security.charsets import (
@@ -145,11 +145,10 @@ def reviewed_tool_source(tool: "Tool") -> Optional[ToolSource]:
 class ToolSecurityReviewer:
     """Reviews tools when their jobs are prepared, and checks job values against the reviews."""
 
-    def __init__(self, mode: str, timeout: float, fail_closed: bool = False) -> None:
+    def __init__(self, mode: str, fail_closed: bool = False) -> None:
         if mode not in MODES:
             raise ValueError(f"tool_security_review must be one of {', '.join(MODES)}, not '{mode}'")
         self.mode = mode
-        self.timeout = timeout
         # Check a job the review cannot check with the strict character set.
         self.fail_closed = fail_closed
         # Keyed by the Tool object: a review lives as long as the tool it is about.
@@ -161,7 +160,6 @@ class ToolSecurityReviewer:
     def from_config(cls, config: Any) -> "ToolSecurityReviewer":
         return cls(
             mode=config.tool_security_review,
-            timeout=float(config.tool_security_review_timeout),
             fail_closed=bool(config.tool_security_review_fail_closed),
         )
 
@@ -172,7 +170,7 @@ class ToolSecurityReviewer:
     # -- reviews -------------------------------------------------------------------------------
 
     def review(self, tool: "Tool") -> Optional[ToolReview]:
-        """The review of a tool, computed within the timeout on first use.
+        """The review of a tool, computed on first use.
 
         None when reviews are off or the tool has no template to review.
         """
@@ -203,15 +201,7 @@ class ToolSecurityReviewer:
             fresh = get_tool_source(
                 tool_source_class=type(tool_source).__name__, raw_tool_source=tool_source.to_string()
             )
-            report = review_tool_source(fresh, timeout=self.timeout)
-        except ReviewTimeout:
-            log.warning(
-                "Security review of tool %s version %s took longer than %ss, the tool is not reviewed",
-                tool.id,
-                tool.version,
-                self.timeout,
-            )
-            return ToolReview(NOT_ANALYSED, tool.id, tool.version, reason="timeout", seconds=time.monotonic() - started)
+            report = review_tool_source(fresh)
         except Exception as e:
             log.warning("Security review of tool %s version %s failed: %s", tool.id, tool.version, e)
             log.debug("Security review of tool %s failed", tool.id, exc_info=True)
@@ -274,11 +264,7 @@ class ToolSecurityReviewer:
         if review is None:
             return
         if review.status != ANALYSED or review.report is None:
-            if review.reason == "timeout":
-                reason = "the security review of this tool did not finish in time"
-            else:
-                reason = "the security review of this tool failed"
-            self._cannot_check(tool, evaluator, reason)
+            self._cannot_check(tool, evaluator, "the security review of this tool failed")
             return
         violations: list[Violation] = []
         if review.checked_findings or review.report.writes:
