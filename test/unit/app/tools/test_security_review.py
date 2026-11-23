@@ -4,6 +4,7 @@ import logging
 import os
 import threading
 import time
+from decimal import Decimal
 from types import SimpleNamespace
 from typing import (
     Any,
@@ -647,6 +648,24 @@ def test_content_of_a_dataset_the_template_opens_is_checked(app, tmp_path, conte
     job: Any = SimpleNamespace(job=SimpleNamespace(id=7), consumes_names=False, consumes_identifiers=False)
     job.param_dict = {"n_file": DatasetFilenameWrapper(hda, datatypes_registry=app.datatypes_registry)}
     with pytest.raises(ToolInputRejected) if expected else contextlib.nullcontext():
+        reviewer(tmp_path, ENFORCE).check_job(tool, job)
+
+
+def test_content_of_a_dataset_over_the_limit_counts_as_every_character_unread(app, tmp_path, monkeypatch):
+    def not_read(*args, **kwds):
+        raise AssertionError("read a dataset over the limit")
+
+    path = tmp_path / "n.txt"
+    path.write_text("15\n")
+    monkeypatch.setattr(security_review, "CONTENT_LIMIT", 2)
+    monkeypatch.setattr(security_review, "open", not_read, raising=False)
+    tool = make_tool(app, tmp_path, OPEN_FILE, "open_file.xml")
+    dataset = model.Dataset(external_filename=str(path))
+    dataset.file_size = Decimal(3)
+    hda = model.HistoryDatasetAssociation(extension="txt", dataset=dataset)
+    job: Any = SimpleNamespace(job=SimpleNamespace(id=7), consumes_names=False, consumes_identifiers=False)
+    job.param_dict = {"n_file": DatasetFilenameWrapper(hda, datatypes_registry=app.datatypes_registry)}
+    with pytest.raises(ToolInputRejected):
         reviewer(tmp_path, ENFORCE).check_job(tool, job)
 
 

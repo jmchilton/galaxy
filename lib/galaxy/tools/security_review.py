@@ -525,35 +525,45 @@ def _accessor_values(ref: SourceRef, value: Any) -> Iterator[str]:
             yield from (str(group) for group in dataset.groups)
     elif accessor == DATASET_CONTENT:
         for dataset in _datasets(value):
+            hda = dataset.unsanitized
+            if (hda.get_size() or 0) > CONTENT_LIMIT:
+                yield "".join(sorted(PROBE))
+                continue
             # The template opens the dataset's path where the job runs, which may not be this host's
             # path (a rewriting compute environment): read the file Galaxy keeps.
-            yield from _file_text(dataset.unsanitized.get_file_name())
+            yield from _file_text(hda.get_file_name())
 
 
 # The most of a dataset the check reads; a bigger one counts as holding every character.
 CONTENT_LIMIT = 64 * 1024 * 1024
 
 
+# The characters a check can look for in a dataset's content: the probe characters, and a carriage
+# return, which templates turn into a newline. Each is found with one search of a chunk.
+_SCANNED = frozenset(char.encode("ascii") for char in PROBE | {"\r"})
+
+
 def _file_text(path: str) -> Iterator[str]:
-    """The text of a file; one that is too big or cannot be read counts as holding every character."""
+    """What the check needs of a file's text: its characters, ending in the backslashes the file ends in.
+
+    Only a backslash at the file's own end can escape the template text after it. A file that is too
+    big or cannot be read counts as holding every character.
+    """
+    seen: set[bytes] = set()
+    ending = b""
     read = 0
-    # Backslashes at the end of a chunk are carried into the next one: only the file's own end can
-    # escape the template text after it.
-    carried = ""
     try:
         with open(path, "rb") as fh:
             while chunk := fh.read(1024 * 1024):
                 read += len(chunk)
                 if read > CONTENT_LIMIT:
                     break
-                text = carried + chunk.decode("utf-8", errors="replace")
-                stripped = text.rstrip("\\")
-                carried = text[len(stripped) :]
-                if stripped:
-                    yield stripped
+                seen.update(char for char in _SCANNED - seen if char in chunk)
+                stripped = chunk.rstrip(b"\\")
+                ending = chunk[len(stripped) :] if stripped else ending + chunk
             else:
-                if carried:
-                    yield carried
+                seen.discard(b"\\")
+                yield b"".join(sorted(seen)).decode("ascii") + ending.decode("ascii")
                 return
     except OSError as e:
         log.debug("Cannot read %s: %s", path, e)
