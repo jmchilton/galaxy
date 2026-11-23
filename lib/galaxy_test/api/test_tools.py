@@ -3464,6 +3464,33 @@ class TestToolsApi(ApiTestCase, TestsTools):
                 else:
                     assert implicit_collection["elements"][0]["element_identifier"] == "B"
 
+    @skip_without_tool("identifier_source")
+    def test_default_identifier_source_map_over_dce(self):
+        with self.dataset_populator.test_history() as history_id:
+            input_a_hdca_id = self.dataset_collection_populator.create_list_in_history(
+                history_id, contents=[("p", "p content"), ("q", "q content")], wait=True
+            ).json()["outputs"][0]["id"]
+            inner_hdca_id = self.dataset_collection_populator.create_list_in_history(
+                history_id, contents=[("x", "x content"), ("y", "y content")], wait=True
+            ).json()["outputs"][0]["id"]
+            list_list = self.dataset_collection_populator.create_nested_collection(
+                history_id, collection_type="list:list", collection=[inner_hdca_id]
+            ).json()
+            dce_id = list_list["elements"][0]["id"]
+            inputs = {
+                "inputA": {"batch": True, "values": [dict(src="hdca", id=input_a_hdca_id)]},
+                "inputB": {"batch": True, "values": [dict(src="dce", id=dce_id)]},
+            }
+            self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+            create = self._run("identifier_source", history_id, inputs, assert_ok=True)
+            identifiers = {
+                implicit_collection["output_name"]: [
+                    element["element_identifier"] for element in implicit_collection["elements"]
+                ]
+                for implicit_collection in create["implicit_collections"]
+            }
+            assert identifiers == {"outputA": ["p", "q"], "outputB": ["x", "y"]}
+
     @skip_without_tool("collection_creates_pair")
     def test_map_over_collection_output(self):
         with self.dataset_populator.test_history() as history_id:
