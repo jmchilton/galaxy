@@ -23,7 +23,7 @@ from galaxy.tool_util.parser.sanitize import ToolParameterSanitizer
 from galaxy.util.xml_macros import template_macro_params
 from .charsets import (
     Chars,
-    DEFAULT_SANITIZED,
+    default_chars,
     PROBE,
     sanitized,
 )
@@ -86,7 +86,7 @@ class Model:
         reads any other name.
         """
         if name not in self._job_parameters:
-            chars = DEFAULT_SANITIZED if self.sanitize else PROBE
+            chars = default_chars(self.sanitize)
             value = tainted(chars, source(f"job parameter ${name}, which is not a tool input", SPECIAL, key=name))
             self._job_parameters[name] = Opaque(f"${name}", value)
         return AV(nodes=(self._job_parameters[name],))
@@ -286,7 +286,7 @@ def build_model(tool_source: ToolSource) -> Model:
     for name in _SAFE_SPECIALS:
         model.specials[name] = Special(name)
     for name in _USER_SPECIALS:
-        chars = DEFAULT_SANITIZED if tool_sanitize else PROBE
+        chars = default_chars(tool_sanitize)
         model.specials[name] = Special(name, value=tainted(chars, source(f"${name}", SPECIAL, key=name)))
 
     model.specials["__user__"] = User()

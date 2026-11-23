@@ -29,6 +29,7 @@ from .charsets import (
     regex_first,
     regex_universe,
     regex_word_first,
+    WHITESPACE,
 )
 
 
@@ -50,12 +51,11 @@ class Constraint(NamedTuple):
     def word_first(self) -> Chars:
         """What a word can begin with: without whitespace in the value, the value is the only word."""
         words = self.words & self.chars
-        return words | self.lead if self.chars & _WHITESPACE else self.lead
+        return words | self.lead if self.chars & WHITESPACE else self.lead
 
 
 ANY = Constraint()
 EMPTY = Constraint(NONE, NONE, NONE)
-_WHITESPACE: Chars = frozenset(" \t\n")
 
 # str predicates that are false for every probe character, except the ones listed.
 _PREDICATES: dict[str, Chars] = {

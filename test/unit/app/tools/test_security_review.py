@@ -90,6 +90,10 @@ def make_tool(app, tmp_path, contents: str = ECHO_IDS, name: str = "tool.xml") -
     return create_tool_from_source(app, get_tool_source(path), config_file=path)
 
 
+def broken(*args, **kwds):
+    raise RuntimeError("analyser bug")
+
+
 def reviewer(tmp_path, mode: str = LOG, strict_when_unsure: bool = True) -> ToolSecurityReviewer:
     return ToolSecurityReviewer(mode, strict_when_unsure=strict_when_unsure)
 
@@ -181,9 +185,6 @@ def test_concurrent_first_jobs_review_once(app, tmp_path, monkeypatch):
 
 
 def test_analyser_error_is_recorded_as_not_analysed(app, tmp_path, monkeypatch):
-    def broken(*args, **kwds):
-        raise RuntimeError("analyser bug")
-
     monkeypatch.setattr(security_review, "review_tool_source", broken)
     tool = make_tool(app, tmp_path)
     r = reviewer(tmp_path, ENFORCE, strict_when_unsure=False)
@@ -415,9 +416,6 @@ def test_identifiers_of_nested_collections_and_multiple_inputs(app):
 
 
 def test_check_errors_do_not_fail_the_job_unless_strict(app, tmp_path, monkeypatch, caplog):
-    def broken(findings, param_dict):
-        raise RuntimeError("unexpected param_dict")
-
     monkeypatch.setattr(security_review, "find_violations", broken)
     tool = make_tool(app, tmp_path)
     reviewer(tmp_path, ENFORCE, strict_when_unsure=False).check_job(tool, evaluator(app, tool, ["it's"]))
@@ -743,10 +741,6 @@ SAFE_REPLACE = ECHO_IDS.replace("echo '${word.value}'", "echo '${str($word.value
 def unsure(contents: str = ECHO_IDS) -> str:
     """The tool with a part the analysis does not follow: the review is unsure of what it writes."""
     return contents.replace("]]></command>", "\necho '$searchList' >> '$out'\n]]></command>", 1)
-
-
-def broken(*args, **kwds):
-    raise RuntimeError("analyser bug")
 
 
 def strict_refusal(r: ToolSecurityReviewer, tool: Tool, job: Any) -> str:

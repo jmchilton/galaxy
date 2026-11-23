@@ -13,7 +13,7 @@ from dataclasses import (
 )
 
 from .charsets import (
-    DEFAULT_SANITIZED,
+    default_chars,
     PROBE,
 )
 from .report import (
@@ -108,7 +108,7 @@ class Data(Node):
     def _safe_string(self, what: str, accessor: str = DATASET_ATTRIBUTE, key: str | None = None) -> AV:
         # Attributes of the dataset go through SafeStringWrapper: Galaxy's default sanitizer.
         return tainted(
-            DEFAULT_SANITIZED if self.sanitize else PROBE,
+            default_chars(self.sanitize),
             source(f"{what} of dataset '{self.path}'", accessor, self.path, key),
         )
 
