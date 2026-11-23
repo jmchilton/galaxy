@@ -13,7 +13,9 @@ from galaxy.tool_util.security.spec import (
     expected_codes,
     iter_jobs,
     load_cases,
+    sweep_jobs,
 )
+from galaxy.tools.parameters.basic import ParameterValueError
 from galaxy.tools.security_review import LOG
 
 CASES = load_cases()
@@ -66,3 +68,23 @@ def test_harm(runner, case_id, color, index, job):
     if color == "green":
         # A command that does not run shows no harm either.
         assert returncode == 0
+
+
+@pytest.mark.parametrize(
+    "case_id,slot,job",
+    [
+        pytest.param(s.case_id, s.slot, s.job, id=f"{s.case_id}-green-{s.base}-{s.slot}-{s.payload_index}")
+        for s in sweep_jobs(CASES)
+    ],
+)
+def test_sweep_refuses_or_stays_harmless(runner, case_id, slot, job):
+    spec_runner = runner(case_id)
+    try:
+        outcome = spec_runner.run(job)
+    except ParameterValueError:
+        # The tool's own validator refuses the value.
+        assert slot.startswith("inputs.")
+        return
+    if not outcome.rejected:
+        harmed, _ = spec_runner.harms(job)
+        assert not harmed, outcome.command_line

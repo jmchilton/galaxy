@@ -38,6 +38,7 @@ from .report import (
     CAPABILITY,
     Finding,
     Report,
+    SANITIZE_OFF,
 )
 from .template import (
     CompiledTemplate,
@@ -531,7 +532,7 @@ def audit_tool(tool_source: ToolSource, report: Report) -> None:
             if _outside_job_directory(path):
                 add("output-path", MEDIUM, f"Discovers outputs outside the job directory (`{path}`).", path, "outputs")
     if _parsed(tool_source.parse_sanitize, True) is False:
-        add("tool-sanitize-off", MEDIUM, "Turns parameter sanitization off for the whole tool.", "sanitize=false")
+        add(SANITIZE_OFF, MEDIUM, "Turns parameter sanitization off for the whole tool.", "sanitize=false")
 
 
 def _parsed(parse: Callable[[], Any], default: Any) -> Any:

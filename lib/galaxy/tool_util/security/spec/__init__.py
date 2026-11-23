@@ -163,6 +163,103 @@ def iter_jobs(cases: Dict[str, SpecCase]) -> Iterator[SpecJob]:
                 yield SpecJob(case_id, color, index, job)
 
 
+# Values that start a shell command from single quotes, double quotes, or no quotes.
+SWEEP_PAYLOADS = (
+    f"a';touch {HARM_MARKER};'",
+    f'a";touch {HARM_MARKER};"',
+    f"a;touch {HARM_MARKER}",
+    f"$(touch {HARM_MARKER})",
+    f"`touch {HARM_MARKER}`",
+)
+# Preferences a sweep also sets, whether or not the job does.
+SWEEP_PREFERENCES = ("spec|label", "label")
+
+
+class SweepJob(NamedTuple):
+    case_id: str
+    # The green job of the case it changes, and what it changes.
+    base: int
+    slot: str
+    payload_index: int
+    job: JobCase
+
+
+def sweep_jobs(cases: Dict[str, SpecCase]) -> Iterator[SweepJob]:
+    """Each green job with a harm check, under the default settings, with one value a template reads set to a payload.
+
+    Every such job must be refused or leave no HARM_MARKER: a sweep does not trust the review to know what a
+    tool reads. Its payloads are shell code, so it shows nothing for values a tool writes into another language.
+    """
+    for case_id, case in cases.items():
+        bases = [(i, job) for i, job in enumerate(case.green) if job.harm and job.fault is None]
+        for position, (index, job) in enumerate(bases):
+            base = job.model_copy(update={"config": ReviewConfig(), "doc": None})
+            # The user's account and the extra preferences do not depend on the job: once per case is enough.
+            for slot in _slots(base, with_user=position == 0):
+                for payload_index, payload in enumerate(SWEEP_PAYLOADS):
+                    swept = base.model_copy(deep=True)
+                    _set(swept, slot, payload)
+                    yield SweepJob(case_id, index, slot, payload_index, swept)
+
+
+def _slots(job: JobCase, with_user: bool) -> Iterator[str]:
+    """The text values of a job, as dotted paths ``_set`` understands."""
+    for name, value in job.inputs.items():
+        if isinstance(value, str):
+            yield f"inputs.{name}"
+    for name, dataset in job.datasets.items():
+        yield from _dataset_slots(f"datasets.{name}", dataset)
+    for name, collection in job.collections.items():
+        for index, element in enumerate(collection.elements):
+            yield f"collections.{name}.{index}.identifier"
+            yield from _dataset_slots(f"collections.{name}.{index}.dataset", element.dataset)
+    for key in dict.fromkeys((*job.user.preferences, *(SWEEP_PREFERENCES if with_user else ()))):
+        yield f"preferences.{key}"
+    if with_user:
+        yield "user.email"
+        yield "user.username"
+
+
+def _dataset_slots(path: str, dataset: DatasetContext) -> Iterator[str]:
+    yield from (f"{path}.{field}" for field in ("name", "info", "content", "tags"))
+    for key, value in dataset.metadata.items():
+        if isinstance(value, (str, list)):
+            yield f"{path}.metadata.{key}"
+
+
+def _set(job: JobCase, slot: str, payload: str) -> None:
+    kind, _, rest = slot.partition(".")
+    if kind == "inputs":
+        job.inputs[rest] = payload
+    elif kind == "preferences":
+        job.user.preferences[rest] = payload
+    elif kind == "user":
+        # An email address keeps its domain.
+        setattr(job.user, rest, f"{payload}@example.org" if rest == "email" else payload)
+    elif kind == "datasets":
+        name, _, field = rest.partition(".")
+        _set_dataset(job.datasets[name], field, payload)
+    else:
+        name, index, field = rest.split(".", 2)
+        element = job.collections[name].elements[int(index)]
+        if field == "identifier":
+            element.identifier = payload
+        else:
+            _set_dataset(element.dataset, field.partition(".")[2], payload)
+
+
+def _set_dataset(dataset: DatasetContext, field: str, payload: str) -> None:
+    if field == "content":
+        dataset.content = f"{payload}\n"
+    elif field == "tags":
+        dataset.tags = [*dataset.tags, f"group:{payload}", f"name:{payload}"]
+    elif field.startswith("metadata."):
+        key = field.partition(".")[2]
+        dataset.metadata[key] = [payload] if isinstance(dataset.metadata[key], list) else payload
+    else:
+        setattr(dataset, field, payload)
+
+
 def review_problems(case: SpecCase) -> List[str]:
     """What the review of the case's tool reports differently from the case's ``review``; empty when it agrees."""
     report = review_tool_source(get_tool_source(tool_path(case.tool)))

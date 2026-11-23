@@ -63,6 +63,7 @@ from galaxy.tool_util.security.report import (
     OPAQUE,
     RAW,
     RUNS_TEXT_RULES,
+    SANITIZE_OFF,
     serious_findings,
     SPECIAL,
     TEXT,
@@ -652,12 +653,13 @@ def _no_plain_value(report: Optional[Report]) -> list[tuple[RefusalCode, str]]:
     why = []
     if rewrites := sorted({name for found in report.rewrites.values() for name in found}):
         why.append((RefusalCode.UNCHECKABLE_REWRITES, f"its templates change values with {', '.join(rewrites)}"))
+    # Unless the tool turns the sanitizer off, Galaxy sanitizes what a template reads from the user object.
+    sanitized = not any(f.rule == SANITIZE_OFF for f in report.findings)
     capabilities = sorted(
         {
             f.expr
             for f in report.findings
-            # Galaxy sanitizes what a template reads from the user object, as it does text values.
-            if f.rule in CODE_CAPABILITIES and f.expr and not f.expr.startswith("__user__")
+            if f.rule in CODE_CAPABILITIES and f.expr and not (sanitized and f.expr.startswith("__user__"))
         }
     )
     if capabilities:
@@ -680,6 +682,16 @@ def _no_plain_value(report: Optional[Report]) -> list[tuple[RefusalCode, str]]:
             (
                 RefusalCode.UNCHECKABLE_LETTERS_ARE_CODE,
                 f"letters alone can be code where it writes values ({', '.join(runs)})",
+            )
+        )
+    # The strict check reads the sources of a template, and an opaque value of no input has none.
+    if untraced := sorted(
+        {f.location for f in serious if any(ref.accessor == OPAQUE and ref.param is None for ref in f.refs)}
+    ):
+        why.append(
+            (
+                RefusalCode.UNCHECKABLE_UNTRACED_VALUE,
+                f"it writes values it cannot trace to an input ({', '.join(untraced)})",
             )
         )
     return why
