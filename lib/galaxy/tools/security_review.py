@@ -182,15 +182,18 @@ class ToolSecurityReviewer:
         """
         if not self.enabled:
             return None
+        if (review := self._reviews.get(tool)) is not None:
+            return review
         try:
             tool_source = reviewed_tool_source(tool)
         except Exception as e:
             log.warning("Cannot review tool %s for security: %s", tool.id, e)
-            return ToolReview(NOT_ANALYSED, tool.id, tool.version, reason=f"error: {type(e).__name__}")
+            review = ToolReview(NOT_ANALYSED, tool.id, tool.version, reason=f"error: {type(e).__name__}")
+            # Kept like a failed review, so the next job does not try again.
+            self._reviews[tool] = review
+            return review
         if tool_source is None:
             return None
-        if (review := self._reviews.get(tool)) is not None:
-            return review
         with self._lock:
             tool_lock = self._tool_locks.setdefault(tool, threading.Lock())
         with tool_lock:

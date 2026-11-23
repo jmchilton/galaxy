@@ -193,6 +193,16 @@ def test_analyser_error_is_recorded_as_not_analysed(app, tmp_path, monkeypatch):
     r.check_job(tool, evaluator(app, tool, ["a'b"]))
 
 
+def test_tool_source_error_is_recorded_once(app, tmp_path, monkeypatch, caplog):
+    monkeypatch.setattr(security_review, "reviewed_tool_source", broken)
+    tool = make_tool(app, tmp_path)
+    r = reviewer(tmp_path)
+    review = r.review(tool)
+    assert review is not None and review.status == NOT_ANALYSED
+    assert r.review(tool) is review
+    assert caplog.text.count("Cannot review tool echo_ids for security") == 1
+
+
 def test_summary_is_logged_once_when_computed(app, tmp_path, caplog):
     caplog.set_level(logging.INFO, logger=security_review.__name__)
     tool = make_tool(app, tmp_path)
