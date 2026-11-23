@@ -581,6 +581,7 @@ _OPTION_WORD = re.compile(r"(?:^|\s)-")
 _TRANSFORMS = re.compile(
     r"\bopen\s*\(|decode|b64|\b(?:uni)?chr\s*\(|unquote|\beval\s*\(|\bexec\s*\(|__import__|fromhex"
     r"|\btranslate\s*\(|%c|__app__|creating_job|\bgetVar\s*\(|\bcompile\s*\(|subprocess|os\.popen|os\.system"
+    r"|\bre\.subn?\s*\(|\bfrom\s+re\s+import|\bstr\.replace\s*\("
 )
 
 
@@ -684,16 +685,27 @@ def _job_values(tool: "Tool", param_dict: dict[str, Any], words: frozenset[str])
     """The values a user controls that the job carries, described for the user.
 
     Element identifiers, dataset names and parameter values always count. A dataset attribute, tag,
-    metadata element or user preference counts when the templates name it (``words``): these often
-    hold text such as a tool's output summary, and a template reads them only by name.
+    metadata element, the user's email or name, or a user preference counts when the templates name
+    it (``words``): these often hold text such as a tool's output summary, and a template reads them
+    only by name.
     """
     for name in tool.inputs:
         if name in param_dict:
             yield from _values_of(name, param_dict[name], words)
+    user = param_dict.get("__user__")
+    account = getattr(user, "obj", user)
+    for description, keys, attribute in (
+        ("your email address", ("__user_email__", "userEmail"), "email"),
+        ("your user name", ("__user_name__",), "username"),
+    ):
+        if not words & {*keys, attribute}:
+            continue
+        values = [param_dict.get(key) for key in keys] + [getattr(account, attribute, None)]
+        for value in dict.fromkeys(v for v in values if isinstance(v, str)):
+            yield description, value
     if "extra_preferences" not in words:
         return
-    user = param_dict.get("__user__")
-    preferences = getattr(getattr(user, "obj", user), "extra_preferences", None) or {}
+    preferences = getattr(account, "extra_preferences", None) or {}
     for key, value in preferences.items():
         if value is not None:
             yield f"your preference '{key}'", str(value)

@@ -761,6 +761,35 @@ def test_replace_that_brings_a_dollar_leaves_nothing_plain(app, tmp_path, monkey
     assert "its templates can change values (.replace)" in message
 
 
+@pytest.mark.parametrize(
+    "rewrite",
+    [
+        "#import re\n#set $v = $re.sub('x', ';', str($word.value))",
+        "#set $v = str.replace(str($word.value), 'x', ';')",
+    ],
+)
+def test_other_rewrites_leave_nothing_plain(app, tmp_path, rewrite):
+    contents = ECHO_IDS.replace("echo '${word.value}'", f"{rewrite}\necho $v")
+    assert security_review.template_transforms(make_tool(app, tmp_path, contents, "rewrite.xml"))
+
+
+USER_EMAIL = ECHO_IDS.replace("echo '${word.value}'", "echo $__user_email__")
+
+
+def test_strict_check_reads_the_email_a_template_names(app, tmp_path, monkeypatch):
+    def job_with(email: str) -> Any:
+        job = evaluator(app, tool, ["a"])
+        job.param_dict["__user_email__"] = email
+        return job
+
+    r = unreviewed(tmp_path, monkeypatch)
+    tool = make_tool(app, tmp_path)
+    r.check_job(tool, job_with("a`b`@example.org"))
+    tool = make_tool(app, tmp_path, USER_EMAIL, "user_email.xml")
+    r.check_job(tool, job_with("me@example.org"))
+    assert "your email address contains [`]" in strict_refusal(r, tool, job_with("a`b`@example.org"))
+
+
 def test_replace_with_plain_text_keeps_values_plain(app, tmp_path):
     tool = make_tool(app, tmp_path, SAFE_REPLACE, "safe_replace.xml")
     assert security_review.template_transforms(tool) == []
