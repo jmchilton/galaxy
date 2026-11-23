@@ -640,6 +640,35 @@ def test_content_of_a_dataset_the_template_opens_is_checked(app, tmp_path, conte
         reviewer(tmp_path, ENFORCE).check_job(tool, job)
 
 
+@pytest.mark.parametrize("content,expected", [("15\n", False), ("15; id\n", True)])
+def test_content_is_read_from_the_galaxy_side_file_when_the_job_runs_elsewhere(app, tmp_path, content, expected):
+    # Where the job runs, the template opens the dataset under its path on that host.
+    path = tmp_path / "n.txt"
+    path.write_text(content)
+    tool = make_tool(app, tmp_path, OPEN_FILE, "open_file.xml")
+    hda = model.HistoryDatasetAssociation(extension="txt", dataset=model.Dataset(external_filename=str(path)))
+    remote = SimpleNamespace(input_path_rewrite=lambda dataset: "/remote/staging/inputs/n.txt")
+    job: Any = SimpleNamespace(job=SimpleNamespace(id=7), consumes_names=False, consumes_identifiers=False)
+    job.param_dict = {
+        "n_file": DatasetFilenameWrapper(
+            hda, datatypes_registry=app.datatypes_registry, compute_environment=cast(Any, remote)
+        )
+    }
+    with pytest.raises(ToolInputRejected) if expected else contextlib.nullcontext():
+        reviewer(tmp_path, ENFORCE).check_job(tool, job)
+
+
+def test_content_that_cannot_be_read_counts_as_every_character(app, tmp_path):
+    tool = make_tool(app, tmp_path, OPEN_FILE, "open_file.xml")
+    missing = model.HistoryDatasetAssociation(
+        extension="txt", dataset=model.Dataset(external_filename=str(tmp_path / "missing.txt"))
+    )
+    job: Any = SimpleNamespace(job=SimpleNamespace(id=7), consumes_names=False, consumes_identifiers=False)
+    job.param_dict = {"n_file": DatasetFilenameWrapper(missing, datatypes_registry=app.datatypes_registry)}
+    with pytest.raises(ToolInputRejected):
+        reviewer(tmp_path, ENFORCE).check_job(tool, job)
+
+
 USER_PREFERENCE = """<tool id="user_preference" name="User preference" version="1.0" profile="24.0">
   <command><![CDATA[echo "${__user__.extra_preferences.get('account|name', '')}" > '$out']]></command>
   <inputs/>
