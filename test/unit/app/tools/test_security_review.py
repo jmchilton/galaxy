@@ -674,64 +674,140 @@ def test_user_preference_is_checked(app, tmp_path, name, expected):
 
 REWRITING = ECHO_IDS.replace("echo '${word.value}'", "echo ${str($word).replace('__gt__', '>')}")
 PIPING = ECHO_IDS.replace("echo '${word.value}' >> '$out'", "echo '${word.value}' | sh >> '$out'")
+SAFE_REPLACE = ECHO_IDS.replace("echo '${word.value}'", "echo '${str($word.value).replace(' ', '_')}'")
 
 
 def broken(*args, **kwds):
     raise RuntimeError("analyser bug")
 
 
-def test_fail_closed_refuses_a_tool_whose_review_timed_out(app, tmp_path):
-    tool = make_tool(app, tmp_path)
+def strict_refusal(r: ToolSecurityReviewer, tool: Tool, job: Any) -> str:
     with pytest.raises(ToolInputRejected) as e:
-        reviewer(tmp_path, ENFORCE, timeout=-1, fail_closed=True).check_job(tool, evaluator(app, tool, ["a"]))
-    message = str(e.value)
-    assert "cannot check the values of tool 'Echo identifiers' (echo_ids version 1.0)" in message
-    assert "did not finish: it took too long" in message
+        r.check_job(tool, job)
+    return str(e.value)
 
 
-def test_fail_closed_tries_a_timed_out_review_again(app, tmp_path):
+def test_fail_closed_checks_a_timed_out_tool_strictly(app, tmp_path):
     tool = make_tool(app, tmp_path)
     r = reviewer(tmp_path, ENFORCE, timeout=-1, fail_closed=True)
-    first = r.review(tool)
-    assert first is not None and first.reason == "timeout"
-    r.timeout = 5.0
-    second = r.review(tool)
-    assert second is not None and second.status == ANALYSED
+    r.check_job(tool, evaluator(app, tool, ["sample_1.fastq", "FastQC on data 1: RawData"], word="My title"))
+    message = strict_refusal(r, tool, evaluator(app, tool, ["sample (1)"]))
+    assert message.startswith("This job was not run: the security review of this tool did not finish in time")
+    assert "an element identifier or the name of input 'input' contains [( )]" in message
+    assert "Echo identifiers" in message and "echo_ids" in message
 
 
-def test_fail_closed_refuses_a_tool_whose_review_failed(app, tmp_path, monkeypatch):
-    monkeypatch.setattr(security_review, "review_tool_source", broken)
+@pytest.mark.parametrize(
+    "identifier,harm",
+    [
+        ("a;b", ";"),
+        ("x__gt__y", "__gt__"),
+        ("a -rf", "-"),
+        ("-x", "-"),
+        ("a\tb", "tab"),
+        ("50%", "%"),
+    ],
+)
+def test_strict_check_refuses_what_can_leave_any_place(app, tmp_path, identifier, harm):
     tool = make_tool(app, tmp_path)
-    with pytest.raises(ToolInputRejected, match="did not finish: it failed"):
-        reviewer(tmp_path, ENFORCE, fail_closed=True).check_job(tool, evaluator(app, tool, ["a"]))
+    r = reviewer(tmp_path, ENFORCE, timeout=-1, fail_closed=True)
+    assert f"contains [{harm}]" in strict_refusal(r, tool, evaluator(app, tool, [identifier]))
 
 
-def test_fail_closed_refuses_a_tool_that_cannot_be_read_for_review(app, tmp_path, monkeypatch):
-    monkeypatch.setattr(security_review, "reviewed_tool_source", broken)
+def test_strict_check_reads_dataset_names(app, tmp_path):
     tool = make_tool(app, tmp_path)
-    with pytest.raises(ToolInputRejected, match="did not finish: it failed"):
-        reviewer(tmp_path, ENFORCE, fail_closed=True).check_job(tool, evaluator(app, tool, ["a"]))
+    r = reviewer(tmp_path, ENFORCE, timeout=-1, fail_closed=True)
+    job = evaluator(app, tool, ["a"])
+    next(iter(job.param_dict["input"])).unsanitized.name = "Trimmomatic on data 1 (R1 paired)"
+    assert "the name of a dataset of input 'input' contains [( )]" in strict_refusal(r, tool, job)
 
 
-@pytest.mark.parametrize("contents", [REWRITING, PIPING])
-def test_fail_closed_refuses_harmless_values_it_cannot_judge(app, tmp_path, contents):
-    tool = make_tool(app, tmp_path, contents, "unchecked.xml")
-    with pytest.raises(ToolInputRejected, match=r"in places no check of their characters can judge \(command\)"):
-        reviewer(tmp_path, ENFORCE, fail_closed=True).check_job(tool, evaluator(app, tool, ["a"], word="b"))
+READS_MORE = ECHO_IDS.replace(
+    "echo '${word.value}'",
+    "echo '${word.value}' '${__user__.extra_preferences.get('account|name')}' '${e.info}' '${e.metadata.comment_lines}'",
+)
+
+
+def test_strict_check_reads_what_the_template_names(app, tmp_path):
+    def job_with(info: str, preference: str) -> Any:
+        job = evaluator(app, tool, ["a"])
+        next(iter(job.param_dict["input"])).unsanitized.info = info
+        job.param_dict["__user__"] = RawObjectWrapper(SimpleNamespace(extra_preferences={"account|name": preference}))
+        return job
+
+    r = reviewer(tmp_path, ENFORCE, timeout=-1, fail_closed=True)
+    # A template that names neither: a tool's output summary and a password do not count.
+    tool = make_tool(app, tmp_path)
+    r.check_job(tool, job_with("95.3% overall alignment rate", "a&b"))
+    tool = make_tool(app, tmp_path, READS_MORE, "reads_more.xml")
+    message = strict_refusal(r, tool, job_with("95.3% overall alignment rate", "a&b"))
+    assert "the info of a dataset of input 'input' contains [%]" in message
+    assert "your preference 'account|name' contains [&]" in message
+
+
+def test_timed_out_review_keeps_the_strict_check(app, tmp_path, monkeypatch):
+    calls = []
+
+    def timing_out(*args, **kwds):
+        calls.append(1)
+        raise ReviewTimeout()
+
+    monkeypatch.setattr(security_review, "review_tool_source", timing_out)
+    tool = make_tool(app, tmp_path)
+    r = reviewer(tmp_path, ENFORCE, fail_closed=True)
+    for _ in range(3):
+        r.check_job(tool, evaluator(app, tool, ["sample_1"]))
+    assert "contains [']" in strict_refusal(r, tool, evaluator(app, tool, ["5' UTR"]))
+    # Reviewed once: the next jobs do not wait for the timeout again.
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("patched", ["review_tool_source", "reviewed_tool_source"])
+def test_fail_closed_checks_a_tool_whose_review_failed_strictly(app, tmp_path, monkeypatch, patched):
+    monkeypatch.setattr(security_review, patched, broken)
+    tool = make_tool(app, tmp_path)
+    r = reviewer(tmp_path, ENFORCE, fail_closed=True)
+    r.check_job(tool, evaluator(app, tool, ["a b"]))
+    assert "the security review of this tool failed" in strict_refusal(r, tool, evaluator(app, tool, ["a;b"]))
+
+
+def test_fail_closed_refuses_any_value_when_the_template_changes_values(app, tmp_path):
+    tool = make_tool(app, tmp_path, REWRITING, "unchecked.xml")
+    message = strict_refusal(reviewer(tmp_path, ENFORCE, fail_closed=True), tool, evaluator(app, tool, ["a"], word="b"))
+    assert "its templates can change values (.replace)" in message
+    assert "no check of their characters can judge (command)" in message
     # Without fail_closed the same job runs.
     reviewer(tmp_path, ENFORCE).check_job(tool, evaluator(app, tool, ["a"], word="b"))
 
 
-def test_fail_closed_refuses_when_the_check_fails(app, tmp_path, monkeypatch):
+def test_replace_with_plain_text_keeps_values_plain(app, tmp_path):
+    tool = make_tool(app, tmp_path, SAFE_REPLACE, "safe_replace.xml")
+    assert security_review.template_transforms(tool) == []
+    assert security_review.template_transforms(make_tool(app, tmp_path, REWRITING, "unchecked.xml")) == [".replace"]
+    assert security_review.template_transforms(make_tool(app, tmp_path, OPEN_FILE, "open_file.xml")) == ["open"]
+
+
+def test_fail_closed_checks_values_it_cannot_judge_strictly(app, tmp_path):
+    tool = make_tool(app, tmp_path, PIPING, "unchecked.xml")
+    r = reviewer(tmp_path, ENFORCE, fail_closed=True)
+    r.check_job(tool, evaluator(app, tool, ["a"], word="b"))
+    message = strict_refusal(r, tool, evaluator(app, tool, ["a"], word="a|b"))
+    assert "this tool writes values in places that no check of their characters can judge (command)" in message
+    assert "the value of input 'word' contains [|]" in message
+
+
+def test_fail_closed_checks_strictly_when_the_check_fails(app, tmp_path, monkeypatch):
     monkeypatch.setattr(security_review, "find_violations", broken)
     tool = make_tool(app, tmp_path)
-    with pytest.raises(ToolInputRejected, match="checking its values against the security review failed"):
-        reviewer(tmp_path, ENFORCE, fail_closed=True).check_job(tool, evaluator(app, tool, ["a"]))
+    r = reviewer(tmp_path, ENFORCE, fail_closed=True)
+    r.check_job(tool, evaluator(app, tool, ["a"]))
+    message = strict_refusal(r, tool, evaluator(app, tool, ["it's"]))
+    assert "checking the job's values against the security review failed" in message
 
 
-def test_fail_closed_lets_checked_harmless_values_run(app, tmp_path):
+def test_fail_closed_lets_checked_values_run(app, tmp_path):
     tool = make_tool(app, tmp_path)
-    reviewer(tmp_path, ENFORCE, fail_closed=True).check_job(tool, evaluator(app, tool, ["sample_1"], word="x"))
+    reviewer(tmp_path, ENFORCE, fail_closed=True).check_job(tool, evaluator(app, tool, ["5' UTR"], word="x"))
 
 
 REWRITING_SCRIPT = ECHO_IDS.replace("echo '${word.value}' >> '$out'", "bash '$script' >> '$out'").replace(
@@ -745,19 +821,18 @@ def test_fail_closed_names_the_harmful_value_first(app, tmp_path):
     tool = make_tool(app, tmp_path, REWRITING_SCRIPT, "unchecked.xml")
     review = reviewer(tmp_path).review(tool)
     assert review is not None and review.checked_findings and review.unchecked_findings
-    with pytest.raises(ToolInputRejected) as e:
-        reviewer(tmp_path, ENFORCE, fail_closed=True).check_job(tool, evaluator(app, tool, ["it';id;'s"]))
-    assert "contains the characters" in str(e.value)
+    message = strict_refusal(reviewer(tmp_path, ENFORCE, fail_closed=True), tool, evaluator(app, tool, ["it';id;'s"]))
+    assert "contains the characters" in message
 
 
 def test_fail_closed_in_log_mode_warns_and_lets_the_job_run(app, tmp_path, caplog):
     tool = make_tool(app, tmp_path, PIPING, "unchecked.xml")
-    reviewer(tmp_path, LOG, fail_closed=True).check_job(tool, evaluator(app, tool, ["a"], word="b"))
+    reviewer(tmp_path, LOG, fail_closed=True).check_job(tool, evaluator(app, tool, ["a"], word="a|b"))
     warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
     assert warnings == [
         (
-            "Tool security review: job 7 of tool echo_ids version 1.0 cannot be checked, the tool writes values in"
-            " places no check of their characters can judge (command)"
+            "Tool security review: job 7 of tool echo_ids version 1.0 cannot be checked, this tool writes values in"
+            " places that no check of their characters can judge (command), and the value of input 'word' contains [|]"
         )
     ]
 
