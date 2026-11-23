@@ -22,6 +22,7 @@ unsafe one or read text the job does not carry, or where letters alone can be co
 import logging
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import (
     Any,
@@ -100,6 +101,22 @@ NOT_ANALYSED = "not_analysed"
 _UNREVIEWED_TOOL_TYPES = frozenset(("user_defined", "expression"))
 
 
+def serious_findings(report: Report) -> list[Finding]:
+    """The high and critical vulnerability findings, the ones checked against job values, most severe first."""
+    return [f for f in report.sorted() if f.kind == VULNERABILITY and f.severity in CHECKED_SEVERITIES]
+
+
+@contextmanager
+def _keeping_consumes(evaluator: "ToolEvaluator") -> Iterator[None]:
+    """Reading identifiers and names through the wrappers marks the job as consuming them, which
+    changes how the job cache matches it: the check must not."""
+    consumes = (evaluator.consumes_names, evaluator.consumes_identifiers)
+    try:
+        yield
+    finally:
+        evaluator.consumes_names, evaluator.consumes_identifiers = consumes
+
+
 class ToolInputRejected(Exception):
     """The tool security review refuses a job: an input value can leave its place, or the job cannot be checked."""
 
@@ -118,8 +135,6 @@ class ToolReview:
     @property
     def checked_findings(self) -> list[Finding]:
         """The findings whose characters are compared with the values of a job."""
-        if self.report is None:
-            return []
         return [f for f in self._serious if f.checkable]
 
     @property
@@ -134,9 +149,7 @@ class ToolReview:
 
     @property
     def _serious(self) -> list[Finding]:
-        if self.report is None:
-            return []
-        return [f for f in self.report.findings if f.kind == VULNERABILITY and f.severity in CHECKED_SEVERITIES]
+        return serious_findings(self.report) if self.report is not None else []
 
 
 def reviewed_tool_source(tool: "Tool") -> Optional[ToolSource]:
@@ -236,11 +249,7 @@ class ToolSecurityReviewer:
                 location,
                 reason,
             )
-        serious = [
-            f
-            for f in (review.report.sorted() if review.report else [])
-            if f.kind == VULNERABILITY and f.severity in CHECKED_SEVERITIES
-        ]
+        serious = serious_findings(review.report) if review.report else []
         if not serious:
             return
         counts = ", ".join(
@@ -278,11 +287,9 @@ class ToolSecurityReviewer:
             return
         violations: list[Violation] = []
         if review.checked_findings or review.report.writes:
-            # Reading element identifiers and names through the wrappers marks the job as consuming
-            # them, which changes how the job cache matches it; the check must not.
-            consumes = (evaluator.consumes_names, evaluator.consumes_identifiers)
             try:
-                violations = list(find_violations(review.report, evaluator.param_dict))
+                with _keeping_consumes(evaluator):
+                    violations = list(find_violations(review.report, evaluator.param_dict))
             except Exception:
                 # Without strict_when_unsure, the check must never be the reason a job fails.
                 log.exception("Job %s: checking values against the security review of tool %s failed", job_id, tool.id)
@@ -290,8 +297,6 @@ class ToolSecurityReviewer:
                     tool, evaluator, review.report, "checking the job's values against the security review failed"
                 )
                 return
-            finally:
-                evaluator.consumes_names, evaluator.consumes_identifiers = consumes
         for violation in violations:
             log.warning(
                 "Tool security review: job %s of tool %s version %s: %s of input '%s' contains [%s],"
@@ -336,19 +341,17 @@ class ToolSecurityReviewer:
                 raise ToolInputRejected(unchecked_message(tool, reason, why))
             return
         assert report is not None  # _no_plain_value refuses a job without a report
-        consumes = (evaluator.consumes_names, evaluator.consumes_identifiers)
         try:
-            harmful = list(strict_violations(tool, report, evaluator.param_dict))
+            with _keeping_consumes(evaluator):
+                harmful = list(strict_violations(tool, report, evaluator.param_dict))
         except Exception:
             # Only enforce mode may fail a job, and then with a message for the user.
             log.exception(
                 "Tool security review: the strict check of the values of job %s of tool %s failed", job_id, tool.id
             )
             if self.mode == ENFORCE:
-                raise ToolInputRejected(strict_failed_message(tool, reason))
+                raise ToolInputRejected(unchecked_message(tool, reason, ["checking its values strictly failed"]))
             return
-        finally:
-            evaluator.consumes_names, evaluator.consumes_identifiers = consumes
         if not harmful:
             log.debug("Job %s of tool %s: %s, and every value is plain", job_id, tool.id, reason)
             return
@@ -470,9 +473,7 @@ def source_values(ref: SourceRef, param_dict: dict[str, Any]) -> Iterator[str]:
             yield str(value)
         return
     if ref.accessor == USER_PREFERENCE:
-        user = param_dict.get("__user__")
-        preferences = getattr(getattr(user, "obj", user), "extra_preferences", None) or {}
-        if ref.key and (value := preferences.get(ref.key)) is not None:
+        if ref.key and (value := _preferences(param_dict).get(ref.key)) is not None:
             yield str(value)
         return
     for value in _resolve(param_dict, ref.param_path):
@@ -585,24 +586,24 @@ def _datasets(value: Any) -> Iterator[DatasetFilenameWrapper]:
 
 
 _DESCRIPTIONS = {
-    TEXT: "the value of",
-    RAW: "the value of",
     ELEMENT_IDENTIFIER: "an element identifier or the name of",
     GROUP_TAGS: "a group tag of a dataset of",
     DATASET_CONTENT: "the content of a dataset of",
 }
 
 
-_ACCOUNT_DESCRIPTIONS = {
-    "__user_email__": "your email address",
-    "userEmail": "your email address",
-    "__user_name__": "your user name",
+# The account values a template can write: the names that read each one, and its description.
+_ACCOUNT_VALUES = {
+    "__user_email__": (frozenset(("__user_email__", "userEmail", "email")), "your email address"),
+    "__user_name__": (frozenset(("__user_name__", "username")), "your user name"),
 }
 
 
 def _describe(ref: SourceRef) -> str:
     if ref.accessor == SPECIAL:
-        return _ACCOUNT_DESCRIPTIONS.get(ref.key or "", f"the account value {ref.key}")
+        if ref.key in _ACCOUNT_VALUES:
+            return _ACCOUNT_VALUES[ref.key][1]
+        return f"the account value {ref.key}"
     if ref.accessor == USER_PREFERENCE:
         return f"your preference '{ref.key}'"
     if ref.accessor == DATASET_ATTRIBUTE:
@@ -630,12 +631,12 @@ def _no_plain_value(report: Optional[Report]) -> list[str]:
     )
     if capabilities:
         why.append(f"its templates run code or read data the job does not carry ({', '.join(capabilities)})")
+    serious = serious_findings(report)
     runs = sorted(
         {
             f.location
             for f in report.findings
-            if f.rule in RUNS_TEXT_RULES
-            or (f.kind == VULNERABILITY and f.severity in CHECKED_SEVERITIES and not (f.breakout or f.closes))
+            if f.rule in RUNS_TEXT_RULES or (f in serious and not (f.breakout or f.closes))
         }
     )
     if runs:
@@ -653,13 +654,6 @@ def strict_violations(
             harm |= not_plain(value)
         if harm:
             yield ref, harm
-
-
-# The account values a template can write, by the names that read them.
-_ACCOUNT_VALUES = (
-    ("__user_email__", frozenset(("__user_email__", "userEmail", "email"))),
-    ("__user_name__", frozenset(("__user_name__", "username"))),
-)
 
 
 def _job_refs(tool: "Tool", param_dict: dict[str, Any], names: frozenset[str]) -> list[SourceRef]:
@@ -703,14 +697,19 @@ def _job_refs(tool: "Tool", param_dict: dict[str, Any], names: frozenset[str]) -
     for name in tool.inputs:
         if name in param_dict:
             walk(name, param_dict[name])
-    for key, readers in _ACCOUNT_VALUES:
+    for key, (readers, _) in _ACCOUNT_VALUES.items():
         if names & readers:
             refs[SourceRef(SPECIAL, key=key)] = None
     if "extra_preferences" in names:
-        user = param_dict.get("__user__")
-        for key in getattr(getattr(user, "obj", user), "extra_preferences", None) or {}:
+        for key in _preferences(param_dict):
             refs[SourceRef(USER_PREFERENCE, key=key)] = None
     return list(refs)
+
+
+def _preferences(param_dict: dict[str, Any]) -> dict[str, Any]:
+    """The preferences of the job's user, from the wrapped user object Galaxy puts in the namespace."""
+    user = param_dict.get("__user__")
+    return getattr(getattr(user, "obj", user), "extra_preferences", None) or {}
 
 
 # Selects whose options come from what users give: their datasets, their columns, their tags, their builds.
@@ -731,22 +730,12 @@ def _user_defines_options(param: SelectToolParameter) -> bool:
     )
 
 
-# Galaxy keeps the first 255 characters of a dataset's info: each message starts with what the user can do.
-
-
 def unchecked_message(tool: "Tool", reason: str, why: list[str]) -> str:
+    # Galaxy keeps the first 255 characters of a dataset's info: each message starts with what the user can do.
     return (
         f"This job was not run: this Galaxy server cannot check any value for tool '{tool.name}' ({tool.id} version"
         f" {tool.version}). Please contact the administrators of this server. The reason: {reason}, and"
         f" {'; '.join(why)}."
-    )
-
-
-def strict_failed_message(tool: "Tool", reason: str) -> str:
-    return (
-        f"This job was not run: this Galaxy server cannot check any value for tool '{tool.name}' ({tool.id} version"
-        f" {tool.version}). Please contact the administrators of this server. The reason: {reason}, and checking"
-        " its values strictly failed."
     )
 
 
