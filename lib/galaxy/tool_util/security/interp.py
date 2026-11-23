@@ -38,7 +38,6 @@ from .nodes import (
     dataset_content,
     file_content,
     Special,
-    user_preference,
 )
 from .report import (
     Finding,
@@ -59,6 +58,7 @@ from .validators import regex_constraint
 from .values import (
     attribute,
     AV,
+    BoundCall,
     CLEAN,
     concat,
     CONDITIONAL,
@@ -67,6 +67,7 @@ from .values import (
     Group,
     introduced,
     join,
+    joins_arguments,
     raw,
     recording,
     REPR_PUNCTUATION,
@@ -1460,7 +1461,7 @@ class TemplateAnalysis:
             inner = env.copy()
             for arg in [*node.args.args, *node.args.kwonlyargs]:
                 inner.local[arg.arg] = CLEAN
-            return AV(bound=(contents(self.ev(node.body, inner)), "__lambda__"))
+            return AV(bound=(contents(self.ev(node.body, inner)), joins_arguments))
         if isinstance(node, ast.NamedExpr):
             value = self.ev(node.value, env)
             self.bind(node.target, value, env)
@@ -1501,13 +1502,13 @@ class TemplateAnalysis:
         keywords = [self.ev(keyword.value, env) for keyword in node.keywords]
         named = {k.arg: v for k, v in zip(node.keywords, keywords) if k.arg}
         if callee.bound is not None:
-            receiver, name = callee.bound
-            if name in _MUTATORS:
+            receiver, method = callee.bound
+            if isinstance(method, str) and method in _MUTATORS:
                 target = func.args[0] if isinstance(func, ast.Call) and func.args else getattr(func, "value", None)
                 if local := self._local_name(target, env) if target is not None else None:
-                    grown = join(*(a if name in ("extend", "update") else AV(elem=a) for a in args))
+                    grown = join(*(a if method in ("extend", "update") else AV(elem=a) for a in args))
                     env.assign(local, AV(elem=element(grown, strict=True)), weak=True)
-            return self.call_bound(receiver, name, args, node.args, env, keywords, node)
+            return self.call_bound(receiver, method, args, node.args, env, keywords, node)
         if callee.helper:
             return self.call_helper(callee.helper, args, env, named)
         if callee.py:
@@ -1699,7 +1700,7 @@ class TemplateAnalysis:
     def call_bound(
         self,
         receiver: AV,
-        name: str,
+        method: str | BoundCall,
         args: list[AV],
         arg_nodes: list[ast.expr],
         env: Env,
@@ -1707,19 +1708,11 @@ class TemplateAnalysis:
         node: ast.Call | None = None,
     ) -> AV:
         keywords = keywords or []
-        if name == "__value__":
-            return receiver
-        if name == "__lambda__":
-            return join(receiver, *(contents(a) for a in args + keywords))
-        if name == "__getattr__":
-            attribute_name = _const(arg_nodes[0]) if arg_nodes else None
-            if isinstance(attribute_name, str):
-                return self._autocall(attribute(receiver, attribute_name), env)
-        if name == "__preference__":
-            # $__user__.extra_preferences.get('name', default)
-            preference = _const(arg_nodes[0]) if arg_nodes else None
-            found = user_preference(preference) if isinstance(preference, str) else stringify(receiver)
-            return join(found, *(contents(a) for a in args[1:] + keywords))
+        if callable(method):
+            if (result := method(receiver, args, keywords, arg_nodes)) is not None:
+                return self._autocall(result, env)
+            method = getattr(method, "__name__", "")
+        name = method
         if name in _CLEAN_METHODS:
             return CLEAN
         if receiver.helper:

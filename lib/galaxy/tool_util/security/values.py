@@ -8,6 +8,7 @@ join narrows to the ``<when>`` blocks a template tested.
 
 from __future__ import annotations
 
+import ast
 import threading
 from contextlib import contextmanager
 from dataclasses import (
@@ -40,7 +41,8 @@ class AV:
     items: tuple[AV, ...] | None = None  # tuple or list literal
     quoted: str = ""  # "shlex", "json" or "pyrepr": the value was escaped for that syntax
     py: str = ""  # a Python name such as "re.sub"
-    bound: tuple[AV, str] | None = None  # a method of another value
+    # A method of another value: a str, list or dict method by name, or what calling it does.
+    bound: tuple[AV, str | BoundCall] | None = None
     helper: str = ""  # a #def of the template
     # A string built in Python from literal text and values ("ln -s '%s'" % x): the pieces in order.
     parts: tuple[str | AV, ...] | None = None
@@ -447,13 +449,33 @@ def element(value: AV, strict: bool = False) -> AV:
     return AV(chars=value.chars, sources=value.sources, whole=value.whole and value.parts is None)
 
 
+# What calling a bound value does: (receiver, positional arguments, keyword arguments, the positional
+# argument nodes) -> the result, or None when the call is not one it knows.
+BoundCall = Callable[["AV", list["AV"], list["AV"], list[ast.expr]], Optional["AV"]]
+
+
+def returns_receiver(receiver: AV, args: list[AV], keywords: list[AV], nodes: list[ast.expr]) -> AV:
+    """A method that gives what it is bound to: `$dataset.get_staging_path()`, `$x.__str__()`."""
+    return receiver
+
+
+def joins_arguments(receiver: AV, args: list[AV], keywords: list[AV], nodes: list[ast.expr]) -> AV:
+    """A lambda: its body, which can hold any of its arguments."""
+    return join(receiver, *(contents(a) for a in args + keywords))
+
+
+def gets_attribute(receiver: AV, args: list[AV], keywords: list[AV], nodes: list[ast.expr]) -> AV | None:
+    """`$x.__getattr__('name')` is `$x.name`."""
+    name = nodes[0].value if nodes and isinstance(nodes[0], ast.Constant) else None
+    return attribute(receiver, name) if isinstance(name, str) else None
+
+
 def attribute(value: AV, name: str) -> AV:
     if name == "__str__":
         # `$x.__str__` is str($x), whatever x is.
-        return AV(bound=(stringify(value), "__value__"))
+        return AV(bound=(stringify(value), returns_receiver))
     if name == "__getattr__":
-        # `$x.__getattr__('name')` is `$x.name`.
-        return AV(bound=(value, "__getattr__"))
+        return AV(bound=(value, gets_attribute))
     if value.nodes:
         return join(*(node.attr(name) or CLEAN for node in value.nodes))
     if value.py:
