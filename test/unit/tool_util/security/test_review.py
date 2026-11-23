@@ -869,3 +869,16 @@ def test_double_quoted_strings_that_run_code(tmp_path, program, interpolating):
 def test_an_interpreter_flag_after_the_script_belongs_to_the_script(tmp_path, command, code):
     report = review(tmp_path, command)
     assert any(f.rule == "nested-interpreter" for f in report.findings) == code
+
+
+@pytest.mark.parametrize("reader", ["bash", "dash", "ksh"])
+def test_a_configfile_any_shell_runs_is_a_script(tmp_path, reader):
+    script = CONFIG.format("echo $free")
+    report = review(tmp_path, f"{reader} '$script'", script)
+    assert ("configfile-injection", "high") in rules(report) or ("shell-injection", "high") in rules(report)
+
+
+@pytest.mark.parametrize("interpreter", ["lua", "julia"])
+def test_inline_code_of_other_interpreters(tmp_path, interpreter):
+    report = review(tmp_path, f"""{interpreter} -e 'print("$free")'""")
+    assert any(f.rule == "nested-interpreter" for f in report.findings)
