@@ -28,6 +28,10 @@ from typing_extensions import Literal
 from galaxy.tool_util.parser import get_tool_source
 from galaxy.tool_util.security import review_tool_source
 from galaxy.tool_util.security.codes import RefusalCode
+from galaxy.tool_util.security.patterns import (
+    access_patterns,
+    PatternCode,
+)
 from galaxy.tool_util.security.report import serious_findings
 
 SPEC_DIRECTORY = os.path.dirname(os.path.abspath(__file__))
@@ -115,6 +119,8 @@ class ReviewExpectation(_Model):
     # Exactly these, when given.
     unchecked_locations: Optional[Dict[str, str]] = None
     rewrites: Optional[bool] = None
+    # Exactly the access patterns of the tool.
+    patterns: List[PatternCode] = []
 
 
 class SpecCase(_Model):
@@ -123,6 +129,8 @@ class SpecCase(_Model):
     # The refusal the red jobs show; None for a case of jobs that must run.
     code: Optional[RefusalCode] = None
     review: ReviewExpectation = ReviewExpectation()
+    # The job check runs this tool's jobs whatever their values: a sweep would show harm.
+    known_bypass: bool = False
     red: List[JobCase] = []
     green: List[JobCase] = Field(default_factory=list)
 
@@ -191,6 +199,8 @@ def sweep_jobs(cases: Dict[str, SpecCase]) -> Iterator[SweepJob]:
     tool reads. Its payloads are shell code, so it shows nothing for values a tool writes into another language.
     """
     for case_id, case in cases.items():
+        if case.known_bypass:
+            continue
         bases = [(i, job) for i, job in enumerate(case.green) if job.harm and job.fault is None]
         for position, (index, job) in enumerate(bases):
             base = job.model_copy(update={"config": ReviewConfig(), "doc": None})
@@ -276,6 +286,9 @@ def review_problems(case: SpecCase) -> List[str]:
         problems.append(f"unchecked locations are {report.unchecked_locations}")
     if expected.rewrites is not None and bool(report.rewrites) != expected.rewrites:
         problems.append(f"rewrites are {report.rewrites}")
+    patterns = sorted(access_patterns(report))
+    if patterns != sorted(expected.patterns):
+        problems.append(f"access patterns are {[p.value for p in patterns]}")
     return problems
 
 
