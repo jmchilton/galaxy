@@ -51,11 +51,18 @@ element_identifier_shell_injection:
         rejected: true
         message_contains: ["an element identifier or the name of input 'input' contains the characters [' ;]"]
   green:
-    - doc: Spaces, slashes, dots and a lone quote are common in identifiers and stay in place.
+    - doc: Spaces, slashes and dots are common in identifiers and stay in place.
       collections:
         input:
-          elements: [{identifier: "sample 1/reads.fq"}, {identifier: "Bob's reads"}]
+          elements: [{identifier: "sample 1/reads.fq"}]
       harm: true
+      expect: {rejected: false}
+    - doc: >-
+        A lone quote only splits arguments, a medium finding the check lets through; the command it
+        builds does not parse, which is the tool's bug rather than a way out.
+      collections:
+        input:
+          elements: [{identifier: "Bob's reads"}]
       expect: {rejected: false}
 
 dataset_name_stays_quoted:
@@ -106,8 +113,9 @@ group_tags_shell_injection:
         rejected: true
         message_contains: ["a group tag of a dataset of input 'input' contains the characters [' ;]"]
   green:
-    - datasets:
-        input: {tags: ["group:treated", "name:sample1"]}
+    - doc: Command characters stay inside the quotes when no quote closes them.
+      datasets:
+        input: {tags: ["group:a;b", "name:sample1"]}
       harm: true
       expect: {rejected: false}
 
@@ -128,15 +136,17 @@ dataset_content_shell_injection:
         rejected: true
         message_contains: ["the content of a dataset of input 'input' contains the characters [' ;]"]
   green:
-    - datasets:
-        input: {content: "chr1 100 200\n"}
+    - doc: Command characters stay inside the quotes when no quote closes them.
+      datasets:
+        input: {content: "chr1;100|200\n"}
       harm: true
       expect: {rejected: false}
 
 user_preference_stays_quoted:
   doc: >-
-    Galaxy sanitizes what a template reads from the user object, preferences included. The review counts a
-    preference as written as the user set it; the job check reads it as the template does, so this job runs.
+    Unless the tool turns the sanitizer off, Galaxy sanitizes what a template reads from the user object,
+    preferences included. The review counts a preference as written as the user set it; the job check reads
+    it as the template does, so this job runs.
   tool: user_preference.xml
   review:
     serious_rules: [shell-injection]
@@ -342,6 +352,25 @@ rewrites_restore_tokens:
     - doc: Even a plain value.
       inputs: {word: hello}
       expect: {rejected: true}
+  green:
+    - config: {strict_when_unsure: false}
+      inputs: {word: hello}
+      harm: true
+      expect: {rejected: false}
+
+rewrites_and_template_code:
+  doc: A refusal names every reason no value of the tool can be checked.
+  tool: rewrites_and_template_code.xml
+  code: uncheckable-rewrites
+  review:
+    rewrites: true
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: template-exec, severity: critical}
+  red:
+    - inputs: {word: "x' >harm-marker '"}
+      harm: true
+      expect: {rejected: true, codes: [uncheckable-rewrites, uncheckable-template-code]}
   green:
     - config: {strict_when_unsure: false}
       inputs: {word: hello}

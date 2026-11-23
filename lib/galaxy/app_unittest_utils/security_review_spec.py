@@ -140,6 +140,7 @@ class SpecJobRunner:
         self.directory = directory or tempfile.mkdtemp()
         path = tool_path(tool_file)
         self.tool: Tool = create_tool_from_source(self.app, get_tool_source(path), config_file=path)
+        self._users: dict[tuple[str, str], model.User] = {}
 
     def run(self, job_case: JobCase, evaluator: str = "full", mode: Optional[str] = None) -> JobOutcome:
         """The outcome of the job's check, in the job's own mode unless ``mode`` is given."""
@@ -166,12 +167,12 @@ class SpecJobRunner:
         command_line = built[0] if evaluator == "full" else None
         return JobOutcome(False, command_line=command_line, warnings=warnings.messages)
 
-    def harms(self, job_case: JobCase) -> bool:
-        """Whether the job's command, built with the review off, creates HARM_MARKER."""
+    def harms(self, job_case: JobCase) -> tuple[bool, int]:
+        """Whether the job's command, built with the review off, creates HARM_MARKER, and its exit code."""
         outcome = self.run(job_case, mode=OFF)
         assert outcome.command_line is not None
         working_directory = tempfile.mkdtemp(dir=self.directory)
-        subprocess.run(
+        completed = subprocess.run(
             ["bash", "-c", outcome.command_line],
             cwd=working_directory,
             stdout=subprocess.DEVNULL,
@@ -179,15 +180,13 @@ class SpecJobRunner:
             timeout=30,
             check=False,
         )
-        return os.path.exists(os.path.join(working_directory, HARM_MARKER))
+        return os.path.exists(os.path.join(working_directory, HARM_MARKER)), completed.returncode
 
     def _job(self, job_case: JobCase, working_directory: str) -> model.Job:
         session = self.app.model.session
-        user = model.User(email=job_case.user.email, username=job_case.user.username, password="spec")
-        if job_case.user.preferences:
-            user.preferences["extra_user_preferences"] = json.dumps(job_case.user.preferences)
+        user = self._user(job_case)
         history = model.History(user=user, name="spec")
-        session.add_all([user, history])
+        session.add(history)
         state: dict[str, Any] = dict(job_case.inputs)
         job = model.Job()
         job.user = user
@@ -219,6 +218,16 @@ class SpecJobRunner:
         session.add(job)
         session.flush()
         return job
+
+    def _user(self, job_case: JobCase) -> model.User:
+        """One user per email and name, with the job's preferences."""
+        key = (job_case.user.email, job_case.user.username)
+        if (user := self._users.get(key)) is None:
+            user = model.User(email=key[0], username=key[1], password="spec")
+            self.app.model.session.add(user)
+            self._users[key] = user
+        user.preferences["extra_user_preferences"] = json.dumps(job_case.user.preferences)
+        return user
 
     def _hda(
         self, dataset: DatasetContext, history: model.History, user: model.User

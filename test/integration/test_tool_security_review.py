@@ -115,7 +115,7 @@ class TestToolSecurityReviewEnforce(BaseToolSecurityReviewTestCase):
             result = self._run(history_id, QUOTED)
             assert result["job"]["state"] == "error"
             message = result["output"]["misc_info"]
-            assert "This job was not run" in message
+            assert message.startswith("[shell-injection] This job was not run: ")
             assert "an element identifier or the name of input 'input' contains the characters [' |]" in message
             assert "known problem handling these characters" in message
             assert len(self._review_warnings()) == 1
@@ -160,7 +160,8 @@ class TestToolSecurityReviewDefaults(BaseToolSecurityReviewTestCase):
             message = result["output"]["misc_info"]
             # Galaxy keeps the first 255 characters of the message.
             assert message.startswith(
-                "This job was not run: an element identifier or the name of input 'input' contains [%]"
+                "[not-plain-unchecked-place] This job was not run: an element identifier or the name of input 'input'"
+                " contains [%]"
             )
             assert "Use letters, digits" in message
 
@@ -169,7 +170,7 @@ class TestToolSecurityReviewDefaults(BaseToolSecurityReviewTestCase):
             result = self._run(history_id, "sample_1", PIPING_TOOL_ID)
             assert result["job"]["state"] == "error"
             assert result["output"]["misc_info"].startswith(
-                "This job was not run: this Galaxy server cannot check any value for tool"
+                "[uncheckable-letters-are-code] This job was not run: this Galaxy server cannot check any value for tool"
             )
 
 

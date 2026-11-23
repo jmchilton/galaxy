@@ -53,6 +53,7 @@ from galaxy.tool_util.security.charsets import (
 )
 from galaxy.tool_util.security.codes import RefusalCode
 from galaxy.tool_util.security.report import (
+    CHECKED_SEVERITIES,
     CODE_CAPABILITIES,
     DATASET_ATTRIBUTE,
     DATASET_CONTENT,
@@ -62,6 +63,7 @@ from galaxy.tool_util.security.report import (
     OPAQUE,
     RAW,
     RUNS_TEXT_RULES,
+    serious_findings,
     SPECIAL,
     TEXT,
     USER_PREFERENCE,
@@ -85,22 +87,11 @@ LOG = "log"
 ENFORCE = "enforce"
 MODES = (OFF, LOG, ENFORCE)
 
-# Findings whose characters are checked in the values of a job. Medium findings (a value that can
-# split into more arguments, close quotes without starting a command, or name another path) are
-# not: the characters they name, a space, a slash or a quote, are common in element identifiers and
-# dataset names, and a warning for each such job would bury the warnings that matter.
-CHECKED_SEVERITIES = frozenset((HIGH, CRITICAL))
-
 ANALYSED = "analysed"
 NOT_ANALYSED = "not_analysed"
 
 # Tool types whose command Galaxy writes itself or that have no Cheetah template.
 _UNREVIEWED_TOOL_TYPES = frozenset(("user_defined", "expression"))
-
-
-def serious_findings(report: Report) -> list[Finding]:
-    """The high and critical vulnerability findings, the ones checked against job values, most severe first."""
-    return [f for f in report.sorted() if f.kind == VULNERABILITY and f.severity in CHECKED_SEVERITIES]
 
 
 @contextmanager
@@ -117,9 +108,10 @@ def _keeping_consumes(evaluator: "ToolEvaluator") -> Iterator[None]:
 class ToolInputRejected(Exception):
     """The tool security review refuses a job: an input value can leave its place, or the job cannot be checked."""
 
-    def __init__(self, message: str, codes: Iterable[RefusalCode]) -> None:
+    def __init__(self, message: str, codes: Iterable[RefusalCode] = ()) -> None:
+        # Galaxy keeps the first 255 characters of a job's info: the codes come first.
         self.codes = tuple(sorted(set(codes)))
-        super().__init__(f"{message} Refusal codes: {', '.join(code.value for code in self.codes)}.")
+        super().__init__(f"[{', '.join(code.value for code in self.codes)}] {message}" if self.codes else message)
 
 
 @dataclass(frozen=True)
@@ -289,13 +281,10 @@ class ToolSecurityReviewer:
             )
             return
         violations: list[Violation] = []
-        codes: list[RefusalCode] = []
         if review.checked_findings or review.report.writes:
             try:
                 with _keeping_consumes(evaluator):
                     violations = list(find_violations(review.report, evaluator.param_dict))
-                # A rule without a code is a bug of the check, and handled as one.
-                codes = [RefusalCode(v.rule) for v in violations]
             except Exception:
                 # Without strict_when_unsure, the check must never be the reason a job fails.
                 log.exception("Job %s: checking values against the security review of tool %s failed", job_id, tool.id)
@@ -322,7 +311,8 @@ class ToolSecurityReviewer:
                 violation.severity,
             )
         if violations and self.mode == ENFORCE:
-            raise ToolInputRejected(rejection_message(tool, violations), codes)
+            # A rule without a code fails the job unexpectedly rather than letting it run.
+            raise ToolInputRejected(rejection_message(tool, violations), (RefusalCode(v.rule) for v in violations))
         unchecked = sorted({f.location for f in review.unchecked_findings} | set(review.unchecked_locations))
         if unchecked and not violations:
             self._cannot_check(
@@ -352,7 +342,7 @@ class ToolSecurityReviewer:
             log.debug("Job %s of tool %s: values are not checked, %s", job_id, tool.id, reason)
             return
         if no_plain := _no_plain_value(report):
-            codes = [code for code, _ in no_plain]
+            codes = sorted({code.value for code, _ in no_plain})
             why = [text for _, text in no_plain]
             log.warning(
                 "Tool security review (%s): job %s of tool %s version %s cannot be checked, %s, and %s",
@@ -364,7 +354,7 @@ class ToolSecurityReviewer:
                 "; ".join(why),
             )
             if self.mode == ENFORCE:
-                raise ToolInputRejected(unchecked_message(tool, reason, why), codes)
+                raise ToolInputRejected(unchecked_message(tool, reason, why), (code for code, _ in no_plain))
             return
         assert report is not None  # _no_plain_value refuses a job without a report
         try:
@@ -412,7 +402,7 @@ class Violation:
 
 
 # The rule of a value that a stray quote of another value leaves outside its quotes.
-STRAY_QUOTE = "stray-quote"
+STRAY_QUOTE = RefusalCode.STRAY_QUOTE.value
 
 
 def find_violations(report: Report, param_dict: dict[str, Any]) -> Iterator[Violation]:

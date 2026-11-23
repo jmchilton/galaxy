@@ -1,0 +1,13 @@
+<tool id="spec_rewrites_and_template_code" name="Template code that restores tokens" version="1.0" profile="24.0">
+    <description>imports subprocess and turns the sanitizer's quote and greater-than tokens back into the characters</description>
+    <command><![CDATA[
+#import subprocess
+echo '${str($word).replace("__sq__", "'").replace("__gt__", ">")}' > '$out'
+    ]]></command>
+    <inputs>
+        <param name="word" type="text"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>
