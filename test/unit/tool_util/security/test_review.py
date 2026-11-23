@@ -810,3 +810,23 @@ def test_braces_in_an_f_string_are_code(tmp_path):
                 f'<configfiles><configfile name="script"><![CDATA[{content}]]></configfile></configfiles>{braces}</tool>'
             )
         assert rules(review_tool_source(get_tool_source(path))) == expected
+
+
+DYNAMIC_CONDITIONAL = """<tool id="t" name="t" version="1" profile="24.2">
+  <command><![CDATA[echo '$meta.anything' > '$out']]></command>
+  <inputs>
+    <param name="kind" type="select"><option value="a">a</option></param>
+    <conditional name="meta" value_from="self:app.datatypes_registry.get_upload_metadata_params" value_ref="kind"/>
+  </inputs>
+  <outputs><data name="out" format="txt"/></outputs>
+</tool>
+"""
+
+
+def test_conditional_built_at_run_time_is_any_value(tmp_path):
+    path = os.path.join(tmp_path, "tool.xml")
+    with open(path, "w") as fh:
+        fh.write(DYNAMIC_CONDITIONAL)
+    report = review_tool_source(get_tool_source(path))
+    findings = [f for f in report.findings if f.rule == "shell-injection"]
+    assert findings and not any(f.checkable for f in findings)
