@@ -259,7 +259,10 @@ not_analysed_strict:
       harm: true
       expect:
         rejected: true
-        message_contains: ["an element identifier or the name of input 'input' contains [' ;]", "plain"]
+        message_contains:
+          - "an element identifier or the name of input 'input' contains [' ;]"
+          - "allows only plain names and values for tool"
+          - "because this tool writes values in places that no check of their characters can judge (command)"
     - doc: Even a character that is harmless where the value is written.
       collections:
         input:
