@@ -636,6 +636,7 @@ def dataset_content(datasets: tuple[Data, ...]) -> AV:
 
 
 _USER_OBJECT = tainted(PROBE, source("attribute of the $__user__ object (not sanitized)", OPAQUE))
+_DYNAMIC_CONDITIONAL = tainted(PROBE, source("value of a conditional built at run time (not sanitized)", OPAQUE))
 
 
 @dataclass(eq=False)
@@ -930,6 +931,9 @@ def _add_inputs(group: Group, input_sources: list[InputSource], prefix: str, too
                 section, input_source.parse_nested_inputs_source().parse_input_sources(), f"{path}.", tool_sanitize
             )
             group.add(name, section)
+        elif input_type == "conditional" and not _has_test_param(input_source):
+            # A conditional whose cases Galaxy builds at run time (value_from): any value of any name.
+            group.add(name, Opaque(path, _DYNAMIC_CONDITIONAL))
         elif input_type == "conditional":
             test_source = input_source.parse_test_input_source()
             conditional = Group(path, selector=test_source.parse_name())
@@ -952,6 +956,11 @@ def _add_inputs(group: Group, input_sources: list[InputSource], prefix: str, too
                 for conversion, _ in input_source.parse_conversion_tuples():
                     if conversion and conversion not in group.children:
                         group.add(conversion, Data(f"{prefix}{conversion}", sanitize=tool_sanitize))
+
+
+def _has_test_param(input_source: InputSource) -> bool:
+    elem = getattr(input_source, "input_elem", None)
+    return elem is None or elem.find("param") is not None
 
 
 def build_model(tool_source: ToolSource) -> Model:
