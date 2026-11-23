@@ -157,6 +157,34 @@ user_preference_stays_quoted:
       harm: true
       expect: {rejected: false}
 
+user_preference_shell_injection:
+  doc: >-
+    With the sanitizer off, a preference is written as the user set it. Read by name, with a subscript or a
+    Cheetah name, it can close its single quotes and start a command.
+  tool: user_preference_unsanitized.xml
+  code: shell-injection
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, accessor: user_preference, key: "spec|label", checkable: true}
+      - {rule: shell-injection, accessor: user_preference, key: label, checkable: true}
+  red:
+    - user: {preferences: {"spec|label": "a';touch harm-marker;'", label: x}}
+      harm: true
+      expect:
+        rejected: true
+        message_contains: ["your preference 'spec|label' contains the characters [' ;]"]
+    - user: {preferences: {"spec|label": x, label: "a';touch harm-marker;'"}}
+      harm: true
+      expect:
+        rejected: true
+        message_contains: ["your preference 'label' contains the characters [' ;]"]
+  green:
+    - doc: Command characters stay inside the quotes when no quote closes them.
+      user: {preferences: {"spec|label": "a;b|c && d", label: "a;b|c && d"}}
+      harm: true
+      expect: {rejected: false}
+
 stray_quote:
   doc: >-
     A lone quote in one value is harmless by itself, but it flips the quoting of the rest of the line,
@@ -189,6 +217,7 @@ stray_quote:
         input:
           elements: [{identifier: "Bob's reads"}]
       inputs: {word: "it's fine"}
+      harm: true
       expect: {rejected: false}
 
 nested_shell:
@@ -223,6 +252,7 @@ sed_program:
         message_contains: ["the value of input 'word' contains the characters [newline /]"]
   green:
     - inputs: {word: "hello world"}
+      harm: true
       expect: {rejected: false}
 
 configfile_python:
@@ -272,12 +302,14 @@ not_analysed_strict:
     - collections:
         input:
           elements: [{identifier: "sample 1/reads.fq"}]
+      harm: true
       expect: {rejected: false}
     - doc: An administrator can run such jobs unchecked.
       config: {strict_when_unsure: false}
       collections:
         input:
           elements: [{identifier: "a;b"}]
+      harm: true
       expect: {rejected: false}
 
 raw_dataset_model:
@@ -304,6 +336,7 @@ raw_dataset_model:
     - config: {strict_when_unsure: false}
       datasets:
         input: {name: reads}
+      harm: true
       expect: {rejected: false}
 
 pipe_to_shell:
@@ -322,6 +355,7 @@ pipe_to_shell:
   green:
     - config: {strict_when_unsure: false}
       inputs: {word: hello}
+      harm: true
       expect: {rejected: false}
 
 command_position:
@@ -339,6 +373,7 @@ command_position:
   green:
     - config: {strict_when_unsure: false}
       inputs: {program: echo}
+      harm: true
       expect: {rejected: false}
 
 rewrites_restore_tokens:
@@ -394,6 +429,50 @@ template_code:
   green:
     - config: {strict_when_unsure: false}
       inputs: {word: hello}
+      harm: true
+      expect: {rejected: false}
+
+user_object_unsanitized:
+  doc: >-
+    With the sanitizer off, the user object is read as it is stored. A template that reads it other than by
+    the name of one preference, here every preference in a loop, writes values the job check cannot trace.
+  tool: user_preferences_unsanitized_loop.xml
+  code: uncheckable-template-code
+  review:
+    findings:
+      - {rule: template-app-access, severity: medium}
+      - {rule: shell-injection, accessor: opaque, checkable: false}
+  red:
+    - user: {preferences: {"spec|label": "a';touch harm-marker;'"}}
+      harm: true
+      expect:
+        rejected: true
+        codes: [uncheckable-template-code, uncheckable-untraced-value]
+        message_contains:
+          - "run code or read data the job does not carry"
+          - "it writes values it cannot trace to an input (command)"
+  green:
+    - config: {strict_when_unsure: false}
+      user: {preferences: {"spec|label": "Bob"}}
+      harm: true
+      expect: {rejected: false}
+
+untraced_value:
+  doc: >-
+    A preference read in a loop, by a name the template computes, cannot be traced to one preference, so no
+    check sees its value. Galaxy sanitizes it here, but the job is refused whatever its values.
+  tool: user_preferences_loop.xml
+  code: uncheckable-untraced-value
+  review:
+    findings:
+      - {rule: shell-injection, accessor: opaque, checkable: false}
+  red:
+    - user: {preferences: {"spec|label": "hello"}}
+      expect: {rejected: true, message_contains: ["it writes values it cannot trace to an input (command)"]}
+  green:
+    - config: {strict_when_unsure: false}
+      user: {preferences: {"spec|label": "a';touch harm-marker;'"}}
+      harm: true
       expect: {rejected: false}
 
 review_failed:
