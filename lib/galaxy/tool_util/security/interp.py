@@ -52,6 +52,8 @@ from .report import (
 from .template import (
     CompiledTemplate,
     Method,
+    name_lookup,
+    NAMESPACE_LOOKUPS,
 )
 from .validators import regex_constraint
 from .values import (
@@ -82,7 +84,6 @@ class _BudgetExceeded(Exception):
     pass
 
 
-_NAME_MAPPER = ("VFFSL", "VFSL", "VFN", "VFL")
 _MUTATORS = frozenset(("append", "extend", "add", "insert", "update", "setdefault", "appendleft", "__setitem__"))
 _CLEAN_FUNCTIONS = frozenset(
     (
@@ -384,11 +385,9 @@ def _unwrap_str(node: ast.expr) -> ast.expr:
 
 def _template_path(node: ast.expr) -> str | None:
     """The dotted name of a ``$name`` placeholder, as Cheetah compiles it."""
-    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in _NAME_MAPPER:
-        if node.func.id == "VFN":
-            return None
-        path = _const(node.args[1]) if len(node.args) > 1 else None
-        return path if isinstance(path, str) else None
+    if lookup := name_lookup(node):
+        function, path = lookup
+        return None if function == "VFN" else path
     if isinstance(node, ast.Name):
         return node.id
     return None
@@ -1349,10 +1348,8 @@ class TemplateAnalysis:
     def _local_name(self, node: ast.AST, env: Env) -> str | None:
         if isinstance(node, ast.Name) and node.id in env.local:
             return node.id
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in _NAME_MAPPER:
-            path = _const(node.args[1]) if len(node.args) > 1 else None
-            if isinstance(path, str) and "." not in path and path in env.local:
-                return path
+        if (lookup := name_lookup(node)) and "." not in lookup[1] and lookup[1] in env.local:
+            return lookup[1]
         return None
 
     def ev(self, node: ast.AST | None, env: Env) -> AV:
@@ -1485,19 +1482,18 @@ class TemplateAnalysis:
 
     def ev_call(self, node: ast.Call, env: Env) -> AV:
         func = node.func
-        if isinstance(func, ast.Name) and func.id in _NAME_MAPPER and len(node.args) >= 2:
-            path = _const(node.args[1])
+        if lookup := name_lookup(node):
+            function, path = lookup
             autocall = bool(_const(node.args[2])) if len(node.args) > 2 else False
-            if isinstance(path, str):
-                if func.id == "VFN":
-                    # `$x.method()`: an attribute of x, which a test of `$x` itself says nothing about.
-                    value = self._unnarrowed(node.args[0], env)
-                    for part in path.split("."):
-                        value = attribute(value, part)
-                        if autocall:
-                            value = self._autocall(value, env)
-                    return value
-                return self.resolve(path, env, autocall)
+            if function == "VFN":
+                # `$x.method()`: an attribute of x, which a test of `$x` itself says nothing about.
+                value = self._unnarrowed(node.args[0], env)
+                for part in path.split("."):
+                    value = attribute(value, part)
+                    if autocall:
+                        value = self._autocall(value, env)
+                return value
+            return self.resolve(path, env, autocall)
         callee = self.ev(func, env)
         args = [self.ev(arg, env) for arg in node.args]
         keywords = [self.ev(keyword.value, env) for keyword in node.keywords]
@@ -1654,14 +1650,14 @@ class TemplateAnalysis:
     @staticmethod
     def _looked_up_path(node: ast.expr) -> str | None:
         """The dotted name a Cheetah lookup reads: `VFFSL(SL, "a.b")`, `VFN(VFFSL(SL, "a"), "b")`."""
-        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and len(node.args) > 1):
+        lookup = name_lookup(node)
+        if lookup is None:
             return None
-        name = _const(node.args[1])
-        if not isinstance(name, str):
-            return None
-        if node.func.id in ("VFFSL", "VFSL"):
+        function, name = lookup
+        if function in NAMESPACE_LOOKUPS:
             return name
-        if node.func.id == "VFN":
+        if function == "VFN":
+            assert isinstance(node, ast.Call)
             inner = TemplateAnalysis._looked_up_path(node.args[0])
             return f"{inner}.{name}" if inner is not None else None
         return None
@@ -1672,10 +1668,8 @@ class TemplateAnalysis:
         if not node.args or isinstance(node.args[0], ast.Constant):
             return True
         for inner in ast.walk(node.args[0]):
-            if isinstance(inner, ast.Call) and isinstance(inner.func, ast.Name) and inner.func.id in _NAME_MAPPER:
-                path = _const(inner.args[1]) if len(inner.args) > 1 else None
-                if isinstance(path, str) and path.split(".")[0] in SAFE_SPECIALS:
-                    return True
+            if (lookup := name_lookup(inner)) and lookup[1].split(".")[0] in SAFE_SPECIALS:
+                return True
         return False
 
     def _substitute(
@@ -1857,12 +1851,8 @@ def unresolved_names(template: CompiledTemplate, model: Model) -> set[str]:
                     key = _const(node.slice)
                     if isinstance(key, str):
                         assigned.add(key)
-                elif (
-                    isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in ("VFFSL", "VFSL")
-                ):
-                    path = _const(node.args[1]) if len(node.args) > 1 else None
-                    if isinstance(path, str):
-                        read.add(path.split(".")[0])
+                elif lookup := name_lookup(node, NAMESPACE_LOOKUPS):
+                    read.add(lookup[1].split(".")[0])
     return {
         name
         for name in read
