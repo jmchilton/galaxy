@@ -1,6 +1,9 @@
+import pytest
+
 from galaxy.model.dataset_collections.structure import (
     get_structure,
     Tree,
+    UninitializedTree,
 )
 from galaxy.model.dataset_collections.type_description import CollectionTypeDescriptionFactory
 from .test_matching import (
@@ -111,3 +114,17 @@ def test_get_structure_list_of_lists_over_single_datasests():
     assert len(tree.children) == 2
     assert tree.children[0][0] == "outer1"
     assert not tree.children[0][1].is_leaf
+
+
+def test_unenumerated_tree_rejects_element_queries():
+    """Cardinality, walking and shape need known children; asking anyway is a programming error."""
+    uninitialized = UninitializedTree(factory.for_collection_type("list"))
+    enumerated = get_structure(list_instance().collection, factory.for_collection_type("list"))
+    with pytest.raises(NotImplementedError, match="children are not known"):
+        len(uninitialized)
+    with pytest.raises(NotImplementedError, match="children are not known"):
+        next(uninitialized.walk_collections({}))
+    with pytest.raises(NotImplementedError, match="children are not known"):
+        uninitialized.compatible_shape(enumerated)
+    with pytest.raises(NotImplementedError, match="children are not known"):
+        enumerated.compatible_shape(uninitialized)
