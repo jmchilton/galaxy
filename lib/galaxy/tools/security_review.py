@@ -61,10 +61,16 @@ from galaxy.tool_util.security.report import (
     USER_PREFERENCE,
     VULNERABILITY,
 )
+from galaxy.tools.parameters.basic import SelectToolParameter
+from galaxy.tools.parameters.dynamic_options import (
+    DataMetaFilter,
+    DynamicOptions,
+)
 from galaxy.tools.wrappers import (
     DatasetCollectionWrapper,
     DatasetFilenameWrapper,
     DatasetListWrapper,
+    SelectToolParameterWrapper,
     ToolParameterValueWrapper,
 )
 from galaxy.util import mapped_chars
@@ -717,6 +723,9 @@ def _values_of(path: str, value: Any, words: frozenset[str]) -> Iterator[tuple[s
             yield f"an element identifier or the name of input '{path}'", identifier
         for dataset in _datasets(value):
             yield from _dataset_values(path, dataset, words)
+    elif isinstance(value, SelectToolParameterWrapper) and not _user_defines_options(value.input):
+        # Galaxy accepts only the options the tool or the admin defines.
+        return
     elif isinstance(value, ToolParameterValueWrapper):
         raw = getattr(value, "value", None)
         for item in raw if isinstance(raw, (list, tuple)) else [raw]:
@@ -731,6 +740,24 @@ def _values_of(path: str, value: Any, words: frozenset[str]) -> Iterator[tuple[s
             yield from _values_of(path, item, words)
     elif isinstance(value, str):
         yield f"the value of input '{path}'", value
+
+
+# Selects whose options come from what users give: their datasets, their columns, their tags, their builds.
+_USER_SELECT_TYPES = frozenset(("data_column", "group_tag", "genomebuild"))
+
+
+def _user_defines_options(param: SelectToolParameter) -> bool:
+    """The options of the select come from user data, as ``model._user_select`` decides for the review."""
+    if param.type in _USER_SELECT_TYPES or param.dynamic_options:
+        return True
+    options = param.options
+    if not isinstance(options, DynamicOptions):
+        return False
+    return bool(
+        options.dataset_ref_name
+        or options.from_url_options
+        or any(isinstance(f, DataMetaFilter) for f in options.filters)
+    )
 
 
 def _dataset_values(path: str, dataset: DatasetFilenameWrapper, words: frozenset[str]) -> Iterator[tuple[str, str]]:

@@ -28,7 +28,10 @@ from galaxy.tools import (
     Tool,
 )
 from galaxy.tools.evaluation import ToolEvaluator
-from galaxy.tools.parameters.basic import ToolParameter
+from galaxy.tools.parameters.basic import (
+    SelectToolParameter,
+    ToolParameter,
+)
 from galaxy.tools.security_review import (
     _identifiers,
     ANALYSED,
@@ -46,6 +49,7 @@ from galaxy.tools.wrappers import (
     DatasetListWrapper,
     InputValueWrapper,
     RawObjectWrapper,
+    SelectToolParameterWrapper,
 )
 
 ECHO_IDS = """<tool id="echo_ids" name="Echo identifiers" version="1.0" profile="24.0">
@@ -804,6 +808,26 @@ def test_strict_when_unsure_checks_values_it_cannot_judge_strictly(app, tmp_path
     message = strict_refusal(r, tool, evaluator(app, tool, ["a"], word="a|b"))
     assert "this tool writes values in places that no check of their characters can judge (command)" in message
     assert "the value of input 'word' contains [|]" in message
+
+
+PIPING_SELECT = PIPING.replace(
+    "echo '${word.value}' | sh",
+    "echo '${word.value}' $mode | sh",
+).replace(
+    '<param name="word" type="text"/>',
+    """<param name="word" type="text"/>
+    <param name="mode" type="select">
+      <option value="--fast">fast</option>
+      <option value="--very-sensitive">sensitive</option>
+    </param>""",
+)
+
+
+def test_strict_check_leaves_select_options_the_tool_defines_alone(app, tmp_path):
+    tool = make_tool(app, tmp_path, PIPING_SELECT, "piping_select.xml")
+    job = evaluator(app, tool, ["a"], word="b")
+    job.param_dict["mode"] = SelectToolParameterWrapper(cast(SelectToolParameter, tool.inputs["mode"]), "--fast")
+    reviewer(tmp_path, ENFORCE).check_job(tool, job)
 
 
 def test_strict_when_unsure_checks_strictly_when_the_check_fails(app, tmp_path, monkeypatch):
