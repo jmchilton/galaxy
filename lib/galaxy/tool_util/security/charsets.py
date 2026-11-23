@@ -43,7 +43,7 @@ NONE: Chars = frozenset()
 SHELL_EXEC: Chars = frozenset(";&|$`<>")
 # And a newline, in a shell script.
 SCRIPT_EXEC: Chars = SHELL_EXEC | {"\n"}
-_WHITESPACE: Chars = frozenset(" \t\n")
+WHITESPACE: Chars = frozenset(" \t\n")
 # Split or rewrite an unquoted word: extra arguments, globs, quotes, comments.
 SHELL_SPLIT: Chars = frozenset(" \t\n*?[]{}()~#!'\"\\")
 
@@ -104,6 +104,11 @@ _TOKEN_CHARS = {token: char for char, token in mapped_chars.items()}
 _OPTION_WORD = re.compile(r"(?:^|\s)-")
 
 
+def default_chars(sanitize: bool) -> Chars:
+    """What a text value can hold as Galaxy writes it: through the default sanitizer, or anything."""
+    return DEFAULT_SANITIZED if sanitize else PROBE
+
+
 def not_plain(value: str) -> frozenset[str]:
     """What keeps a value from being plain: its characters, or "-" for a word read as an option.
 
@@ -126,7 +131,7 @@ def unquoted(chars: Chars, word_first: Chars | None = None, script: bool = False
         return Verdict("shell-injection", HIGH, hit, "can start another command")
     if hit := chars & SHELL_SPLIT:
         dash = "-" in (chars if word_first is None else word_first)
-        if hit <= _WHITESPACE and not dash and "/" not in chars:
+        if hit <= WHITESPACE and not dash and "/" not in chars:
             # A list of plain words: none of them can be an option or name a file elsewhere.
             return Verdict("argument-injection", LOW, hit, "can split the word into extra plain words")
         return Verdict("argument-injection", MEDIUM, hit, "can split the word into extra arguments or globs")
@@ -520,7 +525,7 @@ def regex_word_first(expression: str) -> Chars:
     found = _follow(parsed) if universe != PROBE else None
     if found is None:
         return PROBE
-    after_space = frozenset(b for a, b in found.pairs if a in _WHITESPACE)
+    after_space = frozenset(b for a, b in found.pairs if a in WHITESPACE)
     return (regex_first(expression) | after_space) & PROBE
 
 

@@ -56,8 +56,6 @@ from .template import (
 
 __all__ = ("Finding", "Report", "review_tool_source", "Source", "SourceRef")
 
-# Capabilities that send text a template writes to a program that runs it.
-
 # A here-document (`<<WORD`, `<<-WORD`), not the here-string `<<<`. An arithmetic `<<` matches too.
 _HEREDOC = re.compile(r"(?<!<)<<(?!<)")
 
