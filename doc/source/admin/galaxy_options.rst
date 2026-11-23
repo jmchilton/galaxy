@@ -5003,46 +5003,30 @@
 :Type: str
 
 
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-``tool_security_review_timeout``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-:Description:
-    Seconds of CPU time the security review of one tool may take,
-    counted in the thread that reviews it: time spent waiting for the
-    process's other threads or for other processes does not count.
-    Most tools take a few milliseconds and the slowest known ones
-    under two seconds. A tool whose review takes longer is recorded as
-    not reviewed until the process restarts, and its jobs are not
-    checked (see ``tool_security_review_fail_closed``).
-:Default: ``5.0``
-:Type: float
-
-
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ``tool_security_review_fail_closed``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 :Description:
     What to do with a job whose input values the security review
-    cannot check: the tool's review did not finish (timeout or error),
-    the tool writes values in places that no check of their characters
-    can judge, or the check itself fails. By default such jobs run,
-    and Galaxy logs the reason at debug level. Set to ``true`` to
-    check such jobs strictly instead: every value the job carries must
-    be plain. That is the values of text and select parameters,
-    element identifiers, dataset names, and the dataset attributes,
-    tags, metadata and user preferences that the templates name. A
-    plain value has no quotes, no ``$ ; & | < > \ ( ) { } [ ] % # *``,
-    no newline or tab, no word that starts with ``-``, and none of
-    Galaxy's sanitizer tokens such as ``__gt__``. If the tool's
-    templates can change values (``open()``, ``decode``, ``chr()``, a
-    ``.replace`` that brings such a character), no value counts as
-    plain. Galaxy logs a warning for each job that fails the strict
-    check, and with ``tool_security_review: enforce`` also fails the
-    job, with a message that names the values. Tools without a command
-    template, user-defined tools and expression tools are not reviewed
-    and are not affected.
+    cannot check: the tool's review failed, the tool writes values in
+    places that no check of their characters can judge, or the check
+    itself fails. By default such jobs run, and Galaxy logs the reason
+    at debug level. Set to ``true`` to check such jobs strictly
+    instead: every value the job carries must be plain. That is the
+    values of text and select parameters, element identifiers, dataset
+    names, and the dataset attributes, tags, metadata and user
+    preferences that the templates name. A plain value has no quotes,
+    no ``$ ; & | < > \ ( ) { } [ ] % # *``, no newline or tab, no word
+    that starts with ``-``, and none of Galaxy's sanitizer tokens such
+    as ``__gt__``. If the tool's templates can change values
+    (``open()``, ``decode``, ``chr()``, a ``.replace`` that brings
+    such a character), no value counts as plain. Galaxy logs a warning
+    for each job that fails the strict check, and with
+    ``tool_security_review: enforce`` also fails the job, with a
+    message that names the values. Tools without a command template,
+    user-defined tools and expression tools are not reviewed and are
+    not affected.
 :Default: ``false``
 :Type: bool
 

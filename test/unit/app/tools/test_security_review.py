@@ -17,7 +17,6 @@ from galaxy.app_unittest_utils.galaxy_mock import MockApp
 from galaxy.tool_util.parser import get_tool_source
 from galaxy.tool_util.security import (
     review_tool_source,
-    ReviewTimeout,
 )
 from galaxy.tool_util.security.report import (
     ELEMENT_IDENTIFIER,
@@ -86,8 +85,8 @@ def make_tool(app, tmp_path, contents: str = ECHO_IDS, name: str = "tool.xml") -
     return create_tool_from_source(app, get_tool_source(path), config_file=path)
 
 
-def reviewer(tmp_path, mode: str = LOG, timeout: float = 5.0, fail_closed: bool = False) -> ToolSecurityReviewer:
-    return ToolSecurityReviewer(mode, timeout, fail_closed=fail_closed)
+def reviewer(tmp_path, mode: str = LOG, fail_closed: bool = False) -> ToolSecurityReviewer:
+    return ToolSecurityReviewer(mode, fail_closed=fail_closed)
 
 
 def hdca(name: str, identifiers: list[str]) -> model.HistoryDatasetCollectionAssociation:
@@ -176,17 +175,6 @@ def test_concurrent_first_jobs_review_once(app, tmp_path, monkeypatch):
     assert len(calls) == 1
 
 
-def test_timeout_is_recorded_as_not_analysed(app, tmp_path, caplog):
-    r = reviewer(tmp_path, timeout=-1)
-    tool = make_tool(app, tmp_path)
-    review = r.review(tool)
-    assert review is not None and review.status == NOT_ANALYSED and review.reason == "timeout"
-    assert "took longer than" in caplog.text
-    # Kept, so the next job does not try again.
-    assert r.review(tool) is review
-    r.check_job(tool, evaluator(app, tool, ["a'b"]))
-
-
 def test_analyser_error_is_recorded_as_not_analysed(app, tmp_path, monkeypatch):
     def broken(*args, **kwds):
         raise RuntimeError("analyser bug")
@@ -196,16 +184,9 @@ def test_analyser_error_is_recorded_as_not_analysed(app, tmp_path, monkeypatch):
     r = reviewer(tmp_path, ENFORCE)
     review = r.review(tool)
     assert review is not None and review.status == NOT_ANALYSED and review.reason == "error: RuntimeError"
+    # Kept, so the next job does not review again.
+    assert r.review(tool) is review
     r.check_job(tool, evaluator(app, tool, ["a'b"]))
-
-
-def test_timeout_raised_while_reviewing(app, tmp_path, monkeypatch):
-    def slow(*args, **kwds):
-        raise ReviewTimeout()
-
-    monkeypatch.setattr(security_review, "review_tool_source", slow)
-    review = reviewer(tmp_path).review(make_tool(app, tmp_path))
-    assert review is not None and review.reason == "timeout"
 
 
 def test_summary_is_logged_once_when_computed(app, tmp_path, caplog):
@@ -681,18 +662,24 @@ def broken(*args, **kwds):
     raise RuntimeError("analyser bug")
 
 
+def unreviewed(tmp_path, monkeypatch) -> ToolSecurityReviewer:
+    """A reviewer whose reviews fail: every job gets the strict check."""
+    monkeypatch.setattr(security_review, "review_tool_source", broken)
+    return reviewer(tmp_path, ENFORCE, fail_closed=True)
+
+
 def strict_refusal(r: ToolSecurityReviewer, tool: Tool, job: Any) -> str:
     with pytest.raises(ToolInputRejected) as e:
         r.check_job(tool, job)
     return str(e.value)
 
 
-def test_fail_closed_checks_a_timed_out_tool_strictly(app, tmp_path):
+def test_fail_closed_checks_an_unreviewed_tool_strictly(app, tmp_path, monkeypatch):
     tool = make_tool(app, tmp_path)
-    r = reviewer(tmp_path, ENFORCE, timeout=-1, fail_closed=True)
+    r = unreviewed(tmp_path, monkeypatch)
     r.check_job(tool, evaluator(app, tool, ["sample_1.fastq", "FastQC on data 1: RawData"], word="My title"))
     message = strict_refusal(r, tool, evaluator(app, tool, ["sample (1)"]))
-    assert message.startswith("This job was not run: the security review of this tool did not finish in time")
+    assert message.startswith("This job was not run: the security review of this tool failed")
     assert "an element identifier or the name of input 'input' contains [( )]" in message
     assert "Echo identifiers" in message and "echo_ids" in message
 
@@ -708,15 +695,15 @@ def test_fail_closed_checks_a_timed_out_tool_strictly(app, tmp_path):
         ("50%", "%"),
     ],
 )
-def test_strict_check_refuses_what_can_leave_any_place(app, tmp_path, identifier, harm):
+def test_strict_check_refuses_what_can_leave_any_place(app, tmp_path, monkeypatch, identifier, harm):
     tool = make_tool(app, tmp_path)
-    r = reviewer(tmp_path, ENFORCE, timeout=-1, fail_closed=True)
+    r = unreviewed(tmp_path, monkeypatch)
     assert f"contains [{harm}]" in strict_refusal(r, tool, evaluator(app, tool, [identifier]))
 
 
-def test_strict_check_reads_dataset_names(app, tmp_path):
+def test_strict_check_reads_dataset_names(app, tmp_path, monkeypatch):
     tool = make_tool(app, tmp_path)
-    r = reviewer(tmp_path, ENFORCE, timeout=-1, fail_closed=True)
+    r = unreviewed(tmp_path, monkeypatch)
     job = evaluator(app, tool, ["a"])
     next(iter(job.param_dict["input"])).unsanitized.name = "Trimmomatic on data 1 (R1 paired)"
     assert "the name of a dataset of input 'input' contains [( )]" in strict_refusal(r, tool, job)
@@ -728,14 +715,14 @@ READS_MORE = ECHO_IDS.replace(
 )
 
 
-def test_strict_check_reads_what_the_template_names(app, tmp_path):
+def test_strict_check_reads_what_the_template_names(app, tmp_path, monkeypatch):
     def job_with(info: str, preference: str) -> Any:
         job = evaluator(app, tool, ["a"])
         next(iter(job.param_dict["input"])).unsanitized.info = info
         job.param_dict["__user__"] = RawObjectWrapper(SimpleNamespace(extra_preferences={"account|name": preference}))
         return job
 
-    r = reviewer(tmp_path, ENFORCE, timeout=-1, fail_closed=True)
+    r = unreviewed(tmp_path, monkeypatch)
     # A template that names neither: a tool's output summary and a password do not count.
     tool = make_tool(app, tmp_path)
     r.check_job(tool, job_with("95.3% overall alignment rate", "a&b"))
@@ -743,23 +730,6 @@ def test_strict_check_reads_what_the_template_names(app, tmp_path):
     message = strict_refusal(r, tool, job_with("95.3% overall alignment rate", "a&b"))
     assert "the info of a dataset of input 'input' contains [%]" in message
     assert "your preference 'account|name' contains [&]" in message
-
-
-def test_timed_out_review_keeps_the_strict_check(app, tmp_path, monkeypatch):
-    calls = []
-
-    def timing_out(*args, **kwds):
-        calls.append(1)
-        raise ReviewTimeout()
-
-    monkeypatch.setattr(security_review, "review_tool_source", timing_out)
-    tool = make_tool(app, tmp_path)
-    r = reviewer(tmp_path, ENFORCE, fail_closed=True)
-    for _ in range(3):
-        r.check_job(tool, evaluator(app, tool, ["sample_1"]))
-    assert "contains [']" in strict_refusal(r, tool, evaluator(app, tool, ["5' UTR"]))
-    # Reviewed once: the next jobs do not wait for the timeout again.
-    assert len(calls) == 1
 
 
 @pytest.mark.parametrize("patched", ["review_tool_source", "reviewed_tool_source"])

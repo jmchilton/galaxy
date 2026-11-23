@@ -166,7 +166,7 @@ class MockApp(di.Container, GalaxyDataTestApp):
         self.execution_timer_factory = Bunch(get_timer=StructuredExecutionTimer)
         self.interactivetool_manager = Bunch(create_interactivetool=lambda *args, **kwargs: None)
         self.is_job_handler = False
-        self.tool_security_reviewer = ToolSecurityReviewer(OFF, timeout=5.0)
+        self.tool_security_reviewer = ToolSecurityReviewer(OFF)
         self.biotools_metadata_source = None
         self.trs_proxy = Bunch()
         set_thread_app(self)
