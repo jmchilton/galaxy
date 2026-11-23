@@ -36,7 +36,11 @@ from .report import (
     Finding,
     Report,
 )
-from .template import CompiledTemplate
+from .template import (
+    CompiledTemplate,
+    name_lookup,
+    NAMESPACE_LOOKUPS,
+)
 
 SERVER = "runs in the Galaxy server process"
 
@@ -83,6 +87,9 @@ _REWRITE_CALLS = frozenset(
     "chr unichr fromhex unhexlify translate unquote unquote_plus unquote_to_bytes b64decode b32decode b16decode"
     " b85decode a85decode urlsafe_b64decode standard_b64decode decodebytes a2b_base64 a2b_hex a2b_qp".split()
 )
+_VFN = frozenset(("VFN",))
+# `getattr(x, "name")` has the shape of a NameMapper call: the name is its second argument.
+_GETATTR = frozenset(("getattr",))
 # Codecs whose decode() keeps the characters of the text that encode() was given.
 _KEEPING_CODECS = frozenset(("utf-8", "utf8", "utf_8", "ascii"))
 
@@ -215,25 +222,21 @@ class PythonAudit:
 
     def chain(self, node: ast.AST, seen: set[int]) -> list[str] | None:
         """A dotted reference rooted at a name: `os.path.join`, or the NameMapper form `$os.path.join`."""
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in ("VFFSL", "VFSL"):
-            path = node.args[1] if len(node.args) > 1 else None
-            if isinstance(path, ast.Constant) and isinstance(path.value, str):
-                parts = path.value.split(".")
-                if parts[0] in self.aliases:
-                    return self.aliases[parts[0]].split(".") + parts[1:]
-                if self.is_template_name(parts[0]):
-                    # A tool input or a template variable; only its attributes are of interest.
-                    return ["$"] + parts[1:]
-                return parts
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "VFN":
-            path = node.args[1] if len(node.args) > 1 else None
-            if isinstance(path, ast.Constant) and isinstance(path.value, str):
-                # Cheetah splits `$os.system('id')` into VFN(VFFSL(SL, "os"), "system"): put it back together.
-                base = self.chain(node.args[0], seen)
-                if base is not None:
-                    seen.add(id(node.args[0]))
-                    return base + path.value.split(".")
-                return ["$"] + path.value.split(".")
+        if lookup := name_lookup(node, NAMESPACE_LOOKUPS):
+            parts = lookup[1].split(".")
+            if parts[0] in self.aliases:
+                return self.aliases[parts[0]].split(".") + parts[1:]
+            if self.is_template_name(parts[0]):
+                # A tool input or a template variable; only its attributes are of interest.
+                return ["$"] + parts[1:]
+            return parts
+        if (lookup := name_lookup(node, _VFN)) and isinstance(node, ast.Call):
+            # Cheetah splits `$os.system('id')` into VFN(VFFSL(SL, "os"), "system"): put it back together.
+            base = self.chain(node.args[0], seen)
+            if base is not None:
+                seen.add(id(node.args[0]))
+                return base + lookup[1].split(".")
+            return ["$"] + lookup[1].split(".")
         attrs: list[str] = []
         current = node
         while isinstance(current, ast.Attribute):
@@ -292,16 +295,10 @@ class PythonAudit:
             names.append(node.id)
         elif isinstance(node, ast.Attribute):
             names.append(node.attr)
-        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-            path = node.args[1] if len(node.args) > 1 else None
-            if (
-                node.func.id in ("VFFSL", "VFSL", "VFN")
-                and isinstance(path, ast.Constant)
-                and isinstance(path.value, str)
-            ):
-                names.extend(path.value.split("."))
-            elif node.func.id == "getattr" and isinstance(path, ast.Constant) and isinstance(path.value, str):
-                names.append(path.value)
+        elif lookup := name_lookup(node):
+            names.extend(lookup[1].split("."))
+        elif lookup := name_lookup(node, _GETATTR):
+            names.append(lookup[1])
         for name in names:
             if name not in self.report.names:
                 self.report.names.append(name)
@@ -312,10 +309,8 @@ class PythonAudit:
             return func.id == "getVar"
         if isinstance(func, ast.Attribute):
             return func.attr == "getVar"
-        if isinstance(func, ast.Call) and isinstance(func.func, ast.Name) and func.func.id in ("VFFSL", "VFSL"):
-            path = func.args[1] if len(func.args) > 1 else None
-            return isinstance(path, ast.Constant) and path.value in ("getVar", "self.getVar")
-        return False
+        lookup = name_lookup(func, NAMESPACE_LOOKUPS)
+        return lookup is not None and lookup[1] in ("getVar", "self.getVar")
 
     def is_template_name(self, name: str) -> bool:
         if name in ("__app__", "__user__"):
