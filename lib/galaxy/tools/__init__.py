@@ -1687,7 +1687,7 @@ class Tool(UsesDictVisibleKeys):
                         return result
 
     def security_review(self) -> Optional["ToolReview"]:
-        """The security review of this tool's templates, computed within the configured timeout on first use.
+        """The security review of this tool's templates, computed on first use.
 
         None when reviews are off, outside a Galaxy server, or for a tool without a Cheetah command.
         """
