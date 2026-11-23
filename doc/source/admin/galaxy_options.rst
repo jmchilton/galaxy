@@ -4188,10 +4188,10 @@
     parent-side JSON decoding also adds overhead. Simple parameter
     references resolve in Python without starting a worker. When empty
     (the default), the worker runs without an OS-level jail.
-    Full JavaScript evaluation requires Python 3.10+ and the quickjs-ng
-    package. Without QuickJS, expressions requiring JavaScript fail with
-    an error; literals and simple parameter references continue to work
-    without it.
+    Full JavaScript evaluation requires Python 3.10+ and the
+    quickjs-ng package. Without QuickJS, expressions requiring
+    JavaScript fail with an error; literals and simple parameter
+    references continue to work without it.
     Set this to ``bubblewrap`` to use a built-in bubblewrap jail. It
     clears the environment, unshares the PID/IPC/UTS namespaces, and
     read-only-binds only what the worker needs to run: the Python
@@ -5010,9 +5010,30 @@
 :Description:
     Seconds the security review of one tool may take. A tool whose
     review takes longer is recorded as not reviewed, and its jobs are
-    not checked.
+    not checked (see ``tool_security_review_fail_closed``).
 :Default: ``5.0``
 :Type: float
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+``tool_security_review_fail_closed``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+:Description:
+    What to do with a job whose input values the security review
+    cannot check: the tool's review did not finish (timeout or error),
+    the tool writes values in places that no check of their characters
+    can judge, or the check itself fails. By default such jobs run,
+    and Galaxy logs the reason at debug level. Set to ``true`` to log
+    a warning for each such job, and with ``tool_security_review:
+    enforce`` to also fail it with a message that asks the user to
+    contact the administrators. A review that timed out is tried again
+    on the tool's next job. Consider a longer
+    ``tool_security_review_timeout`` with this option. Tools without a
+    command template, user-defined tools and expression tools are not
+    reviewed and are not affected.
+:Default: ``false``
+:Type: bool
 
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

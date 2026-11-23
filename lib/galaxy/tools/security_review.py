@@ -8,7 +8,9 @@ timeout, and is never stored.
 
 Before a job's command line is built, :meth:`ToolSecurityReviewer.check_job` compares the values of
 the job's inputs with the tool's high and critical findings: a value that contains a character that
-can leave its place is logged (``log``) or fails the job (``enforce``).
+can leave its place is logged (``log``) or fails the job (``enforce``). With ``fail_closed``, a job
+that cannot be checked (no review, a finding no character test can decide, an error in the check) is
+logged as well, and fails in ``enforce``.
 """
 
 import logging
@@ -85,7 +87,7 @@ _UNREVIEWED_TOOL_TYPES = frozenset(("user_defined", "expression"))
 
 
 class ToolInputRejected(Exception):
-    """A job input contains characters that can leave the place where the tool writes it."""
+    """The tool security review refuses a job: an input value can leave its place, or the job cannot be checked."""
 
 
 @dataclass(frozen=True)
@@ -136,11 +138,13 @@ def reviewed_tool_source(tool: "Tool") -> Optional[ToolSource]:
 class ToolSecurityReviewer:
     """Reviews tools when their jobs are prepared, and checks job values against the reviews."""
 
-    def __init__(self, mode: str, timeout: float) -> None:
+    def __init__(self, mode: str, timeout: float, fail_closed: bool = False) -> None:
         if mode not in MODES:
             raise ValueError(f"tool_security_review must be one of {', '.join(MODES)}, not '{mode}'")
         self.mode = mode
         self.timeout = timeout
+        # Treat a job the review cannot check like a job with a harmful value.
+        self.fail_closed = fail_closed
         # Keyed by the Tool object: a review lives as long as the tool it is about.
         self._reviews: WeakKeyDictionary[Tool, ToolReview] = WeakKeyDictionary()
         self._tool_locks: WeakKeyDictionary[Tool, threading.Lock] = WeakKeyDictionary()
@@ -148,7 +152,11 @@ class ToolSecurityReviewer:
 
     @classmethod
     def from_config(cls, config: Any) -> "ToolSecurityReviewer":
-        return cls(mode=config.tool_security_review, timeout=float(config.tool_security_review_timeout))
+        return cls(
+            mode=config.tool_security_review,
+            timeout=float(config.tool_security_review_timeout),
+            fail_closed=bool(config.tool_security_review_fail_closed),
+        )
 
     @property
     def enabled(self) -> bool:
@@ -167,7 +175,7 @@ class ToolSecurityReviewer:
             tool_source = reviewed_tool_source(tool)
         except Exception as e:
             log.warning("Cannot review tool %s for security: %s", tool.id, e)
-            return None
+            return ToolReview(NOT_ANALYSED, tool.id, tool.version, reason=f"error: {type(e).__name__}")
         if tool_source is None:
             return None
         if (review := self._reviews.get(tool)) is not None:
@@ -178,7 +186,9 @@ class ToolSecurityReviewer:
             # Another thread preparing a job of the same tool may have reviewed it meanwhile.
             if (review := self._reviews.get(tool)) is None:
                 review = self._compute(tool, tool_source)
-                self._reviews[tool] = review
+                # Failing closed, a timeout under load must not refuse the tool's jobs until a restart.
+                if not (self.fail_closed and review.reason == "timeout"):
+                    self._reviews[tool] = review
         return review
 
     def _compute(self, tool: "Tool", tool_source: ToolSource) -> ToolReview:
@@ -256,23 +266,26 @@ class ToolSecurityReviewer:
             return
         review = self.review(tool)
         job_id = evaluator.job.id
-        if review is None or review.status != ANALYSED:
-            log.debug("Job %s: tool %s has no security review, its values are not checked", job_id, tool.id)
+        if review is None:
             return
-        if not review.checked_findings and not (review.report and review.report.writes):
-            # Nothing to compare: no finding to check and no written value a stray quote could free.
+        if review.status != ANALYSED or review.report is None:
+            reason = "it took too long" if review.reason == "timeout" else "it failed"
+            self._cannot_check(tool, job_id, f"the security review of the tool did not finish: {reason}")
             return
-        # Reading element identifiers and names through the wrappers marks the job as consuming
-        # them, which changes how the job cache matches it; the check must not.
-        consumes = (evaluator.consumes_names, evaluator.consumes_identifiers)
-        try:
-            violations = list(find_violations(review.report, evaluator.param_dict)) if review.report else []
-        except Exception:
-            # The check must never be the reason a job fails.
-            log.exception("Job %s: checking values against the security review of tool %s failed", job_id, tool.id)
-            return
-        finally:
-            evaluator.consumes_names, evaluator.consumes_identifiers = consumes
+        violations: list[Violation] = []
+        if review.checked_findings or review.report.writes:
+            # Reading element identifiers and names through the wrappers marks the job as consuming
+            # them, which changes how the job cache matches it; the check must not.
+            consumes = (evaluator.consumes_names, evaluator.consumes_identifiers)
+            try:
+                violations = list(find_violations(review.report, evaluator.param_dict))
+            except Exception:
+                # Without fail_closed, the check must never be the reason a job fails.
+                log.exception("Job %s: checking values against the security review of tool %s failed", job_id, tool.id)
+                self._cannot_check(tool, job_id, "checking its values against the security review failed")
+                return
+            finally:
+                evaluator.consumes_names, evaluator.consumes_identifiers = consumes
         for violation in violations:
             log.warning(
                 "Tool security review: job %s of tool %s version %s: %s of input '%s' contains [%s],"
@@ -289,6 +302,28 @@ class ToolSecurityReviewer:
             )
         if violations and self.mode == ENFORCE:
             raise ToolInputRejected(rejection_message(tool, violations))
+        unchecked = sorted({f.location for f in review.unchecked_findings} | set(review.unchecked_locations))
+        if unchecked and not violations:
+            self._cannot_check(
+                tool,
+                job_id,
+                f"the tool writes values in places no check of their characters can judge ({', '.join(unchecked)})",
+            )
+
+    def _cannot_check(self, tool: "Tool", job_id: Any, reason: str) -> None:
+        """A job whose values the review cannot judge: logged, and refused in ``enforce`` when failing closed."""
+        if not self.fail_closed:
+            log.debug("Job %s of tool %s: values are not checked, %s", job_id, tool.id, reason)
+            return
+        log.warning(
+            "Tool security review: job %s of tool %s version %s cannot be checked, %s",
+            job_id,
+            tool.id,
+            tool.version,
+            reason,
+        )
+        if self.mode == ENFORCE:
+            raise ToolInputRejected(unchecked_message(tool, reason))
 
 
 @dataclass(frozen=True)
@@ -513,6 +548,14 @@ def _describe(ref: SourceRef) -> str:
     if ref.accessor == METADATA:
         return f"metadata '{ref.key}' of a dataset of input '{ref.param}'"
     return f"{_DESCRIPTIONS.get(ref.accessor, 'the value of')} input '{ref.param}'"
+
+
+def unchecked_message(tool: "Tool", reason: str) -> str:
+    return (
+        f"This job was not run: this Galaxy server runs only jobs whose input values it can check, and it cannot"
+        f" check the values of tool '{tool.name}' ({tool.id} version {tool.version}): {reason}. Please contact the"
+        " administrators of this server."
+    )
 
 
 def rejection_message(tool: "Tool", violations: list[Violation]) -> str:
