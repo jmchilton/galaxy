@@ -248,6 +248,17 @@ def test_default_identifier_source_from_hdca():
     assert _identifiers_for_output_b(input_b) == ["x", "y"]
 
 
+def test_default_identifier_source_from_dce():
+    nested = galaxy.model.DatasetCollection(collection_type="list:list")
+    input_b = galaxy.model.DatasetCollectionElement(
+        collection=nested, element=_flat_list(["x", "y"]), element_identifier="inner1", element_index=0
+    )
+    galaxy.model.DatasetCollectionElement(
+        collection=nested, element=_flat_list(["z", "w"]), element_identifier="inner2", element_index=1
+    )
+    assert _identifiers_for_output_b(input_b) == ["x", "y"]
+
+
 def _identifiers_for_output_b(
     input_b: galaxy.model.HistoryDatasetCollectionAssociation | galaxy.model.DatasetCollectionElement,
 ) -> list[str | None]:
