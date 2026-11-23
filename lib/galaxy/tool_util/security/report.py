@@ -58,6 +58,25 @@ ACCESSORS = (
 )
 
 
+# Why the values of a location cannot be checked (Report.unchecked_locations).
+NOT_ANALYSED = "parts of it were not analysed"
+RUNS_TEXT = "it sends text to a shell to run"
+# Capability findings of a template that sends text to a program that runs it.
+RUNS_TEXT_RULES = frozenset(("capability-pipe-to-shell",))
+# Capabilities with which a template runs code or reads text that the job does not carry.
+CODE_CAPABILITIES = frozenset(
+    (
+        "template-exec",
+        "template-compile-exec",
+        "template-file-io",
+        "template-network",
+        "template-reflection",
+        "template-app-access",
+        "template-model-access",
+    )
+)
+
+
 @dataclass(frozen=True)
 class SourceRef:
     """Where a user-controlled value comes from: the input (its path, `cond.param`) and how it is read."""
@@ -162,6 +181,12 @@ class Report:
     # template were not analysed, or it sends text to a program that runs it. Their findings are
     # not checkable, and their writes are left out.
     unchecked_locations: dict[str, str] = field(default_factory=dict)
+    # Template code that can turn a plain value into one that is not (chr(), a decoder, re.sub, a
+    # .replace whose new text is not plain), by location.
+    rewrites: dict[str, list[str]] = field(default_factory=dict)
+    # The variable and attribute names the templates mention: which dataset attributes, metadata
+    # elements and account values a template can read.
+    names: list[str] = field(default_factory=list)
 
     def add(self, finding: Finding) -> None:
         for i, existing in enumerate(self.findings):
@@ -212,6 +237,8 @@ class Report:
             "writes": _by_location(self.writes),
             "closers": _by_location(self.closers),
             "unchecked_locations": dict(sorted(self.unchecked_locations.items())),
+            "rewrites": {location: sorted(found) for location, found in sorted(self.rewrites.items())},
+            "names": sorted(self.names),
         }
 
     @classmethod
@@ -221,6 +248,8 @@ class Report:
             tool_id=as_dict.get("tool_id"),
             unanalyzed=list(as_dict.get("unanalyzed") or []),
             unchecked_locations=dict(as_dict.get("unchecked_locations") or {}),
+            rewrites={location: list(found) for location, found in (as_dict.get("rewrites") or {}).items()},
+            names=list(as_dict.get("names") or []),
         )
         for f in as_dict.get("findings") or []:
             f = dict(f)
