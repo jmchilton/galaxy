@@ -509,8 +509,9 @@ def _accessor_values(ref: SourceRef, value: Any) -> Iterator[str]:
             yield from (str(group) for group in dataset.groups)
     elif accessor == DATASET_CONTENT:
         for dataset in _datasets(value):
-            # The path the template opens.
-            yield from _file_text(str(dataset))
+            # The template opens the dataset's path where the job runs, which may not be this host's
+            # path (a rewriting compute environment): read the file Galaxy keeps.
+            yield from _file_text(dataset.unsanitized.get_file_name())
 
 
 # The most of a dataset the check reads; a bigger one counts as holding every character.
@@ -518,14 +519,20 @@ CONTENT_LIMIT = 64 * 1024 * 1024
 
 
 def _file_text(path: str) -> Iterator[str]:
+    """The text of a file; one that is too big or cannot be read counts as holding every character."""
     read = 0
-    with open(path, "rb") as fh:
-        while chunk := fh.read(1024 * 1024):
-            read += len(chunk)
-            if read > CONTENT_LIMIT:
-                yield "".join(sorted(PROBE))
+    try:
+        with open(path, "rb") as fh:
+            while chunk := fh.read(1024 * 1024):
+                read += len(chunk)
+                if read > CONTENT_LIMIT:
+                    break
+                yield chunk.decode("utf-8", errors="replace")
+            else:
                 return
-            yield chunk.decode("utf-8", errors="replace")
+    except OSError as e:
+        log.debug("Cannot read %s: %s", path, e)
+    yield "".join(sorted(PROBE))
 
 
 def _identifiers(value: Any) -> Iterator[str]:
