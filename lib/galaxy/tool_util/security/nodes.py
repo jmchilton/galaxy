@@ -7,6 +7,7 @@ or a string method; a dataset gives its path, its name, its metadata.
 
 from __future__ import annotations
 
+import ast
 from dataclasses import (
     dataclass,
     field,
@@ -32,9 +33,12 @@ from .report import (
 from .values import (
     AV,
     CLEAN,
+    contents,
     join,
     Node,
+    returns_receiver,
     source,
+    stringify,
     tainted,
 )
 
@@ -154,7 +158,7 @@ class Data(Node):
             )
         if name == "get_staging_path":
             staged = source(f"element identifier of dataset '{self.path}'", ELEMENT_IDENTIFIER, self.path)
-            return AV(bound=(tainted(PROBE - {"/"}, staged), "__value__"))
+            return AV(bound=(tainted(PROBE - {"/"}, staged), returns_receiver))
         if name == "metadata":
             return AV(nodes=(Metadata(self.path, self),))
         if name == "unsanitized":
@@ -257,22 +261,22 @@ class Collection(Node):
         if name in ("name", "element_identifier"):
             return self._identifier()
         if name == "keys":
-            return AV(bound=(AV(elem=self._identifier()), "__value__"))
+            return AV(bound=(AV(elem=self._identifier()), returns_receiver))
         if name == "items":
             pair = AV(items=(self._identifier(), self.element() or CLEAN))
-            return AV(bound=(AV(elem=pair), "__value__"))
+            return AV(bound=(AV(elem=pair), returns_receiver))
         if name == "values":
-            return AV(bound=(AV(elem=self.element()), "__value__"))
+            return AV(bound=(AV(elem=self.element()), returns_receiver))
         if name == "get_datasets_for_group":
             # The datasets of the collection, at any depth, whose tags name the group.
-            return AV(bound=(AV(elem=AV(nodes=(Data(self.path, sanitize=self.sanitize),))), "__value__"))
+            return AV(bound=(AV(elem=AV(nodes=(Data(self.path, sanitize=self.sanitize),))), returns_receiver))
         if name in ("element_identifiers_extensions_paths_and_metadata_files", "sample_sheet_row"):
             return AV(nodes=(Opaque(f"{self.path}.{name}", self._identifier()),))
         if name == "get_all_staging_paths":
             staged = tainted(
                 PROBE - {"/"}, source(f"element identifier of collection '{self.path}'", ELEMENT_IDENTIFIER, self.path)
             )
-            return AV(bound=(AV(elem=staged), "__value__"))
+            return AV(bound=(AV(elem=staged), returns_receiver))
         if (
             name
             in (
@@ -349,8 +353,15 @@ class UserPreferences(Opaque):
 
     def attr(self, name: str) -> AV | None:
         if name == "get":
-            return AV(bound=(AV(nodes=(self,)), "__preference__"))
+            return AV(bound=(AV(nodes=(self,)), gets_preference))
         return super().attr(name)
+
+
+def gets_preference(receiver: AV, args: list[AV], keywords: list[AV], nodes: list[ast.expr]) -> AV:
+    """`$__user__.extra_preferences.get('name', default)`: that preference, or the default."""
+    name = nodes[0].value if nodes and isinstance(nodes[0], ast.Constant) else None
+    found = user_preference(name) if isinstance(name, str) else stringify(receiver)
+    return join(found, *(contents(a) for a in args[1:] + keywords))
 
 
 def user_preference(name: str) -> AV:
