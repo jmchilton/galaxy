@@ -33,9 +33,6 @@ class Leaf:
     def multiply(self, other_structure):
         return other_structure.clone()
 
-    def sliced_collection_type(self, collection):
-        return input
-
     def __str__(self):
         return "Leaf[]"
 
@@ -221,10 +218,8 @@ def tool_output_to_structure(get_sliced_input_collection_structure, tool_output,
 
             tree = UninitializedTree(collection_type_descriptions.for_collection_type(collection_type))
 
-    if not tree.children_known and tree.collection_type_description.collection_type == "paired":
-        # TODO: We don't need to return UninitializedTree for pairs I think, we should build
-        # a paired tree for the known structure here.
-        pass
+    # TODO: We don't need to return UninitializedTree for pairs I think, we should build
+    # a paired tree for the known structure here.
     return tree
 
 
