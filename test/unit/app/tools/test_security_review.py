@@ -85,8 +85,8 @@ def make_tool(app, tmp_path, contents: str = ECHO_IDS, name: str = "tool.xml") -
     return create_tool_from_source(app, get_tool_source(path), config_file=path)
 
 
-def reviewer(tmp_path, mode: str = LOG, fail_closed: bool = False) -> ToolSecurityReviewer:
-    return ToolSecurityReviewer(mode, fail_closed=fail_closed)
+def reviewer(tmp_path, mode: str = LOG, strict_when_unsure: bool = True) -> ToolSecurityReviewer:
+    return ToolSecurityReviewer(mode, strict_when_unsure=strict_when_unsure)
 
 
 def hdca(name: str, identifiers: list[str]) -> model.HistoryDatasetCollectionAssociation:
@@ -181,7 +181,7 @@ def test_analyser_error_is_recorded_as_not_analysed(app, tmp_path, monkeypatch):
 
     monkeypatch.setattr(security_review, "review_tool_source", broken)
     tool = make_tool(app, tmp_path)
-    r = reviewer(tmp_path, ENFORCE)
+    r = reviewer(tmp_path, ENFORCE, strict_when_unsure=False)
     review = r.review(tool)
     assert review is not None and review.status == NOT_ANALYSED and review.reason == "error: RuntimeError"
     # Kept, so the next job does not review again.
@@ -375,7 +375,9 @@ def test_rewritten_value_is_reported_as_not_checkable(app, tmp_path, caplog):
     # The rewritten value can bring the quote that lets the identifiers out: nothing is checkable.
     assert review is not None and len(review.unchecked_findings) == 2 and not review.checked_findings
     assert "(2 cannot be checked against job values)" in caplog.text
-    reviewer(tmp_path, ENFORCE).check_job(tool, evaluator(app, tool, ["a"], word="a__gt__/tmp/x"))
+    reviewer(tmp_path, ENFORCE, strict_when_unsure=False).check_job(
+        tool, evaluator(app, tool, ["a"], word="a__gt__/tmp/x")
+    )
 
 
 def test_identifiers_of_nested_collections_and_multiple_inputs(app):
@@ -397,13 +399,13 @@ def test_identifiers_of_nested_collections_and_multiple_inputs(app):
     ]
 
 
-def test_check_errors_do_not_fail_the_job(app, tmp_path, monkeypatch, caplog):
+def test_check_errors_do_not_fail_the_job_unless_strict(app, tmp_path, monkeypatch, caplog):
     def broken(findings, param_dict):
         raise RuntimeError("unexpected param_dict")
 
     monkeypatch.setattr(security_review, "find_violations", broken)
     tool = make_tool(app, tmp_path)
-    reviewer(tmp_path, ENFORCE).check_job(tool, evaluator(app, tool, ["it's"]))
+    reviewer(tmp_path, ENFORCE, strict_when_unsure=False).check_job(tool, evaluator(app, tool, ["it's"]))
     assert "checking values against the security review of tool echo_ids failed" in caplog.text
 
 
@@ -651,7 +653,7 @@ def test_user_preference_is_checked(app, tmp_path, name, expected):
         reviewer(tmp_path, ENFORCE).check_job(tool, job)
 
 
-# -- fail closed -------------------------------------------------------------------------------
+# -- strict when unsure ------------------------------------------------------------------------
 
 REWRITING = ECHO_IDS.replace("echo '${word.value}'", "echo ${str($word).replace('__gt__', '>')}")
 PIPING = ECHO_IDS.replace("echo '${word.value}' >> '$out'", "echo '${word.value}' | sh >> '$out'")
@@ -665,7 +667,7 @@ def broken(*args, **kwds):
 def unreviewed(tmp_path, monkeypatch) -> ToolSecurityReviewer:
     """A reviewer whose reviews fail: every job gets the strict check."""
     monkeypatch.setattr(security_review, "review_tool_source", broken)
-    return reviewer(tmp_path, ENFORCE, fail_closed=True)
+    return reviewer(tmp_path, ENFORCE)
 
 
 def strict_refusal(r: ToolSecurityReviewer, tool: Tool, job: Any) -> str:
@@ -674,7 +676,7 @@ def strict_refusal(r: ToolSecurityReviewer, tool: Tool, job: Any) -> str:
     return str(e.value)
 
 
-def test_fail_closed_checks_an_unreviewed_tool_strictly(app, tmp_path, monkeypatch):
+def test_strict_when_unsure_checks_an_unreviewed_tool_strictly(app, tmp_path, monkeypatch):
     tool = make_tool(app, tmp_path)
     r = unreviewed(tmp_path, monkeypatch)
     r.check_job(tool, evaluator(app, tool, ["sample_1.fastq", "FastQC on data 1: RawData"], word="My title"))
@@ -733,21 +735,21 @@ def test_strict_check_reads_what_the_template_names(app, tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("patched", ["review_tool_source", "reviewed_tool_source"])
-def test_fail_closed_checks_a_tool_whose_review_failed_strictly(app, tmp_path, monkeypatch, patched):
+def test_strict_when_unsure_checks_a_tool_whose_review_failed_strictly(app, tmp_path, monkeypatch, patched):
     monkeypatch.setattr(security_review, patched, broken)
     tool = make_tool(app, tmp_path)
-    r = reviewer(tmp_path, ENFORCE, fail_closed=True)
+    r = reviewer(tmp_path, ENFORCE)
     r.check_job(tool, evaluator(app, tool, ["a b"]))
     assert "the security review of this tool failed" in strict_refusal(r, tool, evaluator(app, tool, ["a;b"]))
 
 
-def test_fail_closed_refuses_any_value_when_the_template_changes_values(app, tmp_path):
+def test_strict_when_unsure_refuses_any_value_when_the_template_changes_values(app, tmp_path):
     tool = make_tool(app, tmp_path, REWRITING, "unchecked.xml")
-    message = strict_refusal(reviewer(tmp_path, ENFORCE, fail_closed=True), tool, evaluator(app, tool, ["a"], word="b"))
+    message = strict_refusal(reviewer(tmp_path, ENFORCE), tool, evaluator(app, tool, ["a"], word="b"))
     assert "its templates can change values (.replace)" in message
     assert "no check of their characters can judge (command)" in message
-    # Without fail_closed the same job runs.
-    reviewer(tmp_path, ENFORCE).check_job(tool, evaluator(app, tool, ["a"], word="b"))
+    # With strict_when_unsure off the same job runs.
+    reviewer(tmp_path, ENFORCE, strict_when_unsure=False).check_job(tool, evaluator(app, tool, ["a"], word="b"))
 
 
 def test_replace_with_plain_text_keeps_values_plain(app, tmp_path):
@@ -757,27 +759,27 @@ def test_replace_with_plain_text_keeps_values_plain(app, tmp_path):
     assert security_review.template_transforms(make_tool(app, tmp_path, OPEN_FILE, "open_file.xml")) == ["open"]
 
 
-def test_fail_closed_checks_values_it_cannot_judge_strictly(app, tmp_path):
+def test_strict_when_unsure_checks_values_it_cannot_judge_strictly(app, tmp_path):
     tool = make_tool(app, tmp_path, PIPING, "unchecked.xml")
-    r = reviewer(tmp_path, ENFORCE, fail_closed=True)
+    r = reviewer(tmp_path, ENFORCE)
     r.check_job(tool, evaluator(app, tool, ["a"], word="b"))
     message = strict_refusal(r, tool, evaluator(app, tool, ["a"], word="a|b"))
     assert "this tool writes values in places that no check of their characters can judge (command)" in message
     assert "the value of input 'word' contains [|]" in message
 
 
-def test_fail_closed_checks_strictly_when_the_check_fails(app, tmp_path, monkeypatch):
+def test_strict_when_unsure_checks_strictly_when_the_check_fails(app, tmp_path, monkeypatch):
     monkeypatch.setattr(security_review, "find_violations", broken)
     tool = make_tool(app, tmp_path)
-    r = reviewer(tmp_path, ENFORCE, fail_closed=True)
+    r = reviewer(tmp_path, ENFORCE)
     r.check_job(tool, evaluator(app, tool, ["a"]))
     message = strict_refusal(r, tool, evaluator(app, tool, ["it's"]))
     assert "checking the job's values against the security review failed" in message
 
 
-def test_fail_closed_lets_checked_values_run(app, tmp_path):
+def test_strict_when_unsure_lets_checked_values_run(app, tmp_path):
     tool = make_tool(app, tmp_path)
-    reviewer(tmp_path, ENFORCE, fail_closed=True).check_job(tool, evaluator(app, tool, ["5' UTR"], word="x"))
+    reviewer(tmp_path, ENFORCE).check_job(tool, evaluator(app, tool, ["5' UTR"], word="x"))
 
 
 REWRITING_SCRIPT = ECHO_IDS.replace("echo '${word.value}' >> '$out'", "bash '$script' >> '$out'").replace(
@@ -787,17 +789,17 @@ REWRITING_SCRIPT = ECHO_IDS.replace("echo '${word.value}' >> '$out'", "bash '$sc
 )
 
 
-def test_fail_closed_names_the_harmful_value_first(app, tmp_path):
+def test_strict_when_unsure_names_the_harmful_value_first(app, tmp_path):
     tool = make_tool(app, tmp_path, REWRITING_SCRIPT, "unchecked.xml")
     review = reviewer(tmp_path).review(tool)
     assert review is not None and review.checked_findings and review.unchecked_findings
-    message = strict_refusal(reviewer(tmp_path, ENFORCE, fail_closed=True), tool, evaluator(app, tool, ["it';id;'s"]))
+    message = strict_refusal(reviewer(tmp_path, ENFORCE), tool, evaluator(app, tool, ["it';id;'s"]))
     assert "contains the characters" in message
 
 
-def test_fail_closed_in_log_mode_warns_and_lets_the_job_run(app, tmp_path, caplog):
+def test_strict_when_unsure_in_log_mode_warns_and_lets_the_job_run(app, tmp_path, caplog):
     tool = make_tool(app, tmp_path, PIPING, "unchecked.xml")
-    reviewer(tmp_path, LOG, fail_closed=True).check_job(tool, evaluator(app, tool, ["a"], word="a|b"))
+    reviewer(tmp_path, LOG).check_job(tool, evaluator(app, tool, ["a"], word="a|b"))
     warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
     assert warnings == [
         (
@@ -807,7 +809,7 @@ def test_fail_closed_in_log_mode_warns_and_lets_the_job_run(app, tmp_path, caplo
     ]
 
 
-def test_fail_closed_leaves_tools_without_a_template_alone(app, tmp_path):
+def test_strict_when_unsure_leaves_tools_without_a_template_alone(app, tmp_path):
     tool = make_tool(app, tmp_path, NO_COMMAND)
     job: Any = SimpleNamespace(job=SimpleNamespace(id=7))
-    reviewer(tmp_path, ENFORCE, fail_closed=True).check_job(tool, job)
+    reviewer(tmp_path, ENFORCE).check_job(tool, job)
