@@ -243,17 +243,19 @@ class _Lexer:
 
     def end_argument(self, text: str) -> None:
         cmd = self.top.cmd or ""
-        if cmd in SHELLS and _C_FLAG.match(text):
+        # After its script operand, an interpreter passes every word to the script: `perl x.pl -e 1`.
+        interpreter_option = not self.top.has_args
+        if cmd in SHELLS and _C_FLAG.match(text) and interpreter_option:
             self.set(expect="code:sh")
-        elif _PYTHON.match(cmd) and text == "-c":
+        elif _PYTHON.match(cmd) and text == "-c" and interpreter_option:
             self.set(expect="code:python")
-        elif cmd in ("perl", "ruby") and _E_FLAG.match(text):
+        elif cmd in ("perl", "ruby") and _E_FLAG.match(text) and interpreter_option:
             self.set(expect=f"code:{cmd}")
-        elif cmd in ("Rscript", "R") and text == "-e":
+        elif cmd in ("Rscript", "R") and text == "-e" and interpreter_option:
             self.set(expect="code:R")
-        elif cmd in ("node", "nodejs") and text in ("-e", "-p", "--eval", "--print"):
+        elif cmd in ("node", "nodejs") and text in ("-e", "-p", "--eval", "--print") and interpreter_option:
             self.set(expect="code:javascript")
-        elif cmd == "php" and text == "-r":
+        elif cmd == "php" and text == "-r" and interpreter_option:
             self.set(expect="code:php")
         elif cmd in _AWK:
             if text in ("-v", "-F", "--assign", "--field-separator", "-i", "--include"):

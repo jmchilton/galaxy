@@ -853,3 +853,20 @@ def test_double_quoted_strings_that_run_code(tmp_path, program, interpolating):
     assert interpolating <= breakout
     if not interpolating:
         assert not breakout & {"$", "@", "#"}
+
+
+@pytest.mark.parametrize(
+    "command,code",
+    [
+        ("perl -e 'print $word;'", True),
+        ("perl -w -e 'print $word;'", True),
+        ("perl '$input' -e '$word'", False),
+        ("python -c 'print(\"$free\")'", True),
+        ("python script.py -c 'print(\"$free\")'", False),
+        ("bash -c 'echo \"$free\"'", True),
+        ("bash run.sh -c 'echo \"$free\"'", False),
+    ],
+)
+def test_an_interpreter_flag_after_the_script_belongs_to_the_script(tmp_path, command, code):
+    report = review(tmp_path, command)
+    assert any(f.rule == "nested-interpreter" for f in report.findings) == code
