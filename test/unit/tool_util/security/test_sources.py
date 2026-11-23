@@ -7,8 +7,10 @@ import time
 
 import pytest
 
+from galaxy.tool_util.parser import get_tool_source
 from galaxy.tool_util.security import (
     Report,
+    review_tool_source,
     SourceRef,
 )
 from galaxy.tool_util.security.charsets import (
@@ -569,3 +571,26 @@ def test_reads_of_a_template_not_followed_name_the_inputs_it_mentions(tmp_path):
     } <= reads
     assert SourceRef(DATASET_ATTRIBUTE, "flat", "info") in reads
     assert not any(ref.accessor == OPAQUE for ref in reads)
+
+
+YAML_TOOL = """class: GalaxyTool
+id: yaml_t
+name: yaml_t
+version: "1"
+command: "cat '$input' > '$out'"
+inputs:
+- name: input
+  type: data
+  format: txt
+outputs:
+  out:
+    format: txt
+"""
+
+
+def test_outputs_of_a_yaml_tool_are_outputs(tmp_path):
+    path = tmp_path / "tool.yml"
+    path.write_text(YAML_TOOL)
+    report = review_tool_source(get_tool_source(str(path)))
+    assert not any(ref.key == "out" for f in report.findings for ref in f.refs)
+    assert report.reads["command"] == []

@@ -281,13 +281,18 @@ def build_model(tool_source: ToolSource) -> Model:
 
     xml_tree: Any = getattr(tool_source, "xml_tree", None)
     if xml_tree is not None:
+        # Template macros are an XML construct.
         model.templates = {name: text or "" for name, text in template_macro_params(xml_tree.getroot()).items()}
-        for elem in xml_tree.findall("./outputs/data"):
-            if elem.get("name") and elem.get("name") not in root.children:
-                root.add(elem.get("name"), Data(elem.get("name"), output=True))
-        for elem in xml_tree.findall("./outputs/collection"):
-            if elem.get("name") and elem.get("name") not in root.children:
-                root.add(elem.get("name"), Collection(elem.get("name"), output=True))
+    try:
+        outputs, collections = tool_source.parse_outputs(None)
+    except Exception:
+        outputs, collections = {}, {}
+    for output_name in outputs:
+        if output_name not in root.children:
+            root.add(output_name, Data(output_name, output=True))
+    for collection_name in collections:
+        if collection_name not in root.children:
+            root.add(collection_name, Collection(collection_name, output=True))
     for configfile in tool_source.parse_template_configfiles():
         if configfile.name:
             model.configfiles[configfile.name] = configfile.content or ""
