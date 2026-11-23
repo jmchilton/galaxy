@@ -608,7 +608,7 @@ def _unsafe_replace(text: str) -> bool:
         if args is None:
             return True
         try:
-            call = ast.parse(f"f({args.replace('$', '')})", mode="eval").body
+            call = ast.parse(f"f({_without_cheetah_dollars(args)})", mode="eval").body
         except SyntaxError:
             return True
         if not isinstance(call, ast.Call) or len(call.args) < 2:
@@ -619,6 +619,28 @@ def _unsafe_replace(text: str) -> bool:
         if _strict_harm(new.value) or "-" in new.value or any(c.isspace() for c in new.value):
             return True
     return False
+
+
+def _without_cheetah_dollars(code: str) -> str:
+    """Python code from a Cheetah expression: the ``$`` of each placeholder goes, a ``$`` in a string stays."""
+    out, quote, i = [], "", 0
+    while i < len(code):
+        c = code[i]
+        if quote:
+            if c == "\\" and i + 1 < len(code):
+                out.append(code[i : i + 2])
+                i += 2
+                continue
+            if c == quote:
+                quote = ""
+        elif c in "'\"":
+            quote = c
+        elif c == "$":
+            i += 1
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
 
 
 def _call_arguments(text: str, start: int) -> Optional[str]:
