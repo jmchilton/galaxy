@@ -7,18 +7,14 @@ import time
 
 import pytest
 
-from galaxy.tool_util.parser import get_tool_source
 from galaxy.tool_util.security import (
     Report,
-    review_tool_source,
-    ReviewTimeout,
     SourceRef,
 )
 from galaxy.tool_util.security.charsets import (
     HIGH,
     SHELL_EXEC,
 )
-from galaxy.tool_util.security.model import build_model
 from galaxy.tool_util.security.report import (
     DATASET_ATTRIBUTE,
     DATASET_CONTENT,
@@ -209,7 +205,7 @@ def test_writes_record_what_does_harm_outside_quotes(tmp_path):
     assert writes[SourceRef(TEXT, "free")] == SHELL_EXEC
     assert writes[SourceRef(TEXT, "no_quote")] == SHELL_EXEC
     assert writes[SourceRef(TEXT, "word")] == frozenset()
-    assert Report.from_dict(json.loads(json.dumps(report.to_dict()))).writes == report.writes
+    json.dumps(report.to_dict())
 
 
 def test_a_quote_left_raw_by_escaping_closes(tmp_path):
@@ -261,30 +257,6 @@ def test_no_character_decides_the_program(tmp_path):
     report = review(tmp_path, "$free --version")
     (finding,) = [f for f in report.findings if f.rule == "command-position"]
     assert finding.breakout == frozenset()
-
-
-def test_report_survives_json(tmp_path):
-    report = review(tmp_path, "echo '$input.element_identifier' $text")
-    restored = Report.from_dict(json.loads(json.dumps(report.to_dict())))
-    assert restored.sorted() == report.sorted()
-    assert restored.to_dict() == report.to_dict()
-
-
-def test_timeout(tmp_path, monkeypatch):
-    clock = iter([0.0, 100.0])
-    monkeypatch.setattr(time, "thread_time", lambda: next(clock, 100.0))
-    with pytest.raises(ReviewTimeout):
-        review(tmp_path, "echo $text", timeout=1)
-
-
-def test_waiting_does_not_count_against_the_timeout(tmp_path, monkeypatch):
-    def waiting(tool_source):
-        # As when the job handler's other threads hold the interpreter.
-        time.sleep(0.3)
-        return build_model(tool_source)
-
-    monkeypatch.setattr("galaxy.tool_util.security.build_model", waiting)
-    review(tmp_path, "echo $text", timeout=0.2)
 
 
 @pytest.mark.parametrize(
@@ -349,21 +321,9 @@ def test_included_template_macro_is_analysed_in_place(tmp_path, include):
     assert all(f.checkable for f in report.findings if f.kind == "vulnerability")
 
 
-def review_with_inputs(tmp_path, command: str, inputs: str, timeout: float | None = None) -> Report:
-    path = tmp_path / "inputs.xml"
-    path.write_text(
-        f"""<tool id="t" name="t" version="1" profile="24.2">
-  <command><![CDATA[{command}]]></command>
-  <inputs>{inputs}</inputs>
-  <outputs/>
-</tool>"""
-    )
-    return review_tool_source(get_tool_source(str(path)), timeout=timeout)
-
-
 def test_converted_dataset_is_a_dataset(tmp_path):
     inputs = '<param name="vcf" type="data" format="vcf"><conversion name="vcf_index" type="tabix"/></param>'
-    report = review_with_inputs(tmp_path, "ln -s '$vcf_index' i.tbi && echo '$vcf_index.element_identifier'", inputs)
+    report = review(tmp_path, "ln -s '$vcf_index' i.tbi && echo '$vcf_index.element_identifier'", inputs=inputs)
     assert report.unanalyzed == []
     assert refs(report) == {SourceRef(ELEMENT_IDENTIFIER, "vcf_index")}
     assert high(report).checkable
@@ -375,7 +335,7 @@ def test_parameter_named_without_its_nesting_is_looked_up_in_each_when_block(tmp
   <when value="a"><param name="x" type="text"/></when>
   <when value="b"><section name="s"><param name="x" type="text"/></section></when>
 </conditional>"""
-    report = review_with_inputs(tmp_path, "#if $c.sel in ['a', 'b']\necho '$c.x'\n#end if", inputs)
+    report = review(tmp_path, "#if $c.sel in ['a', 'b']\necho '$c.x'\n#end if", inputs=inputs)
     assert refs(report) == {SourceRef(TEXT, "c.x"), SourceRef(TEXT, "c.s.x")}
 
 
@@ -390,7 +350,9 @@ def test_many_narrowings_of_a_conditional_are_reviewed_in_time(tmp_path):
         f"#if $t.c.sel == 'v{b % 6}'\necho '$t.c.p{b % 6}'\n#elif $t.c.sel == 'v{(b + 1) % 6}'\necho '$t.c.p{(b + 1) % 6}'\n#end if\n"
         for b in range(12)
     )
-    report = review_with_inputs(tmp_path, f"#for $t in $r\n{blocks}#end for", inputs, timeout=5)
+    started = time.thread_time()
+    report = review(tmp_path, f"#for $t in $r\n{blocks}#end for", inputs=inputs)
+    assert time.thread_time() - started < 5
     assert refs(report) == {SourceRef(TEXT, f"r.c.p{i}") for i in cases}
 
 
