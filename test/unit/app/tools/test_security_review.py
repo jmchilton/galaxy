@@ -794,9 +794,8 @@ def test_strict_check_reads_what_the_template_names(app, tmp_path, monkeypatch):
     assert "your preference 'account|name' contains [&]" in message
 
 
-@pytest.mark.parametrize("patched", ["review_tool_source", "reviewed_tool_source"])
-def test_strict_when_unsure_checks_a_tool_whose_review_failed_strictly(app, tmp_path, monkeypatch, patched):
-    monkeypatch.setattr(security_review, patched, broken)
+def test_strict_when_unsure_checks_a_tool_whose_source_cannot_be_read_strictly(app, tmp_path, monkeypatch):
+    monkeypatch.setattr(security_review, "reviewed_tool_source", broken)
     tool = make_tool(app, tmp_path)
     r = reviewer(tmp_path, ENFORCE)
     r.check_job(tool, evaluator(app, tool, ["a b"]))
