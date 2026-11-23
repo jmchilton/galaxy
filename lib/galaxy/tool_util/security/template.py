@@ -40,6 +40,21 @@ _LINE_COMMENT = re.compile(r"# .*?\bline (\d+), col (\d+)\.?\s*$")
 _BODY_START = "_filter"
 
 
+# The NameMapper calls a compiled template makes for `$name`: VFFSL and VFSL look a dotted name up
+# in the namespace, VFN in the object of their first argument, VFL in a local value.
+NAME_MAPPER = frozenset(("VFFSL", "VFSL", "VFN", "VFL"))
+NAMESPACE_LOOKUPS = frozenset(("VFFSL", "VFSL"))
+
+
+def name_lookup(node: ast.AST, functions: frozenset[str] = NAME_MAPPER) -> tuple[str, str] | None:
+    """The function and the dotted name of a NameMapper call: ("VFFSL", "a.b") for `VFFSL(SL, "a.b")`."""
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in functions:
+        path = node.args[1] if len(node.args) > 1 else None
+        if isinstance(path, ast.Constant) and isinstance(path.value, str):
+            return node.func.id, path.value
+    return None
+
+
 class CompileTimeExecution(Exception):
     """The template contains a directive that runs code when it is compiled."""
 
