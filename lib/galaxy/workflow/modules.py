@@ -55,7 +55,10 @@ from galaxy.model import (
 )
 from galaxy.model.base import ensure_object_added_to_session
 from galaxy.model.dataset_collections.adapters import PromoteCollectionElementToCollectionAdapter
-from galaxy.model.dataset_collections.type_description import COLLECTION_TYPE_DESCRIPTION_FACTORY
+from galaxy.model.dataset_collections.type_description import (
+    COLLECTION_TYPE_DESCRIPTION_FACTORY,
+    CollectionTypeDescription,
+)
 from galaxy.model.dataset_collections.types.sample_sheet_util import validate_column_definitions
 from galaxy.objectstore import ObjectStorePopulator
 from galaxy.schema.credentials import (
@@ -3321,7 +3324,10 @@ class ToolModule(WorkflowModule):
                         and not replacement.child_collection
                     ):
                         mapping_type = collection_info.subcollection_mapping_type(prefixed_name)
-                        if getattr(mapping_type, "collection_type", None) == "single_datasets":
+                        if (
+                            isinstance(mapping_type, CollectionTypeDescription)
+                            and mapping_type.collection_type == "single_datasets"
+                        ):
                             replacement = PromoteCollectionElementToCollectionAdapter(replacement)
                 else:
                     replacement = progress.replacement_for_input(trans, step, input_dict)
