@@ -115,7 +115,7 @@ def _analyse(
     audit = PythonAudit(report, location, model)
     audit.template(template)
     names[location] = audit.names
-    for name in sorted(unresolved_names(template, model)):
+    for name in sorted(unresolved_names(template, model, audit.assigned | audit.stored_keys, audit.namespace_reads)):
         report.unanalyzed.append(f"{location}: ${name} is not a tool input, its value was not followed")
     analysis = TemplateAnalysis(model, template, report, location, language)
     try:
