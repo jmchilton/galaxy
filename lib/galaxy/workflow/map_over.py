@@ -184,10 +184,9 @@ class MapOverPlanner:
         for step_input in step.inputs:
             step_input_name = step_input.name
             input_in_execution_state = step_input_name not in known_input_names
-            if input_in_execution_state:
-                maybe_collection = progress.replacement_for_connection(
-                    step.input_connections_by_name[step_input_name][0]
-                )
+            # A step input with only a default, such as a rename reference, has nothing to map over.
+            if input_in_execution_state and (connections := step.input_connections_by_name.get(step_input_name)):
+                maybe_collection = progress.replacement_for_connection(connections[0])
                 if hasattr(maybe_collection, "collection"):
                     # TODO: is a "collection" attribute always enough to treat this as matchable?
                     collections_to_match.add(step_input_name, maybe_collection)
