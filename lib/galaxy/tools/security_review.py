@@ -617,7 +617,9 @@ def _no_plain_value(report: Optional[Report]) -> list[str]:
     """Why no value counts as plain for a tool: the strict check refuses its jobs outright."""
     if report is None:
         return ["nothing is known about what its templates do"]
-    why = [f"its templates change values with {', '.join(found)}" for found in report.rewrites.values() if found]
+    why = []
+    if rewrites := sorted({name for found in report.rewrites.values() for name in found}):
+        why.append(f"its templates change values with {', '.join(rewrites)}")
     capabilities = sorted(
         {
             f.expr

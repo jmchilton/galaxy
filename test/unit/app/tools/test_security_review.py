@@ -860,6 +860,18 @@ def test_strict_when_unsure_refuses_every_job_when_no_value_can_be_plain(app, tm
     assert message.startswith("This job was not run: this Galaxy server cannot check any value for tool")
 
 
+def test_rewrites_in_several_templates_are_named_once(app, tmp_path):
+    rewrite = "#set $v = chr(36) + str($word.value)\necho $v"
+    contents = ECHO_IDS.replace("echo '${word.value}'", rewrite).replace(
+        "  <inputs>",
+        f"""  <configfiles><configfile name="script"><![CDATA[{rewrite}]]></configfile></configfiles>
+  <inputs>""",
+    )
+    tool = make_tool(app, tmp_path, unsure(contents), "two_rewrites.xml")
+    message = strict_refusal(reviewer(tmp_path, ENFORCE), tool, evaluator(app, tool, ["a"], word="b"))
+    assert message.count("its templates change values with chr") == 1
+
+
 @pytest.mark.parametrize("new", ["'$'", "'$a'", '"x$"'])
 def test_replace_that_brings_a_dollar_is_a_rewrite(app, tmp_path, new):
     contents = ECHO_IDS.replace("echo '${word.value}'", f"#set $v = str($word.value).replace('x', {new})\necho $v")
