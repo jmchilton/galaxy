@@ -390,7 +390,7 @@ class TestToolsApi(ApiTestCase, TestsTools):
                 history_id, dataset=refused["outputs"][0], wait=False
             )
             assert details["state"] == "error", details
-            assert "allows only plain names and values" in details["misc_info"], details
+            assert "the name of a dataset of input 'input1' contains [\"]" in details["misc_info"], details
 
             hda2 = self.dataset_populator.new_dataset(history_id, content="1\t2\t3", name="cool name")
             rval = self._run(

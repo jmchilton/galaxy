@@ -741,8 +741,8 @@ def test_strict_when_unsure_checks_an_unreviewed_tool_strictly(app, tmp_path, mo
     r = unreviewed(tmp_path, monkeypatch)
     r.check_job(tool, evaluator(app, tool, ["sample_1.fastq", "FastQC on data 1: RawData"], word="My title"))
     message = strict_refusal(r, tool, evaluator(app, tool, ["sample (1)"]))
-    assert message.startswith("This job was not run: the security review of this tool failed")
-    assert "an element identifier or the name of input 'input' contains [( )]" in message
+    assert message.startswith("This job was not run: an element identifier or the name of input 'input' contains [( )]")
+    assert "because the security review of this tool failed" in message
     assert "Echo identifiers" in message and "echo_ids" in message
 
 

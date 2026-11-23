@@ -152,7 +152,11 @@ class TestToolSecurityReviewDefaults(BaseToolSecurityReviewTestCase):
             result = self._run(history_id, "50%", PIPING_TOOL_ID)
             assert result["job"]["state"] == "error"
             message = result["output"]["misc_info"]
-            assert "allows only plain names and values" in message
+            # Galaxy keeps the first 255 characters of the message.
+            assert message.startswith(
+                "This job was not run: an element identifier or the name of input 'input' contains [%]"
+            )
+            assert "Use letters, digits" in message
 
 
 class TestToolSecurityReviewNotStrict(BaseToolSecurityReviewTestCase):
