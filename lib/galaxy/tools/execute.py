@@ -672,11 +672,12 @@ class ExecutionTracker:
 
             source_collection = collection_info.collections.get(tool_output.default_identifier_source)
             if source_collection:
+                collection = get_collection(source_collection)
                 collection_type_description = collection_type_descriptions.for_collection_type(
-                    source_collection.collection.collection_type
+                    collection.collection_type
                 )
                 _structure = Tree.for_dataset_collection(
-                    source_collection.collection, collection_type_description=collection_type_description
+                    collection, collection_type_description=collection_type_description
                 )
                 if structure.compatible_shape(_structure):
                     structure = _structure
