@@ -13,6 +13,7 @@ from typing import (
     Dict,
     Iterator,
     List,
+    NamedTuple,
     Optional,
 )
 
@@ -146,12 +147,20 @@ def tool_path(tool: str) -> str:
     return os.path.join(TOOLS_DIRECTORY, tool)
 
 
-def iter_jobs(cases: Dict[str, SpecCase]) -> Iterator[tuple[str, str, int, JobCase]]:
-    """``(case id, "red" or "green", index, job)`` for every job of the cases."""
+class SpecJob(NamedTuple):
+    case_id: str
+    # "red" or "green"
+    color: str
+    position: int
+    job: JobCase
+
+
+def iter_jobs(cases: Dict[str, SpecCase]) -> Iterator[SpecJob]:
+    """Every job of the cases."""
     for case_id, case in cases.items():
         for color in ("red", "green"):
             for index, job in enumerate(getattr(case, color)):
-                yield case_id, color, index, job
+                yield SpecJob(case_id, color, index, job)
 
 
 def review_problems(case: SpecCase) -> List[str]:
