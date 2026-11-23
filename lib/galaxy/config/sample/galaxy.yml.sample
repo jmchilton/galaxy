@@ -2724,21 +2724,29 @@ galaxy:
   #tool_security_review: log
 
   # Seconds the security review of one tool may take. A tool whose
-  # review takes longer is recorded as not reviewed, and its jobs are
-  # not checked (see ``tool_security_review_fail_closed``).
+  # review takes longer is recorded as not reviewed until the process
+  # restarts, and its jobs are not checked (see
+  # ``tool_security_review_fail_closed``).
   #tool_security_review_timeout: 5.0
 
   # What to do with a job whose input values the security review cannot
   # check: the tool's review did not finish (timeout or error), the tool
   # writes values in places that no check of their characters can judge,
   # or the check itself fails. By default such jobs run, and Galaxy logs
-  # the reason at debug level. Set to ``true`` to log a warning for each
-  # such job, and with ``tool_security_review: enforce`` to also fail it
-  # with a message that asks the user to contact the administrators. A
-  # review that timed out is tried again on the tool's next job.
-  # Consider a longer ``tool_security_review_timeout`` with this option.
-  # Tools without a command template, user-defined tools and expression
-  # tools are not reviewed and are not affected.
+  # the reason at debug level. Set to ``true`` to check such jobs
+  # strictly instead: every value the job carries must be plain. That is
+  # the values of text and select parameters, element identifiers,
+  # dataset names, and the dataset attributes, tags, metadata and user
+  # preferences that the templates name. A plain value has no quotes, no
+  # ``$ ; & | < > \ ( ) { } [ ] % # *``, no newline or tab, no word that
+  # starts with ``-``, and none of Galaxy's sanitizer tokens such as
+  # ``__gt__``. If the tool's templates can change values (``open()``,
+  # ``decode``, ``chr()``, a ``.replace`` that brings such a character),
+  # no value counts as plain. Galaxy logs a warning for each job that
+  # fails the strict check, and with ``tool_security_review: enforce``
+  # also fails the job, with a message that names the values. Tools
+  # without a command template, user-defined tools and expression tools
+  # are not reviewed and are not affected.
   #tool_security_review_fail_closed: false
 
   # In the past Galaxy would preserve its Python environment when

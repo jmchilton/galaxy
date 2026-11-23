@@ -8,12 +8,18 @@ timeout, and is never stored.
 
 Before a job's command line is built, :meth:`ToolSecurityReviewer.check_job` compares the values of
 the job's inputs with the tool's high and critical findings: a value that contains a character that
-can leave its place is logged (``log``) or fails the job (``enforce``). With ``fail_closed``, a job
-that cannot be checked (no review, a finding no character test can decide, an error in the check) is
-logged as well, and fails in ``enforce``.
+can leave its place is logged (``log``) or fails the job (``enforce``).
+
+With ``fail_closed``, a job that the review cannot check (no review, a finding no character test can
+decide, an error in the check) gets a stricter check instead: every value the job carries must be
+plain, without a character that can leave its place anywhere. A template that changes values
+(``open()``, ``decode``, ``chr()``, a ``.replace`` that brings such a character) makes even plain
+values unsafe, so such a job is refused outright.
 """
 
+import ast
 import logging
+import re
 import threading
 import time
 from dataclasses import dataclass
@@ -61,6 +67,7 @@ from galaxy.tools.wrappers import (
     DatasetListWrapper,
     ToolParameterValueWrapper,
 )
+from galaxy.util import mapped_chars
 
 if TYPE_CHECKING:
     from galaxy.tools import Tool
@@ -143,7 +150,7 @@ class ToolSecurityReviewer:
             raise ValueError(f"tool_security_review must be one of {', '.join(MODES)}, not '{mode}'")
         self.mode = mode
         self.timeout = timeout
-        # Treat a job the review cannot check like a job with a harmful value.
+        # Check a job the review cannot check with the strict character set.
         self.fail_closed = fail_closed
         # Keyed by the Tool object: a review lives as long as the tool it is about.
         self._reviews: WeakKeyDictionary[Tool, ToolReview] = WeakKeyDictionary()
@@ -186,9 +193,7 @@ class ToolSecurityReviewer:
             # Another thread preparing a job of the same tool may have reviewed it meanwhile.
             if (review := self._reviews.get(tool)) is None:
                 review = self._compute(tool, tool_source)
-                # Failing closed, a timeout under load must not refuse the tool's jobs until a restart.
-                if not (self.fail_closed and review.reason == "timeout"):
-                    self._reviews[tool] = review
+                self._reviews[tool] = review
         return review
 
     def _compute(self, tool: "Tool", tool_source: ToolSource) -> ToolReview:
@@ -269,8 +274,11 @@ class ToolSecurityReviewer:
         if review is None:
             return
         if review.status != ANALYSED or review.report is None:
-            reason = "it took too long" if review.reason == "timeout" else "it failed"
-            self._cannot_check(tool, job_id, f"the security review of the tool did not finish: {reason}")
+            if review.reason == "timeout":
+                reason = "the security review of this tool did not finish in time"
+            else:
+                reason = "the security review of this tool failed"
+            self._cannot_check(tool, evaluator, reason)
             return
         violations: list[Violation] = []
         if review.checked_findings or review.report.writes:
@@ -282,7 +290,7 @@ class ToolSecurityReviewer:
             except Exception:
                 # Without fail_closed, the check must never be the reason a job fails.
                 log.exception("Job %s: checking values against the security review of tool %s failed", job_id, tool.id)
-                self._cannot_check(tool, job_id, "checking its values against the security review failed")
+                self._cannot_check(tool, evaluator, "checking the job's values against the security review failed")
                 return
             finally:
                 evaluator.consumes_names, evaluator.consumes_identifiers = consumes
@@ -306,24 +314,49 @@ class ToolSecurityReviewer:
         if unchecked and not violations:
             self._cannot_check(
                 tool,
-                job_id,
-                f"the tool writes values in places no check of their characters can judge ({', '.join(unchecked)})",
+                evaluator,
+                f"this tool writes values in places that no check of their characters can judge ({', '.join(unchecked)})",
             )
 
-    def _cannot_check(self, tool: "Tool", job_id: Any, reason: str) -> None:
-        """A job whose values the review cannot judge: logged, and refused in ``enforce`` when failing closed."""
+    def _cannot_check(self, tool: "Tool", evaluator: "ToolEvaluator", reason: str) -> None:
+        """A job the review cannot judge: without fail_closed it runs; with it, its values must all be plain."""
+        job_id = evaluator.job.id
         if not self.fail_closed:
             log.debug("Job %s of tool %s: values are not checked, %s", job_id, tool.id, reason)
             return
-        log.warning(
-            "Tool security review: job %s of tool %s version %s cannot be checked, %s",
-            job_id,
-            tool.id,
-            tool.version,
-            reason,
-        )
+        if transforms := template_transforms(tool):
+            log.warning(
+                "Tool security review: job %s of tool %s version %s cannot be checked, %s, and the template changes"
+                " values (%s)",
+                job_id,
+                tool.id,
+                tool.version,
+                reason,
+                ", ".join(transforms),
+            )
+            if self.mode == ENFORCE:
+                raise ToolInputRejected(unchecked_message(tool, reason, transforms))
+            return
+        consumes = (evaluator.consumes_names, evaluator.consumes_identifiers)
+        try:
+            harmful = list(strict_violations(tool, evaluator.param_dict))
+        finally:
+            evaluator.consumes_names, evaluator.consumes_identifiers = consumes
+        if not harmful:
+            log.debug("Job %s of tool %s: %s, and every value is plain", job_id, tool.id, reason)
+            return
+        for description, chars in harmful:
+            log.warning(
+                "Tool security review: job %s of tool %s version %s cannot be checked, %s, and %s contains [%s]",
+                job_id,
+                tool.id,
+                tool.version,
+                reason,
+                description,
+                show(chars),
+            )
         if self.mode == ENFORCE:
-            raise ToolInputRejected(unchecked_message(tool, reason))
+            raise ToolInputRejected(strict_message(tool, reason, harmful))
 
 
 @dataclass(frozen=True)
@@ -550,10 +583,175 @@ def _describe(ref: SourceRef) -> str:
     return f"{_DESCRIPTIONS.get(ref.accessor, 'the value of')} input '{ref.param}'"
 
 
-def unchecked_message(tool: "Tool", reason: str) -> str:
+# Characters that can leave a value's place somewhere: in the shell, in a string of a program, or
+# unquoted in Python or R code, where a call needs no quotes (eval(chr(105) + chr(100))). Not "?":
+# it is Galaxy's unknown dbkey, and in the shell it only globs.
+STRICT_DENIED = frozenset("'\"`$;&|<>\\\n\r\t(){}[]%#*")
+# Galaxy's sanitizer writes these for the characters it maps; templates often turn them back.
+_SANITIZER_TOKENS = re.compile("|".join(re.escape(token) for token in sorted(set(mapped_chars.values()))))
+# A word that starts with a dash can be read as an option.
+_OPTION_WORD = re.compile(r"(?:^|\s)-")
+# Template code that can make a plain value unsafe, or read text the job does not carry.
+_TRANSFORMS = re.compile(
+    r"\bopen\s*\(|decode|b64|\b(?:uni)?chr\s*\(|unquote|\beval\s*\(|\bexec\s*\(|__import__|fromhex"
+    r"|\btranslate\s*\(|%c|__app__|creating_job|\bgetVar\s*\(|\bcompile\s*\(|subprocess|os\.popen|os\.system"
+)
+
+
+def _template_texts(tool: "Tool") -> list[str]:
+    texts = [tool.command or ""]
+    texts.extend(content for cf in tool.config_files if isinstance(content := getattr(cf, "content", None), str))
+    texts.extend(text for text in tool.template_macro_params.values() if text)
+    return texts
+
+
+def template_transforms(tool: "Tool") -> list[str]:
+    """What in the tool's templates can turn a plain value into an unsafe one."""
+    found: set[str] = set()
+    for text in _template_texts(tool):
+        found.update(re.sub(r"[\s(]+", "", match.group(0)) for match in _TRANSFORMS.finditer(text))
+        if _unsafe_replace(text):
+            found.add(".replace")
+    return sorted(found)
+
+
+def _unsafe_replace(text: str) -> bool:
+    """A ``.replace`` whose new text is not a plain literal: it can bring what the strict check refuses."""
+    for match in re.finditer(r"\.replace\s*\(", text):
+        args = _call_arguments(text, match.end())
+        if args is None:
+            return True
+        try:
+            call = ast.parse(f"f({args.replace('$', '')})", mode="eval").body
+        except SyntaxError:
+            return True
+        if not isinstance(call, ast.Call) or len(call.args) < 2:
+            return True
+        new = call.args[1]
+        if not (isinstance(new, ast.Constant) and isinstance(new.value, str)):
+            return True
+        if _strict_harm(new.value) or "-" in new.value or any(c.isspace() for c in new.value):
+            return True
+    return False
+
+
+def _call_arguments(text: str, start: int) -> Optional[str]:
+    depth, quote, i = 1, "", start
+    while i < len(text):
+        c = text[i]
+        if quote:
+            if c == "\\":
+                i += 1
+            elif c == quote:
+                quote = ""
+        elif c in "'\"":
+            quote = c
+        elif c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                return text[start:i]
+        i += 1
+    return None
+
+
+def _strict_harm(value: str) -> frozenset[str]:
+    harm = set(value) & STRICT_DENIED
+    if _OPTION_WORD.search(value):
+        harm.add("-")
+    harm.update(_SANITIZER_TOKENS.findall(value))
+    return frozenset(harm)
+
+
+def strict_violations(tool: "Tool", param_dict: dict[str, Any]) -> Iterator[tuple[str, frozenset[str]]]:
+    """The values of a job that are not plain, with what makes them unsafe."""
+    words = frozenset(word for text in _template_texts(tool) for word in re.findall(r"\w+", text))
+    for description, value in _job_values(tool, param_dict, words):
+        if harm := _strict_harm(value):
+            yield description, harm
+
+
+def _job_values(tool: "Tool", param_dict: dict[str, Any], words: frozenset[str]) -> Iterator[tuple[str, str]]:
+    """The values a user controls that the job carries, described for the user.
+
+    Element identifiers, dataset names and parameter values always count. A dataset attribute, tag,
+    metadata element or user preference counts when the templates name it (``words``): these often
+    hold text such as a tool's output summary, and a template reads them only by name.
+    """
+    for name in tool.inputs:
+        if name in param_dict:
+            yield from _values_of(name, param_dict[name], words)
+    if "extra_preferences" not in words:
+        return
+    user = param_dict.get("__user__")
+    preferences = getattr(getattr(user, "obj", user), "extra_preferences", None) or {}
+    for key, value in preferences.items():
+        if value is not None:
+            yield f"your preference '{key}'", str(value)
+
+
+def _values_of(path: str, value: Any, words: frozenset[str]) -> Iterator[tuple[str, str]]:
+    if isinstance(value, (DatasetCollectionWrapper, DatasetListWrapper, DatasetFilenameWrapper)):
+        for identifier in _identifiers(value):
+            yield f"an element identifier or the name of input '{path}'", identifier
+        for dataset in _datasets(value):
+            yield from _dataset_values(path, dataset, words)
+    elif isinstance(value, ToolParameterValueWrapper):
+        raw = getattr(value, "value", None)
+        for item in raw if isinstance(raw, (list, tuple)) else [raw]:
+            if isinstance(item, str):
+                yield f"the value of input '{path}'", item
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            if not key.startswith("__"):
+                yield from _values_of(f"{path}.{key}", item, words)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _values_of(path, item, words)
+    elif isinstance(value, str):
+        yield f"the value of input '{path}'", value
+
+
+def _dataset_values(path: str, dataset: DatasetFilenameWrapper, words: frozenset[str]) -> Iterator[tuple[str, str]]:
+    hda = dataset.unsanitized
+    for attribute in ("name", "info", "created_from_basename", "dbkey"):
+        if (attribute == "name" or attribute in words) and isinstance(text := getattr(hda, attribute, None), str):
+            yield f"the {attribute} of a dataset of input '{path}'", text
+    if words & {"tags", "tag", "groups", "group"}:
+        for tag in getattr(hda, "tags", None) or []:
+            yield f"a tag of a dataset of input '{path}'", f"{tag.user_tname}:{tag.user_value or ''}"
+    if "metadata" not in words:
+        return
+    try:
+        metadata = hda.metadata
+        # A template that looks metadata up by a computed name can read any of it.
+        every = "getattr" in words or "items" in words
+        for key in metadata.spec:
+            if not (every or key in words):
+                continue
+            item = metadata.get(key)
+            for text in item if isinstance(item, (list, tuple)) else [item]:
+                if isinstance(text, str):
+                    yield f"metadata '{key}' of a dataset of input '{path}'", text
+    except Exception as e:
+        log.debug("Cannot read the metadata of a dataset of input %s: %s", path, e)
+
+
+def unchecked_message(tool: "Tool", reason: str, transforms: list[str]) -> str:
     return (
-        f"This job was not run: this Galaxy server runs only jobs whose input values it can check, and it cannot"
-        f" check the values of tool '{tool.name}' ({tool.id} version {tool.version}): {reason}. Please contact the"
+        f"This job was not run: {reason}, and its templates can change values ({', '.join(transforms)}), so this"
+        f" Galaxy server cannot check any value for tool '{tool.name}' ({tool.id} version {tool.version})."
+        " Please contact the administrators of this server."
+    )
+
+
+def strict_message(tool: "Tool", reason: str, harmful: list[tuple[str, frozenset[str]]]) -> str:
+    parts = [f"{description} contains [{show(chars)}]" for description, chars in harmful]
+    return (
+        f"This job was not run: {reason}, so this Galaxy server allows only plain names and values for tool"
+        f" '{tool.name}' ({tool.id} version {tool.version}), and {', and '.join(parts)}. Use letters, digits,"
+        " spaces and . _ : / = + @ , ! ^ ~ ? in names and values, and do not start a word with -, or contact the"
         " administrators of this server."
     )
 
