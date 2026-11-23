@@ -658,6 +658,23 @@ def test_content_is_read_from_the_galaxy_side_file_when_the_job_runs_elsewhere(a
         reviewer(tmp_path, ENFORCE).check_job(tool, job)
 
 
+# A backslash at the end of the content escapes the closing quote and frees the `;` in it.
+OPEN_FILE_QUOTED = OPEN_FILE.replace("tool --n $n > '$out'", "echo \"$n\" '$out' > '$out'")
+
+
+@pytest.mark.parametrize("content,expected", [("a\\;b\n", False), ("a;b\\", True)])
+def test_backslash_counts_only_at_the_end_of_a_large_dataset(app, tmp_path, content, expected):
+    path = tmp_path / "n.txt"
+    # Longer than the check reads at once, with the backslash at the end of the first read.
+    path.write_text("a" * (1024 * 1024 - 2) + content)
+    tool = make_tool(app, tmp_path, OPEN_FILE_QUOTED, "open_file_quoted.xml")
+    hda = model.HistoryDatasetAssociation(extension="txt", dataset=model.Dataset(external_filename=str(path)))
+    job: Any = SimpleNamespace(job=SimpleNamespace(id=7), consumes_names=False, consumes_identifiers=False)
+    job.param_dict = {"n_file": DatasetFilenameWrapper(hda, datatypes_registry=app.datatypes_registry)}
+    with pytest.raises(ToolInputRejected) if expected else contextlib.nullcontext():
+        reviewer(tmp_path, ENFORCE).check_job(tool, job)
+
+
 def test_content_that_cannot_be_read_counts_as_every_character(app, tmp_path):
     tool = make_tool(app, tmp_path, OPEN_FILE, "open_file.xml")
     missing = model.HistoryDatasetAssociation(
