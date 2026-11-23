@@ -1,0 +1,10 @@
+<tool id="spec_dataset_name_identifier" name="Dataset name as element identifier" version="1.0" profile="24.0">
+    <description>writes the element identifier of a dataset input, which is its name outside a collection</description>
+    <command><![CDATA[echo '$input.element_identifier' > '$out']]></command>
+    <inputs>
+        <param name="input" type="data" format="txt"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

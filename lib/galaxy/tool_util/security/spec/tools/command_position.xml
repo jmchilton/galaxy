@@ -1,0 +1,10 @@
+<tool id="spec_command_position" name="Text as the program to run" version="1.0" profile="24.0">
+    <description>runs the program a text value names</description>
+    <command><![CDATA[$program > '$out']]></command>
+    <inputs>
+        <param name="program" type="text"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

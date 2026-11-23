@@ -1,0 +1,10 @@
+<tool id="spec_raw_text_single_quoted" name="Raw text in single quotes" version="1.0" profile="24.0">
+    <description>writes a text value past its sanitizer</description>
+    <command><![CDATA[echo '${word.value}' > '$out']]></command>
+    <inputs>
+        <param name="word" type="text"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>
