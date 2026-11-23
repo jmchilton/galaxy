@@ -521,14 +521,23 @@ CONTENT_LIMIT = 64 * 1024 * 1024
 def _file_text(path: str) -> Iterator[str]:
     """The text of a file; one that is too big or cannot be read counts as holding every character."""
     read = 0
+    # Backslashes at the end of a chunk are carried into the next one: only the file's own end can
+    # escape the template text after it.
+    carried = ""
     try:
         with open(path, "rb") as fh:
             while chunk := fh.read(1024 * 1024):
                 read += len(chunk)
                 if read > CONTENT_LIMIT:
                     break
-                yield chunk.decode("utf-8", errors="replace")
+                text = carried + chunk.decode("utf-8", errors="replace")
+                stripped = text.rstrip("\\")
+                carried = text[len(stripped) :]
+                if stripped:
+                    yield stripped
             else:
+                if carried:
+                    yield carried
                 return
     except OSError as e:
         log.debug("Cannot read %s: %s", path, e)
