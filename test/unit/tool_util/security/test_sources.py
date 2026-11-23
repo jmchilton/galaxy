@@ -18,6 +18,7 @@ from galaxy.tool_util.security.charsets import (
     HIGH,
     SHELL_EXEC,
 )
+from galaxy.tool_util.security.model import build_model
 from galaxy.tool_util.security.report import (
     DATASET_ATTRIBUTE,
     DATASET_CONTENT,
@@ -271,9 +272,19 @@ def test_report_survives_json(tmp_path):
 
 def test_timeout(tmp_path, monkeypatch):
     clock = iter([0.0, 100.0])
-    monkeypatch.setattr(time, "monotonic", lambda: next(clock, 100.0))
+    monkeypatch.setattr(time, "thread_time", lambda: next(clock, 100.0))
     with pytest.raises(ReviewTimeout):
         review(tmp_path, "echo $text", timeout=1)
+
+
+def test_waiting_does_not_count_against_the_timeout(tmp_path, monkeypatch):
+    def waiting(tool_source):
+        # As when the job handler's other threads hold the interpreter.
+        time.sleep(0.3)
+        return build_model(tool_source)
+
+    monkeypatch.setattr("galaxy.tool_util.security.build_model", waiting)
+    review(tmp_path, "echo $text", timeout=0.2)
 
 
 @pytest.mark.parametrize(

@@ -5008,10 +5008,13 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 :Description:
-    Seconds the security review of one tool may take. A tool whose
-    review takes longer is recorded as not reviewed until the process
-    restarts, and its jobs are not checked (see
-    ``tool_security_review_fail_closed``).
+    Seconds of CPU time the security review of one tool may take,
+    counted in the thread that reviews it: time spent waiting for the
+    process's other threads or for other processes does not count.
+    Most tools take a few milliseconds and the slowest known ones
+    under two seconds. A tool whose review takes longer is recorded as
+    not reviewed until the process restarts, and its jobs are not
+    checked (see ``tool_security_review_fail_closed``).
 :Default: ``5.0``
 :Type: float
 

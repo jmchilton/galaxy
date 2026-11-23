@@ -127,16 +127,17 @@ def _analyse(
 
 
 def _check_deadline(deadline: float | None) -> None:
-    if deadline is not None and time.monotonic() > deadline:
+    if deadline is not None and time.thread_time() > deadline:
         raise ReviewTimeout()
 
 
 def review_tool_source(tool_source: ToolSource, timeout: float | None = None) -> Report:
     """The security review of a tool.
 
-    ``timeout``: seconds the review may take; past it, :class:`ReviewTimeout` is raised.
+    ``timeout``: seconds of CPU time the review may take in this thread; past it, :class:`ReviewTimeout`
+    is raised. Time spent waiting for other threads (a job handler's) or processes does not count.
     """
-    deadline = time.monotonic() + timeout if timeout is not None else None
+    deadline = time.thread_time() + timeout if timeout is not None else None
     report = Report(tool_id=tool_source.parse_id())
     if sys.version_info < (3, 9):
         # The analysis needs ast.unparse and the subscript syntax tree of Python 3.9.
