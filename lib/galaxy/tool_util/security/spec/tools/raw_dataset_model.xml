@@ -1,0 +1,10 @@
+<tool id="spec_raw_dataset_model" name="Dataset model name in single quotes" version="1.0" profile="24.0">
+    <description>writes the name of the dataset model behind the input, which the review does not follow</description>
+    <command><![CDATA[echo '${input.unsanitized.name}' > '$out']]></command>
+    <inputs>
+        <param name="input" type="data" format="txt"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>
