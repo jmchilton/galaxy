@@ -14,19 +14,18 @@ from .structure import (
 )
 
 if TYPE_CHECKING:
-    from galaxy.model import (
-        DatasetCollection,
-        DatasetCollectionElement,
-    )
+    from galaxy.model import DatasetCollection
     from .structure import (
         BaseTree,
         CollectionLike,
+        CollectionSlice,
         Structure,
         WhenValues,
     )
     from .type_description import (
         CollectionTypeDescription,
         CollectionTypeDescriptionFactory,
+        CollectionTypeLike,
     )
 
 CANNOT_MATCH_ERROR_MESSAGE = "Cannot match collection types."
@@ -37,9 +36,7 @@ class CollectionToMatch:
     """One input's collection and how it participates in matching."""
 
     hdca: "CollectionLike"
-    # Declared as a string by tool inputs and as a description object by
-    # workflow map-over planning; both are accepted throughout.
-    subcollection_type: "str | CollectionTypeDescription | None" = None
+    subcollection_type: "CollectionTypeLike | None" = None
     linked: bool = True
 
 
@@ -55,7 +52,7 @@ class CollectionsToMatch:
         self,
         input_name: str,
         hdca: "CollectionLike",
-        subcollection_type: "str | CollectionTypeDescription | None" = None,
+        subcollection_type: "CollectionTypeLike | None" = None,
         linked: bool = True,
     ) -> None:
         self.collections[input_name] = CollectionToMatch(
@@ -85,7 +82,7 @@ class MatchingCollections:
         self.linked_structure: BaseTree | None = None
         self.unlinked_structures: list[BaseTree] = []
         self.collections: dict[str, CollectionLike] = {}
-        self.subcollection_types: dict[str, str | CollectionTypeDescription | None] = {}
+        self.subcollection_types: dict[str, CollectionTypeLike | None] = {}
         self.action_tuples: dict[str, list[tuple[str, int]]] = {}
         self.when_values: WhenValues | None = None
 
@@ -95,7 +92,7 @@ class MatchingCollections:
         hdca: "CollectionLike",
         child_collection: "DatasetCollection",
         collection_type_description: "CollectionTypeDescription",
-        subcollection_type: "str | CollectionTypeDescription | None",
+        subcollection_type: "CollectionTypeLike | None",
     ) -> None:
         structure = get_structure(
             child_collection, collection_type_description, leaf_subcollection_type=subcollection_type
@@ -110,29 +107,25 @@ class MatchingCollections:
             self.collections[input_name] = hdca
             self.subcollection_types[input_name] = subcollection_type
 
-    def slice_collections(self) -> Iterator[tuple[dict[str, "DatasetCollectionElement"], bool | None]]:
+    def slice_collections(self) -> Iterator["CollectionSlice"]:
         """Yield the elements of each linked collection for every mapped execution."""
         linked_structure = self.linked_structure
         assert linked_structure is not None
         linked_structure.when_values = self.when_values
         return linked_structure.walk_collections({k: get_collection(v) for k, v in self.collections.items()})
 
-    def subcollection_mapping_type(self, input_name: str) -> "str | CollectionTypeDescription | None":
+    def subcollection_mapping_type(self, input_name: str) -> "CollectionTypeLike | None":
         return self.subcollection_types[input_name]
 
     @property
-    def structure(self) -> "BaseTree | None":
-        """Cross product of all unlinked collection structures with the linked collection structure.
-
-        ``None`` when nothing is mapped over.
-        """
+    def structure(self) -> "BaseTree":
+        """Cross product of all unlinked collection structures with the linked collection structure."""
         effective_structure: Structure = leaf
         for unlinked_structure in self.unlinked_structures:
             effective_structure = effective_structure.multiply(unlinked_structure)
         linked_structure = self.linked_structure
         effective_structure = effective_structure.multiply(leaf if linked_structure is None else linked_structure)
-        if isinstance(effective_structure, Leaf):
-            return None
+        assert not isinstance(effective_structure, Leaf), "MatchingCollections has no collections to map over"
         effective_structure.when_values = self.when_values
         return effective_structure
 
@@ -162,7 +155,7 @@ class MatchingCollections:
             # Both collection_type_description and get_structure must
             # use the same collection so the type and elements agree.
             child_collection = get_collection(hdca)
-            collection_type_description: CollectionTypeDescription = collection_type_descriptions.for_collection_type(
+            collection_type_description = collection_type_descriptions.for_collection_type(
                 child_collection.collection_type
             )
             subcollection_type = to_match.subcollection_type
