@@ -13,6 +13,12 @@ from galaxy.tool_util.security.spec import (
     review_problems,
     TOOLS_DIRECTORY,
 )
+from galaxy.tool_util.security.spec.docs import (
+    BEGIN,
+    END,
+    refusal_codes_markdown,
+)
+from galaxy.util import galaxy_directory
 
 CASES = load_cases()
 
@@ -37,3 +43,13 @@ def test_every_code_has_red_and_green_jobs(code):
     cases = [case for case in CASES.values() if case.code == code]
     assert any(case.red for case in cases) and any(case.green for case in cases)
     assert DESCRIPTIONS[code]
+
+
+def test_docs_list_the_codes_and_cases():
+    path = os.path.join(galaxy_directory(), "doc", "source", "admin", "tool_security_review.md")
+    if not os.path.exists(path):
+        pytest.skip("Galaxy's docs are not next to this package")
+    with open(path) as fh:
+        text = fh.read()
+    section = text[text.index(BEGIN) : text.index(END) + len(END)] + "\n"
+    assert section == refusal_codes_markdown(CASES), "regenerate with python -m galaxy.tool_util.security.spec.docs"
