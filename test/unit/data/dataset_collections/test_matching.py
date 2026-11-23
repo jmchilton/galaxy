@@ -2,6 +2,7 @@ from galaxy.model.dataset_collections import (
     matching,
     query,
     registry,
+    structure,
     type_description,
 )
 
@@ -34,6 +35,10 @@ def test_lists_of_different_cardinality_do_not_match():
     assert_cannot_match(list_2, list_1)
 
 
+def test_empty_list_second_does_not_match_non_empty_list():
+    assert_cannot_match(list_instance(), list_instance(ids=[]))
+
+
 def test_valid_collection_subcollection_matching():
     flat_list = list_instance(ids=["data1", "data2", "data3"])
     nested_list = example_list_of_paired_datasets()
@@ -63,6 +68,27 @@ def test_paired_or_unpaired_with_one_element_rejected_against_paired():
     )
     assert_cannot_match(paired, one_element_optional)
     assert_cannot_match(one_element_optional, paired)
+
+
+def test_structure_of_empty_list_is_empty_tree():
+    """Mapping over an empty list still has a structure, so it can produce an empty output collection."""
+    to_match = build_collections_to_match(list_instance(ids=[]))
+    matched = matching.MatchingCollections.for_collections(to_match, TYPE_DESCRIPTION_FACTORY)
+    assert matched is not None
+    mapped_structure = matched.structure
+    assert isinstance(mapped_structure, structure.Tree)
+    assert mapped_structure.children == []
+    assert mapped_structure.collection_type_description.collection_type == "list"
+
+
+def test_structure_of_unenumerated_collection():
+    """A collection mapped over its own type gives an unenumerated structure of that type."""
+    to_match = build_collections_to_match((pair_instance(), "paired"))
+    matched = matching.MatchingCollections.for_collections(to_match, TYPE_DESCRIPTION_FACTORY)
+    assert matched is not None
+    mapped_structure = matched.structure
+    assert isinstance(mapped_structure, structure.UninitializedTree)
+    assert mapped_structure.collection_type_description.collection_type == "paired"
 
 
 def test_query_can_match_list_to_list():

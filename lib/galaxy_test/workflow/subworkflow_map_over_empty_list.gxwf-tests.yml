@@ -1,0 +1,15 @@
+- doc: |
+    Test to verify mapping a subworkflow over an empty list produces an empty list.
+  job:
+    input1:
+      class: File
+      filetype: txt
+      contents: "a"
+  outputs:
+    mapped_output:
+      class: Collection
+      collection_type: list
+    count:
+      asserts:
+      - that: has_line
+        line: "0"

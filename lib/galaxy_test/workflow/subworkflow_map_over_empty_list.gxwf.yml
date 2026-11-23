@@ -1,0 +1,32 @@
+class: GalaxyWorkflow
+inputs:
+  input1: data
+outputs:
+  mapped_output:
+    outputSource: nested_workflow/workflow_output
+  count:
+    outputSource: count_list/out_file1
+steps:
+  empty_list:
+    tool_id: empty_list
+    in:
+      input1: input1
+  nested_workflow:
+    run:
+      class: GalaxyWorkflow
+      inputs:
+        inner_input: data
+      outputs:
+        workflow_output:
+          outputSource: inner_cat/out_file1
+      steps:
+        inner_cat:
+          tool_id: cat
+          in:
+            input1: inner_input
+    in:
+      inner_input: empty_list/output
+  count_list:
+    tool_id: count_list
+    in:
+      input1: nested_workflow/workflow_output

@@ -13,7 +13,20 @@ from sqlalchemy import select
 import galaxy.model
 from galaxy.app_unittest_utils import tools_support
 from galaxy.managers.collections import DatasetCollectionManager
+from galaxy.managers.context import ProvidesHistoryContext
+from galaxy.model.dataset_collections.matching import (
+    CollectionsToMatch,
+    MatchingCollections,
+)
+from galaxy.model.dataset_collections.structure import Tree
+from galaxy.model.dataset_collections.type_description import COLLECTION_TYPE_DESCRIPTION_FACTORY
 from galaxy.model.orm.util import add_object_to_object_session
+from galaxy.tool_util.parser.output_objects import ToolOutput
+from galaxy.tools import Tool
+from galaxy.tools.execute import (
+    MappingParameters,
+    ToolExecutionTracker,
+)
 from galaxy.util.bunch import Bunch
 from galaxy.util.unittest import TestCase
 
@@ -228,3 +241,39 @@ class MockCollectionService:
 
     def match_collections(self, collections_to_match):
         return self.collection_info
+
+
+def test_default_identifier_source_from_hdca():
+    input_b = galaxy.model.HistoryDatasetCollectionAssociation(collection=_flat_list(["x", "y"]))
+    assert _identifiers_for_output_b(input_b) == ["x", "y"]
+
+
+def _identifiers_for_output_b(
+    input_b: galaxy.model.HistoryDatasetCollectionAssociation | galaxy.model.DatasetCollectionElement,
+) -> list[str | None]:
+    """Element identifiers of an output whose default_identifier_source is inputB, mapping inputA [p, q] with input_b."""
+    input_a = galaxy.model.HistoryDatasetCollectionAssociation(collection=_flat_list(["p", "q"]))
+    collections_to_match = CollectionsToMatch()
+    collections_to_match.add("inputA", input_a)
+    collections_to_match.add("inputB", input_b)
+    collection_info = MatchingCollections.for_collections(collections_to_match, COLLECTION_TYPE_DESCRIPTION_FACTORY)
+    dataset_collection_manager = Bunch(collection_type_descriptions=COLLECTION_TYPE_DESCRIPTION_FACTORY)
+    trans = cast(ProvidesHistoryContext, Bunch(app=Bunch(dataset_collection_manager=dataset_collection_manager)))
+    tracker = ToolExecutionTracker(trans, cast(Tool, None), MappingParameters({}, []), collection_info)
+    output_b = ToolOutput("outputB")
+    output_b.default_identifier_source = "inputB"
+    structure = tracker._structure_for_output(trans, output_b)
+    assert isinstance(structure, Tree)
+    return [identifier for identifier, _ in structure.children]
+
+
+def _flat_list(identifiers: list[str]) -> galaxy.model.DatasetCollection:
+    collection = galaxy.model.DatasetCollection(collection_type="list")
+    for index, identifier in enumerate(identifiers):
+        galaxy.model.DatasetCollectionElement(
+            collection=collection,
+            element=galaxy.model.HistoryDatasetAssociation(name=identifier),
+            element_identifier=identifier,
+            element_index=index,
+        )
+    return collection
