@@ -1,0 +1,16 @@
+<tool id="spec_stray_quote" name="Identifiers and a raw value in single quotes" version="1.0" profile="24.0">
+    <description>writes element identifiers, then a text value past its sanitizer</description>
+    <command><![CDATA[
+#for $e in $input
+echo '$e.element_identifier' >> '$out';
+#end for
+echo '${word.value}' >> '$out'
+    ]]></command>
+    <inputs>
+        <param name="input" type="data_collection" collection_type="list" format="txt"/>
+        <param name="word" type="text"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

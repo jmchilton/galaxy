@@ -1,0 +1,14 @@
+<tool id="spec_element_identifier_single_quoted" name="Element identifiers in single quotes" version="1.0" profile="24.0">
+    <description>writes the element identifiers of a list</description>
+    <command><![CDATA[
+#for $e in $input
+echo '$e.element_identifier' >> '$out';
+#end for
+    ]]></command>
+    <inputs>
+        <param name="input" type="data_collection" collection_type="list" format="txt"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

@@ -1,0 +1,11 @@
+<tool id="spec_dataset_name_unsanitized" name="Unsanitized dataset name and metadata" version="1.0" profile="24.0">
+    <description>turns the sanitizer off and writes a dataset's name and a metadata element</description>
+    <command><![CDATA[echo '$input.name' '$input.metadata.column_names' > '$out']]></command>
+    <options sanitize="false"/>
+    <inputs>
+        <param name="input" type="data" format="tabular"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

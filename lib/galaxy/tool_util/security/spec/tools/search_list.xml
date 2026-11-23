@@ -1,0 +1,15 @@
+<tool id="spec_search_list" name="Identifiers and the template search list" version="1.0" profile="24.0">
+    <description>writes element identifiers and a name the review does not follow</description>
+    <command><![CDATA[
+#for $e in $input
+echo '$e.element_identifier' >> '$out';
+#end for
+echo '$searchList' > /dev/null
+    ]]></command>
+    <inputs>
+        <param name="input" type="data_collection" collection_type="list" format="txt"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>
