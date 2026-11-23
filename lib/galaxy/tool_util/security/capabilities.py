@@ -17,10 +17,13 @@ from __future__ import annotations
 import ast
 import re
 import warnings
+from functools import partial
 from typing import (
     Any,
+    Callable,
 )
 
+from galaxy.tool_util.parser.interface import ToolSource
 from . import shell
 from .charsets import (
     CRITICAL,
@@ -459,15 +462,83 @@ def audit_shell_events(events: set[shell.Event], report: Report, location: str) 
                 add("capability-network", INFO, f"Names the URL `{match.group(0)}`.", match.group(0))
 
 
-def audit_tool_xml(xml_tree: Any, report: Report) -> None:
-    """Declarations in the tool XML that give the tool more than a command line."""
+def audit_tool(tool_source: ToolSource, report: Report) -> None:
+    """Declarations of the tool that give it more than a command line."""
 
     def add(rule: str, severity: str, message: str, expr: str, location: str = "tool") -> None:
         report.add(
             Finding(rule=rule, kind=CAPABILITY, severity=severity, message=message, location=location, expr=expr)
         )
 
-    root = xml_tree.getroot()
+    xml_tree = getattr(tool_source, "xml_tree", None)
+    if xml_tree is not None:
+        _audit_xml_code(xml_tree.getroot(), report, add)
+    for variable in _parsed(tool_source.parse_environment_variables, []):
+        inject = variable.get("inject") or ""
+        if inject == "api_key":
+            add(
+                "capability-api-key",
+                HIGH,
+                f"Puts the user's Galaxy API key into the job as ${variable.get('name')}.",
+                variable.get("name") or "",
+            )
+        elif inject.startswith("oidc_"):
+            add(
+                "capability-api-key",
+                HIGH,
+                f"Puts the user's identity provider token ({inject}) into the job as ${variable.get('name')}.",
+                variable.get("name") or "",
+            )
+    tool_type = _parsed(tool_source.parse_tool_type, None) or ""
+    if tool_type.startswith("data_source"):
+        add(
+            "capability-network",
+            LOW,
+            "Is a data source tool: fetches data from a URL a remote site provides.",
+            tool_type,
+        )
+    if _parsed(tool_source.parse_interactivetool, []) or tool_type == "interactive":
+        add(
+            "capability-network",
+            LOW,
+            "Is an interactive tool: serves a network port for the job's lifetime.",
+            tool_type,
+        )
+    requirements = _parsed(tool_source.parse_requirements, None)
+    for container in requirements[1] if requirements else []:
+        image = (container.identifier or "").strip()
+        add("capability-container", INFO, f"Runs in the container image `{image}`.", image)
+    outputs, collections = _parsed(lambda: tool_source.parse_outputs(None), ({}, {}))
+    for output in outputs.values():
+        path = getattr(output, "from_work_dir", None) or ""
+        if _outside_job_directory(path):
+            add(
+                "output-path", MEDIUM, f"Collects an output from outside the job directory (`{path}`).", path, "outputs"
+            )
+    for output in (*outputs.values(), *collections.values()):
+        # A collection with a static structure raises here: it discovers nothing.
+        for description in _parsed(partial(getattr, output, "dataset_collector_descriptions"), []) or []:
+            path = description.directory or ""
+            if _outside_job_directory(path):
+                add("output-path", MEDIUM, f"Discovers outputs outside the job directory (`{path}`).", path, "outputs")
+    if _parsed(tool_source.parse_sanitize, True) is False:
+        add("tool-sanitize-off", MEDIUM, "Turns parameter sanitization off for the whole tool.", "sanitize=false")
+
+
+def _parsed(parse: Callable[[], Any], default: Any) -> Any:
+    """What a tool source method gives, or ``default`` for a tool it cannot parse (the review still returns)."""
+    try:
+        return parse()
+    except Exception:
+        return default
+
+
+def _outside_job_directory(path: str) -> bool:
+    return path.startswith("/") or ".." in path.split("/")
+
+
+def _audit_xml_code(root: Any, report: Report, add: Callable[..., None]) -> None:
+    """Python that only the XML of a tool can carry: code files, dynamic options, expressions, filters."""
     for code in root.findall("code"):
         file_name = code.get("file") or ""
         add("tool-code-file", HIGH, f"Loads the Python file `{file_name}` into the Galaxy server process.", file_name)
@@ -491,50 +562,3 @@ def audit_tool_xml(xml_tree: Any, report: Report) -> None:
     for output_filter in root.findall("./outputs//filter"):
         if output_filter.text:
             PythonAudit(report, "outputs").expression(output_filter.text)
-    for variable in root.findall("./environment_variables/environment_variable"):
-        inject = variable.get("inject") or ""
-        if inject == "api_key":
-            add(
-                "capability-api-key",
-                HIGH,
-                f"Puts the user's Galaxy API key into the job as ${variable.get('name')}.",
-                variable.get("name") or "",
-            )
-        elif inject.startswith("oidc_"):
-            add(
-                "capability-api-key",
-                HIGH,
-                f"Puts the user's identity provider token ({inject}) into the job as ${variable.get('name')}.",
-                variable.get("name") or "",
-            )
-    tool_type = root.get("tool_type") or ""
-    if tool_type.startswith("data_source"):
-        add(
-            "capability-network",
-            LOW,
-            "Is a data source tool: fetches data from a URL a remote site provides.",
-            tool_type,
-        )
-    if root.find("entry_points") is not None or tool_type == "interactive":
-        add(
-            "capability-network",
-            LOW,
-            "Is an interactive tool: serves a network port for the job's lifetime.",
-            tool_type,
-        )
-    for container in root.findall("./requirements/container"):
-        image = (container.text or "").strip()
-        add("capability-container", INFO, f"Runs in the container image `{image}`.", image)
-    for output in root.findall("./outputs//*[@from_work_dir]"):
-        path = output.get("from_work_dir") or ""
-        if path.startswith("/") or ".." in path.split("/"):
-            add(
-                "output-path", MEDIUM, f"Collects an output from outside the job directory (`{path}`).", path, "outputs"
-            )
-    for discover in root.findall("./outputs//discover_datasets"):
-        path = discover.get("directory") or ""
-        if path.startswith("/") or ".." in path.split("/"):
-            add("output-path", MEDIUM, f"Discovers outputs outside the job directory (`{path}`).", path, "outputs")
-    options = root.find("options")
-    if options is not None and (options.get("sanitize") or "").lower() == "false":
-        add("tool-sanitize-off", MEDIUM, "Turns parameter sanitization off for the whole tool.", "sanitize=false")
