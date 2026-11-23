@@ -26,6 +26,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import (
     Any,
+    Iterable,
     Iterator,
     Optional,
     TYPE_CHECKING,
@@ -50,6 +51,7 @@ from galaxy.tool_util.security.charsets import (
     PROBE,
     show,
 )
+from galaxy.tool_util.security.codes import RefusalCode
 from galaxy.tool_util.security.report import (
     CODE_CAPABILITIES,
     DATASET_ATTRIBUTE,
@@ -114,6 +116,10 @@ def _keeping_consumes(evaluator: "ToolEvaluator") -> Iterator[None]:
 
 class ToolInputRejected(Exception):
     """The tool security review refuses a job: an input value can leave its place, or the job cannot be checked."""
+
+    def __init__(self, message: str, codes: Iterable[RefusalCode]) -> None:
+        self.codes = tuple(sorted(set(codes)))
+        super().__init__(f"{message} Refusal codes: {', '.join(code.value for code in self.codes)}.")
 
 
 @dataclass(frozen=True)
@@ -278,24 +284,34 @@ class ToolSecurityReviewer:
         if review is None:
             return
         if review.status != ANALYSED or review.report is None:
-            self._cannot_check(tool, evaluator, None, "the security review of this tool failed")
+            self._cannot_check(
+                tool, evaluator, None, "the security review of this tool failed", RefusalCode.UNCHECKABLE_REVIEW_FAILED
+            )
             return
         violations: list[Violation] = []
+        codes: list[RefusalCode] = []
         if review.checked_findings or review.report.writes:
             try:
                 with _keeping_consumes(evaluator):
                     violations = list(find_violations(review.report, evaluator.param_dict))
+                # A rule without a code is a bug of the check, and handled as one.
+                codes = [RefusalCode(v.rule) for v in violations]
             except Exception:
                 # Without strict_when_unsure, the check must never be the reason a job fails.
                 log.exception("Job %s: checking values against the security review of tool %s failed", job_id, tool.id)
                 self._cannot_check(
-                    tool, evaluator, review.report, "checking the job's values against the security review failed"
+                    tool,
+                    evaluator,
+                    review.report,
+                    "checking the job's values against the security review failed",
+                    RefusalCode.NOT_PLAIN_CHECK_ERROR,
                 )
                 return
         for violation in violations:
             log.warning(
-                "Tool security review: job %s of tool %s version %s: %s of input '%s' contains [%s],"
-                " which can leave its place in the %s (%s, %s)",
+                "Tool security review (%s): job %s of tool %s version %s: %s of input '%s' contains [%s],"
+                " which can leave its place in the %s (%s)",
+                violation.rule,
                 job_id,
                 tool.id,
                 tool.version,
@@ -303,11 +319,10 @@ class ToolSecurityReviewer:
                 violation.ref.param or violation.ref.key,
                 show(violation.chars),
                 violation.location,
-                violation.rule,
                 violation.severity,
             )
         if violations and self.mode == ENFORCE:
-            raise ToolInputRejected(rejection_message(tool, violations))
+            raise ToolInputRejected(rejection_message(tool, violations), codes)
         unchecked = sorted({f.location for f in review.unchecked_findings} | set(review.unchecked_locations))
         if unchecked and not violations:
             self._cannot_check(
@@ -315,6 +330,7 @@ class ToolSecurityReviewer:
                 evaluator,
                 review.report,
                 f"this tool writes values in places that no check of their characters can judge ({', '.join(unchecked)})",
+                RefusalCode.NOT_PLAIN_UNCHECKED_PLACE,
                 unchecked,
             )
 
@@ -324,16 +340,23 @@ class ToolSecurityReviewer:
         evaluator: "ToolEvaluator",
         report: Optional[Report],
         reason: str,
+        code: RefusalCode,
         locations: Optional[list[str]] = None,
     ) -> None:
-        """A job the review cannot judge: its values must all be plain, unless strict_when_unsure is off."""
+        """A job the review cannot judge: its values must all be plain, unless strict_when_unsure is off.
+
+        ``code`` names the refusal of a job with a value that is not plain.
+        """
         job_id = evaluator.job.id
         if not self.strict_when_unsure:
             log.debug("Job %s of tool %s: values are not checked, %s", job_id, tool.id, reason)
             return
-        if why := _no_plain_value(report):
+        if no_plain := _no_plain_value(report):
+            codes = [code for code, _ in no_plain]
+            why = [text for _, text in no_plain]
             log.warning(
-                "Tool security review: job %s of tool %s version %s cannot be checked, %s, and %s",
+                "Tool security review (%s): job %s of tool %s version %s cannot be checked, %s, and %s",
+                ", ".join(codes),
                 job_id,
                 tool.id,
                 tool.version,
@@ -341,7 +364,7 @@ class ToolSecurityReviewer:
                 "; ".join(why),
             )
             if self.mode == ENFORCE:
-                raise ToolInputRejected(unchecked_message(tool, reason, why))
+                raise ToolInputRejected(unchecked_message(tool, reason, why), codes)
             return
         assert report is not None  # _no_plain_value refuses a job without a report
         try:
@@ -350,17 +373,24 @@ class ToolSecurityReviewer:
         except Exception:
             # Only enforce mode may fail a job, and then with a message for the user.
             log.exception(
-                "Tool security review: the strict check of the values of job %s of tool %s failed", job_id, tool.id
+                "Tool security review (%s): the strict check of the values of job %s of tool %s failed",
+                RefusalCode.UNCHECKABLE_STRICT_CHECK_ERROR.value,
+                job_id,
+                tool.id,
             )
             if self.mode == ENFORCE:
-                raise ToolInputRejected(unchecked_message(tool, reason, ["checking its values strictly failed"]))
+                raise ToolInputRejected(
+                    unchecked_message(tool, reason, ["checking its values strictly failed"]),
+                    [RefusalCode.UNCHECKABLE_STRICT_CHECK_ERROR],
+                )
             return
         if not harmful:
             log.debug("Job %s of tool %s: %s, and every value is plain", job_id, tool.id, reason)
             return
         for ref, chars in harmful:
             log.warning(
-                "Tool security review: job %s of tool %s version %s cannot be checked, %s, and %s contains [%s]",
+                "Tool security review (%s): job %s of tool %s version %s cannot be checked, %s, and %s contains [%s]",
+                code.value,
                 job_id,
                 tool.id,
                 tool.version,
@@ -369,7 +399,7 @@ class ToolSecurityReviewer:
                 show(chars),
             )
         if self.mode == ENFORCE:
-            raise ToolInputRejected(strict_message(tool, reason, harmful))
+            raise ToolInputRejected(strict_message(tool, reason, harmful), [code])
 
 
 @dataclass(frozen=True)
@@ -625,13 +655,13 @@ def _describe(ref: SourceRef) -> str:
     return f"{_DESCRIPTIONS.get(ref.accessor, 'the value of')} input '{ref.param}'"
 
 
-def _no_plain_value(report: Optional[Report]) -> list[str]:
+def _no_plain_value(report: Optional[Report]) -> list[tuple[RefusalCode, str]]:
     """Why no value counts as plain for a tool: the strict check refuses its jobs outright."""
     if report is None:
-        return ["nothing is known about what its templates do"]
+        return [(RefusalCode.UNCHECKABLE_REVIEW_FAILED, "nothing is known about what its templates do")]
     why = []
     if rewrites := sorted({name for found in report.rewrites.values() for name in found}):
-        why.append(f"its templates change values with {', '.join(rewrites)}")
+        why.append((RefusalCode.UNCHECKABLE_REWRITES, f"its templates change values with {', '.join(rewrites)}"))
     capabilities = sorted(
         {
             f.expr
@@ -641,7 +671,12 @@ def _no_plain_value(report: Optional[Report]) -> list[str]:
         }
     )
     if capabilities:
-        why.append(f"its templates run code or read data the job does not carry ({', '.join(capabilities)})")
+        why.append(
+            (
+                RefusalCode.UNCHECKABLE_TEMPLATE_CODE,
+                f"its templates run code or read data the job does not carry ({', '.join(capabilities)})",
+            )
+        )
     serious = serious_findings(report)
     runs = sorted(
         {
@@ -651,7 +686,12 @@ def _no_plain_value(report: Optional[Report]) -> list[str]:
         }
     )
     if runs:
-        why.append(f"letters alone can be code where it writes values ({', '.join(runs)})")
+        why.append(
+            (
+                RefusalCode.UNCHECKABLE_LETTERS_ARE_CODE,
+                f"letters alone can be code where it writes values ({', '.join(runs)})",
+            )
+        )
     return why
 
 

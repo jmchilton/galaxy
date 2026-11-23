@@ -953,8 +953,9 @@ def test_strict_when_unsure_in_log_mode_warns_and_lets_the_job_run(app, tmp_path
     warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
     assert warnings == [
         (
-            "Tool security review: job 7 of tool echo_ids version 1.0 cannot be checked, this tool writes values in"
-            " places that no check of their characters can judge (command), and the value of input 'word' contains [|]"
+            "Tool security review (not-plain-unchecked-place): job 7 of tool echo_ids version 1.0 cannot be checked,"
+            " this tool writes values in places that no check of their characters can judge (command), and the value"
+            " of input 'word' contains [|]"
         )
     ]
 
