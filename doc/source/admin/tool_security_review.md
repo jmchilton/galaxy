@@ -838,4 +838,128 @@ user:
     spec|label: a';touch harm-marker;'
 ```
 
+## Access patterns
+
+The review also reports reads it cannot follow to a value of the job. The job check refuses no job for
+them alone: a job is refused only when the review also sees the value written where it can do harm.
+A case marked as a known bypass is a tool whose jobs run whatever their values.
+
+### Reads the job check cannot see
+
+#### `reflection`
+
+Reaches objects by name (`getattr`, `__getattribute__`, `getVar` with a computed name, Python or Cheetah internals). The review loses track of what is read, `.unsanitized` values included.
+
+##### reflection_bypass
+
+A known bypass. Read by name through `getattr`, the unsanitized dataset model is out of the review's sight: it reports no finding the job check could compare values with, so the job runs whatever the dataset is named, and a name that closes the quotes starts a command.
+
+Tool `reflection_getattr.xml`:
+
+```
+#set $name = getattr($input, 'unsanitized').name
+echo '${name}' > '$out'
+```
+
+Runs
+
+```
+datasets:
+  input:
+    name: reads.fq
+```
+
+#### `model-access`
+
+Reads Galaxy's database objects (`.unsanitized`, `.dataset`, `.creating_job`, ...): names, metadata and parameters as users set them, without the sanitizer.
+
+Refused cases with it: `raw_dataset_model`.
+
+#### `app-access`
+
+Reads Galaxy's application object beyond its configuration (`$__app__.model`, ...), which reaches any data of the server.
+
+##### app_model_read
+
+The application object reaches any data of the server. The review flags the read but follows no value of it; this job runs because it writes a count.
+
+Tool `app_model.xml`:
+
+```
+#set $users = $__app__.model.context.query($__app__.model.User).count()
+echo '${users}' > '$out'
+```
+
+Runs
+
+```
+{}
+```
+
+#### `user-object`
+
+Reads the user object with the sanitizer off. A preference read by its name is checked; anything else read from the user object is not.
+
+Refused cases with it: `user_preference_shell_injection`, `user_object_unsanitized`.
+
+#### `file-access`
+
+Reads or inspects files on the server (`open()`, `os.path`, ...). The review traces `open()` of an input dataset as its content; any other file is not a value of the job.
+
+Refused cases with it: `dataset_content_shell_injection`.
+
+#### `template-code`
+
+Runs Python the review cannot follow (`exec`, `compile`, imports of modules that start processes or open connections).
+
+Refused cases with it: `rewrites_and_template_code`, `template_code`.
+
+### Reads of values the server sets
+
+#### `job-metadata`
+
+Checks for the job that made a dataset, or reads its tool id or version, which the server sets.
+
+##### job_metadata_read
+
+The tool version of the job that made a dataset is set by the server, so the job runs.
+
+Tool `job_metadata.xml`:
+
+```
+#if $input.creating_job
+echo '${input.creating_job.tool_version}' > '$out'
+#else
+echo unknown > '$out'
+#end if
+```
+
+Runs
+
+```
+datasets:
+  input:
+    name: reads.fq
+```
+
+#### `server-config`
+
+Reads the server's configuration or encodes ids (`$__app__.config`, `$__app__.security`).
+
+##### server_config_read
+
+An id the server encodes is the server's value, so the job runs.
+
+Tool `server_config.xml`:
+
+```
+echo '${__app__.security.encode_id(1)}' > '$out'
+```
+
+Runs
+
+```
+{}
+```
+
 <!-- END refusal codes -->
