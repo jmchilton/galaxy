@@ -17,6 +17,7 @@ import pwd
 import random
 import secrets
 import string
+import time
 from collections import (
     Counter,
     defaultdict,
@@ -57,6 +58,7 @@ from uuid import (
 import sqlalchemy
 from boltons.iterutils import remap
 from pydantic import BaseModel
+from social_core.backends.oauth import BaseOAuth2
 from social_core.identifiers import identifier_matches
 from social_core.storage import (
     AssociationMixin,
@@ -12142,11 +12144,14 @@ class PSANonce(Base, NonceMixin, RepresentById):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     server_url: Mapped[str | None] = mapped_column(VARCHAR(255))  # type: ignore[assignment]
-    timestamp: Mapped[int | None]  # type: ignore[assignment]
-    salt: Mapped[str | None] = mapped_column(VARCHAR(40))  # type: ignore[assignment]
+    timestamp: Mapped[int | None] = mapped_column(index=True)  # type: ignore[assignment]
+    salt: Mapped[str | None] = mapped_column(VARCHAR(40), index=True)  # type: ignore[assignment]
 
     # This static property is set at: galaxy.authnz.psa_authnz.PSAAuthnz
     sa_session: ClassVar[Session | None] = None
+
+    # Scope of the OAuth2 state nonces social-core stores on every login start
+    OAUTH2_STATE_SCOPE_PREFIX: ClassVar[str] = "social_core.oauth2."
 
     def __init__(self, server_url, timestamp, salt):
         self.server_url = server_url
@@ -12164,12 +12169,28 @@ class PSANonce(Base, NonceMixin, RepresentById):
         (Required by social_core.storage.NonceMixin interface)
         """
         session = _psa_session(cls.sa_session)
+        cls._prune_expired_states(session)
         stmt = select(PSANonce).filter_by(server_url=server_url, timestamp=timestamp, salt=salt).limit(1)
         if session.scalars(stmt).first() is not None:
             return False
         session.add(cls(server_url=server_url, timestamp=timestamp, salt=salt))
         session.commit()
         return True
+
+    @classmethod
+    def _prune_expired_states(cls, session: Session) -> None:
+        # Bounded, like FlowState._cleanup; abandoned logins never consume their state nonce.
+        cutoff = int(time.time()) - BaseOAuth2.STATE_LIFETIME
+        expired = session.scalars(
+            select(PSANonce.id)
+            .where(
+                PSANonce.server_url.startswith(cls.OAUTH2_STATE_SCOPE_PREFIX, autoescape=True),
+                PSANonce.timestamp < cutoff,
+            )
+            .limit(100)
+        ).all()
+        if expired:
+            session.execute(delete(PSANonce).where(PSANonce.id.in_(expired)))
 
     @classmethod
     def get(cls, server_url: str, salt: str) -> "PSANonce | None":

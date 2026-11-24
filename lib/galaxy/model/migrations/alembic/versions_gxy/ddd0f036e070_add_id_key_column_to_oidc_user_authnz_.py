@@ -6,6 +6,10 @@ backend used before social-auth-core 6.0, so that social-auth-core can find them
 and, for backends whose default key has changed (e.g. Google from ``email`` to
 ``sub``), migrate them on the user's next login.
 
+Also index ``psa_nonce``: social-auth-core 6 looks up an OAuth2 state nonce by
+``salt`` on every login start and callback, and expired ones are pruned by
+``timestamp``.
+
 Revision ID: ddd0f036e070
 Revises: b9467a8c12de
 Create Date: 2026-11-19 11:58:19.823758
@@ -15,9 +19,12 @@ Create Date: 2026-11-19 11:58:19.823758
 import sqlalchemy as sa
 from alembic import op
 
+from galaxy.model.database_object_names import build_index_name
 from galaxy.model.migrations.util import (
     add_column,
+    create_index,
     drop_column,
+    drop_index,
     transaction,
 )
 
@@ -29,6 +36,8 @@ depends_on = None
 
 table_name = "oidc_user_authnz_tokens"
 column_name = "id_key"
+nonce_table_name = "psa_nonce"
+nonce_index_columns = ["salt", "timestamp"]
 
 # Identifier keys used by Galaxy's backends (``galaxy.authnz.psa_authnz.BACKENDS``)
 # with social-auth-core 5.2.0, frozen so that the migration doesn't depend on the
@@ -69,8 +78,12 @@ def upgrade() -> None:
         google = table.c.provider == "google-openidconnect"
         op.execute(table.update().where(google, table.c.id_key == "", table.c.uid.like("%@%")).values(id_key="email"))
         op.execute(table.update().where(google, table.c.id_key == "").values(id_key="sub"))
+        for column in nonce_index_columns:
+            create_index(build_index_name(nonce_table_name, [column]), nonce_table_name, [column])
 
 
 def downgrade() -> None:
     with transaction():
+        for column in nonce_index_columns:
+            drop_index(build_index_name(nonce_table_name, [column]), nonce_table_name)
         drop_column(table_name, column_name)

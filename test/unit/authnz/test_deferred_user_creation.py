@@ -18,7 +18,10 @@ from social_core.exceptions import (
     AuthException,
     AuthResponseError,
 )
-from sqlalchemy import event
+from sqlalchemy import (
+    event,
+    select,
+)
 from sqlalchemy.exc import IntegrityError
 from webob import Request
 
@@ -423,6 +426,18 @@ def test_nonce_is_used_and_consumed_once(trans: Any) -> None:
     assert model.PSANonce.consume("scope", 1000, "salt") is True
     assert model.PSANonce.consume("scope", 1000, "salt") is False
     assert model.PSANonce.get("scope", "salt") is None
+
+
+def test_login_start_prunes_expired_state_nonces(trans: Any, provider: SimpleNamespace) -> None:
+    now = int(time.time())
+    expired = model.PSANonce("social_core.oauth2.keycloak", now - 3600, "abandoned")
+    recent = model.PSANonce("social_core.oauth2.keycloak", now - 60, "pending")
+    other = model.PSANonce("other-scope", now - 3600, "unrelated")
+    trans.sa_session.add_all([expired, recent, other])
+    trans.sa_session.commit()
+    state = start(trans, provider)["state"][0]
+    salts = set(trans.sa_session.scalars(select(model.PSANonce.salt)))
+    assert salts == {"pending", "unrelated", state}
 
 
 def test_authentication_state_omits_social_core_next(trans: Any, provider: SimpleNamespace) -> None:
