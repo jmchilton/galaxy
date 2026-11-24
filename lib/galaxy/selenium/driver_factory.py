@@ -4,7 +4,11 @@ from typing import (
     Any,
     cast,
     Literal,
+    TYPE_CHECKING,
 )
+
+if TYPE_CHECKING:
+    from playwright.sync_api import ViewportSize
 
 # Playwright browser type names (matches BrowserType.name property)
 PlaywrightBrowserName = Literal["chromium", "firefox", "webkit"]
@@ -308,15 +312,12 @@ def get_playwright_driver(
     browser_instance = browser_type.launch(headless=headless, slow_mo=slow_mo)
 
     # Create page with viewport size matching Selenium's window size
-    width, height = DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT
-    if video_dir:
-        page = browser_instance.new_page(
-            viewport={"width": width, "height": height},
-            record_video_dir=video_dir,
-            record_video_size={"width": width, "height": height},
-        )
-    else:
-        page = browser_instance.new_page(viewport={"width": width, "height": height})
+    size: ViewportSize = {"width": DEFAULT_WINDOW_WIDTH, "height": DEFAULT_WINDOW_HEIGHT}
+    page = browser_instance.new_page(
+        viewport=size,
+        record_video_dir=video_dir or None,
+        record_video_size=size if video_dir else None,
+    )
 
     return PlaywrightResources(
         playwright=playwright,
