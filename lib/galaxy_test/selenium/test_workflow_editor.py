@@ -2118,6 +2118,64 @@ steps:
         self.assert_node_output_is("filter#output_filtered", "list")
 
     @selenium_test
+    def test_subworkflow_collection_input_map_over(self):
+        self.open_in_workflow_editor(
+            """
+class: GalaxyWorkflow
+inputs:
+  pair:
+    type: collection
+    collection_type: paired
+    position:
+      left: 0
+      top: 0
+  nested_list:
+    type: collection
+    collection_type: "list:list"
+    position:
+      left: 0
+      top: 200
+steps:
+  nested_workflow:
+    position:
+      left: 350
+      top: 100
+    run:
+      class: GalaxyWorkflow
+      inputs:
+        inner_list:
+          type: collection
+          collection_type: list
+      outputs:
+        inner_output:
+          outputSource: duplicate/list_output
+      steps:
+        duplicate:
+          tool_id: collection_creates_list
+          in:
+            input1: inner_list
+""",
+            auto_layout=False,
+        )
+        refusal = self.workflow_editor_try_connect(
+            "pair#output",
+            "nested_workflow#inner_list",
+            screenshot_partial="workflow_editor_subworkflow_collection_input_refused",
+        )
+        assert refusal == "Incompatible collection type(s) for attachment."
+        self.workflow_editor_assert_not_connected("pair#output", "nested_workflow#inner_list")
+        self.assert_node_output_is("nested_workflow#inner_output", "list")
+        self.workflow_editor_connect("nested_list#output", "nested_workflow#inner_list")
+        self.workflow_editor_assert_connected("nested_list#output", "nested_workflow#inner_list")
+        self.workflow_editor_assert_input_mapped("nested_workflow#inner_list")
+        self.assert_node_output_is(
+            "nested_workflow#inner_output",
+            "list",
+            "list:list",
+            screenshot_name="workflow_editor_subworkflow_mapped_over",
+        )
+
+    @selenium_test
     def test_editor_place_comments(self):
         editor = self.components.workflow_editor
 
@@ -2398,7 +2456,13 @@ steps:
         return (int(width_stripped), int(height_stripped))
 
     @retry_assertion_during_transitions
-    def assert_node_output_is(self, label: str, output_type: str, subcollection_type: str | None = None):
+    def assert_node_output_is(
+        self,
+        label: str,
+        output_type: str,
+        subcollection_type: str | None = None,
+        screenshot_name: str | None = None,
+    ):
         node, output_name = self.workflow_editor_node_and_terminal(label)
         node.wait_for_present()
         # Dismiss any stale tooltip before hovering so retry gets fresh text
@@ -2420,6 +2484,7 @@ steps:
             else:
                 fragment += f"{subcollection_type}"
             assert fragment in element.text
+        self.screenshot_if(screenshot_name)
         self.click_center()
 
     def workflow_editor_maximize_center_pane(self, collapse_left=True, collapse_right=True):
