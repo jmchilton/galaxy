@@ -686,7 +686,7 @@ config:
 
 ### `uncheckable-letters-are-code`
 
-Letters alone can be code where the tool writes a value: the program to run, text piped to a shell that runs it (no script file, no `-c`), or unquoted Perl or Ruby code.
+Letters alone can be code where the tool writes a value: the program to run, text piped to a shell that runs it (not one that runs a script file), or unquoted Perl or Ruby code.
 
 #### pipe_to_shell
 

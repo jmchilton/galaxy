@@ -43,7 +43,7 @@ DESCRIPTIONS = {
     RefusalCode.UNCHECKABLE_TEMPLATE_CODE: "The templates run Python that can read text the job does not carry"
     " (imports, `open()`, `$__app__`, the models behind `.unsanitized`).",
     RefusalCode.UNCHECKABLE_LETTERS_ARE_CODE: "Letters alone can be code where the tool writes a value: the program"
-    " to run, text piped to a shell that runs it (no script file, no `-c`), or unquoted Perl or Ruby code.",
+    " to run, text piped to a shell that runs it (not one that runs a script file), or unquoted Perl or Ruby code.",
     RefusalCode.UNCHECKABLE_UNTRACED_VALUE: "The templates write a value the review cannot trace to one input or"
     " preference (the user object read in a loop, a conditional built at run time), so no check sees it.",
     RefusalCode.UNCHECKABLE_STRICT_CHECK_ERROR: "The strict check itself failed (a bug), so none of the job's"
