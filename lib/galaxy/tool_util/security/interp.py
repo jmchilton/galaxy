@@ -126,6 +126,11 @@ def _literal_chars(value: AV) -> charsets.Chars:
     return chars
 
 
+def _is_tool_path(node: Any) -> bool:
+    """A path the tool controls: one of its configfiles, or its directory."""
+    return isinstance(node, Special) and (node.path == "__tool_directory__" or node.path.startswith("configfile:"))
+
+
 def _matched_chars(old: Any) -> charsets.Chars:
     """Characters a value holds where str.replace(old, new) puts new text: the job check sees them.
 
@@ -1029,8 +1034,9 @@ class TemplateAnalysis:
                 after_config.add(state)
             return frozenset(after_config)
         out = set()
+        tool_path = bool(value.nodes) and not text.tainted and all(map(_is_tool_path, value.nodes))
         for state in states:
-            context, after = shell.placeholder(state)
+            context, after = shell.placeholder(state, tool_path)
             if context.comment:
                 out.add(after)
                 continue

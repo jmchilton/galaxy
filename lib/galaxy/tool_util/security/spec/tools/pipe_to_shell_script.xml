@@ -1,0 +1,13 @@
+<tool id="spec_pipe_to_shell_script" name="Raw text piped to a shell script" version="1.0" profile="24.0">
+    <description>pipes a text value into a shell that runs a script of the tool</description>
+    <command><![CDATA[printf '%s\n' '${word.value}' | sh '$script' > '$out']]></command>
+    <configfiles>
+        <configfile name="script">tr a-z A-Z</configfile>
+    </configfiles>
+    <inputs>
+        <param name="word" type="text"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>
