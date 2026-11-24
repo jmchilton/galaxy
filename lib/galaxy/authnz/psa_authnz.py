@@ -589,10 +589,7 @@ class PSAAuthnz(IdentityProvider):
     ) -> tuple[str, User]:
         """Create only the identity authenticated by this browser's pending flow."""
         data = self._consume_confirmation(confirmation_id, trans)
-        email, username, user_id = _confirmation_identity(data)
-        id_key = data.get("id_key", "")
-        if not isinstance(id_key, str):
-            raise InvalidFlow()
+        email, username, user_id, id_key = _confirmation_identity(data)
         provider = BACKENDS_NAME[self.config["provider"]]
         if (
             trans.sa_session.query(User).where(func.lower(User.email) == email.lower()).first()
@@ -1172,17 +1169,17 @@ def associate_by_email_if_logged_in(
 
 
 def _confirmation_identity(data):
-    email, username, uid = data.get("email"), data.get("username"), data.get("uid")
+    email, username, uid, id_key = data.get("email"), data.get("username"), data.get("uid"), data.get("id_key")
     if (
-        not all(isinstance(value, str) and value.strip() for value in (email, username, uid))
+        not all(isinstance(value, str) and value.strip() for value in (email, username, uid, id_key))
         or uid == "None"
         or not isinstance(data.get("response"), dict)
     ):
         raise InvalidFlow()
     username = ready_name_for_url(username.split("@")[0]).lower()
-    if not username or len(email) > 255 or len(uid) > 255:
+    if not username or len(email) > 255 or len(uid) > 255 or len(id_key) > 255:
         raise InvalidFlow()
-    return email, username, uid
+    return email, username, uid, id_key
 
 
 def check_user_creation_confirmation(

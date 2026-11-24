@@ -135,10 +135,22 @@ def test_backend_rejects_confirmation_outside_registration(trans, invalid):
 
 
 @pytest.mark.parametrize(
-    "changes", [{"uid": None}, {"uid": ""}, {"uid": "None"}, {"email": []}, {"username": "!!!"}, {"response": []}]
+    "changes",
+    [
+        {"uid": None},
+        {"uid": ""},
+        {"uid": "None"},
+        {"email": []},
+        {"username": "!!!"},
+        {"response": []},
+        {"id_key": None},
+        {"id_key": ""},
+        {"id_key": 1},
+    ],
 )
 def test_invalid_confirmation_identity(changes):
-    data = {"email": "verified@example.com", "username": "verified", "uid": "subject", "response": {}}
+    data = {"email": "verified@example.com", "username": "verified", "uid": "subject", "id_key": "sub", "response": {}}
+    assert _confirmation_identity(data) == ("verified@example.com", "verified", "subject", "sub")
     data.update(changes)
     with pytest.raises(InvalidFlow):
         _confirmation_identity(data)
@@ -499,7 +511,7 @@ def test_backend_alias_uses_canonical_confirmation_binding(trans):
     manager.oidc_backends_implementation["google"] = "psa"
     identifier = FlowState(trans.sa_session, trans.galaxy_session, "google").save(
         "confirmation",
-        {"email": "verified@example.com", "username": "verified", "uid": "google-sub", "response": {}},
+        {"email": "verified@example.com", "username": "verified", "uid": "google-sub", "id_key": "sub", "response": {}},
     )
     success, _, (_, user) = manager.create_user("google-openidconnect", identifier, trans, "/")
     assert success
