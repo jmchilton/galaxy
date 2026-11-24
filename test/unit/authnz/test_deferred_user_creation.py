@@ -246,12 +246,22 @@ def start(trans, provider):
     return query
 
 
-def callback(trans, query, login_redirect_url="/galaxy/"):
+def callback_request(trans, query):
     trans.request = Request.blank(
         "https://galaxy.example/authnz/keycloak/callback?"
         + urlencode({"state": query["state"][0], "code": "local-code"})
     )
+
+
+def callback(trans, query, login_redirect_url="/galaxy/"):
+    callback_request(trans, query)
     return adapter(trans).callback(query["state"][0], "local-code", trans, login_redirect_url)
+
+
+def manager_callback(trans, query):
+    """Run the callback through AuthnzManager, which maps failures to user messages."""
+    callback_request(trans, query)
+    return trans.app.authnz_manager.callback("keycloak", query["state"][0], "local-code", trans, "/galaxy/")
 
 
 def test_confirmation_url_is_built_from_app_root(trans, provider):
@@ -389,8 +399,8 @@ def test_association_from_before_social_auth_core_6_needs_id_key(
     assert trans.sa_session.query(model.UserAuthnzToken).one().user is existing
 
 
-def test_nonce_from_another_session_is_rejected(trans: Any, provider: SimpleNamespace) -> None:
-    # GHSA-h2r5-x5m7-3935: the OIDC nonce must be bound to the flow of the session that started it.
+def victim_query_with_attacker_nonce(trans: Any, provider: SimpleNamespace) -> dict[str, list[str]]:
+    """Start logins in two sessions; the IdP answers the victim's with the attacker's nonce."""
     trans.app.authnz_manager.oidc_backends_config["keycloak"]["require_create_confirmation"] = False
     victim_session = trans.galaxy_session
     attacker_session = model.GalaxySession(is_valid=True)
@@ -401,9 +411,32 @@ def test_nonce_from_another_session_is_rejected(trans: Any, provider: SimpleName
     trans.galaxy_session = victim_session
     victim_query = start(trans, provider)
     provider.nonce = attacker_query["nonce"][0]
+    return victim_query
+
+
+def test_nonce_from_another_session_is_rejected(trans: Any, provider: SimpleNamespace) -> None:
+    # GHSA-h2r5-x5m7-3935: the OIDC nonce must be bound to the flow of the session that started it.
+    victim_query = victim_query_with_attacker_nonce(trans, provider)
     with pytest.raises(AuthResponseError) as exc_info:
         callback(trans, victim_query)
     assert exc_info.value.code == "nonce_mismatch"
+    assert counts(trans) == (0, 0, 0)
+
+
+def test_unmatched_association_from_before_social_auth_core_6_message(trans: Any, provider: SimpleNamespace) -> None:
+    existing = trans.app.user_manager.create(email="verified@example.com", username="existing")
+    trans.sa_session.add(model.UserAuthnzToken(user=existing, provider="keycloak", uid="verified-subject"))
+    trans.sa_session.commit()
+    success, message, _ = manager_callback(trans, start(trans, provider))
+    assert success is False
+    assert "could not be safely matched" in message
+
+
+def test_nonce_from_another_session_asks_to_restart_login(trans: Any, provider: SimpleNamespace) -> None:
+    victim_query = victim_query_with_attacker_nonce(trans, provider)
+    success, message, _ = manager_callback(trans, victim_query)
+    assert success is False
+    assert "has expired or is invalid" in message
     assert counts(trans) == (0, 0, 0)
 
 
