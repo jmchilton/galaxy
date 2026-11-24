@@ -353,6 +353,29 @@ class TestCustosToPSAMigration:
         remaining = db_session.query(UserAuthnzTokenTest).filter_by(user_id=42).first()
         assert remaining is None
 
+    def test_default_tables_match_schema_at_revision(self, db_session):
+        """The default tables used by revision 724237cc4cf0 must not name columns added later."""
+        db_session.add(
+            CustosAuthnzTokenTest(
+                user_id=7,
+                external_user_id="default_tables",
+                provider="keycloak",
+                access_token="access",
+                id_token="id_token",
+                refresh_token="refresh",
+                expiration_time=datetime.now() + timedelta(hours=1),
+                refresh_expiration_time=datetime.now() + timedelta(days=1),
+            )
+        )
+        db_session.commit()
+        connection = db_session.connection()
+
+        assert migrate_custos_tokens_to_psa(connection) == 1
+        assert db_session.query(UserAuthnzTokenTest).filter_by(user_id=7).one().uid == "default_tables"
+        db_session.query(CustosAuthnzTokenTest).delete()
+        assert restore_custos_tokens_from_psa(connection) == 1
+        assert remove_migrated_psa_tokens(connection) == 1
+
 
 class TestExtractIatFromToken:
     """Test the _extract_iat_from_token helper function."""
