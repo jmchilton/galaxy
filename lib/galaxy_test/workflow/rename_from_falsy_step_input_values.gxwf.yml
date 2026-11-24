@@ -1,0 +1,29 @@
+class: GalaxyWorkflow
+doc: |
+  $(inputs.name) references to tool parameters set to 0 and false in the step's
+  state, and to a connected boolean workflow input set to false.
+inputs:
+  flag:
+    type: boolean
+outputs:
+  int_output:
+    outputSource: int_step/output
+  bool_output:
+    outputSource: bool_step/output
+steps:
+  int_step:
+    tool_id: gx_int
+    in:
+      flag: flag
+    state:
+      parameter: 0
+    out:
+      output:
+        rename: "int_$(inputs.parameter)_flag_$(inputs.flag)"
+  bool_step:
+    tool_id: gx_boolean
+    state:
+      parameter: false
+    out:
+      output:
+        rename: "bool_$(inputs.parameter)"

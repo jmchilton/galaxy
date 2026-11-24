@@ -1,0 +1,12 @@
+- doc: Falsy values are formatted, not dropped.
+  job:
+    flag: false
+  outputs:
+    int_output:
+      class: File
+      metadata:
+        name: "int_0_flag_false"
+    bool_output:
+      class: File
+      metadata:
+        name: "bool_false"

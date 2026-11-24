@@ -23,6 +23,7 @@ from typing import (
     TypeAlias,
 )
 
+from boltons.iterutils import get_path
 from typing_extensions import (
     TypedDict,
 )
@@ -158,7 +159,10 @@ from galaxy.tools.parameters.workflow_utils import (
     runtime_to_json,
     workflow_building_modes,
 )
-from galaxy.tools.parameters.wrapped import make_dict_copy
+from galaxy.tools.parameters.wrapped import (
+    make_dict_copy,
+    nested_key_to_path,
+)
 from galaxy.tools.runtime import (
     dataset_path,
     input_extra_files_path,
@@ -3567,6 +3571,11 @@ class ToolModule(WorkflowModule):
                 if tool_input["input_type"] in ("dataset", "dataset_collection"):
                     values[name] = format_step_input_reference(replacement)
                     continue
+                if replacement is NO_REPLACEMENT and step.state:
+                    # replacement_for_input skips falsy state values such as 0 and false.
+                    state_value = get_path(step.state.inputs, nested_key_to_path(name), None)
+                    if not is_runtime_value(state_value):
+                        replacement = state_value
                 replacement = replace_expression_json_dataset(replacement, step)
             elif connections := step.input_connections_by_name.get(name):
                 # Resolved like a connected tool parameter: wait for the value, then read it.
