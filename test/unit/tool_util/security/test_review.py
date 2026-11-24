@@ -388,6 +388,50 @@ def test_capabilities(tmp_path, command, expected):
 
 
 @pytest.mark.parametrize(
+    "shell,runs_input",
+    [
+        ("bash", True),
+        ("bash -s", True),
+        ("bash -es x", True),
+        ("bash -", True),
+        ("bash /dev/stdin", True),
+        ("bash -o pipefail", True),
+        ("sh $free", True),
+        ("sh # a comment", True),
+        # Options from a select or a boolean, a dataset of the user: the shell still reads its input.
+        ("bash $flag", True),
+        ("bash $verbose", True),
+        ("bash -${flag}", True),
+        ("bash $input", True),
+        ("bash /dev/fd/$free", True),
+        ("bash /dev/fd/\\$n", True),
+        ("bash /proc/self/fd/0", True),
+        # The program of -c can read the input, and xargs or parallel make it the program.
+        ("bash -c 'exec sh'", True),
+        ('bash -c "$(cat)"', True),
+        ("xargs sh -c", True),
+        ("xargs -I{} sh -c 'echo {}'", True),
+        ("parallel sh -c", True),
+        ("sh '$__tool_directory__/colors.sh'", False),
+        ("sh $__tool_directory__/colors.sh", False),
+        ("sh '$script'", False),
+        ("sh -e script.sh", False),
+        ("bash -o pipefail script.sh", False),
+        ("(sh script.sh)", False),
+    ],
+)
+def test_pipe_to_shell_when_the_shell_runs_its_input(tmp_path, shell, runs_input):
+    inputs = (
+        INPUTS
+        + '<param name="flag" type="select"><option value="x">trace</option><option value="e">exit</option></param>'
+        + '<param name="verbose" type="boolean" truevalue="-x" falsevalue=""/>'
+    )
+    configfiles = '<configfile name="script">tr a-z A-Z</configfile>'
+    report = review(tmp_path, f"curl -s http://example.org/x | {shell}", configfiles, inputs=inputs)
+    assert (("capability-pipe-to-shell", "high") in rules(report, kind="capability")) == runs_input
+
+
+@pytest.mark.parametrize(
     "command",
     [
         # os.path only computes; a loop variable may be called like a builtin.

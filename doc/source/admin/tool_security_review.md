@@ -209,6 +209,30 @@ user:
     label: a;b|c && d
 ```
 
+#### shell_runs_script_file
+
+A shell given a script file reads the data piped into it as input, not as code, so the value is checked where it is written.
+
+Tool `pipe_to_shell_script.xml`:
+
+```
+printf '%s\n' '${word.value}' | sh '$script' > '$out'
+```
+
+Refused
+
+```
+inputs:
+  word: a';touch harm-marker;'
+```
+
+Runs: Command characters stay inside the quotes, and the script reads them as data.
+
+```
+inputs:
+  word: a;b|c $(touch harm-marker)
+```
+
 #### literal_rewrite
 
 A rewrite with literal text of a value as the job carries it adds what it writes only to a value that holds what it replaces, so the job check judges each job with it. Escaping the double quote of a value that a string method reads past its sanitizer leaves `$` and backticks live.
@@ -662,7 +686,7 @@ config:
 
 ### `uncheckable-letters-are-code`
 
-Letters alone can be code where the tool writes a value: the program to run, text piped to a shell, or unquoted Perl or Ruby code.
+Letters alone can be code where the tool writes a value: the program to run, text piped to a shell that runs it (no script file, no `-c`), or unquoted Perl or Ruby code.
 
 #### pipe_to_shell
 

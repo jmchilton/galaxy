@@ -53,6 +53,11 @@ FILE_COMMANDS = frozenset(("ln", "cp", "mv", "mkdir", "touch", "tee", "rm", "rmd
 
 _E_FLAG = re.compile(r"^-[A-Za-z0-9]*[eE]$")
 _C_FLAG = re.compile(r"^-[A-Za-z]*c[A-Za-z]*$")
+# Shell options: -s reads the script from stdin; -o and -O take the name of an option.
+_S_FLAG = re.compile(r"^-[A-Za-z]*s[A-Za-z]*$")
+_SHELL_OPTARG = re.compile(r"^[-+][A-Za-z]*[oO]$")
+# Script operands that can be the shell's own input.
+_STDIN_OPERANDS = re.compile(r"^(-|/dev/.*|/proc/.*)$")
 # The language each interpreter runs, by its command name (python and pypy go by _PYTHON).
 INTERPRETERS = {
     **dict.fromkeys(SHELLS, "sh"),
@@ -112,6 +117,8 @@ class Frame(NamedTuple):
     lead: bool = False  # the current word began with a placeholder
     has_args: bool = False  # the command already has an argument that is not an option
     after_option: bool = False  # the previous word was an option, so this word may be its value
+    stdin: bool = False  # a shell data is piped into, whose arguments have not yet given it a script
+    tool_path: bool = False  # every value in the current word is a path the tool controls, from its start
 
 
 class ShellState(NamedTuple):
@@ -217,7 +224,15 @@ class _Lexer:
             self.set(script="")
         else:
             role = "arg"
-        self.set(word="", role=role, dynamic=False, lead=False, inner="", sed=SED_START if role == "code:sed" else None)
+        self.set(
+            word="",
+            role=role,
+            dynamic=False,
+            tool_path=False,
+            lead=False,
+            inner="",
+            sed=SED_START if role == "code:sed" else None,
+        )
 
     def add(self, c: str) -> None:
         self.start_word(c)
@@ -238,8 +253,8 @@ class _Lexer:
         f = self.top
         if f.word is None:
             return
-        text, dynamic, role = f.word, f.dynamic, f.role
-        self.set(word=None, dynamic=False, role="", lead=False, inner="", sed=None)
+        text, dynamic, role, tool_path = f.word, f.dynamic, f.role, f.tool_path
+        self.set(word=None, dynamic=False, tool_path=False, role="", lead=False, inner="", sed=None)
         if not dynamic:
             self.event("word", text)
         if role == "cmd":
@@ -250,6 +265,8 @@ class _Lexer:
             if not text.startswith("-"):
                 # A flag, not a count: a count would keep the states of two #if branches apart for good.
                 self.set(has_args=True)
+            if self.top.stdin:
+                self.shell_argument(text, dynamic, tool_path)
             if not dynamic:
                 self.end_argument(text)
 
@@ -263,11 +280,13 @@ class _Lexer:
             if f.wrapper and _WRAPPER_ARG.match(text):
                 return
         name = "?" if dynamic else text.rsplit("/", 1)[-1]
-        self.event("command", name, "piped" if f.piped else "")
+        # A shell runs the data piped into it unless its arguments give it a script: see runs_input.
+        stdin = f.piped and name in SHELLS
+        self.event("command", name, "piped" if f.piped and not stdin else "")
         if name in WRAPPERS:
             self.set(wrapper=True)
             return
-        self.set(cmd=name, wrapper=False, has_args=False, sandbox=False)
+        self.set(cmd=name, wrapper=False, has_args=False, sandbox=False, stdin=stdin)
         if name == "eval":
             self.set(code_all="sh")
         elif name in _AWK:
@@ -298,8 +317,40 @@ class _Lexer:
             # What follows is a command of its own.
             self.set(cmd=None, has_args=False)
 
+    def shell_argument(self, text: str, dynamic: bool, tool_path: bool) -> None:
+        """An argument of a shell that data is piped into: a script operand makes the data its input.
+
+        A script the tool ships or writes (a configfile) is taken to read its input as data, like the
+        script of `| python script.py`.
+        """
+        if dynamic:
+            # A value can be an option, empty or the user's: only a path the tool controls is its script.
+            if tool_path:
+                self.set(stdin=False)
+            return
+        if text[:1] in ("-", "+") and not _STDIN_OPERANDS.match(text):
+            if _C_FLAG.match(text) or _S_FLAG.match(text):
+                # The program of -c can read the input, and xargs or parallel make the input its program.
+                self.runs_input()
+            elif _SHELL_OPTARG.match(text) or text in ("--rcfile", "--init-file"):
+                self.set(expect="optarg")
+            return
+        if _STDIN_OPERANDS.match(text):
+            self.runs_input()
+        else:
+            # A script file, the data piped in is its input.
+            self.set(stdin=False)
+
+    def runs_input(self) -> None:
+        """The shell the data is piped into runs that data as a script."""
+        f = self.top
+        if f.stdin:
+            self.event("command", f.cmd or "", "piped")
+            self.set(stdin=False)
+
     def new_command(self, piped: bool = False) -> None:
         self.end_word()
+        self.runs_input()
         self.set(
             cmd=None,
             wrapper=False,
@@ -319,6 +370,7 @@ class _Lexer:
 
     def pop(self) -> None:
         self.end_word()
+        self.runs_input()
         if len(self.frames) > 1:
             self.frames.pop()
 
@@ -432,7 +484,7 @@ class _Lexer:
         else:
             self.add(c)
 
-    def placeholder(self) -> Context:
+    def placeholder(self, tool_path: bool = False) -> Context:
         if self.comment:
             return Context(True, "", "", None, "", "", False, False)
         self.esc = False
@@ -442,7 +494,7 @@ class _Lexer:
         lead = f.word is None or (f.word == "" and not f.dynamic)
         self.start_word("x")
         f = self.top
-        self.set(dynamic=True, lead=f.lead or lead)
+        self.set(dynamic=True, tool_path=tool_path and (lead or f.tool_path), lead=f.lead or lead)
         f = self.top
         lang = inner = ""
         sed_state = None
@@ -481,10 +533,11 @@ def feed(state: ShellState, text: str, events: set[Event] | None = None) -> Shel
     return lexer.state()
 
 
-def placeholder(state: ShellState) -> tuple[Context, ShellState]:
-    """Where a value written at this point lands, and the state after it."""
+def placeholder(state: ShellState, tool_path: bool = False) -> tuple[Context, ShellState]:
+    """Where a value written at this point lands, and the state after it. ``tool_path``: a configfile or the
+    tool directory."""
     lexer = _Lexer(state, None)
-    context = lexer.placeholder()
+    context = lexer.placeholder(tool_path)
     return context, lexer.state()
 
 
@@ -497,4 +550,7 @@ def finish(state: ShellState, events: set[Event] | None = None) -> ShellState:
         while len(lexer.frames) > 1:
             lexer.pop()
         lexer.end_word()
+    while len(lexer.frames) > 1:
+        lexer.pop()
+    lexer.runs_input()
     return lexer.state()

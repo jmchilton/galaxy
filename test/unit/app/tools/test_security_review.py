@@ -733,7 +733,8 @@ def test_user_preference_is_checked(app, tmp_path, name, expected):
 # -- strict when unsure ------------------------------------------------------------------------
 
 REWRITING = ECHO_IDS.replace("echo '${word.value}'", "echo ${str($word).replace('__gt__', '>')}")
-PIPING = ECHO_IDS.replace("echo '${word.value}' >> '$out'", "echo '${word.value}' | sh >> '$out'")
+# Galaxy joins the lines of a command: the `;` keeps a command added after it from being the script of sh.
+PIPING = ECHO_IDS.replace("echo '${word.value}' >> '$out'", "echo '${word.value}' | sh >> '$out';")
 PERL = ECHO_IDS.replace("echo '${word.value}' >> '$out'", "perl -e 'print ${word.value};' >> '$out'")
 SAFE_REPLACE = ECHO_IDS.replace("echo '${word.value}'", "echo '${str($word.value).replace(' ', '_')}'")
 
