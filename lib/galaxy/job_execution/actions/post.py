@@ -25,9 +25,6 @@ STEP_INPUT_REFERENCE_PATTERN = re.compile(r"\$\(inputs\.([A-Za-z0-9_]+)\)")
 RENAME_REFERENCE_PATTERN = re.compile(
     f"{RENAME_INPUT_REFERENCE_PATTERN.pattern}|{STEP_INPUT_REFERENCE_PATTERN.pattern}"
 )
-# Action argument holding the values of the step inputs a rename references. The workflow
-# scheduler sets it on a transient copy of the action, it is never stored.
-STEP_INPUT_VALUES_ARGUMENT = "step_input_values"
 
 
 def step_input_references(new_name: str) -> set[str]:
@@ -48,12 +45,20 @@ class DefaultJobAction:
     supports_mapped_over = False
 
     @classmethod
-    def execute(cls, app, sa_session, action, job, replacement_dict=None, final_job_state=None):
+    def execute(cls, app, sa_session, action, job, replacement_dict=None, final_job_state=None, step_input_values=None):
         pass
 
     @classmethod
     def execute_on_mapped_over(
-        cls, trans, sa_session, action, step_inputs, step_outputs, replacement_dict, final_job_state=None
+        cls,
+        trans,
+        sa_session,
+        action,
+        step_inputs,
+        step_outputs,
+        replacement_dict,
+        final_job_state=None,
+        step_input_values=None,
     ):
         pass
 
@@ -101,7 +106,7 @@ class ValidateOutputsAction(DefaultJobAction):
     verbose_name = "Validate Tool Outputs"
 
     @classmethod
-    def execute(cls, app, sa_session, action, job, replacement_dict=None, final_job_state=None):
+    def execute(cls, app, sa_session, action, job, replacement_dict=None, final_job_state=None, step_input_values=None):
         # no-op: needs to inject metadata handling parameters ahead of time.
         pass
 
@@ -117,7 +122,15 @@ class ChangeDatatypeAction(DefaultJobAction):
 
     @classmethod
     def execute_on_mapped_over(
-        cls, trans, sa_session, action, step_inputs, step_outputs, replacement_dict, final_job_state=None
+        cls,
+        trans,
+        sa_session,
+        action,
+        step_inputs,
+        step_outputs,
+        replacement_dict,
+        final_job_state=None,
+        step_input_values=None,
     ):
         if action.action_arguments and action.action_arguments.get("newtype"):
             newtype = action.action_arguments["newtype"]
@@ -127,7 +140,7 @@ class ChangeDatatypeAction(DefaultJobAction):
                         trans.app.datatypes_registry.change_datatype(dataset_instance, newtype)
 
     @classmethod
-    def execute(cls, app, sa_session, action, job, replacement_dict=None, final_job_state=None):
+    def execute(cls, app, sa_session, action, job, replacement_dict=None, final_job_state=None, step_input_values=None):
         if job.state == job.states.SKIPPED:
             # Don't change datatype, must remain expression.json
             return
@@ -162,7 +175,15 @@ class RenameDatasetAction(DefaultJobAction):
 
     @classmethod
     def execute_on_mapped_over(
-        cls, trans, sa_session, action, step_inputs, step_outputs, replacement_dict, final_job_state=None
+        cls,
+        trans,
+        sa_session,
+        action,
+        step_inputs,
+        step_outputs,
+        replacement_dict,
+        final_job_state=None,
+        step_input_values=None,
     ):
         # Prevent renaming a dataset to the empty string.
         input_names = {}
@@ -172,13 +193,13 @@ class RenameDatasetAction(DefaultJobAction):
             if step_input and hasattr(step_input, "name"):
                 input_names[input_key] = step_input.name
 
-        if new_name := cls._gen_new_name(action, input_names, replacement_dict):
+        if new_name := cls._gen_new_name(action, input_names, replacement_dict, step_input_values):
             for name, step_output in step_outputs.items():
                 if action.output_name == "" or name == action.output_name:
                     step_output.name = new_name
 
     @classmethod
-    def _gen_new_name(self, action, input_names, replacement_dict):
+    def _gen_new_name(self, action, input_names, replacement_dict, step_input_values=None):
         new_name = None
 
         if action.action_arguments and action.action_arguments.get("newname", ""):
@@ -200,7 +221,7 @@ class RenameDatasetAction(DefaultJobAction):
             #  suggested additions:
             #      "replace" option so you can replace a portion of the name.
 
-            step_input_values = action.action_arguments.get(STEP_INPUT_VALUES_ARGUMENT) or {}
+            step_input_values = step_input_values or {}
 
             def resolve(match: re.Match[str]) -> str:
                 if (step_input_name := match.group(2)) is not None:
@@ -264,7 +285,7 @@ class RenameDatasetAction(DefaultJobAction):
         return new_name
 
     @classmethod
-    def execute(cls, app, sa_session, action, job, replacement_dict=None, final_job_state=None):
+    def execute(cls, app, sa_session, action, job, replacement_dict=None, final_job_state=None, step_input_values=None):
         input_names = {}
         #  Loop through inputs find one with "to_be_replaced" input
         #  variable name, and get the replacement name
@@ -279,7 +300,7 @@ class RenameDatasetAction(DefaultJobAction):
             if has_collection and hasattr(has_collection, "name"):
                 input_names[input_assoc.name] = has_collection.name
 
-        if new_name := cls._gen_new_name(action, input_names, replacement_dict):
+        if new_name := cls._gen_new_name(action, input_names, replacement_dict, step_input_values):
             for dataset_assoc in job.output_datasets:
                 if action.output_name == "" or dataset_assoc.name == action.output_name:
                     dataset_assoc.dataset.name = new_name
@@ -305,7 +326,7 @@ class HideDatasetAction(DefaultJobAction):
     verbose_name = "Hide Dataset"
 
     @classmethod
-    def execute(cls, app, sa_session, action, job, replacement_dict=None, final_job_state=None):
+    def execute(cls, app, sa_session, action, job, replacement_dict=None, final_job_state=None, step_input_values=None):
         if final_job_state != job.states.ERROR:
             for output_association in job.output_datasets + job.output_dataset_collection_instances:
                 if action.output_name == "" or output_association.name == action.output_name:
@@ -313,7 +334,15 @@ class HideDatasetAction(DefaultJobAction):
 
     @classmethod
     def execute_on_mapped_over(
-        cls, trans, sa_session, action, step_inputs, step_outputs, replacement_dict, final_job_state=None
+        cls,
+        trans,
+        sa_session,
+        action,
+        step_inputs,
+        step_outputs,
+        replacement_dict,
+        final_job_state=None,
+        step_input_values=None,
     ):
         for name, step_output in step_outputs.items():
             if action.output_name == "" or name == action.output_name:
@@ -331,14 +360,22 @@ class DeleteDatasetAction(DefaultJobAction):
     verbose_name = "Delete Dataset"
 
     @classmethod
-    def execute(cls, app, sa_session, action, job, replacement_dict=None, final_job_state=None):
+    def execute(cls, app, sa_session, action, job, replacement_dict=None, final_job_state=None, step_input_values=None):
         for output_association in job.output_datasets + job.output_dataset_collection_instances:
             if action.output_name == "" or output_association.name == action.output_name:
                 output_association.item.deleted = True
 
     @classmethod
     def execute_on_mapped_over(
-        cls, trans, sa_session, action, step_inputs, step_outputs, replacement_dict, final_job_state=None
+        cls,
+        trans,
+        sa_session,
+        action,
+        step_inputs,
+        step_outputs,
+        replacement_dict,
+        final_job_state=None,
+        step_input_values=None,
     ):
         for name, step_output in step_outputs.items():
             if action.output_name == "" or name == action.output_name:
@@ -367,7 +404,15 @@ class ColumnSetAction(DefaultJobAction):
 
     @classmethod
     def execute_on_mapped_over(
-        cls, trans, sa_session, action, step_inputs, step_outputs, replacement_dict, final_job_state=None
+        cls,
+        trans,
+        sa_session,
+        action,
+        step_inputs,
+        step_outputs,
+        replacement_dict,
+        final_job_state=None,
+        step_input_values=None,
     ):
         if action.action_arguments:
             for name, step_output in step_outputs.items():
@@ -376,7 +421,7 @@ class ColumnSetAction(DefaultJobAction):
                         cls._apply_column_set(dataset_instance, action.action_arguments)
 
     @classmethod
-    def execute(cls, app, sa_session, action, job, replacement_dict=None, final_job_state=None):
+    def execute(cls, app, sa_session, action, job, replacement_dict=None, final_job_state=None, step_input_values=None):
         for dataset_assoc in job.output_datasets:
             if action.output_name == "" or dataset_assoc.name == action.output_name:
                 cls._apply_column_set(dataset_assoc.dataset, action.action_arguments)
@@ -391,7 +436,7 @@ class SetMetadataAction(DefaultJobAction):
     # DBTODO Setting of Metadata is currently broken and disabled.  It should not be used (yet).
 
     @classmethod
-    def execute(cls, app, sa_session, action, job, replacement_dict=None, final_job_state=None):
+    def execute(cls, app, sa_session, action, job, replacement_dict=None, final_job_state=None, step_input_values=None):
         for data in job.output_datasets:
             data.set_metadata(action.action_arguments["newtype"])
 
@@ -401,7 +446,7 @@ class DeleteIntermediatesAction(DefaultJobAction):
     verbose_name = "Delete Non-Output Completed Intermediate Steps"
 
     @classmethod
-    def execute(cls, app, sa_session, action, job, replacement_dict=None, final_job_state=None):
+    def execute(cls, app, sa_session, action, job, replacement_dict=None, final_job_state=None, step_input_values=None):
         # TODO Optimize this later.  Just making it work for now.
         # TODO Support purging as well as deletion if user_purge is enabled.
         # Dataset candidates for deletion must be
@@ -491,7 +536,15 @@ class TagDatasetAction(DefaultJobAction):
 
     @classmethod
     def execute_on_mapped_over(
-        cls, trans, sa_session, action, step_inputs, step_outputs, replacement_dict, final_job_state=None
+        cls,
+        trans,
+        sa_session,
+        action,
+        step_inputs,
+        step_outputs,
+        replacement_dict,
+        final_job_state=None,
+        step_input_values=None,
     ):
         if action.action_arguments:
             tags = [
@@ -505,7 +558,7 @@ class TagDatasetAction(DefaultJobAction):
                         cls._execute(tag_handler, trans.user, step_output, tags)
 
     @classmethod
-    def execute(cls, app, sa_session, action, job, replacement_dict=None, final_job_state=None):
+    def execute(cls, app, sa_session, action, job, replacement_dict=None, final_job_state=None, step_input_values=None):
         if action.action_arguments:
             tags = [
                 t.replace("#", "name:") if t.startswith("#") else t
@@ -606,7 +659,15 @@ class ActionBox:
 
     @classmethod
     def execute_on_mapped_over(
-        cls, trans, sa_session, pja, step_inputs, step_outputs, replacement_dict=None, final_job_state=None
+        cls,
+        trans,
+        sa_session,
+        pja,
+        step_inputs,
+        step_outputs,
+        replacement_dict=None,
+        final_job_state=None,
+        step_input_values=None,
     ):
         action = cls.actions.get(pja.action_type)
         if action is None:
@@ -621,12 +682,25 @@ class ActionBox:
             )
             return
         action.execute_on_mapped_over(
-            trans, sa_session, pja, step_inputs, step_outputs, replacement_dict, final_job_state=final_job_state
+            trans,
+            sa_session,
+            pja,
+            step_inputs,
+            step_outputs,
+            replacement_dict,
+            final_job_state=final_job_state,
+            step_input_values=step_input_values,
         )
 
     @classmethod
-    def execute(cls, app, sa_session, pja, job, replacement_dict=None, final_job_state=None):
+    def execute(cls, app, sa_session, pja, job, replacement_dict=None, final_job_state=None, step_input_values=None):
         if pja.action_type in cls.actions:
             cls.actions[pja.action_type].execute(
-                app, sa_session, pja, job, replacement_dict, final_job_state=final_job_state
+                app,
+                sa_session,
+                pja,
+                job,
+                replacement_dict,
+                final_job_state=final_job_state,
+                step_input_values=step_input_values,
             )

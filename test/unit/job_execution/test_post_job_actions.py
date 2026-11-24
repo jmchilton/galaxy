@@ -1,9 +1,6 @@
 import pytest
 
-from galaxy.job_execution.actions.post import (
-    RenameDatasetAction,
-    STEP_INPUT_VALUES_ARGUMENT,
-)
+from galaxy.job_execution.actions.post import RenameDatasetAction
 from galaxy.model import PostJobAction
 
 
@@ -74,8 +71,5 @@ def test_rename_applies_replacement_dict_after_input_references():
     ],
 )
 def test_rename_step_input_references(template, step_input_values, expected):
-    action = PostJobAction(
-        "RenameDatasetAction",
-        action_arguments={"newname": template, STEP_INPUT_VALUES_ARGUMENT: step_input_values},
-    )
-    assert RenameDatasetAction._gen_new_name(action, {"input1": "reads.fastq"}, {}) == expected
+    action = PostJobAction("RenameDatasetAction", action_arguments={"newname": template})
+    assert RenameDatasetAction._gen_new_name(action, {"input1": "reads.fastq"}, {}, step_input_values) == expected

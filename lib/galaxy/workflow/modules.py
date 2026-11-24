@@ -41,7 +41,6 @@ from galaxy.exceptions import (
 from galaxy.job_execution.actions.post import (
     ActionBox,
     step_input_references,
-    STEP_INPUT_VALUES_ARGUMENT,
 )
 from galaxy.job_execution.compute_environment import ComputeEnvironment
 from galaxy.managers.credentials import _build_user_credentials_query
@@ -3540,14 +3539,10 @@ class ToolModule(WorkflowModule):
             details=str({k: str(v) for k, v in step_errors.items()}),
         )
 
-    def _effective_post_job_actions(self, step, step_input_values: dict[str, str] | None = None):
+    def _effective_post_job_actions(self, step):
         effective_post_job_actions = step.post_job_actions[:]
         for key, value in self.runtime_post_job_actions.items():
             effective_post_job_actions.append(self.__to_pja(key, value, None))
-        if step_input_values:
-            effective_post_job_actions = [
-                self._resolve_rename_step_input_references(pja, step_input_values) for pja in effective_post_job_actions
-            ]
         return effective_post_job_actions
 
     def _step_input_value(
@@ -3618,22 +3613,20 @@ class ToolModule(WorkflowModule):
             values[name] = format_step_input_reference(replacement)
         return values
 
-    def _resolve_rename_step_input_references(self, pja: PostJobAction, step_input_values: dict[str, str]):
-        if pja.action_type != "RenameDatasetAction":
-            return pja
-        # A transient copy carries the values, so the stored action keeps the reference for the next invocation.
-        # The rename leaves names it doesn't reference alone, so every rename action gets all the values.
-        action_arguments = {**(pja.action_arguments or {}), STEP_INPUT_VALUES_ARGUMENT: step_input_values}
-        return PostJobAction(pja.action_type, None, pja.output_name, action_arguments)
-
     def _handle_mapped_over_post_job_actions(
         self, step, step_inputs, step_outputs, replacement_dict, step_input_values: dict[str, str]
     ):
-        effective_post_job_actions = self._effective_post_job_actions(step, step_input_values)
+        effective_post_job_actions = self._effective_post_job_actions(step)
         for pja in effective_post_job_actions:
             if pja.action_type in ActionBox.mapped_over_output_actions:
                 ActionBox.execute_on_mapped_over(
-                    self.trans, self.trans.sa_session, pja, step_inputs, step_outputs, replacement_dict
+                    self.trans,
+                    self.trans.sa_session,
+                    pja,
+                    step_inputs,
+                    step_outputs,
+                    replacement_dict,
+                    step_input_values=step_input_values,
                 )
 
     def _resolve_credentials_context(self, tool: "Tool") -> CredentialsContext | None:
@@ -3675,10 +3668,17 @@ class ToolModule(WorkflowModule):
 
         # Combine workflow and runtime post job actions into the effective post
         # job actions for this execution.
-        effective_post_job_actions = self._effective_post_job_actions(step, step_input_values)
+        effective_post_job_actions = self._effective_post_job_actions(step)
         for pja in effective_post_job_actions:
             if pja.action_type in ActionBox.immediate_actions or isinstance(self.tool, DatabaseOperationTool):
-                ActionBox.execute(self.trans.app, self.trans.sa_session, pja, job, replacement_dict)
+                ActionBox.execute(
+                    self.trans.app,
+                    self.trans.sa_session,
+                    pja,
+                    job,
+                    replacement_dict,
+                    step_input_values=step_input_values,
+                )
             else:
                 if job.id:
                     pjaa = model.PostJobActionAssociation(pja, job_id=job.id)
