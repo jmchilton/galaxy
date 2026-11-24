@@ -377,25 +377,29 @@ def test_google_association_from_before_social_auth_core_6_is_migrated(
     assert association.id_key == "sub"
 
 
-@pytest.mark.parametrize("id_key", ["sub", ""])
-def test_association_from_before_social_auth_core_6_needs_id_key(
-    trans: Any, provider: SimpleNamespace, id_key: str
-) -> None:
+def existing_keycloak_association(trans: Any, id_key: str) -> model.User:
     existing = trans.app.user_manager.create(email="verified@example.com", username="existing")
     trans.sa_session.add(
         model.UserAuthnzToken(user=existing, provider="keycloak", uid="verified-subject", id_key=id_key)
     )
     trans.sa_session.commit()
-    query = start(trans, provider)
-    if id_key:
-        _, user = callback(trans, query)
-        assert user is existing
-    else:
-        # Without the id_key backfilled by the database migration, social-auth-core
-        # cannot tell which claim the stored uid came from and refuses to match it.
-        with pytest.raises(AuthAssociationError) as exc_info:
-            callback(trans, query)
-        assert exc_info.value.code == "identifier_migration_conflict"
+    return existing
+
+
+def test_backfilled_association_from_before_social_auth_core_6_matches(trans: Any, provider: SimpleNamespace) -> None:
+    existing = existing_keycloak_association(trans, "sub")
+    _, user = callback(trans, start(trans, provider))
+    assert user is existing
+    assert trans.sa_session.query(model.UserAuthnzToken).one().user is existing
+
+
+def test_association_from_before_social_auth_core_6_needs_id_key(trans: Any, provider: SimpleNamespace) -> None:
+    existing = existing_keycloak_association(trans, "")
+    # Without the id_key backfilled by the database migration, social-auth-core
+    # cannot tell which claim the stored uid came from and refuses to match it.
+    with pytest.raises(AuthAssociationError) as exc_info:
+        callback(trans, start(trans, provider))
+    assert exc_info.value.code == "identifier_migration_conflict"
     assert trans.sa_session.query(model.UserAuthnzToken).one().user is existing
 
 
@@ -424,9 +428,7 @@ def test_nonce_from_another_session_is_rejected(trans: Any, provider: SimpleName
 
 
 def test_unmatched_association_from_before_social_auth_core_6_message(trans: Any, provider: SimpleNamespace) -> None:
-    existing = trans.app.user_manager.create(email="verified@example.com", username="existing")
-    trans.sa_session.add(model.UserAuthnzToken(user=existing, provider="keycloak", uid="verified-subject"))
-    trans.sa_session.commit()
+    existing_keycloak_association(trans, "")
     success, message, _ = manager_callback(trans, start(trans, provider))
     assert success is False
     assert "could not be safely matched" in message
