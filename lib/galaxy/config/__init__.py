@@ -138,8 +138,8 @@ LOGGING_CONFIG_DEFAULT: dict[str, Any] = {
             # social_core's handle_http_errors decorator calls
             # social_logger.exception(...) on every OAuth provider HTTP
             # error (e.g. 400 invalid_grant when an auth code is
-            # reused/expired), then re-raises AuthCanceled/AuthForbidden/
-            # etc. which AuthnzManager.callback() already catches and
+            # reused/expired), then re-raises an AuthException subclass,
+            # which AuthnzManager.callback() already catches and
             # logs appropriately (see #22300). The library-side exception
             # log is pure Sentry noise — see #22400.
             "level": "CRITICAL",
