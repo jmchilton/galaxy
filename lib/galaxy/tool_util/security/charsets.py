@@ -629,3 +629,78 @@ def regex_removed(pattern: str) -> Removed | None:
         else:
             everywhere.update(one)
     return Removed(frozenset(everywhere), frozenset(start), start_repeats and bool(start))
+
+
+class LiteralRewrite(NamedTuple):
+    """A rewrite with literal text: it adds the probe characters ``added`` only to a value that holds
+    a character of ``trigger``."""
+
+    trigger: Chars
+    added: Chars
+
+
+# A backslash before a letter or digit in a re.sub replacement: a group reference or an escape.
+_REPLACEMENT_ESCAPE = re.compile(r"\\[0-9A-Za-z]")
+
+
+def literal_rewrite(old: object, new: object, regex: bool) -> LiteralRewrite | None:
+    """What ``value.replace(old, new)`` (``re.sub(old, new, value)`` with ``regex``) adds, and when.
+
+    None when that is not known: text that is not literal, a match that can be empty or a character
+    that is not a probe (a letter of a sanitizer token), a group reference in the replacement, new text
+    with a character that is neither a probe nor a letter or digit (a carriage return).
+    """
+    if not isinstance(old, str) or not isinstance(new, str) or not old:
+        return None
+    if any(not c.isalnum() and c not in PROBE for c in new):
+        return None
+    if regex:
+        if _REPLACEMENT_ESCAPE.search(new):
+            return None
+        try:
+            if re.compile(old).match(""):
+                return None
+            matched = _listed(sre_parse.parse(old))
+        except Exception:
+            return None
+    else:
+        matched = frozenset(old)
+    if not matched or not matched <= PROBE:
+        return None
+    return LiteralRewrite(matched, probe(new))
+
+
+def _listed(items: Any) -> Chars | None:
+    """Every character a regex can match, when the regex lists each one; None for a class like ``\\s``."""
+    chars: set[str] = set()
+    for op, arg in items:
+        if op is sre_constants.LITERAL:
+            chars.add(chr(arg))
+        elif op is sre_constants.IN:
+            for item, value in arg:
+                if item is sre_constants.LITERAL:
+                    chars.add(chr(value))
+                elif item is sre_constants.RANGE and value[1] - value[0] < 256:
+                    chars.update(chr(c) for c in range(value[0], value[1] + 1))
+                else:
+                    return None
+        elif op in (sre_constants.BRANCH, sre_constants.SUBPATTERN) or op in _REPEATS:
+            if op is sre_constants.BRANCH:
+                inner = arg[1]
+            elif op is sre_constants.SUBPATTERN:
+                inner = [arg[-1]]
+            else:
+                inner = [arg[2]]
+            for alternative in inner:
+                found = _listed(alternative)
+                if found is None:
+                    return None
+                chars.update(found)
+        elif op is not sre_constants.AT:
+            return None
+    return frozenset(chars)
+
+
+def plain_text(text: str) -> bool:
+    """Literal template text that cannot turn a plain value into one that is not."""
+    return not not_plain(text) and "-" not in text and not any(c.isspace() for c in text)

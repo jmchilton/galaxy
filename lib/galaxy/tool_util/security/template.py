@@ -55,6 +55,22 @@ def name_lookup(node: ast.AST, functions: frozenset[str] = NAME_MAPPER) -> tuple
     return None
 
 
+def constant(node: ast.AST | None) -> object:
+    """The value of a literal in the compiled template, None for anything else."""
+    return node.value if isinstance(node, ast.Constant) else None
+
+
+def literal_rewrite_call(call: ast.Call, regex: bool) -> tuple[object, object]:
+    """The literal (old, new) text of a ``.replace`` or ``re.sub`` call; None for text that is not literal.
+
+    A ``re.sub`` with flags or a count can match differently, so its text counts as not literal.
+    """
+    if regex and (len(call.args) != 3 or call.keywords):
+        return None, None
+    args = list(call.args[:2]) + [None, None]
+    return constant(args[0]), constant(args[1])
+
+
 class CompileTimeExecution(Exception):
     """The template contains a directive that runs code when it is compiled."""
 

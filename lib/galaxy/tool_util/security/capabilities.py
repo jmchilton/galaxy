@@ -29,9 +29,10 @@ from .charsets import (
     CRITICAL,
     HIGH,
     INFO,
+    literal_rewrite,
     LOW,
     MEDIUM,
-    not_plain,
+    plain_text,
 )
 from .model import Model
 from .report import (
@@ -42,6 +43,7 @@ from .report import (
 )
 from .template import (
     CompiledTemplate,
+    literal_rewrite_call,
     name_lookup,
     NAMESPACE_LOOKUPS,
 )
@@ -101,9 +103,20 @@ _KEEPING_CODECS = frozenset(("utf-8", "utf8", "utf_8", "ascii"))
 class PythonAudit:
     """Flag Python in a template (or an expression) that acts on the server instead of computing text."""
 
-    def __init__(self, report: Report, location: str, model: Model | None = None, assigned: set[str] | None = None):
+    def __init__(
+        self,
+        report: Report,
+        location: str,
+        model: Model | None = None,
+        assigned: set[str] | None = None,
+        analysed: bool = False,
+    ):
         self.report = report
         self.location = location
+        # With ``analysed``, the template analysis follows: literal rewrites (call id -> name) are left
+        # to it, which judges those of a value as the job carries it per job and flags the others.
+        self.analysed = analysed
+        self.literal_rewrites: dict[int, str] = {}
         # The names the template mentions: which attributes, metadata and account values it reads.
         self.names: set[str] = set()
         # Keys the template stores into dicts, and the first names of what it looks up in the namespace.
@@ -207,9 +220,11 @@ class PythonAudit:
         for node in ast.walk(tree):
             self.note_names(node)
             if rewrite := self.rewrite(node):
-                found = self.report.rewrites.setdefault(self.location, [])
-                if rewrite not in found:
-                    found.append(rewrite)
+                rewrite_name, literal = rewrite
+                if literal and self.analysed:
+                    self.literal_rewrites[id(node)] = rewrite_name
+                else:
+                    self.report.add_rewrite(self.location, rewrite_name)
             if template is not None and isinstance(node, ast.stmt):
                 line = template.template_line(node) or line
             if isinstance(node, ast.Store) or id(node) in seen:
@@ -269,11 +284,12 @@ class PythonAudit:
             return ["$"] + attrs[::-1]
         return None
 
-    def rewrite(self, node: ast.AST) -> str | None:
-        """The name of the rewrite a node is, when it can turn a plain value into one that is not."""
+    def rewrite(self, node: ast.AST) -> tuple[str, bool] | None:
+        """The name of the rewrite a node is, when it can turn a plain value into one that is not, and whether
+        its text is literal (see :func:`~.charsets.literal_rewrite`)."""
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mod):
             if isinstance(node.left, ast.Constant) and isinstance(node.left.value, str) and "%c" in node.left.value:
-                return "%c"
+                return "%c", False
             return None
         if not isinstance(node, ast.Call):
             return None
@@ -282,25 +298,20 @@ class PythonAudit:
             return None
         name = chain[-1]
         if name in _REWRITE_CALLS:
-            return name
+            return name, False
         if name in ("sub", "subn") and (chain[0] == "re" or chain[:1] == ["$"]):
-            return f"re.{name}"
+            return f"re.{name}", literal_rewrite(*literal_rewrite_call(node, regex=True), regex=True) is not None
         if name == "decode":
             codec = node.args[0] if node.args else None
             keeps = codec is None or (isinstance(codec, ast.Constant) and str(codec.value).lower() in _KEEPING_CODECS)
-            return None if keeps and chain[0] != "codecs" else "decode"
+            return None if keeps and chain[0] != "codecs" else ("decode", False)
         if name == "replace":
             if chain == ["str", "replace"] or len(node.args) < 2:
-                return ".replace"
-            new = node.args[1]
-            plain = (
-                isinstance(new, ast.Constant)
-                and isinstance(new.value, str)
-                and not not_plain(new.value)
-                and "-" not in new.value
-                and not any(c.isspace() for c in new.value)
-            )
-            return None if plain else ".replace"
+                return ".replace", False
+            old, new = literal_rewrite_call(node, regex=False)
+            if isinstance(new, str) and plain_text(new):
+                return None
+            return ".replace", literal_rewrite(old, new, regex=False) is not None
         return None
 
     def note_names(self, node: ast.AST) -> None:

@@ -209,6 +209,45 @@ user:
     label: a;b|c && d
 ```
 
+#### literal_rewrite
+
+A rewrite with literal text of a value as the job carries it adds what it writes only to a value that holds what it replaces, so the job check judges each job with it. Escaping the double quote of a value that a string method reads past its sanitizer leaves `$` and backticks live.
+
+Tool `raw_text_escaped_double_quoted.xml`:
+
+```
+#set $escaped = $word.replace('"', '\\"')
+echo "$escaped" > '$out'
+```
+
+Refused
+
+```
+inputs:
+  word: $(touch harm-marker)
+```
+
+Refused: The job check does not follow the escaping, so a double quote with a command character is refused too.
+
+```
+inputs:
+  word: x" ; touch harm-marker ; "
+```
+
+Runs
+
+```
+inputs:
+  word: a;b|c && d's
+```
+
+Runs: A double quote alone cannot start a command.
+
+```
+inputs:
+  word: say "hi"
+```
+
 ### `nested-interpreter`
 
 A value is written into the program of another interpreter (`bash -c`, `sed`, `perl -e`, ...) and can change what that program does.
@@ -460,7 +499,7 @@ fault: review
 
 ### `uncheckable-rewrites`
 
-The templates change values in ways that can bring back characters the sanitizer took out (`.replace`, `re.sub`, `chr()`, a decoder).
+The templates change values in ways that can bring back characters the sanitizer took out (`chr()`, a decoder, a `.replace` or `re.sub` of the sanitizer's tokens, of text that is not literal, or of a value template code changed before). A literal rewrite of a value as the job carries it is checked with each job.
 
 #### rewrites_restore_tokens
 
