@@ -6,6 +6,11 @@ backend used before social-auth-core 6.0, so that social-auth-core can find them
 and, for backends whose default key has changed (e.g. Google from ``email`` to
 ``sub``), migrate them on the user's next login.
 
+Deployments that override ``ID_KEY`` in ``oidc_config.xml`` must set the
+configured key themselves, otherwise their users can no longer log in::
+
+    UPDATE oidc_user_authnz_tokens SET id_key = '<configured key>' WHERE provider = '<backend name>';
+
 Also index ``psa_nonce``: social-auth-core 6 looks up an OAuth2 state nonce by
 ``salt`` on every login start and callback, and expired ones are pruned by
 ``timestamp``.
