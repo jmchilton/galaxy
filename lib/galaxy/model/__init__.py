@@ -12419,24 +12419,6 @@ class UserAuthnzToken(Base, UserMixin, RepresentById):
         return _psa_session(cls.sa_session).scalars(stmt.limit(1)).first()
 
     @classmethod
-    def get_social_auth_by_extra_data(
-        cls, provider: str, key: str, value: str, id_key: str = ""
-    ) -> "UserAuthnzToken | None":
-        """
-        Return the unambiguous UserSocialAuth whose extra_data[key] matches value
-        (Required by social_core.storage.UserMixin interface)
-        """
-        stmt = select(cls).filter_by(provider=provider, id_key=id_key)
-        matches = [
-            social
-            for social in _psa_session(cls.sa_session).scalars(stmt)
-            if social.extra_data and key in social.extra_data and str(social.extra_data[key]) == str(value)
-        ]
-        if len(matches) > 1:
-            raise ValueError("Multiple social-auth associations matched extra data")
-        return matches[0] if matches else None
-
-    @classmethod
     def get_social_auth_for_user(cls, user, provider=None, id=None):
         """
         Return all the UserSocialAuth instances for given user
