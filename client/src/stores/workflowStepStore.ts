@@ -483,12 +483,8 @@ function stepToConnections(step: Step): Connection[] {
 function findStepExtraInputs(step: Step) {
     const extraInputs = findGatePorts(step);
     renameStepInputReferences(step).forEach((name) => {
-        if (
-            step.inputs.some((input) => input.name === name) ||
-            extraInputs.some((input) => input.name === name) ||
-            // A tool parameter set in the step renames from its value; a port would override it.
-            Object.prototype.hasOwnProperty.call(step.tool_state ?? {}, name)
-        ) {
+        // A tool parameter set in the step renames from its value; a port would override it.
+        if (stepOwnsInputName(step, name) || extraInputs.some((input) => input.name === name)) {
             return;
         }
         extraInputs.push(renameReferencePort(name));
@@ -511,6 +507,14 @@ export function renameStepInputReferences(step: Pick<Step, "post_job_actions">):
         }
     });
     return [...names];
+}
+
+/** Whether `name` is already a tool input or a key of the step's tool state. */
+function stepOwnsInputName(step: Step, name: string): boolean {
+    return (
+        step.inputs.some((input) => input.name === name) ||
+        Object.prototype.hasOwnProperty.call(step.tool_state ?? {}, name)
+    );
 }
 
 function findGatePorts(step: Step) {
@@ -542,12 +546,7 @@ function unconnectedGateNames(step: Step, connectionNames: string[]): string[] {
     }
     const names = new Set<string>();
     references.staticPaths.forEach(([root]) => {
-        if (
-            typeof root === "string" &&
-            !connectionNames.includes(root) &&
-            !step.inputs.some((input) => input.name === root) &&
-            !Object.prototype.hasOwnProperty.call(step.tool_state ?? {}, root)
-        ) {
+        if (typeof root === "string" && !connectionNames.includes(root) && !stepOwnsInputName(step, root)) {
             names.add(root);
         }
     });
