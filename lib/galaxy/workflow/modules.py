@@ -334,6 +334,15 @@ def replace_expression_json_dataset(
     return replacement
 
 
+def is_collection_of_values(hdca: model.HistoryDatasetCollectionAssociation) -> bool:
+    """Whether ``hdca`` holds parameter values (``expression.json``) rather than data."""
+    # Skipped elements of a data collection are stored as expression.json too.
+    return any(
+        instance.extension == "expression.json" and not instance.is_skipped
+        for instance in hdca.collection.dataset_instances
+    )
+
+
 def format_step_input_reference(value: Any) -> str:
     """Format the value of a step input referenced as ``$(inputs.name)`` in a rename."""
     if value is None or value is NO_REPLACEMENT:
@@ -3358,23 +3367,18 @@ class ToolModule(WorkflowModule):
                     step_input_name = step_input.name
                     if step_input_name in execution_state.inputs:
                         continue
-                    if step_input_name in all_inputs_by_name:
-                        if step_input_name and "|" in step_input_name:
-                            # Nested tool inputs have flat connection names but are already represented
-                            # by their nested shape in the execution state.
-                            continue
-                        if iteration_elements and step_input_name in iteration_elements:  # noqa: B023
-                            value = iteration_elements[step_input_name]  # noqa: B023
-                        else:
-                            value = progress.replacement_for_input(trans, step, all_inputs_by_name[step_input_name])
-                    else:
-                        if iteration_elements and step_input_name in iteration_elements:  # noqa: B023
-                            value = iteration_elements[step_input_name]  # noqa: B023
-                        elif step_input.connections:
-                            value = progress.replacement_for_connection(step_input.connections[0], is_data=True)
-                        else:
-                            value = step_input.default_value if step_input.default_value_set else None
-                    extra_step_state[step_input_name] = value
+                    if step_input_name in all_inputs_by_name and "|" in step_input_name:
+                        # Nested tool inputs have flat connection names but are already represented
+                        # by their nested shape in the execution state.
+                        continue
+                    extra_step_state[step_input_name] = self._step_input_value(
+                        trans,
+                        progress,
+                        step,
+                        step_input_name,
+                        all_inputs_by_name,
+                        iteration_elements=iteration_elements,  # noqa: B023
+                    )
 
                 if when_value is not False:
                     when_value = evaluate_value_from_expressions(
@@ -3546,6 +3550,29 @@ class ToolModule(WorkflowModule):
             ]
         return effective_post_job_actions
 
+    def _step_input_value(
+        self,
+        trans: "ProvidesHistoryContext",
+        progress: "WorkflowProgress",
+        step: WorkflowStep,
+        name: str,
+        all_inputs_by_name: dict[str, InputDescription],
+        *,
+        is_data: bool = True,
+        optional: bool = False,
+        iteration_elements: dict[str, Any] | None = None,
+    ) -> Any:
+        """Resolve a step input from a map-over slice, a tool input, a connection or the step input's default."""
+        if iteration_elements and name in iteration_elements:
+            return iteration_elements[name]
+        if (tool_input := all_inputs_by_name.get(name)) is not None:
+            return progress.replacement_for_input(trans, step, tool_input)
+        if connections := step.input_connections_by_name.get(name):
+            return progress.replacement_for_connection(connections[0], is_data=is_data, optional=optional)
+        if (step_input := step.inputs_by_name.get(name)) and step_input.default_value_set:
+            return step_input.default_value
+        return None
+
     def _referenced_step_input_values(
         self,
         trans: "ProvidesHistoryContext",
@@ -3563,11 +3590,11 @@ class ToolModule(WorkflowModule):
                 referenced.update(step_input_references((pja.action_arguments or {}).get("newname") or ""))
         values: dict[str, str] = {}
         for name in referenced:
-            replacement: Any = None
+            # Data inputs don't wait for the upstream job, as for any data connection; parameters wait for their value.
+            replacement = self._step_input_value(
+                trans, progress, step, name, all_inputs_by_name, is_data=False, optional=True
+            )
             if (tool_input := all_inputs_by_name.get(name)) is not None:
-                # A tool input resolves as the tool sees it: from its connection or the step's tool
-                # state. Data inputs don't wait for the upstream job, as for any data connection.
-                replacement = progress.replacement_for_input(trans, step, tool_input)
                 if tool_input["input_type"] in ("dataset", "dataset_collection"):
                     values[name] = format_step_input_reference(replacement)
                     continue
@@ -3576,17 +3603,9 @@ class ToolModule(WorkflowModule):
                     state_value = get_path(step.state.inputs, nested_key_to_path(name), None)
                     if not is_runtime_value(state_value):
                         replacement = state_value
-                replacement = replace_expression_json_dataset(replacement, step)
-            elif connections := step.input_connections_by_name.get(name):
-                # Resolved like a connected tool parameter: wait for the value, then read it.
-                replacement = progress.replacement_for_connection(connections[0], is_data=False, optional=True)
-                replacement = replace_expression_json_dataset(replacement, step)
-            elif (step_input := step.inputs_by_name.get(name)) and step_input.default_value_set:
-                replacement = step_input.default_value
-            if isinstance(replacement, model.HistoryDatasetCollectionAssociation) and any(
-                # Skipped elements of a data collection are stored as expression.json too.
-                instance.extension == "expression.json" and not instance.is_skipped
-                for instance in replacement.collection.dataset_instances
+            replacement = replace_expression_json_dataset(replacement, step)
+            if isinstance(replacement, model.HistoryDatasetCollectionAssociation) and is_collection_of_values(
+                replacement
             ):
                 # One name for the whole step can't hold a value per element.
                 raise FailWorkflowEvaluation(
