@@ -91,6 +91,7 @@ def pending(trans, **changes):
         "email": "verified@example.com",
         "username": "Verified Name",
         "uid": "verified-subject",
+        "id_key": "sub",
         "response": {"access_token": "server-access", "refresh_token": "server-refresh"},
     }
     data.update(changes)
@@ -244,6 +245,18 @@ def test_confirmation_url_is_built_from_app_root(trans, provider):
     url = urlsplit(redirect)
     assert url.path == "/galaxy/login/start"
     assert parse_qs(url.query)["confirm"] == ["true"]
+
+
+def test_confirmed_identity_logs_in_again(trans, provider):
+    redirect, user = callback(trans, start(trans, provider))
+    assert user is None
+    identifier = parse_qs(urlsplit(redirect).query)["confirmation_id"][0]
+    _, created_user = adapter(trans).create_user(identifier, trans, "/")
+    association = trans.sa_session.query(model.UserAuthnzToken).one()
+    assert association.id_key == "sub"
+    _, user = callback(trans, start(trans, provider))
+    assert user is created_user
+    assert counts(trans) == (1, 1, 1)
 
 
 def test_new_identity_goes_to_destination(trans, provider):
