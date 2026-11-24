@@ -361,6 +361,27 @@ pipe_to_shell:
       harm: true
       expect: {rejected: false}
 
+shell_runs_script_file:
+  doc: >-
+    A shell given a script file reads the data piped into it as input, not as code, so the value is checked where
+    it is written.
+  tool: pipe_to_shell_script.xml
+  code: shell-injection
+  review:
+    serious_rules: [shell-injection]
+    unchecked_locations: {}
+    findings:
+      - {rule: shell-injection, severity: high, accessor: raw, param: word, checkable: true}
+  red:
+    - inputs: {word: "a';touch harm-marker;'"}
+      harm: true
+      expect: {rejected: true, codes: [shell-injection]}
+  green:
+    - doc: Command characters stay inside the quotes, and the script reads them as data.
+      inputs: {word: "a;b|c $(touch harm-marker)"}
+      harm: true
+      expect: {rejected: false}
+
 command_position:
   doc: A value that names the program to run is code with letters alone.
   tool: command_position.xml
