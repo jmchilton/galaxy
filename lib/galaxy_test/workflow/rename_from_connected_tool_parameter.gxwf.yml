@@ -1,0 +1,27 @@
+class: GalaxyWorkflow
+doc: |
+  $(inputs.name) in a rename resolves a tool parameter connected to a value
+  computed during the run.
+inputs:
+  reads:
+    type: data
+  line_count_file:
+    type: data
+outputs:
+  final_output:
+    outputSource: process/out_file1
+steps:
+  line_count:
+    tool_id: param_value_from_file
+    in:
+      input1: line_count_file
+    state:
+      param_type: integer
+  process:
+    tool_id: head
+    in:
+      input: reads
+      lineNum: line_count/integer_param
+    out:
+      out_file1:
+        rename: "first_$(inputs.lineNum)"

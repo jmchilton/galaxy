@@ -1,0 +1,15 @@
+- doc: The rename uses the computed value, not the name of its expression.json dataset.
+  job:
+    reads:
+      class: File
+      contents: "ACGT\nTTTT\n"
+      filetype: txt
+    line_count_file:
+      class: File
+      contents: "2\n"
+      filetype: txt
+  outputs:
+    final_output:
+      class: File
+      metadata:
+        name: "first_2"
