@@ -399,6 +399,34 @@ rewrites_restore_tokens:
       harm: true
       expect: {rejected: false}
 
+literal_rewrite:
+  doc: >-
+    A rewrite with literal text of a value as the job carries it adds what it writes only to a value that holds
+    what it replaces, so the job check judges each job with it. Escaping the double quote of a value that a string
+    method reads past its sanitizer leaves `$` and backticks live.
+  tool: raw_text_escaped_double_quoted.xml
+  code: shell-injection
+  review:
+    rewrites: false
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, accessor: raw, param: word, checkable: true}
+  red:
+    - inputs: {word: "$(touch harm-marker)"}
+      harm: true
+      expect: {rejected: true, codes: [shell-injection]}
+    - doc: The job check does not follow the escaping, so a double quote with a command character is refused too.
+      inputs: {word: 'x" ; touch harm-marker ; "'}
+      expect: {rejected: true, codes: [shell-injection]}
+  green:
+    - inputs: {word: "a;b|c && d's"}
+      harm: true
+      expect: {rejected: false}
+    - doc: A double quote alone cannot start a command.
+      inputs: {word: 'say "hi"'}
+      harm: true
+      expect: {rejected: false}
+
 rewrites_and_template_code:
   doc: A refusal names every reason no value of the tool can be checked.
   tool: rewrites_and_template_code.xml

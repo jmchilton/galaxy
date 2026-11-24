@@ -10,6 +10,7 @@ from dataclasses import (
 )
 from typing import (
     Any,
+    Iterable,
 )
 
 from .charsets import (
@@ -174,9 +175,12 @@ class Report:
     # template were not analysed, or it sends text to a program that runs it. Their findings are
     # not checkable, and their writes are left out.
     unchecked_locations: dict[str, str] = field(default_factory=dict)
-    # Template code that can turn a plain value into one that is not (chr(), a decoder, re.sub, a
-    # .replace whose new text is not plain), by location.
+    # Template code that can turn a plain value into one that is not (chr(), a decoder, a re.sub or
+    # .replace whose text is not literal or that rewrites a value template code changed), by location.
     rewrites: dict[str, list[str]] = field(default_factory=dict)
+    # Literal rewrites of a source's own value (`$x.replace('"', '\\"')`), as (trigger, added): the job
+    # check adds the characters ``added`` to a job value that holds one of ``trigger``.
+    rewritten: dict[SourceRef, list[tuple[frozenset[str], frozenset[str]]]] = field(default_factory=dict)
     # The sources of the user values each template (location) reads, also where no character test
     # can judge them: what the strict check of a job reads. METADATA and USER_PREFERENCE with
     # key=None stand for any metadata element and any preference.
@@ -206,6 +210,16 @@ class Report:
                 return
         self.findings.append(finding)
 
+    def add_rewrite(self, location: str, name: str) -> None:
+        found = self.rewrites.setdefault(location, [])
+        if name not in found:
+            found.append(name)
+
+    def added_by_rewrites(self, ref: SourceRef, chars: Iterable[str]) -> frozenset[str]:
+        """What the literal rewrites of a source add to a value of it that holds ``chars``."""
+        held = frozenset(chars)
+        return frozenset().union(*(added for trigger, added in self.rewritten.get(ref, ()) if held & trigger))
+
     def assess(self, finding: Finding, assessment: dict[str, Any]) -> None:
         self.findings = [replace(f, assessment=assessment) if f is finding else f for f in self.findings]
 
@@ -233,6 +247,11 @@ class Report:
             "closers": _by_location(self.closers),
             "unchecked_locations": dict(sorted(self.unchecked_locations.items())),
             "rewrites": {location: sorted(found) for location, found in sorted(self.rewrites.items())},
+            "rewritten": [
+                {"ref": asdict(ref), "trigger": sorted(trigger), "added": sorted(added)}
+                for ref, rules in sorted(self.rewritten.items(), key=lambda item: repr(item[0]))
+                for trigger, added in rules
+            ],
             "reads": {location: [asdict(ref) for ref in refs] for location, refs in sorted(self.reads.items())},
         }
 

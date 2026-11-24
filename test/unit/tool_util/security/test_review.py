@@ -13,6 +13,7 @@ from galaxy.tool_util.security import (
 )
 from galaxy.tool_util.security.charsets import (
     DEFAULT_SANITIZED,
+    literal_rewrite,
     PROBE,
     regex_anchored_start,
     regex_first,
@@ -435,6 +436,30 @@ def test_repeated_use_is_one_finding_with_all_lines(tmp_path):
     report = review(tmp_path, "tool $text\n&& tool $text\n&& tool $text")
     (finding,) = report.findings
     assert (finding.line, finding.more_lines) == (1, (2, 3))
+
+
+@pytest.mark.parametrize(
+    "old,new,regex,expected",
+    [
+        ('"', '\\"', False, ('"', '\\"')),
+        (";;", "x", False, (";", "")),
+        ("/", "\\/", True, ("/", "\\/")),
+        ("[|&]+", ";", True, ("|&", ";")),
+        ("(;|,)", " ", True, (";,", " ")),
+        # A letter can be a sanitizer token, \s matches characters that are not probes, ;* matches nothing.
+        ("__gt__", ">", False, None),
+        ("a", ";", False, None),
+        (r"\s", ";", True, None),
+        ("[^a-z]", ";", True, None),
+        (";*", "'", True, None),
+        (";", r"\1", True, None),
+        ("", ";", False, None),
+        (";", None, False, None),
+    ],
+)
+def test_literal_rewrite(old, new, regex, expected):
+    rule = literal_rewrite(old, new, regex)
+    assert rule == (None if expected is None else (frozenset(expected[0]), frozenset(expected[1])))
 
 
 def test_charsets():
