@@ -5,7 +5,10 @@ from typing import (
 
 import pytest
 from sqlalchemy import (
+    inspect,
+    MetaData,
     select,
+    Table,
     text,
 )
 
@@ -398,3 +401,35 @@ def test_25b092f7938b(monkeypatch, session, make_group, make_role, make_group_ro
     # Verify clean data
     all_associations = session.execute(select(GroupRoleAssociation)).all()
     assert len(all_associations) == 1
+
+
+def test_ddd0f036e070(monkeypatch, session, make_user):
+    dburl = str(session.bind.url)
+    monkeypatch.setenv("GALAXY_CONFIG_OVERRIDE_DATABASE_CONNECTION", dburl)
+    monkeypatch.setenv("GALAXY_INSTALL_CONFIG_OVERRIDE_INSTALL_DATABASE_CONNECTION", dburl)
+    run_command(f"{COMMAND} init")
+
+    # Load pre-migration state, without the id_key column
+    run_command(f"{COMMAND} downgrade b9467a8c12de")
+    user = make_user()
+    expected = {
+        ("keycloak", "kc-sub"): "sub",
+        ("okta-openidconnect", "okta-user"): "preferred_username",
+        ("tapis", "tapis-user"): "id",
+        ("google-openidconnect", "someone@example.com"): "email",
+        ("google-openidconnect", "1234567890"): "sub",
+        ("unknown-provider", "anything"): "",
+    }
+    table = Table("oidc_user_authnz_tokens", MetaData(), autoload_with=session.get_bind())
+    assert "id_key" not in table.c
+    session.execute(
+        table.insert(), [{"user_id": user.id, "provider": provider, "uid": uid} for provider, uid in expected]
+    )
+    session.commit()
+
+    run_command(f"{COMMAND} upgrade")
+
+    rows = session.execute(text("SELECT provider, uid, id_key FROM oidc_user_authnz_tokens")).all()
+    assert {(provider, uid): id_key for provider, uid, id_key in rows} == expected
+    nonce_indexes = {index["name"] for index in inspect(session.get_bind()).get_indexes("psa_nonce")}
+    assert {"ix_psa_nonce_salt", "ix_psa_nonce_timestamp"} <= nonce_indexes
