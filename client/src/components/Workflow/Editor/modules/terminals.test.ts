@@ -605,6 +605,26 @@ describe("canAccept", () => {
             "A rename reference takes a single value, not a collection or a mapped-over output",
         );
     });
+    it("offers rename reference ports as valid input terminals", () => {
+        const textOut = terminals["text parameter input"]!["output"] as OutputParameterTerminal;
+        const stepId = terminals["simple data"]!["input"]!.stepId;
+        const step = stepStore.getStep(stepId)!;
+        stepStore.updateStep({
+            ...step,
+            post_job_actions: {
+                RenameDatasetActionout_file1: {
+                    action_type: "RenameDatasetAction",
+                    output_name: "out_file1",
+                    action_arguments: { newname: "$(inputs.sample_name)" },
+                },
+            },
+        });
+        const validNames = textOut
+            .validInputTerminals()
+            .filter((terminal) => terminal.stepId === stepId)
+            .map((terminal) => terminal.name);
+        expect(validNames).toContain("sample_name");
+    });
     it("accepts integer parameter to integer parameter connection", () => {
         const integerInputParam = terminals["multi data"]!["advanced|advanced_threshold"] as InputParameterTerminal;
         const integerOutputParam = terminals["integer parameter input"]!["output"] as OutputParameterTerminal;
