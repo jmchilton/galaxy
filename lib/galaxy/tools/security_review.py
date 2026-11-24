@@ -48,6 +48,7 @@ from galaxy.tool_util.security.charsets import (
     CRITICAL,
     HIGH,
     not_plain,
+    NOT_PLAIN,
     PROBE,
     show,
 )
@@ -430,9 +431,10 @@ def find_violations(report: Report, param_dict: dict[str, Any]) -> Iterator[Viol
             if "\r" in chars:
                 # Templates turn carriage returns into newlines (replace("\\r", "\\n")).
                 chars.add("\n")
+            added = report.added_by_rewrites(ref, chars)
             if not escapes_template:
                 chars.discard("\\")
-            chars_by_ref[ref] = frozenset(chars)
+            chars_by_ref[ref] = frozenset(chars) | added
         return chars_by_ref[ref]
 
     def own(finding: Finding) -> dict[SourceRef, frozenset[str]]:
@@ -709,7 +711,11 @@ def strict_violations(
     for ref in refs:
         harm: frozenset[str] = frozenset()
         for value in source_values(ref, param_dict):
-            harm |= not_plain(value)
+            added = report.added_by_rewrites(ref, frozenset(value))
+            harm |= not_plain(value) | (added & (NOT_PLAIN | {"-"}))
+            if "-" in value and any(c.isspace() for c in added):
+                # Added whitespace splits the value into words, one of which can start with its dash.
+                harm |= {"-"}
         if harm:
             yield ref, harm
 

@@ -50,6 +50,8 @@ from .report import (
 )
 from .template import (
     CompiledTemplate,
+    constant as _const,
+    literal_rewrite_call,
     Method,
     name_lookup,
     NAMESPACE_LOOKUPS,
@@ -330,10 +332,6 @@ _PERCENT = re.compile(r"%(\(\w+\))?[-+ #0]*\d*(?:\.\d+)?([sdrifgGeExXc%])")
 _BRACES = re.compile(r"\{\{|\}\}|\{(\d*)\}|[{}]")
 
 
-def _const(node: ast.AST | None) -> object:
-    return node.value if isinstance(node, ast.Constant) else None
-
-
 def _percent_format(text: str, values: list[AV]) -> AV | None:
     """`text % values` as an ordered mix of literal text and values, None when the format is not simple."""
     parts: list[str | AV] = []
@@ -443,12 +441,18 @@ class TemplateAnalysis:
         report: Report,
         location: str = "command",
         language: str = "shell",
+        literal_rewrites: dict[int, str] | None = None,
     ):
         self.model = model
         self.template = template
         self.report = report
         self.location = location
         self.language = language
+        # Calls (by id) of rewrites with literal text, see PythonAudit: a call this analysis does not
+        # judge per job on every visit is a rewrite like any other.
+        self.literal_rewrites = literal_rewrites or {}
+        self._judged: set[int] = set()
+        self._not_judged: set[int] = set()
         # A shell script keeps its lines; Galaxy writes the command on one line.
         self.script = language == "shell" and location != "command"
         self.events: set[shell.Event] = set()
@@ -463,6 +467,8 @@ class TemplateAnalysis:
         # text (str.replace, a decoder, an unknown function) or as the quotes of an escaping.
         self._introduced: dict[SourceRef, charsets.Chars] = {}
         self._escapes: dict[SourceRef, charsets.Chars] = {}
+        # Literal rewrites of a source's own value: (trigger, added), see Report.rewritten.
+        self._rewritten: dict[SourceRef, set[tuple[charsets.Chars, charsets.Chars]]] = {}
         # Every source of a user value the template writes, with what does harm in it unquoted.
         self._written: dict[SourceRef, charsets.Chars] = {}
         # Quote characters of values that an escaping's own quote leaves outside their string.
@@ -546,6 +552,22 @@ class TemplateAnalysis:
     def _introduce(self, value: AV, chars: charsets.Chars = charsets.PROBE) -> None:
         introduced(stringify(value) if value.nodes else value, chars)
 
+    def _judge_rewrite(self, call: ast.AST | None, text: AV, old: object, new: object, regex: bool) -> bool:
+        """Whether the job check judges this rewrite of ``text``: one with literal text of a value as the job
+        carries it, whose characters it then adds to a job value holding what it replaces (Report.rewritten).
+        Any other is a rewrite, unless the call has no literal text (PythonAudit flagged it then)."""
+        if call is None or id(call) not in self.literal_rewrites:
+            return False
+        rule = charsets.literal_rewrite(old, new, regex)
+        if text.tainted and (rule is None or not text.verbatim):
+            self._not_judged.add(id(call))
+            return False
+        self._judged.add(id(call))
+        if rule is not None:
+            for ref in source_refs(text.sources):
+                self._rewritten.setdefault(ref, set()).add((rule.trigger, rule.added))
+        return True
+
     def _unchecked(self, refs: tuple[SourceRef, ...], needed: charsets.Chars) -> tuple[SourceRef, ...]:
         return tuple(ref for ref in refs if self._introduced.get(ref, charsets.NONE) & needed)
 
@@ -583,6 +605,13 @@ class TemplateAnalysis:
         )
         reads = self.report.reads.setdefault(self.location, [])
         reads.extend(ref for ref in self._written if ref.accessor != OPAQUE and ref not in reads)
+        for ref, rules in self._rewritten.items():
+            known = self.report.rewritten.setdefault(ref, [])
+            known.extend(rule for rule in sorted(rules, key=repr) if rule not in known)
+        for call, name in self.literal_rewrites.items():
+            # Also a call the analysis never reached: past its depth or its budget.
+            if call in self._not_judged or call not in self._judged:
+                self.report.add_rewrite(self.location, name)
         if not poisoned:
             for recorded, into in ((self._written, self.report.writes), (self._closers, self.report.closers)):
                 if recorded:
@@ -1536,13 +1565,16 @@ class TemplateAnalysis:
         if name in _CLEAN_FUNCTIONS:
             return CLEAN
         if name in _STRING_FUNCTIONS:
+            text = stringify(first)
             if name == "repr":
                 # repr() puts the string between quotes and escapes backslashes and that quote.
-                introduced(stringify(first), frozenset("'\"\\"), escape=True)
-            elif name == "format" and len(node.args) > 1:
+                introduced(text, frozenset("'\"\\"), escape=True)
+                return dataclasses.replace(text, verbatim=False)
+            if name == "format" and len(node.args) > 1:
                 spec = _const(node.args[1])
-                self._introduce(stringify(first), charsets.probe(spec) if isinstance(spec, str) else charsets.PROBE)
-            return stringify(first)
+                self._introduce(text, charsets.probe(spec) if isinstance(spec, str) else charsets.PROBE)
+                return dataclasses.replace(text, verbatim=False)
+            return text
         if name in _CONTAINER_FUNCTIONS:
             return first if (first.items is not None or first.elem is not None) else AV(elem=element(first))
         if name == "enumerate":
@@ -1574,7 +1606,7 @@ class TemplateAnalysis:
         if name in ("re.sub", "re.subn") and len(args) >= 3:
             # With a count, or a replacement that is not plain text, some matches are left in place.
             every_match = len(node.args) == 3 and not node.keywords
-            return self._substitute(_const(node.args[0]), args[1], node.args[1], stringify(args[2]), every_match)
+            return self._substitute(node, _const(node.args[0]), args[1], node.args[1], stringify(args[2]), every_match)
         if name == "re.escape":
             text = stringify(first)
             self._introduce(text, frozenset("\\"))
@@ -1676,13 +1708,14 @@ class TemplateAnalysis:
         return False
 
     def _substitute(
-        self, pattern: object, replacement: AV, replacement_node: ast.AST, text: AV, every_match: bool
+        self, call: ast.Call, pattern: object, replacement: AV, replacement_node: ast.AST, text: AV, every_match: bool
     ) -> AV:
         replaced = stringify(replacement)
         literal = _const(replacement_node)
         plain = isinstance(literal, str) and "\\" not in literal
         added = replaced.chars | (charsets.probe(literal) if isinstance(literal, str) and text.tainted else set())
-        self._introduce(text, frozenset(added) if isinstance(literal, str) and plain else charsets.PROBE)
+        if not self._judge_rewrite(call, text, *literal_rewrite_call(call, regex=True), regex=True):
+            self._introduce(text, frozenset(added) if isinstance(literal, str) and plain else charsets.PROBE)
         removed = charsets.regex_removed(pattern) if isinstance(pattern, str) and plain and every_match else None
         if removed is None or not isinstance(literal, str):
             return AV(chars=text.chars | added, sources=text.sources | replaced.sources)
@@ -1757,9 +1790,11 @@ class TemplateAnalysis:
             )
             if not replacement.tainted:
                 written = written | replacement.chars
+            judged = self._judge_rewrite(node, text, first_literal, second, regex=False)
             if text.tainted or replacement.tainted:
                 introduced = frozenset(written) - _matched_chars(first_literal)
-                self._introduce(text, introduced)
+                if not judged:
+                    self._introduce(text, introduced)
                 self._introduce(replacement, introduced)
             else:
                 written = charsets.NONE

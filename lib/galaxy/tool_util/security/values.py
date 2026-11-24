@@ -55,6 +55,8 @@ class AV:
     # A value that is one of several strings built from literal text and values: each is written
     # on its own, so that the quotes in its literal text are seen.
     alts: tuple[AV, ...] = ()
+    # The value of one source as the job check reads it, not changed by template code.
+    verbatim: bool = False
 
     @property
     def tainted(self) -> bool:
@@ -90,8 +92,9 @@ def introduced(value: AV, chars: Chars, escape: bool = False) -> None:
         record(value.sources, chars, escape)
 
 
-def tainted(chars: Chars, source: str) -> AV:
-    return AV(chars=chars, sources=frozenset((source,)))
+def tainted(chars: Chars, source: str, verbatim: bool = False) -> AV:
+    """A user value; ``verbatim`` when its text in the template is the string the job check reads for it."""
+    return AV(chars=chars, sources=frozenset((source,)), verbatim=verbatim)
 
 
 def source(text: str, accessor: str, param: str | None = None, key: str | None = None) -> Source:
@@ -408,6 +411,7 @@ def stringify(value: AV) -> AV:
         lead=value.lead,
         words=value.words,
         alts=value.alts,
+        verbatim=value.verbatim,
     )
 
 

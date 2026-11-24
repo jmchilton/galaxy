@@ -976,3 +976,123 @@ def test_strict_when_unsure_leaves_tools_without_a_template_alone(app, tmp_path)
     tool = make_tool(app, tmp_path, NO_COMMAND)
     job: Any = SimpleNamespace(job=SimpleNamespace(id=7))
     reviewer(tmp_path, ENFORCE).check_job(tool, job)
+
+
+# -- literal rewrites ------------------------------------------------------------------------
+
+
+def ids_tool(command: str) -> str:
+    """A tool with the collection `input` and the text param `word` of :func:`evaluator`."""
+    return f"""<tool id="rewrites" name="Rewrites" version="1.0" profile="24.0">
+  <command><![CDATA[{command}]]></command>
+  <inputs>
+    <param name="input" type="data_collection" collection_type="list" format="txt"/>
+    <param name="word" type="text"/>
+  </inputs>
+  <outputs><data name="out" format="txt"/></outputs>
+</tool>
+"""
+
+
+OPTION_WORDS = "a --checkpoint=1 --checkpoint-action=exec=id"
+
+DEEP_REWRITE = "\n".join(
+    ["#def f0($v)\n${v.replace('_', ';')}\n#end def"]
+    + [f"#def f{i}($v)\n$f{i - 1}($v)\n#end def" for i in range(1, 10)]
+    + ["echo $f9(str($word.value)) >> '$out'"]
+)
+
+
+@pytest.mark.parametrize(
+    "command,identifiers,word",
+    [
+        # The text these rewrite is not the value as the job carries it: it always has what they replace.
+        (
+            '#for $e in $input\necho "${e.name_and_ext.replace(\'.\', \'"\')}" "$e.element_identifier"\n#end for',
+            ["x; touch harm #"],
+            "plain",
+        ),
+        (
+            '#for $e in $input\necho "${e.get_staging_path().replace(\'.\', \'"\')}" "$e.element_identifier"\n#end for',
+            ["x; touch harm #"],
+            "plain",
+        ),
+        (
+            '#for $p in $input.get_all_staging_paths()\necho "${p.replace(\'.\', \'"\')}"\n#end for\necho "${word.value}"',
+            ["x"],
+            "; touch harm #",
+        ),
+        (
+            "echo \"${str($input.element_identifiers_extensions_paths_and_metadata_files).replace('/', '\"')}\""
+            ' "${word.value}"',
+            ["x"],
+            "; touch harm #",
+        ),
+        # Under re.X a space matches nothing, so the replacement goes in everywhere.
+        ("#import re\necho '${re.sub(\" \", \"';id;'\", str($word.value), flags=re.X)}'", ["x"], "x"),
+        ("#import re\necho '${re.sub(\" \", \"';id;'\", str($word.value), 0, re.X)}'", ["x"], "x"),
+        ("#import re\n#set $p = re.compile(\" \", re.X)\necho '${p.sub(\"';id;'\", str($word.value))}'", ["x"], "x"),
+        # repr() quotes the value and format() pads it: the text these rewrite is not the job's value either.
+        ("tar -cf '$out' \"${repr($word.value).replace(\"'\", '\"')}\"", ["x"], OPTION_WORDS),
+        (
+            "#for $e in $input\ntar -cf '$out' \"${repr($e.element_identifier).replace(\"'\", '\"')}\"\n#end for",
+            [OPTION_WORDS],
+            "plain",
+        ),
+        ("tar -cf '$out' \"${format($word.value, '.^60').replace('.', '\"')}\"", ["x"], OPTION_WORDS),
+    ],
+)
+def test_rewrite_the_job_check_cannot_judge_refuses_the_job(app, tmp_path, command, identifiers, word):
+    tool = make_tool(app, tmp_path, ids_tool(command), "rewrites.xml")
+    assert refused(app, tmp_path, tool, identifiers, word=word)
+
+
+def test_rewrite_the_analysis_does_not_reach_is_a_rewrite(app, tmp_path):
+    review = reviewer(tmp_path).review(make_tool(app, tmp_path, ids_tool(DEEP_REWRITE), "deep.xml"))
+    assert review is not None and review.report is not None
+    assert review.report.rewrites == {"command": [".replace"]}
+
+
+DATASET_REWRITE = """<tool id="open_rewrite" name="Open and rewrite" version="1.0" profile="24.0">
+  <command><![CDATA[echo "${open(str($n_file)).read().replace('\\\\', '"')}" > '$out']]></command>
+  <inputs><param name="n_file" type="data" format="txt"/></inputs>
+  <outputs><data name="out" format="txt"/></outputs>
+</tool>
+"""
+
+
+def test_rewrite_of_dataset_content_refuses_the_job(app, tmp_path):
+    path = tmp_path / "n.txt"
+    path.write_text("x\\;id;#\n")
+    tool = make_tool(app, tmp_path, DATASET_REWRITE, "open_rewrite.xml")
+    hda = model.HistoryDatasetAssociation(extension="txt", dataset=model.Dataset(external_filename=str(path)))
+    job: Any = SimpleNamespace(job=SimpleNamespace(id=7), consumes_names=False, consumes_identifiers=False)
+    job.param_dict = {"n_file": DatasetFilenameWrapper(hda, datatypes_registry=app.datatypes_registry)}
+    with pytest.raises(ToolInputRejected):
+        reviewer(tmp_path, ENFORCE).check_job(tool, job)
+
+
+@pytest.mark.parametrize("word,expected", [("a_id", True), ("a.id", False)])
+def test_characters_a_literal_rewrite_adds_count_when_the_value_holds_what_it_replaces(app, tmp_path, word, expected):
+    tool = make_tool(app, tmp_path, ids_tool("echo ${str($word.value).replace('_', ';')} > '$out'"), "adds.xml")
+    assert refused(app, tmp_path, tool, ["x"], word=word) == expected
+
+
+@pytest.mark.parametrize("word,expected", [("a'b", True), ("ab", False)])
+def test_sanitizer_tokens_hold_what_a_literal_rewrite_replaces(app, tmp_path, word, expected):
+    tool = make_tool(app, tmp_path, ids_tool("echo ${str($word).replace('_', ';')} > '$out'"), "tokens.xml")
+    assert refused(app, tmp_path, tool, ["x"], word=word) == expected
+
+
+def test_strict_check_counts_what_a_literal_rewrite_adds(app, tmp_path):
+    tool = make_tool(app, tmp_path, unsure(ids_tool("echo '${str($word.value).replace('_', ';')}' > '$out'")), "s.xml")
+    r = reviewer(tmp_path, ENFORCE)
+    r.check_job(tool, evaluator(app, tool, ["x"], word="ab"))
+    assert "contains [;]" in strict_refusal(r, tool, evaluator(app, tool, ["x"], word="a_b"))
+
+
+def test_strict_check_counts_spaces_a_rewrite_adds_as_option_words(app, tmp_path):
+    command = "tar -cf o.tar ${str($word.value).replace('_', ' ')} > '$out'"
+    tool = make_tool(app, tmp_path, unsure(ids_tool(command)), "words.xml")
+    job = evaluator(app, tool, ["x"], word="a_--checkpoint=1_--checkpoint-action=exec=id")
+    assert "contains [-]" in strict_refusal(reviewer(tmp_path, ENFORCE), tool, job)

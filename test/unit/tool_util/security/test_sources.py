@@ -170,7 +170,9 @@ def test_quote_in_a_here_document_does_not_quote_the_rest_of_the_script(tmp_path
         # Template code can write the character that leaves the quotes, whatever the user wrote.
         "echo \"${text.replace('Q', '`')}\"",
         "echo ${str($text).replace('__gt__', '>')}",
-        "#import re\necho ${re.sub('_', ';', str($free))}",
+        "#import re\necho ${re.sub('[^a-z]', ';', str($free))}",
+        "#import re\necho ${re.sub('_*', ';', str($free))}",
+        "echo ${str($free).lower().replace('_', ';')}",
         "#import urllib.parse\necho '${urllib.parse.unquote(str($free))}'",
         "#import base64\necho '${base64.b64decode(str($free))}'",
         "echo '${some_function($free)}'",
@@ -182,6 +184,29 @@ def test_rewritten_values_are_not_checkable(tmp_path, command):
     findings = [f for f in report.findings if f.severity == HIGH and f.kind == "vulnerability"]
     assert findings
     assert all(not f.checkable and f.unchecked for f in findings)
+
+
+@pytest.mark.parametrize(
+    "command,trigger,added",
+    [
+        ("#import re\necho ${re.sub('_', ';', str($free))}", "_", ";"),
+        ("#import re\necho ${re.sub('[|&]', ';', str($free))}", "|&", ";"),
+        ("echo ${str($free).replace('|', ';')}", "|", ";"),
+        ("echo \"${free.replace('\"', '\\\\\"')}\"", '"', '\\"'),
+    ],
+)
+def test_literal_rewrite_of_a_value_is_checked_with_what_it_adds(tmp_path, command, trigger, added):
+    report = review(tmp_path, command)
+    finding = high(report)
+    assert finding.checkable and not finding.unchecked
+    assert not report.rewrites
+    assert report.rewritten[finding.refs[0]] == [(frozenset(trigger), frozenset(added))]
+
+
+def test_literal_rewrite_of_a_changed_value_is_a_rewrite(tmp_path):
+    report = review(tmp_path, "echo ${str($free).lower().replace('|', ';')}")
+    assert report.rewrites == {"command": [".replace"]}
+    assert not report.rewritten
 
 
 def test_rewriting_that_cannot_add_a_breakout_character_stays_checkable(tmp_path):

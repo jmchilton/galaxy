@@ -37,7 +37,9 @@ DESCRIPTIONS = {
     RefusalCode.UNCHECKABLE_REVIEW_FAILED: "The review of the tool failed, so nothing is known about what its"
     " templates do.",
     RefusalCode.UNCHECKABLE_REWRITES: "The templates change values in ways that can bring back characters the"
-    " sanitizer took out (`.replace`, `re.sub`, `chr()`, a decoder).",
+    " sanitizer took out (`chr()`, a decoder, a `.replace` or `re.sub` of the sanitizer's tokens, of text that is"
+    " not literal, or of a value template code changed before). A literal rewrite of a value as the job carries"
+    " it is checked with each job.",
     RefusalCode.UNCHECKABLE_TEMPLATE_CODE: "The templates run Python that can read text the job does not carry"
     " (imports, `open()`, `$__app__`, the models behind `.unsanitized`).",
     RefusalCode.UNCHECKABLE_LETTERS_ARE_CODE: "Letters alone can be code where the tool writes a value: the program"

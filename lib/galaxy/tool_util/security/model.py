@@ -208,12 +208,14 @@ def _value(input_source: InputSource, path: str, tool_sanitize: bool) -> Node:
             quoted="sq-escaped" if tool_sanitize and _escapes_single_quote(sanitizer) else "",
             lead=rendered(lead) if lead is not None else None,
             words=rendered(words) if words is not None else None,
+            verbatim=True,
         ),
         as_raw=AV(
             chars=universe,
             sources=frozenset((source(f"raw value of {ptype} param '{path}' (sanitizer bypassed)", RAW, path),)),
             lead=lead,
             words=words,
+            verbatim=True,
         ),
         text_like=True,
     )

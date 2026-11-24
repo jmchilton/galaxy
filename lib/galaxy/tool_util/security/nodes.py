@@ -11,6 +11,7 @@ import ast
 from dataclasses import (
     dataclass,
     field,
+    replace,
 )
 from typing import Iterator
 
@@ -88,7 +89,8 @@ class Opaque(Node):
     value: AV = CLEAN
 
     def text(self) -> AV:
-        return self.value
+        # The object is not the value it holds: its text is not the string the job check reads.
+        return replace(self.value, verbatim=False)
 
     def attr(self, name: str) -> AV | None:
         return AV(chars=self.value.chars, sources=self.value.sources, nodes=(self,))
@@ -149,6 +151,8 @@ class Data(Node):
             return tainted(
                 PROBE,
                 source(f"element identifier of dataset '{self.path}' (not sanitized)", ELEMENT_IDENTIFIER, self.path),
+                # name_and_ext adds the extension to the identifier the job check reads.
+                verbatim=name == "element_identifier",
             )
         if name == "groups":
             return AV(
