@@ -1131,7 +1131,8 @@ class TemplateAnalysis:
             elif context.lang:
                 if verdict := charsets.code(context.lang, chars, context.inner):
                     verdicts.append(verdict)
-        if not verdicts and "/" in chars:
+        # Also where the value can leave its place otherwise: a check that refuses only data finds these alone.
+        if "/" in chars:
             if context.role in ("redir", "stdin") or (context.role == "arg" and context.cmd in shell.FILE_COMMANDS):
                 verdicts.append(
                     Verdict(
@@ -1142,13 +1143,15 @@ class TemplateAnalysis:
                     )
                 )
         first = chars if text.lead is None else text.lead
-        if not verdicts and "-" in chars and "-" in first and context.option_position:
+        if "-" in chars and "-" in first and context.option_position:
             verdicts.append(
                 Verdict(
                     "option-injection",
                     charsets.LOW,
                     frozenset("-"),
                     "can begin with a dash and be read as an option",
+                    frozenset((charsets.LEADING_DASH,)),
+                    level=charsets.DATA,
                 )
             )
         for verdict in verdicts:
@@ -1223,7 +1226,10 @@ class TemplateAnalysis:
             # Nothing runs a data file; what a changed line does depends on the program that reads it.
             why = "can end the string or add lines to the file"
             self.finding(
-                Verdict("configfile-injection", charsets.LOW, hit, why), text, f"{where} of a data file", raw_expr
+                Verdict("configfile-injection", charsets.LOW, hit, why, level=charsets.DATA),
+                text,
+                f"{where} of a data file",
+                raw_expr,
             )
 
     def server_sink(self, name: str, text: AV) -> None:
@@ -1274,6 +1280,8 @@ class TemplateAnalysis:
                 closes=closes if needs_closer is None else text.chars & frozenset(needs_closer + "\\"),
                 needs_closer=needs_closer is not None,
                 unchecked=self._unchecked(refs, breakout | requires | closes),
+                level=verdict.level or charsets.level_of(severity),
+                data_requires=verdict.data_requires,
             )
         )
 

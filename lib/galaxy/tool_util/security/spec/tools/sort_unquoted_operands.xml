@@ -1,0 +1,11 @@
+<tool id="spec_sort_unquoted_operands" name="Sort named files" version="1.0" profile="24.0">
+    <description>passes a text value as unquoted operands</description>
+    <command><![CDATA[cp '$input' reads.txt && sort $files > '$out']]></command>
+    <inputs>
+        <param name="input" type="data" format="txt"/>
+        <param name="files" type="text"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

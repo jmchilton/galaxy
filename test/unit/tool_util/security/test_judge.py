@@ -52,10 +52,10 @@ def judged(tmp_path, min_severity="medium"):
 def test_only_vulnerabilities_at_or_above_the_threshold_are_judged(tmp_path):
     report, judge = judged(tmp_path)
     assessed = {f.rule: f.assessment["verdict"] for f in report.findings if f.assessment}
-    assert assessed == {"shell-injection": "exec", "argument-injection": "none"}
+    assert assessed == {"shell-injection": "exec", "argument-injection": "none", "path-traversal": "exec"}
     # The capability (os.system in the template) is the author's doing: the model is not asked about it.
     assert [f.assessment for f in report.findings if f.kind == "capability"] == [None]
-    assert len(judge.calls) == 2
+    assert len(judge.calls) == 3
 
 
 def test_a_verdict_never_changes_the_finding(tmp_path):

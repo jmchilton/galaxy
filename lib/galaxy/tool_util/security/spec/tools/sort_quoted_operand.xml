@@ -1,0 +1,11 @@
+<tool id="spec_sort_quoted_operand" name="Sort a named file" version="1.0" profile="24.0">
+    <description>passes a text value as a quoted operand</description>
+    <command><![CDATA[cp '$input' reads.txt && sort '$file' reads.txt > '$out']]></command>
+    <inputs>
+        <param name="input" type="data" format="txt"/>
+        <param name="file" type="text"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

@@ -414,6 +414,164 @@ collections:
     - identifier: Bob's reads
 ```
 
+### `path-traversal`
+
+A value is written as a path a command writes or reads (a redirection, an argument of `cp`, `ln`, `mv`, ...) and can name a file outside the job's directory. Refused from `enforce_data` on.
+
+#### path_traversal
+
+A file name the user gives is written as a path `cp` writes to. With `enforce_data`, a slash in it is refused, since it can name a file outside the job's directory.
+
+Tool `copy_to_named_file.xml`:
+
+```
+mkdir -p outputs && cp '$input' 'outputs/$name' && cp '$input' '$out'
+```
+
+Refused
+
+```
+inputs:
+  name: ../harm-marker
+datasets:
+  input:
+    name: reads.txt
+config:
+  mode: enforce_data
+```
+
+Runs
+
+```
+inputs:
+  name: reads.txt
+datasets:
+  input:
+    name: reads.txt
+config:
+  mode: enforce_data
+```
+
+Runs: With `enforce_code`, the default, a path is not refused.
+
+```
+inputs:
+  name: ../reads.txt
+datasets:
+  input:
+    name: reads.txt
+```
+
+### `option-injection`
+
+A value starts an argument and can begin with a dash, so the command reads it as an option. Refused from `enforce_data` on.
+
+#### option_injection
+
+A quoted value that starts an argument can begin with a dash, and `sort` reads it as an option. With `enforce_data`, a leading dash is refused.
+
+Tool `sort_quoted_operand.xml`:
+
+```
+cp '$input' reads.txt && sort '$file' reads.txt > '$out'
+```
+
+Refused
+
+```
+inputs:
+  file: -oharm-marker
+datasets:
+  input:
+    name: reads.txt
+config:
+  mode: enforce_data
+```
+
+Runs: A dash inside the value is not an option.
+
+```
+inputs:
+  file: reads-1.txt
+datasets:
+  input:
+    name: reads.txt
+config:
+  mode: enforce_data
+```
+
+Runs: With `enforce_code`, the default, a leading dash is not refused.
+
+```
+inputs:
+  file: -r
+datasets:
+  input:
+    name: reads.txt
+```
+
+### `argument-injection`
+
+A value is written unquoted, or can close its quotes, and can split into more words. From `enforce_data` on, a job is refused when a word can then be an option, a home directory, a path or a glob; with `enforce_all`, also when the words are plain or the value only closes its quotes.
+
+#### argument_injection
+
+An unquoted value splits into words. With `enforce_data`, a job is refused when a word can be an option, a home directory, a path or a glob; with `enforce_all`, also when the words are plain.
+
+Tool `sort_unquoted_operands.xml`:
+
+```
+cp '$input' reads.txt && sort $files > '$out'
+```
+
+Refused
+
+```
+inputs:
+  files: reads.txt -o harm-marker
+datasets:
+  input:
+    name: reads.txt
+config:
+  mode: enforce_data
+```
+
+Refused: Plain words are refused only with `enforce_all`.
+
+```
+inputs:
+  files: reads.txt reads.txt
+datasets:
+  input:
+    name: reads.txt
+config:
+  mode: enforce_all
+```
+
+Runs
+
+```
+inputs:
+  files: reads.txt reads.txt
+datasets:
+  input:
+    name: reads.txt
+config:
+  mode: enforce_data
+```
+
+Runs
+
+```
+inputs:
+  files: reads.txt
+datasets:
+  input:
+    name: reads.txt
+config:
+  mode: enforce_all
+```
+
 ### `not-plain-unchecked-place`
 
 The tool writes values in places the review cannot judge (parts of the template it did not follow, or values it cannot trace), and a value is not plain.
