@@ -104,6 +104,7 @@ from galaxy.tools.evaluation import (
     UserToolEvaluator,
 )
 from galaxy.tools.parameters import params_to_json_internal
+from galaxy.tools.security_review import read_remote_refusal
 from galaxy.util import (
     parse_xml_string,
     RWXRWXRWX,
@@ -1136,6 +1137,8 @@ class MinimalJobWrapper(HasResourceParameters):
                 tool_source_class=type(self.tool.tool_source).__name__ if self.tool else None,
                 tool_dir=tool_dir,
                 is_task=self.is_task,
+                tool_security_review=self.app.tool_security_reviewer.mode,
+                tool_security_review_when_unsure=self.app.tool_security_reviewer.when_unsure,
             )
         return self._job_io
 
@@ -2154,6 +2157,11 @@ class MinimalJobWrapper(HasResourceParameters):
             # could also mean that a job was broken up into tasks and one of
             # the tasks failed. So include the stderr, stdout, and exit code:
             return fail()
+
+        if (refusal := read_remote_refusal(self.working_directory)) is not None:
+            # Refused by tool_security_review where the job ran, before its command: a decision, as in prepare.
+            log.info("(%s) %s", job.id, refusal)
+            return fail(refusal)
 
         extended_metadata = self.external_output_metadata.extended
 

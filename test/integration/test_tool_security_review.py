@@ -36,6 +36,28 @@ PIPING_TOOL_ID = "security_review_pipe_identifiers"
 PIPING_TOOL = TOOL.replace(TOOL_ID, PIPING_TOOL_ID).replace(
     "echo '$e.element_identifier' >> '$out_file1';", "echo 'echo $e.element_identifier' | sh >> '$out_file1';"
 )
+MODEL_TOOL_ID = "security_review_model_name"
+# Writes the name of the dataset model behind the sanitized dataset, which Galaxy checks as the template reads it.
+MODEL_TOOL = f"""<tool id="{MODEL_TOOL_ID}" name="Model name" version="1.0" profile="24.0">
+  <command><![CDATA[echo '${{input.dataset.unsanitized.name}}' > '$out_file1']]></command>
+  <inputs>
+    <param name="input" type="data" format="txt"/>
+  </inputs>
+  <outputs>
+    <data name="out_file1" format="txt"/>
+  </outputs>
+</tool>
+"""
+MODEL_REFUSAL = (
+    "[not-plain-untraced-value] This job was not run: 'name' of a value read past its sanitizer contains [' |]."
+)
+# The same message where the job is prepared and where it runs.
+MODEL_REFUSAL_REST = (
+    " Use letters, digits, spaces and . _ : / = + @ , ! ^ ~ ? in names and values, and do not start a word with -,"
+    " or contact the administrators of this server. This Galaxy server allows only plain names and values for tool"
+    f" 'Model name' ({MODEL_TOOL_ID} version 1.0), because this tool writes values it cannot trace, which Galaxy"
+    " checks as they are read."
+)
 # Leaves the single quotes and pipes into another command: `echo 'a'|'cat' >> out` writes a.
 QUOTED = "a'|'cat"
 
@@ -65,11 +87,14 @@ class BaseToolSecurityReviewTestCase(integration_util.IntegrationTestCase):
             fh.write(PIPING_TOOL)
         with open(os.path.join(tool_dir, "unsure_identifiers.xml"), "w") as fh:
             fh.write(UNSURE_TOOL)
+        with open(os.path.join(tool_dir, "model_name.xml"), "w") as fh:
+            fh.write(MODEL_TOOL)
         tool_conf = os.path.join(tool_dir, "tool_conf.xml")
         with open(tool_conf, "w") as fh:
             fh.write(
                 f'<toolbox tool_path="{tool_dir}"><tool file="echo_identifiers.xml"/>'
-                '<tool file="pipe_identifiers.xml"/><tool file="unsure_identifiers.xml"/></toolbox>'
+                '<tool file="pipe_identifiers.xml"/><tool file="unsure_identifiers.xml"/>'
+                '<tool file="model_name.xml"/></toolbox>'
             )
         config["tool_config_file"] = f"{config['tool_config_file']},{tool_conf}"
         if cls.mode is not None:
@@ -91,6 +116,16 @@ class BaseToolSecurityReviewTestCase(integration_util.IntegrationTestCase):
             history_id, contents=[(identifier, "x\n")], wait=True
         ).json()["output_collections"][0]
         run = self.dataset_populator.run_tool(tool_id, {"input": {"src": "hdca", "id": hdca["id"]}}, history_id)
+        job_id = run["jobs"][0]["id"]
+        self.dataset_populator.wait_for_job(job_id, assert_ok=False)
+        output = self.dataset_populator.get_history_dataset_details(
+            history_id, dataset_id=run["outputs"][0]["id"], assert_ok=False
+        )
+        return {"job": self.dataset_populator.get_job_details(job_id).json(), "output": output}
+
+    def _run_on_dataset_named(self, history_id: str, name: str) -> dict:
+        hda = self.dataset_populator.new_dataset(history_id, content="x\n", name=name, wait=True)
+        run = self.dataset_populator.run_tool(MODEL_TOOL_ID, {"input": {"src": "hda", "id": hda["id"]}}, history_id)
         job_id = run["jobs"][0]["id"]
         self.dataset_populator.wait_for_job(job_id, assert_ok=False)
         output = self.dataset_populator.get_history_dataset_details(
@@ -126,6 +161,48 @@ class TestToolSecurityReviewEnforce(BaseToolSecurityReviewTestCase):
             content = self.dataset_populator.get_history_dataset_content(history_id, dataset_id=result["output"]["id"])
             assert content.strip() == "sample_1"
             assert self._review_warnings() == []
+
+
+class RecordedValuesTests:
+    """Values a template reads from the dataset model, the same where the job is prepared and where it runs."""
+
+    def test_name_read_from_the_model_is_checked(self: BaseToolSecurityReviewTestCase):  # type: ignore[misc]
+        with self.dataset_populator.test_history() as history_id:
+            result = self._run_on_dataset_named(history_id, "a'|'cat")
+            assert result["job"]["state"] == "error"
+            # Galaxy keeps the first 255 characters of the message.
+            assert result["output"]["misc_info"] == (MODEL_REFUSAL + MODEL_REFUSAL_REST)[:255]
+            assert any("'name' of a value read past its sanitizer contains [' |]" in w for w in self.warnings.messages)
+
+    def test_plain_name_read_from_the_model_runs(self: BaseToolSecurityReviewTestCase):  # type: ignore[misc]
+        with self.dataset_populator.test_history() as history_id:
+            result = self._run_on_dataset_named(history_id, "reads 2.txt")
+            assert result["job"]["state"] == "ok", result
+            content = self.dataset_populator.get_history_dataset_content(history_id, dataset_id=result["output"]["id"])
+            assert content.strip() == "reads 2.txt"
+
+
+class TestToolSecurityReviewRecordedLocally(BaseToolSecurityReviewTestCase, RecordedValuesTests):
+    mode = "enforce_code"
+
+
+class TestToolSecurityReviewRecordedRemotely(BaseToolSecurityReviewTestCase, RecordedValuesTests):
+    mode = "enforce_code"
+
+    @classmethod
+    def handle_galaxy_config_kwds(cls, config):
+        super().handle_galaxy_config_kwds(config)
+        # The templates are evaluated where the job runs.
+        config["metadata_strategy"] = "extended"
+        config["tool_evaluation_strategy"] = "remote"
+        config["object_store_store_by"] = "uuid"
+        config["retry_metadata_internally"] = False
+
+    def test_identifier_that_leaves_its_quotes_fails_the_job(self):
+        with self.dataset_populator.test_history() as history_id:
+            result = self._run(history_id, QUOTED)
+            assert result["job"]["state"] == "error"
+            assert result["output"]["misc_info"].startswith("[shell-injection] This job was not run: ")
 
 
 class TestToolSecurityReviewLog(BaseToolSecurityReviewTestCase):

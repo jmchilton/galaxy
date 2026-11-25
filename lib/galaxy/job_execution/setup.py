@@ -85,6 +85,8 @@ class JobIO(UsesDictVisibleKeys):
         "tool_source_class",
         "tool_dir",
         "is_task",
+        "tool_security_review",
+        "tool_security_review_when_unsure",
     )
 
     def __init__(
@@ -113,6 +115,9 @@ class JobIO(UsesDictVisibleKeys):
         tool_source_class: Optional["str"] = "XmlToolSource",
         tool_dir: Optional[StrPath] = None,
         is_task: bool = False,
+        # How the templates the job evaluates where it runs are checked (tool_evaluation_strategy: remote).
+        tool_security_review: str = "off",
+        tool_security_review_when_unsure: str = "strict",
     ):
         user_context_instance: FileSourcesUserContext
         self.file_sources_dict = file_sources_dict
@@ -143,6 +148,8 @@ class JobIO(UsesDictVisibleKeys):
         self.is_task = is_task
         self.tool_source = tool_source
         self.tool_source_class = tool_source_class
+        self.tool_security_review = tool_security_review
+        self.tool_security_review_when_unsure = tool_security_review_when_unsure
         self.job_outputs = JobOutputs()
         self._dataset_path_rewriter: Optional[DatasetPathRewriter] = None
 

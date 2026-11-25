@@ -46,7 +46,10 @@ from galaxy.tool_util.deps.dependencies import (
     ToolInfo,
 )
 from galaxy.tool_util.output_checker import DETECTED_JOB_STATE
-from galaxy.tools.security_review import ToolInputRejected
+from galaxy.tools.security_review import (
+    read_remote_refusal,
+    ToolInputRejected,
+)
 from galaxy.util import (
     asbool,
     DATABASE_MAX_STRING_SIZE,
@@ -148,7 +151,7 @@ class BaseJobRunner:
         while self._should_stop is False:
             with self.app.model.session():  # Create a Session instance and ensure it's closed.
                 try:
-                    (method, arg) = self.work_queue.get(timeout=1)
+                    method, arg = self.work_queue.get(timeout=1)
                 except Empty:
                     continue
                 if method is STOP_SIGNAL:
@@ -636,6 +639,11 @@ class BaseJobRunner:
                 job_id = job.get_id_tag()
             if external_job_id is None:
                 external_job_id = job.get_job_runner_external_id()
+            if (refusal := read_remote_refusal(job_wrapper.working_directory)) is not None:
+                # Refused by tool_security_review where the job ran, before its command: a decision, as in prepare.
+                log.info("(%s) %s", job_id, refusal)
+                job_wrapper.fail(refusal)
+                return
             exit_code = job_state.read_exit_code()
 
             outputs_directory = os.path.join(job_wrapper.working_directory, "outputs")

@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import shutil
 import tempfile
@@ -25,10 +26,15 @@ from galaxy.structured_app import MinimalToolApp
 from galaxy.tools import (
     create_tool_from_representation,
     evaluation,
+    security_review,
 )
 from galaxy.tools.data import (
     from_dict,
     ToolDataTableManager,
+)
+from galaxy.tools.security_review import (
+    ToolInputRejected,
+    ToolSecurityReviewer,
 )
 from galaxy.util.bunch import Bunch
 
@@ -110,13 +116,35 @@ def main(TMPDIR, WORKING_DIRECTORY, IMPORT_STORE_DIRECTORY) -> None:
         tool_dir=job_io.tool_dir,
         tool_source_class=job_io.tool_source_class,
     )
+    reviewer = ToolSecurityReviewer(job_io.tool_security_review, job_io.tool_security_review_when_unsure)
     tool_evaluator = evaluation.RemoteToolEvaluator(
-        app=app, tool=tool, job=job_io.job, local_working_directory=WORKING_DIRECTORY
+        app=app, tool=tool, job=job_io.job, local_working_directory=WORKING_DIRECTORY, security_reviewer=reviewer
     )
     tool_evaluator.set_compute_environment(compute_environment=SharedComputeEnvironment(job_io=job_io, job=job_io.job))
-    with open(os.path.join(WORKING_DIRECTORY, "tool_script.sh"), "a") as out:
+    warnings = _Warnings()
+    review_log = logging.getLogger(security_review.__name__)
+    review_log.addHandler(warnings)
+    try:
+        # Built before tool_script.sh is opened: a refused job gets no command.
         command_line, version_command_line, extra_filenames, environment_variables, *_ = tool_evaluator.build()
+    except ToolInputRejected as e:
+        security_review.write_remote_refusal(WORKING_DIRECTORY, e, warnings.messages)
+        raise
+    finally:
+        review_log.removeHandler(warnings)
+    with open(os.path.join(WORKING_DIRECTORY, "tool_script.sh"), "a") as out:
         out.write(f'{version_command_line or ""}{command_line}')
+
+
+class _Warnings(logging.Handler):
+    """The warnings of the tool security review, for the job handler to log where the job was prepared."""
+
+    def __init__(self) -> None:
+        super().__init__(logging.WARNING)
+        self.messages: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.messages.append(record.getMessage())
 
 
 if __name__ == "__main__":
@@ -131,6 +159,9 @@ if __name__ == "__main__":
     EXPORT_STORE_DIRECTORY = os.path.join(METADATA_DIRECTORY, "outputs_populated")
     try:
         main(TMPDIR, WORKING_DIRECTORY, IMPORT_STORE_DIRECTORY)
+    except ToolInputRejected:
+        # A decision, which the job handler reads from the refusal file.
+        raise
     except Exception:
         os.makedirs(EXPORT_STORE_DIRECTORY, exist_ok=True)
         with open(os.path.join(EXPORT_STORE_DIRECTORY, "traceback.txt"), "w") as out:
