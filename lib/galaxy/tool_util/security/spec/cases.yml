@@ -406,10 +406,10 @@ not_analysed_strict:
 
 raw_dataset_model:
   doc: >-
-    A template that reads the dataset model behind `$input.unsanitized` can read text the job does not carry,
-    so no value counts as plain.
+    A template that reads the dataset model behind `$input.unsanitized` writes values as users set them, which
+    the review cannot trace to one of them: every value of the input must be plain.
   tool: raw_dataset_model.xml
-  code: uncheckable-template-code
+  code: not-plain-untraced-value
   review:
     patterns: [model-access]
     serious_rules: [shell-injection]
@@ -420,17 +420,24 @@ raw_dataset_model:
     - datasets:
         input: {name: "a';touch harm-marker;'"}
       harm: true
-      expect: {rejected: true, message_contains: ["$unsanitized.name"]}
-    - doc: Even a plain name.
+      expect:
+        rejected: true
+        message_contains:
+          - "the name of a dataset of input 'input' contains [' ;]"
+          - "because this tool writes values it cannot trace"
+    - doc: Even a value the template does not write, since the review cannot tell which it writes.
       datasets:
-        input: {name: reads}
+        input: {name: reads, info: "a;b"}
       expect: {rejected: true}
-  green:
-    - config: {when_unsure: log}
+    - doc: The name as the model holds it, not as the sanitizer writes it (`aXb`).
       datasets:
+        input: {name: "a;b"}
+      expect: {rejected: true, message_contains: ["the name of a dataset of input 'input' contains [;]"]}
+  green:
+    - datasets:
         input: {name: reads}
       harm: true
-      expect: {rejected: false, warns: [uncheckable-template-code]}
+      expect: {rejected: false}
 
 pipe_to_shell:
   doc: A value in text piped to a shell is code whatever its characters, so every job is refused.
@@ -579,9 +586,10 @@ template_code:
 user_object_unsanitized:
   doc: >-
     With the sanitizer off, the user object is read as it is stored. A template that reads it other than by
-    the name of one preference, here every preference in a loop, writes values the job check cannot trace.
+    the name of one preference, here every preference in a loop, writes values the review cannot trace:
+    every value the job carries must be plain.
   tool: user_preferences_unsanitized_loop.xml
-  code: uncheckable-template-code
+  code: not-plain-untraced-value
   review:
     patterns: [user-object]
     findings:
@@ -592,33 +600,32 @@ user_object_unsanitized:
       harm: true
       expect:
         rejected: true
-        codes: [uncheckable-template-code, uncheckable-untraced-value]
-        message_contains:
-          - "run code or read data the job does not carry"
-          - "it writes values it cannot trace to an input (command)"
+        message_contains: ["your preference 'spec|label' contains [' ;]"]
   green:
-    - config: {when_unsure: log}
-      user: {preferences: {"spec|label": "Bob"}}
+    - user: {preferences: {"spec|label": "Bob"}}
       harm: true
-      expect: {rejected: false, warns: [uncheckable-template-code, uncheckable-untraced-value]}
+      expect: {rejected: false}
 
 untraced_value:
   doc: >-
-    A preference read in a loop, by a name the template computes, cannot be traced to one preference, so no
-    check sees its value. Galaxy sanitizes it here, but the job is refused whatever its values.
+    A preference read in a loop, by a name the template computes, cannot be traced to one preference, so
+    every value the job carries must be plain. Galaxy sanitizes it here, so the refused value is harmless.
   tool: user_preferences_loop.xml
-  code: uncheckable-untraced-value
+  code: not-plain-untraced-value
   review:
     findings:
       - {rule: shell-injection, accessor: opaque, checkable: false}
   red:
-    - user: {preferences: {"spec|label": "hello"}}
-      expect: {rejected: true, message_contains: ["it writes values it cannot trace to an input (command)"]}
+    - doc: A quote, which the sanitizer writes as a token.
+      user: {preferences: {"spec|label": "it's"}}
+      expect: {rejected: true, message_contains: ["because this tool writes values it cannot trace"]}
   green:
+    - user: {preferences: {"spec|label": "hello"}}
+      expect: {rejected: false}
     - config: {when_unsure: log}
       user: {preferences: {"spec|label": "a';touch harm-marker;'"}}
       harm: true
-      expect: {rejected: false, warns: [uncheckable-untraced-value]}
+      expect: {rejected: false, warns: [not-plain-untraced-value]}
 
 review_failed:
   doc: A tool whose review fails cannot have any job checked.
@@ -667,14 +674,22 @@ strict_check_failed:
 
 reflection_bypass:
   doc: >-
-    A known bypass. Read by name through `getattr`, the unsanitized dataset model is out of the review's
-    sight: it reports no finding the job check could compare values with, so the job runs whatever the
-    dataset is named, and a name that closes the quotes starts a command.
+    Read by name through `getattr`, the unsanitized dataset model is out of the review's sight: every value
+    the job carries must be plain, and a name that closes the quotes is refused.
   tool: reflection_getattr.xml
-  known_bypass: true
+  code: not-plain-untraced-value
   review:
     patterns: [reflection]
     serious_rules: []
+  red:
+    - datasets:
+        input: {name: "x'; touch harm-marker; echo '"}
+      harm: true
+      expect:
+        rejected: true
+        message_contains:
+          - "the name of a dataset of input 'input' contains [' ;]"
+          - "because this tool writes values it cannot trace (getattr)"
   green:
     - datasets:
         input: {name: reads.fq}

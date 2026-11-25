@@ -61,8 +61,11 @@ from galaxy.tool_util.security.charsets import (
     WHITESPACE,
 )
 from galaxy.tool_util.security.codes import RefusalCode
+from galaxy.tool_util.security.patterns import (
+    PatternCode,
+    pattern_of,
+)
 from galaxy.tool_util.security.report import (
-    CODE_CAPABILITIES,
     DATASET_ATTRIBUTE,
     DATASET_CONTENT,
     ELEMENT_IDENTIFIER,
@@ -353,8 +356,12 @@ class ToolSecurityReviewer:
         if violations and self.enforcing:
             # A rule without a code fails the job unexpectedly rather than letting it run.
             raise ToolInputRejected(rejection_message(tool, violations), (RefusalCode(v.rule) for v in violations))
-        unchecked = sorted({f.location for f in review.unchecked_at(self.level)} | set(review.unchecked_locations))
         # Log mode warns of both; an enforcing mode has refused a job with violations already.
+        untraced, untraced_refs = _untraced(review.report, self.level)
+        unchecked = sorted(
+            {f.location for f in review.unchecked_at(self.level) if not _untraced_only(f)}
+            | set(review.unchecked_locations)
+        )
         if unchecked:
             self._cannot_check(
                 tool,
@@ -363,6 +370,17 @@ class ToolSecurityReviewer:
                 f"this tool writes values in places that no check of their characters can judge ({', '.join(unchecked)})",
                 RefusalCode.NOT_PLAIN_UNCHECKED_PLACE,
                 unchecked,
+                untraced_refs,
+            )
+        elif untraced:
+            self._cannot_check(
+                tool,
+                evaluator,
+                review.report,
+                f"this tool writes values it cannot trace ({', '.join(untraced)})",
+                RefusalCode.NOT_PLAIN_UNTRACED_VALUE,
+                [],
+                untraced_refs,
             )
 
     def _cannot_check(
@@ -373,11 +391,13 @@ class ToolSecurityReviewer:
         reason: str,
         code: RefusalCode,
         locations: Optional[list[str]] = None,
+        untraced: Iterable[SourceRef] = (),
     ) -> None:
         """A job the review cannot judge: with when_unsure strict its values must all be plain, with refuse it
         is refused, with log what strict would refuse is only logged.
 
-        ``code`` names the refusal of a job with a value that is not plain.
+        ``code`` names the refusal of a job with a value that is not plain. The strict check reads what the
+        templates read in ``locations`` (all when None) and the sources ``untraced`` values can be.
         """
         job_id = evaluator.job.id
         refuses = self.enforcing and self.when_unsure != LOG
@@ -414,7 +434,7 @@ class ToolSecurityReviewer:
         assert report is not None  # _no_plain_value refuses a job without a report
         try:
             with _keeping_consumes(evaluator):
-                harmful = list(strict_violations(report, locations, evaluator.param_dict, self.level))
+                harmful = list(strict_violations(report, locations, evaluator.param_dict, self.level, untraced))
         except Exception:
             # Only an enforcing mode may fail a job, and then with a message for the user.
             log.exception(
@@ -554,8 +574,9 @@ def find_violations(report: Report, param_dict: dict[str, Any], level: str = COD
                     yield violation
 
 
-def source_values(ref: SourceRef, param_dict: dict[str, Any]) -> Iterator[str]:
-    """The strings a template reads from a source in this job."""
+def source_values(ref: SourceRef, param_dict: dict[str, Any], raw: bool = False) -> Iterator[str]:
+    """The strings a template reads from a source in this job; with ``raw``, the attributes and metadata of
+    datasets as users set them, which the dataset model gives."""
     if ref.accessor == SPECIAL:
         if ref.key and (value := param_dict.get(ref.key)) is not None:
             yield str(value)
@@ -566,7 +587,7 @@ def source_values(ref: SourceRef, param_dict: dict[str, Any]) -> Iterator[str]:
         return
     for value in _resolve(param_dict, ref.param_path):
         try:
-            yield from _accessor_values(ref, value)
+            yield from _accessor_values(ref, value, raw)
         except Exception as e:
             # A value the wrappers cannot give (an optional input without a dataset) is not written either.
             log.debug("Cannot read %s of input %s: %s", ref.accessor, ref.param, e)
@@ -586,7 +607,7 @@ def _resolve(node: Any, path: tuple[str, ...]) -> Iterator[Any]:
         yield from _resolve(node[path[0]], path[1:])
 
 
-def _accessor_values(ref: SourceRef, value: Any) -> Iterator[str]:
+def _accessor_values(ref: SourceRef, value: Any, as_set: bool = False) -> Iterator[str]:
     accessor = ref.accessor
     if accessor == TEXT:
         yield str(value)
@@ -599,12 +620,12 @@ def _accessor_values(ref: SourceRef, value: Any) -> Iterator[str]:
         yield from _identifiers(value)
     elif accessor == DATASET_ATTRIBUTE and ref.key:
         for dataset in _datasets(value):
-            attribute = getattr(dataset, ref.key, None)
+            attribute = getattr(dataset.unsanitized if as_set else dataset, ref.key, None)
             if attribute is not None and not callable(attribute):
                 yield str(attribute)
     elif accessor == METADATA and ref.key:
         for dataset in _datasets(value):
-            metadata = getattr(dataset.metadata, ref.key, None)
+            metadata = getattr((dataset.unsanitized if as_set else dataset).metadata, ref.key, None)
             for item in metadata if isinstance(metadata, (list, tuple)) else [metadata]:
                 if item is not None:
                     yield str(item)
@@ -717,15 +738,9 @@ def _no_plain_value(report: Optional[Report]) -> list[tuple[RefusalCode, str]]:
     why = []
     if rewrites := sorted({name for found in report.rewrites.values() for name in found}):
         why.append((RefusalCode.UNCHECKABLE_REWRITES, f"its templates change values with {', '.join(rewrites)}"))
-    # Unless the tool turns the sanitizer off, Galaxy sanitizes what a template reads from the user object.
+    # Reads of the job's own objects are checked strictly (see _untraced); these reach other data.
     sanitized = not any(f.rule == SANITIZE_OFF for f in report.findings)
-    capabilities = sorted(
-        {
-            f.expr
-            for f in report.findings
-            if f.rule in CODE_CAPABILITIES and f.expr and not (sanitized and f.expr.startswith("__user__"))
-        }
-    )
+    capabilities = sorted({f.expr for f in report.findings if f.expr and pattern_of(f, sanitized) in _OUTSIDE_THE_JOB})
     if capabilities:
         why.append(
             (
@@ -748,31 +763,65 @@ def _no_plain_value(report: Optional[Report]) -> list[tuple[RefusalCode, str]]:
                 f"letters alone can be code where it writes values ({', '.join(runs)})",
             )
         )
-    # The strict check reads the sources of a template, and an opaque value of no input has none.
-    if untraced := sorted(
-        {f.location for f in serious if any(ref.accessor == OPAQUE and ref.param is None for ref in f.refs)}
-    ):
-        why.append(
-            (
-                RefusalCode.UNCHECKABLE_UNTRACED_VALUE,
-                f"it writes values it cannot trace to an input ({', '.join(untraced)})",
-            )
-        )
     return why
 
 
+# Access patterns of reads of data the job does not carry: no check of the job's values sees it.
+_OUTSIDE_THE_JOB = frozenset((PatternCode.APP_ACCESS, PatternCode.TEMPLATE_CODE, PatternCode.FILE_ACCESS))
+
+
+def _untraced_only(finding: Finding) -> bool:
+    """A finding a character test could judge, but of values the review cannot trace."""
+    return bool(finding.breakout or finding.closes) and all(ref.accessor == OPAQUE for ref in finding.refs)
+
+
+def _untraced(report: Report, level: str) -> tuple[list[str], list[SourceRef]]:
+    """What the templates read that the review cannot trace, and the sources it can be: the other values
+    of the input an untraced value comes from, or every source of the job when it comes from none or the
+    review lost track of what is read (reflection)."""
+    sanitized = not any(f.rule == SANITIZE_OFF for f in report.findings)
+    what: dict[str, None] = {}
+    params: set[Optional[str]] = set()
+    for finding in report.findings:
+        if pattern_of(finding, sanitized) == PatternCode.REFLECTION and finding.expr:
+            what[finding.expr] = None
+            params.add(None)
+    for finding in enforced_findings(report, level):
+        if _untraced_only(finding):
+            what[finding.source or finding.location] = None
+            params.update(ref.param for ref in finding.refs)
+    if None in params:
+        return list(what), list(report.every_source)
+    refs = [
+        ref
+        for ref in report.every_source
+        if ref.param is not None and any(ref.param == p or ref.param.startswith(f"{p}.") for p in params if p)
+    ]
+    return list(what), refs
+
+
 def strict_violations(
-    report: Report, locations: Optional[list[str]], param_dict: dict[str, Any], level: str = CODE
+    report: Report,
+    locations: Optional[list[str]],
+    param_dict: dict[str, Any],
+    level: str = CODE,
+    untraced: Iterable[SourceRef] = (),
 ) -> Iterator[tuple[SourceRef, frozenset[str]]]:
-    """The sources the templates read in ``locations`` (all when None) whose job values are not plain at
-    the enforcement ``level``, with what keeps them from being plain."""
+    """The sources the templates read in ``locations`` (all when None), and ``untraced``, whose job values
+    are not plain at the enforcement ``level``, with what keeps them from being plain."""
     refs: dict[SourceRef, None] = {}
     for location in report.reads if locations is None else locations:
         for ref in report.reads.get(location, ()):
             refs.update(dict.fromkeys(_expanded(ref, param_dict)))
+    # An untraced value can be read from the dataset model, as users set it.
+    raw: set[SourceRef] = set()
+    for ref in untraced:
+        expanded = dict.fromkeys(_expanded(ref, param_dict))
+        refs.update(expanded)
+        raw.update(expanded)
     for ref in refs:
         harm: frozenset[str] = frozenset()
-        for value in source_values(ref, param_dict):
+        for value in source_values(ref, param_dict, raw=ref in raw):
             added = report.added_by_rewrites(ref, frozenset(value))
             harm |= strict_harm(value, level) | (added & (_not_plain_chars(level) | {"-"}))
             if "-" in value and any(c.isspace() for c in added):

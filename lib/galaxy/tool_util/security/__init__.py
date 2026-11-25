@@ -137,6 +137,7 @@ def review_tool_source(tool_source: ToolSource) -> Report:
         report.unanalyzed.append("the security review needs Python 3.9 or later")
         return report
     model = build_model(tool_source)
+    report.every_source = model.every_source()
     readers: dict[str, set[str]] = {}
     names: dict[str, set[str]] = {}
 
