@@ -67,11 +67,6 @@ _SAFE_SPECIALS = (
 SAFE_SPECIALS = frozenset(_SAFE_SPECIALS)
 _USER_SPECIALS = "__user_email__ userEmail __user_name__ dbkey".split()
 
-# Names that make a template read every attribute of a dataset, every preference and every account value.
-_EVERY_NAME = frozenset(
-    ("info", "created_from_basename", "dbkey", "groups", "metadata", "extra_preferences", *_USER_SPECIALS)
-)
-
 # Select-like parameter types whose values come from the user's data.
 _USER_SELECT_TYPES = frozenset(("data_column", "group_tag", "genomebuild"))
 
@@ -112,10 +107,6 @@ class Model:
         if "extra_preferences" in names:
             refs[SourceRef(USER_PREFERENCE)] = None
         return list(refs)
-
-    def every_source(self) -> list[SourceRef]:
-        """Every user-controlled source of the tool's jobs: what a value the review cannot trace can be."""
-        return self.sources(_EVERY_NAME | frozenset(USER_ACCOUNT_ATTRIBUTES))
 
     def lookup(self, name: str) -> AV | None:
         nodes = self.root.children.get(name)

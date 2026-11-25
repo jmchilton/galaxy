@@ -52,11 +52,10 @@ def _patterns(cases: Dict[str, SpecCase]) -> List[str]:
     lines = [
         "## Access patterns",
         "",
-        "The review also reports reads it cannot follow to a value of the job. Where a template writes a value",
-        "read by name (reflection), the strict check reads every value the job carries; where it writes one of",
-        "the dataset model or the user object, every value of its input, or of the job. A read of data the job",
-        "does not carry refuses every job of the tool the review cannot check otherwise. A case marked as a",
-        "known bypass is a tool whose jobs run whatever their values.",
+        "The review also reports reads it cannot follow to a value of the job. A read by name (reflection) can",
+        "write any value without a finding about it, so it refuses every job of the tool. For the others, a job",
+        "is refused only when the review also sees the value written where it can do harm.",
+        "A case marked as a known bypass is a tool whose jobs run whatever their values.",
         "",
     ]
     groups = (

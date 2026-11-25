@@ -17,12 +17,12 @@ class RefusalCode(str, Enum):
     # The review cannot judge the job's values, and one of them is not plain.
     NOT_PLAIN_UNCHECKED_PLACE = "not-plain-unchecked-place"
     NOT_PLAIN_CHECK_ERROR = "not-plain-check-error"
-    NOT_PLAIN_UNTRACED_VALUE = "not-plain-untraced-value"
     # No value of the job can be checked: it is refused whatever its values.
     UNCHECKABLE_REVIEW_FAILED = "uncheckable-review-failed"
     UNCHECKABLE_REWRITES = "uncheckable-rewrites"
     UNCHECKABLE_TEMPLATE_CODE = "uncheckable-template-code"
     UNCHECKABLE_LETTERS_ARE_CODE = "uncheckable-letters-are-code"
+    UNCHECKABLE_UNTRACED_VALUE = "uncheckable-untraced-value"
     UNCHECKABLE_STRICT_CHECK_ERROR = "uncheckable-strict-check-error"
     UNCHECKABLE_WHEN_UNSURE = "uncheckable-when-unsure"
 
@@ -52,9 +52,6 @@ DESCRIPTIONS = {
     " template it did not follow, or values it cannot trace), and a value is not plain.",
     RefusalCode.NOT_PLAIN_CHECK_ERROR: "Comparing the job's values with the review's findings failed (a bug), so"
     " the job got the strict check instead, and a value is not plain.",
-    RefusalCode.NOT_PLAIN_UNTRACED_VALUE: "The templates write a value the review cannot trace: read by name"
-    " (`getattr`), from the dataset model (`.unsanitized`), from the user object in a loop. Every value the value"
-    " can be, of the input it comes from or else of the whole job, must be plain, and one is not.",
     RefusalCode.UNCHECKABLE_REVIEW_FAILED: "The review of the tool failed, so nothing is known about what its"
     " templates do.",
     RefusalCode.UNCHECKABLE_REWRITES: "The templates change values in ways that can bring back characters the"
@@ -62,9 +59,12 @@ DESCRIPTIONS = {
     " not literal, or of a value template code changed before). A literal rewrite of a value as the job carries"
     " it is checked with each job.",
     RefusalCode.UNCHECKABLE_TEMPLATE_CODE: "The templates run Python that can read text the job does not carry"
-    " (imports, `exec`, `open()`, `$__app__`).",
+    " (imports, `open()`, `$__app__`, `getattr`, what the dataset model behind `.unsanitized` reaches beyond its"
+    " own strings and metadata).",
     RefusalCode.UNCHECKABLE_LETTERS_ARE_CODE: "Letters alone can be code where the tool writes a value: the program"
     " to run, text piped to a shell that runs it (not one that runs a script file), or unquoted Perl or Ruby code.",
+    RefusalCode.UNCHECKABLE_UNTRACED_VALUE: "The templates write a value the review cannot trace to one input or"
+    " preference (the user object read in a loop, a conditional built at run time), so no check sees it.",
     RefusalCode.UNCHECKABLE_STRICT_CHECK_ERROR: "The strict check itself failed (a bug), so none of the job's"
     " values could be checked.",
     RefusalCode.UNCHECKABLE_WHEN_UNSURE: "The review cannot check the job, and the server refuses every such job"
