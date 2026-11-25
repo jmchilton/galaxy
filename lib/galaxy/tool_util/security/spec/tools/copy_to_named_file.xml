@@ -1,0 +1,11 @@
+<tool id="spec_copy_to_named_file" name="Copy to a named file" version="1.0" profile="24.0">
+    <description>copies a dataset to a file the user names</description>
+    <command><![CDATA[mkdir -p outputs && cp '$input' 'outputs/$name' && cp '$input' '$out']]></command>
+    <inputs>
+        <param name="input" type="data" format="txt"/>
+        <param name="name" type="text"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

@@ -15,8 +15,10 @@ from typing import (
 
 from .charsets import (
     CRITICAL,
+    enforced,
     HIGH,
     SEVERITIES,
+    stricter,
     worst,
 )
 
@@ -64,10 +66,9 @@ CODE_CAPABILITIES = frozenset(
 )
 
 
-# Findings whose characters are checked in the values of a job. Medium findings (a value that can
-# split into more arguments, close quotes without starting a command, or name another path) are
-# not: the characters they name, a space, a slash or a quote, are common in element identifiers and
-# dataset names, and a warning for each such job would bury the warnings that matter.
+# The severities of serious findings, the ones of the code level (charsets.level_of) unless a verdict
+# says otherwise. The characters of medium findings, a space, a slash or a quote, are common in element
+# identifiers and dataset names: their jobs are refused only from tool_security_review: enforce_data on.
 CHECKED_SEVERITIES = frozenset((HIGH, CRITICAL))
 
 
@@ -143,6 +144,10 @@ class Finding:
     # Sources whose value the template rewrites in a way that can bring in a breakout character
     # (str.replace, re.sub, a decoder, an unknown function): their characters decide nothing.
     unchecked: tuple[SourceRef, ...] = ()
+    # The level of tool_security_review that refuses a vulnerability (charsets.LEVELS), and what a
+    # value must also hold at the data level (charsets.DATA_HARM).
+    level: str | None = None
+    data_requires: frozenset[str] = frozenset()
 
     @property
     def checkable(self) -> bool:
@@ -206,6 +211,13 @@ class Report:
                     closes=first.closes | second.closes,
                     needs_closer=first.needs_closer and second.needs_closer,
                     unchecked=sorted_refs((*first.unchecked, *second.unchecked)),
+                    level=stricter(first.level, second.level),
+                    # Either finding's condition implies the merged one.
+                    data_requires=(
+                        first.data_requires | second.data_requires
+                        if first.data_requires and second.data_requires
+                        else frozenset()
+                    ),
                 )
                 return
         self.findings.append(finding)
@@ -270,7 +282,13 @@ def _finding_to_dict(finding: Finding) -> dict[str, Any]:
     as_dict["breakout"] = sorted(finding.breakout)
     as_dict["requires"] = sorted(finding.requires)
     as_dict["closes"] = sorted(finding.closes)
+    as_dict["data_requires"] = sorted(finding.data_requires)
     return as_dict
+
+
+def enforced_findings(report: Report, level: str) -> list[Finding]:
+    """The vulnerability findings the enforcement ``level`` refuses jobs for, most severe first."""
+    return [f for f in report.sorted() if f.kind == VULNERABILITY and enforced(f.level, level)]
 
 
 def serious_findings(report: Report) -> list[Finding]:

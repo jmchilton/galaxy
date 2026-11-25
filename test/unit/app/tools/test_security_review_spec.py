@@ -17,7 +17,10 @@ from galaxy.tool_util.security.spec import (
     sweep_jobs,
 )
 from galaxy.tools.parameters.basic import ParameterValueError
-from galaxy.tools.security_review import LOG
+from galaxy.tools.security_review import (
+    ENFORCE_ALL,
+    LOG,
+)
 
 CASES = load_cases()
 JOBS = list(iter_jobs(CASES))
@@ -57,9 +60,14 @@ def test_job(runner, case_id, color, index, job, evaluator):
 
 @pytest.mark.parametrize("case_id,color,index,job", _params(JOBS))
 def test_log_mode_runs_and_warns_with_the_codes(runner, case_id, color, index, job):
-    outcome = runner(case_id).run(job, mode=LOG)
+    spec_runner = runner(case_id)
+    outcome = spec_runner.run(job, mode=LOG)
     assert not outcome.rejected
-    assert _warned_codes(outcome) == {code.value for code in expected_warnings(CASES[case_id], job)}
+    # Log mode warns of all that enforce_all refuses, which stops at the first refusal.
+    strictest = spec_runner.run(job, mode=ENFORCE_ALL)
+    warned = _warned_codes(outcome)
+    assert {code.value for code in strictest.codes} | _warned_codes(strictest) <= warned
+    assert {code.value for code in expected_warnings(CASES[case_id], job)} <= warned
 
 
 @pytest.mark.parametrize("case_id,color,index,job", _params(j for j in JOBS if j.job.harm))

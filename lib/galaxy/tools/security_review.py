@@ -45,20 +45,28 @@ from galaxy.tool_util.security import (
     SourceRef,
 )
 from galaxy.tool_util.security.charsets import (
+    ALL,
+    CODE,
     CRITICAL,
+    DASH_WORD,
+    DATA,
+    enforced,
     HIGH,
+    marks,
     not_plain,
     NOT_PLAIN,
     PROBE,
     show,
+    TILDE_WORD,
+    WHITESPACE,
 )
 from galaxy.tool_util.security.codes import RefusalCode
 from galaxy.tool_util.security.report import (
-    CHECKED_SEVERITIES,
     CODE_CAPABILITIES,
     DATASET_ATTRIBUTE,
     DATASET_CONTENT,
     ELEMENT_IDENTIFIER,
+    enforced_findings,
     GROUP_TAGS,
     METADATA,
     OPAQUE,
@@ -97,6 +105,9 @@ MODES = (OFF, LOG, *ENFORCING)
 STRICT = "strict"
 REFUSE = "refuse"
 WHEN_UNSURE = (STRICT, REFUSE, LOG)
+
+# The findings each mode acts on: log warns of everything enforce_all refuses.
+_LEVELS = {LOG: ALL, ENFORCE_CODE: CODE, ENFORCE_DATA: DATA, ENFORCE_ALL: ALL}
 
 ANALYSED = "analysed"
 NOT_ANALYSED = "not_analysed"
@@ -138,13 +149,22 @@ class ToolReview:
 
     @property
     def checked_findings(self) -> list[Finding]:
-        """The findings whose characters are compared with the values of a job."""
-        return [f for f in self._serious if f.checkable]
+        """The findings whose characters are compared with the values of a job at the code level."""
+        return self.checked_at(CODE)
 
     @property
     def unchecked_findings(self) -> list[Finding]:
-        """High and critical findings no character test on job values can decide."""
-        return [f for f in self._serious if not f.checkable]
+        """Findings of the code level that no character test on job values can decide."""
+        return self.unchecked_at(CODE)
+
+    def checked_at(self, level: str) -> list[Finding]:
+        return [f for f in self._enforced(level) if f.checkable]
+
+    def unchecked_at(self, level: str) -> list[Finding]:
+        return [f for f in self._enforced(level) if not f.checkable]
+
+    def _enforced(self, level: str) -> list[Finding]:
+        return enforced_findings(self.report, level) if self.report is not None else []
 
     @property
     def unchecked_locations(self) -> dict[str, str]:
@@ -178,6 +198,8 @@ class ToolSecurityReviewer:
             )
         self.mode = mode
         self.when_unsure = when_unsure
+        # The level of the findings the check acts on.
+        self.level = _LEVELS.get(mode, CODE)
         # Keyed by the Tool object: a review lives as long as the tool it is about.
         self._reviews: WeakKeyDictionary[Tool, ToolReview] = WeakKeyDictionary()
         self._tool_locks: WeakKeyDictionary[Tool, threading.Lock] = WeakKeyDictionary()
@@ -299,10 +321,10 @@ class ToolSecurityReviewer:
             )
             return
         violations: list[Violation] = []
-        if review.checked_findings or review.report.writes:
+        if review.checked_at(self.level) or review.report.writes:
             try:
                 with _keeping_consumes(evaluator):
-                    violations = list(find_violations(review.report, evaluator.param_dict))
+                    violations = list(find_violations(review.report, evaluator.param_dict, self.level))
             except Exception:
                 # With when_unsure log, the check must never be the reason a job fails.
                 log.exception("Job %s: checking values against the security review of tool %s failed", job_id, tool.id)
@@ -331,8 +353,9 @@ class ToolSecurityReviewer:
         if violations and self.enforcing:
             # A rule without a code fails the job unexpectedly rather than letting it run.
             raise ToolInputRejected(rejection_message(tool, violations), (RefusalCode(v.rule) for v in violations))
-        unchecked = sorted({f.location for f in review.unchecked_findings} | set(review.unchecked_locations))
-        if unchecked and not violations:
+        unchecked = sorted({f.location for f in review.unchecked_at(self.level)} | set(review.unchecked_locations))
+        # Log mode warns of both; an enforcing mode has refused a job with violations already.
+        if unchecked:
             self._cannot_check(
                 tool,
                 evaluator,
@@ -391,7 +414,7 @@ class ToolSecurityReviewer:
         assert report is not None  # _no_plain_value refuses a job without a report
         try:
             with _keeping_consumes(evaluator):
-                harmful = list(strict_violations(report, locations, evaluator.param_dict))
+                harmful = list(strict_violations(report, locations, evaluator.param_dict, self.level))
         except Exception:
             # Only an enforcing mode may fail a job, and then with a message for the user.
             log.exception(
@@ -421,7 +444,7 @@ class ToolSecurityReviewer:
                 show(chars),
             )
         if refuses:
-            raise ToolInputRejected(strict_message(tool, reason, harmful), [code])
+            raise ToolInputRejected(strict_message(tool, reason, harmful, self.level), [code])
 
 
 @dataclass(frozen=True)
@@ -437,8 +460,8 @@ class Violation:
 STRAY_QUOTE = RefusalCode.STRAY_QUOTE.value
 
 
-def find_violations(report: Report, param_dict: dict[str, Any]) -> Iterator[Violation]:
-    """The sources whose job values do what a high or critical finding says, or free other values.
+def find_violations(report: Report, param_dict: dict[str, Any], level: str = CODE) -> Iterator[Violation]:
+    """The sources whose job values do what a finding the enforcement ``level`` refuses says, or free other values.
 
     A finding applies when its own values bring a breakout character (and a required one). And
     when any value of a template can close the quotes it is written in (a finding with a quote
@@ -447,7 +470,8 @@ def find_violations(report: Report, param_dict: dict[str, Any]) -> Iterator[Viol
     characters of all values of a source, and of all sources of a finding, count together: a
     template can join them into one string. A backslash escapes the character after it, which is
     template text only after the last one: it counts only when a value ends in an odd number of
-    them.
+    them. Marks (``charsets.marks``) stand for what no character tells, such as a word that starts
+    with a dash.
     """
     chars_by_ref: dict[SourceRef, frozenset[str]] = {}
 
@@ -457,6 +481,7 @@ def find_violations(report: Report, param_dict: dict[str, Any]) -> Iterator[Viol
             escapes_template = False
             for value in source_values(ref, param_dict):
                 chars.update(value)
+                chars.update(marks(value))
                 escapes_template = escapes_template or (len(value) - len(value.rstrip("\\"))) % 2 == 1
             if "\r" in chars:
                 # Templates turn carriage returns into newlines (replace("\\r", "\\n")).
@@ -464,6 +489,9 @@ def find_violations(report: Report, param_dict: dict[str, Any]) -> Iterator[Viol
             added = report.added_by_rewrites(ref, chars)
             if not escapes_template:
                 chars.discard("\\")
+            if "-" in chars and added & WHITESPACE:
+                # Added whitespace splits the value into words, one of which can start with its dash.
+                chars.add(DASH_WORD)
             chars_by_ref[ref] = frozenset(chars) | added
         return chars_by_ref[ref]
 
@@ -494,7 +522,7 @@ def find_violations(report: Report, param_dict: dict[str, Any]) -> Iterator[Viol
                 closers.setdefault(location, {}).setdefault(ref, set()).update(chars_of(ref) & quotes)
 
     for finding in vulnerabilities:
-        if finding.severity not in CHECKED_SEVERITIES or not finding.checkable:
+        if not enforced(finding.level, level) or not finding.checkable:
             continue
         if finding.needs_closer and not closers.get(finding.location):
             # No value of the job escapes the quote this finding is about.
@@ -503,7 +531,11 @@ def find_violations(report: Report, param_dict: dict[str, Any]) -> Iterator[Viol
         present = frozenset().union(*values.values())
         if not present & finding.breakout or (finding.requires and not present & finding.requires):
             continue
-        wanted = finding.breakout | finding.requires
+        # Splitting into plain words or closing the quotes alone is refused only at the level of all.
+        data_requires = finding.data_requires if level == DATA else frozenset()
+        if data_requires and not present & data_requires:
+            continue
+        wanted = finding.breakout | finding.requires | data_requires
         for ref, chars in values.items():
             violation = Violation(ref, chars & wanted, finding.rule, finding.severity, finding.location)
             if violation.chars and first(violation):
@@ -730,10 +762,10 @@ def _no_plain_value(report: Optional[Report]) -> list[tuple[RefusalCode, str]]:
 
 
 def strict_violations(
-    report: Report, locations: Optional[list[str]], param_dict: dict[str, Any]
+    report: Report, locations: Optional[list[str]], param_dict: dict[str, Any], level: str = CODE
 ) -> Iterator[tuple[SourceRef, frozenset[str]]]:
-    """The sources the templates read in ``locations`` (all when None) whose job values are not plain,
-    with what keeps them from being plain."""
+    """The sources the templates read in ``locations`` (all when None) whose job values are not plain at
+    the enforcement ``level``, with what keeps them from being plain."""
     refs: dict[SourceRef, None] = {}
     for location in report.reads if locations is None else locations:
         for ref in report.reads.get(location, ()):
@@ -742,12 +774,31 @@ def strict_violations(
         harm: frozenset[str] = frozenset()
         for value in source_values(ref, param_dict):
             added = report.added_by_rewrites(ref, frozenset(value))
-            harm |= not_plain(value) | (added & (NOT_PLAIN | {"-"}))
+            harm |= strict_harm(value, level) | (added & (_not_plain_chars(level) | {"-"}))
             if "-" in value and any(c.isspace() for c in added):
                 # Added whitespace splits the value into words, one of which can start with its dash.
                 harm |= {"-"}
         if harm:
             yield ref, harm
+
+
+def _not_plain_chars(level: str) -> frozenset[str]:
+    """The characters a plain value lacks at the enforcement ``level``."""
+    chars = NOT_PLAIN
+    if level != CODE:
+        chars = chars | {"/"}
+    if level == ALL:
+        chars = chars | WHITESPACE
+    return chars
+
+
+def strict_harm(value: str, level: str = CODE) -> frozenset[str]:
+    """What keeps a value from being plain at the enforcement ``level``: beyond the code level, a slash or
+    a word that starts with ``~``, and at the level of all, whitespace."""
+    harm = not_plain(value) | (frozenset(value) & _not_plain_chars(level))
+    if level != CODE and TILDE_WORD in marks(value):
+        harm |= {"~"}
+    return harm
 
 
 def _expanded(ref: SourceRef, param_dict: dict[str, Any]) -> Iterator[SourceRef]:
@@ -781,13 +832,22 @@ def unchecked_message(tool: "Tool", reason: str, why: list[str]) -> str:
     )
 
 
-def strict_message(tool: "Tool", reason: str, harmful: list[tuple[SourceRef, frozenset[str]]]) -> str:
+# What a plain value can hold at each enforcement level, for the message of a refused job.
+_PLAIN = {
+    CODE: "letters, digits, spaces and . _ : / = + @ , ! ^ ~ ? in names and values, and do not start a word with -",
+    DATA: "letters, digits, spaces and . _ : = + @ , ! ^ ~ ? in names and values, and do not start a word with - or ~",
+    ALL: "letters, digits and . _ : = + @ , ! ^ ~ ? in names and values, and do not start a word with - or ~",
+}
+
+
+def strict_message(
+    tool: "Tool", reason: str, harmful: list[tuple[SourceRef, frozenset[str]]], level: str = CODE
+) -> str:
     parts = [f"{_describe(ref)} contains [{show(chars)}]" for ref, chars in harmful]
     return (
-        f"This job was not run: {', and '.join(parts)}. Use letters, digits, spaces and . _ : / = + @ , ! ^ ~ ? in"
-        " names and values, and do not start a word with -, or contact the administrators of this server. This"
-        f" Galaxy server allows only plain names and values for tool '{tool.name}' ({tool.id} version"
-        f" {tool.version}), because {reason}."
+        f"This job was not run: {', and '.join(parts)}. Use {_PLAIN[level]}, or contact the administrators of"
+        f" this server. This Galaxy server allows only plain names and values for tool '{tool.name}' ({tool.id}"
+        f" version {tool.version}), because {reason}."
     )
 
 

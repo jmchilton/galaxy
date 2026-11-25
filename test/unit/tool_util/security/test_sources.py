@@ -76,7 +76,7 @@ def test_param_path():
 
 
 def test_sources_keep_their_text(tmp_path):
-    (finding,) = review(tmp_path, "echo '$input.element_identifier'").findings
+    (finding,) = [f for f in review(tmp_path, "echo '$input.element_identifier'").findings if f.severity == HIGH]
     assert finding.source == "element identifier of dataset 'input' (not sanitized)"
 
 

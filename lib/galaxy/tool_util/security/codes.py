@@ -9,6 +9,10 @@ class RefusalCode(str, Enum):
     NESTED_INTERPRETER = "nested-interpreter"
     CONFIGFILE_INJECTION = "configfile-injection"
     STRAY_QUOTE = "stray-quote"
+    # From tool_security_review: enforce_data on, a value can stop being the data it is meant to be.
+    PATH_TRAVERSAL = "path-traversal"
+    OPTION_INJECTION = "option-injection"
+    ARGUMENT_INJECTION = "argument-injection"
     # The review cannot judge the job's values, and one of them is not plain.
     NOT_PLAIN_UNCHECKED_PLACE = "not-plain-unchecked-place"
     NOT_PLAIN_CHECK_ERROR = "not-plain-check-error"
@@ -31,6 +35,14 @@ DESCRIPTIONS = {
     " string and add code.",
     RefusalCode.STRAY_QUOTE: "A quote in one value is harmless by itself but flips the quoting of the rest of the"
     " line, which leaves the command characters of another value unquoted.",
+    RefusalCode.PATH_TRAVERSAL: "A value is written as a path a command writes or reads (a redirection, an"
+    " argument of `cp`, `ln`, `mv`, ...) and can name a file outside the job's directory. Refused from"
+    " `enforce_data` on.",
+    RefusalCode.OPTION_INJECTION: "A value starts an argument and can begin with a dash, so the command reads it"
+    " as an option. Refused from `enforce_data` on.",
+    RefusalCode.ARGUMENT_INJECTION: "A value is written unquoted, or can close its quotes, and can split into"
+    " more words. From `enforce_data` on, a job is refused when a word can then be an option, a home directory,"
+    " a path or a glob; with `enforce_all`, also when the words are plain or the value only closes its quotes.",
     RefusalCode.NOT_PLAIN_UNCHECKED_PLACE: "The tool writes values in places the review cannot judge (parts of the"
     " template it did not follow, or values it cannot trace), and a value is not plain.",
     RefusalCode.NOT_PLAIN_CHECK_ERROR: "Comparing the job's values with the review's findings failed (a bug), so"

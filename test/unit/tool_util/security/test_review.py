@@ -12,14 +12,18 @@ from galaxy.tool_util.security import (
     review_tool_source,
 )
 from galaxy.tool_util.security.charsets import (
+    DASH_WORD,
     DEFAULT_SANITIZED,
+    LEADING_DASH,
     literal_rewrite,
+    marks,
     PROBE,
     regex_anchored_start,
     regex_first,
     regex_removed,
     regex_universe,
     regex_word_first,
+    TILDE_WORD,
 )
 from galaxy.tool_util.security.template import (
     compile_template,
@@ -102,15 +106,13 @@ def review(
 ) -> Report:
     path = os.path.join(tmp_path, "tool.xml")
     with open(path, "w") as fh:
-        fh.write(
-            f"""<tool id="t" name="t" version="1" profile="24.2" {tool_attrs}>
+        fh.write(f"""<tool id="t" name="t" version="1" profile="24.2" {tool_attrs}>
   <command><![CDATA[{command}]]></command>
   <configfiles>{configfiles}</configfiles>
   <inputs>{inputs or INPUTS}</inputs>
   <outputs><data name="out" format="txt"/></outputs>
   {extra}
-</tool>"""
-        )
+</tool>""")
     return review_tool_source(get_tool_source(path))
 
 
@@ -478,7 +480,7 @@ def test_module_level_code_is_not_run(tmp_path):
 
 def test_repeated_use_is_one_finding_with_all_lines(tmp_path):
     report = review(tmp_path, "tool $text\n&& tool $text\n&& tool $text")
-    (finding,) = report.findings
+    (finding,) = [f for f in report.findings if f.rule == "argument-injection"]
     assert (finding.line, finding.more_lines) == (1, (2, 3))
 
 
@@ -693,7 +695,7 @@ def test_escaped_single_quote_survives_joins_and_methods(tmp_path, command, expe
                 "#import re\n#set $n = str($input.element_identifier)\n"
                 "#if re.search('[\\w.-]+$', $n)\nln -s '$input' '$n'\n#end if"
             ),
-            {("shell-injection", "high")},
+            {("shell-injection", "high"), ("path-traversal", "medium")},
         ),
         (
             (
@@ -951,3 +953,19 @@ def test_a_configfile_any_shell_runs_is_a_script(tmp_path, reader):
 def test_inline_code_of_other_interpreters(tmp_path, interpreter):
     report = review(tmp_path, f"""{interpreter} -e 'print("$free")'""")
     assert any(f.rule == "nested-interpreter" for f in report.findings)
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ("-rf", {LEADING_DASH, DASH_WORD}),
+        # The shell removes the quote: `'$x'` with `'-rf` gives `''-rf'`.
+        ("'-rf", {LEADING_DASH, DASH_WORD}),
+        ("a' '-rf", {DASH_WORD}),
+        ("a-b c-d", set()),
+        ("x ~/y", {TILDE_WORD}),
+        ("a~b", set()),
+    ],
+)
+def test_marks_tell_what_a_word_starts_with(value, expected):
+    assert marks(value) == expected
