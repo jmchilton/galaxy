@@ -969,3 +969,23 @@ def test_inline_code_of_other_interpreters(tmp_path, interpreter):
 )
 def test_marks_tell_what_a_word_starts_with(value, expected):
     assert marks(value) == expected
+
+
+@pytest.mark.parametrize(
+    "command,expected",
+    [
+        ("export $text=1", {("variable-name", "high"), ("argument-injection", "medium")}),
+        ("local '$text'", {("variable-name", "high")}),
+        ("declare -x NAME$text=1", {("variable-name", "high"), ("argument-injection", "medium")}),
+        # `command` makes export split its operands, as env always does.
+        ("command export A=$text", {("argument-injection", "high")}),
+        ("env A=$text tool", {("argument-injection", "high")}),
+        ("export A=$text", {("argument-injection", "medium")}),
+        ("export A='$text'", set()),
+        # The shell does not split a prefix assignment, which the review still rates as an unquoted word.
+        ("A=$text tool", {("argument-injection", "medium")}),
+    ],
+)
+def test_variable_assignments(tmp_path, command, expected):
+    found = rules(review(tmp_path, command)) - {("option-injection", "low")}
+    assert {r for r in found if r[0] in ("variable-name", "argument-injection")} == expected

@@ -398,6 +398,69 @@ path_like_name:
         input: {name: "../reads.txt"}
       expect: {rejected: false}
 
+env_assignment:
+  doc: >-
+    `env` takes every word before the command as an assignment or the command: an unquoted value that splits
+    runs a command of its own.
+  tool: env_assignment.xml
+  code: argument-injection
+  review:
+    findings:
+      - {rule: argument-injection, severity: high, accessor: text, param: label, checkable: true}
+  red:
+    - datasets: {input: {name: reads.txt}}
+      inputs: {label: "x touch harm-marker"}
+      harm: true
+      expect:
+        rejected: true
+        message_contains: ["the value of input 'label' contains the characters [space]"]
+  green:
+    - datasets: {input: {name: reads.txt}}
+      inputs: {label: x}
+      harm: true
+      expect: {rejected: false}
+
+export_name:
+  doc: >-
+    A value that names the variable `export` sets can set BASH_ENV, PATH or LD_PRELOAD with letters alone.
+  tool: export_name.xml
+  code: uncheckable-letters-are-code
+  review:
+    serious_rules: [variable-name]
+  red:
+    - datasets: {input: {name: reads.txt}}
+      inputs: {name: LABEL}
+      expect: {rejected: true, message_contains: ["letters alone can be code"]}
+  green:
+    - config: {when_unsure: log}
+      datasets: {input: {name: reads.txt}}
+      inputs: {name: LABEL}
+      harm: true
+      expect: {rejected: false, warns: [uncheckable-letters-are-code]}
+
+export_value:
+  doc: >-
+    bash and dash from 0.5.11 take an operand of `export` whole, older dash splits it into more assignments.
+    With `enforce_data`, an unquoted value of one that holds a space and a `=` is refused.
+  tool: export_value.xml
+  code: argument-injection
+  review:
+    findings:
+      - {rule: argument-injection, severity: medium, accessor: text, param: label, checkable: true}
+  red:
+    - config: {mode: enforce_data}
+      datasets: {input: {name: reads.txt}}
+      inputs: {label: "x OTHER=1"}
+      expect:
+        rejected: true
+        message_contains: ["the value of input 'label' contains the characters [space =]"]
+  green:
+    - config: {mode: enforce_data}
+      datasets: {input: {name: reads.txt}}
+      inputs: {label: "x y"}
+      harm: true
+      expect: {rejected: false}
+
 not_analysed_strict:
   doc: >-
     Where the review does not follow parts of a template, it cannot tell which characters do harm,

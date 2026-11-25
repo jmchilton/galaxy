@@ -1,0 +1,11 @@
+<tool id="spec_env_assignment" name="A label in the environment of a command" version="1.0" profile="24.0">
+    <description>sets a variable with env for one command</description>
+    <command><![CDATA[env LABEL=$label sort '$input' > '$out']]></command>
+    <inputs>
+        <param name="input" type="data" format="txt"/>
+        <param name="label" type="text"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>
