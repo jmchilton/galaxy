@@ -65,6 +65,7 @@ from .values import (
     concat,
     CONDITIONAL,
     contents,
+    DICT_METHODS,
     element,
     Group,
     GROUP_DICT_METHODS,
@@ -1315,8 +1316,9 @@ class TemplateAnalysis:
     def _too_deep(self, method: Method | None, args: list[AV], keywords: dict[str, AV] | None) -> bool:
         if method is not None and self._depth < _MAX_DEPTH:
             return False
-        if method is not None and any(a.tainted for a in [*args, *(keywords or {}).values()]):
-            self.note(f"#def calls nest deeper than {_MAX_DEPTH}, a user-controlled value was not followed further")
+        if method is not None:
+            # The helper can read the namespace itself, whatever its arguments hold.
+            self.note(f"#def calls nest deeper than {_MAX_DEPTH}, what the deeper ones read was not followed")
         return True
 
     def inline(
@@ -1396,6 +1398,16 @@ class TemplateAnalysis:
             value = self._autocall(value, env) if autocall else value
             value = attribute(value, part)
         return self._autocall(value, env) if autocall else value
+
+    def _namespace(self, path: str, env: Env) -> AV:
+        """What a dotted name finds in the tool namespace alone: a tool input, else a job parameter of that name."""
+        parts = path.split(".")
+        value = self.model.lookup(parts[0])
+        if value is None:
+            value = self.model.job_parameter(parts[0])
+        for part in parts[1:]:
+            value = attribute(self._autocall(value, env), part)
+        return self._autocall(value, env)
 
     def _autocall(self, value: AV, env: Env) -> AV:
         # Cheetah calls a callable it meets while resolving a dotted name.
@@ -1623,8 +1635,11 @@ class TemplateAnalysis:
             variable = _const(node.args[0]) if node.args else None
             default = args[1] if len(args) > 1 else CLEAN
             if isinstance(variable, str):
-                known = self.model.lookup(variable.split(".")[0]) or env.local.get(variable.split(".")[0])
-                if known is not None:
+                variable = variable.replace("$", "")
+                root = variable.split(".")[0]
+                if id(node) in self.template.namespace_get_vars:
+                    return join(self._namespace(variable, env), default) if root else default
+                if self.model.lookup(root) is not None or root in env.local or root in env.shared:
                     return join(self.resolve(variable, env, True), default)
             return default
         if _DECODERS.match(name):
@@ -1809,6 +1824,14 @@ class TemplateAnalysis:
             if not isinstance(key, str) or keywords:
                 return join(children, default)
             return join(attribute(receiver, key), default)
+        if name in DICT_METHODS and receiver.nodes and any(isinstance(n, Group) for n in receiver.nodes):
+            # A conditional or a section changed or copied: what its parameters hold is not followed.
+            note = f"{self.location}: `.{name}()` of a conditional or section, its values were not followed"
+            if note not in self.report.unanalyzed:
+                self.report.unanalyzed.append(note)
+            groups = [n for n in receiver.nodes if isinstance(n, Group)]
+            children = AV(nodes=tuple(n for group in groups for nodes in group.children.values() for n in nodes))
+            return join(receiver, children, *args)
         text = raw(receiver) if receiver.nodes else stringify(receiver)
         first_literal = _const(arg_nodes[0]) if arg_nodes else None
         if name in ("split", "rsplit", "splitlines", "partition", "rpartition"):

@@ -832,6 +832,27 @@ getvar_user_name:
       inputs: {which: label, label: hello}
       expect: {rejected: false, warns: [uncheckable-template-code]}
 
+known_helper:
+  doc: >-
+    The read group helper of bwa and bowtie2 looks a parameter up with `getVar` by the name it is called with. Called
+    with literal names only, it reads the parameters it names, whose values are checked as usual.
+  tool: known_helper.xml
+  code: shell-injection
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, accessor: raw, param: word, checkable: true}
+  red:
+    - inputs: {word: "a';touch harm-marker;'"}
+      harm: true
+      expect:
+        rejected: true
+        message_contains: ["the value of input 'word' contains the characters [' ;]"]
+  green:
+    - inputs: {word: "a;b|c && d"}
+      harm: true
+      expect: {rejected: false}
+
 app_model_read:
   doc: >-
     The application object reaches any data of the server. The review flags the read but follows no value

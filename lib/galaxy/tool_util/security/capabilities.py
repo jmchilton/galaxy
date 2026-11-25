@@ -17,13 +17,19 @@ from __future__ import annotations
 import ast
 import re
 import warnings
-from functools import partial
+from functools import (
+    lru_cache,
+    partial,
+)
 from typing import (
     Any,
     Callable,
 )
 
+from Cheetah.Template import Template
+
 from galaxy.tool_util.parser.interface import ToolSource
+from galaxy.util.tree_dict import TreeDict
 from . import shell
 from .charsets import (
     CRITICAL,
@@ -34,7 +40,10 @@ from .charsets import (
     MEDIUM,
     plain_text,
 )
-from .model import Model
+from .model import (
+    Model,
+    SAFE_SPECIALS,
+)
 from .report import (
     CAPABILITY,
     Finding,
@@ -93,11 +102,19 @@ _REWRITE_CALLS = frozenset(
     "chr unichr fromhex unhexlify translate unquote unquote_plus unquote_to_bytes b64decode b32decode b16decode"
     " b85decode a85decode urlsafe_b64decode standard_b64decode decodebytes a2b_base64 a2b_hex a2b_qp".split()
 )
+# What `getVar` finds on the template object before the namespace.
 _VFN = frozenset(("VFN",))
 # `getattr(x, "name")` has the shape of a NameMapper call: the name is its second argument.
 _GETATTR = frozenset(("getattr",))
 # Codecs whose decode() keeps the characters of the text that encode() was given.
 _KEEPING_CODECS = frozenset(("utf-8", "utf8", "utf_8", "ascii"))
+
+
+@lru_cache(maxsize=1)
+def _template_attributes() -> frozenset[str]:
+    """Names `getVar` finds on an object of the search list rather than as a key: on a compiled template object,
+    the #set global dict, or the TreeDict Galaxy retries the namespace as."""
+    return frozenset(dir(Template("x", searchList=[{}]))) | frozenset(dir({})) | frozenset(dir(TreeDict({})))
 
 
 class PythonAudit:
@@ -122,6 +139,10 @@ class PythonAudit:
         # Keys the template stores into dicts, and the first names of what it looks up in the namespace.
         self.stored_keys: set[str] = set()
         self.namespace_reads: set[str] = set()
+        # Names of `#set global` values, which `getVar` finds first, and of the template's own methods and
+        # attributes (#def, #block, #attr), which it finds next.
+        self.global_names: set[str] = set()
+        self.members: set[str] = set()
         self.model = model
         self.assigned = assigned or set()
         # Local name -> dotted origin, from `import os as o` and `from os import system`.
@@ -149,6 +170,14 @@ class PythonAudit:
         for imported in template.imports:
             self.import_(imported, template.template_line(imported))
         self.assigned.update(template.helpers)
+        self.members.update(template.helpers)
+        self.members.update(
+            target.id
+            for stmt in template.attrs
+            if isinstance(stmt, ast.Assign)
+            for target in stmt.targets
+            if isinstance(target, ast.Name)
+        )
         for method in [template.main, *template.helpers.values()]:
             self.assigned.update(method.args)
             for stmt in method.body:
@@ -160,6 +189,8 @@ class PythonAudit:
                         key = node.slice
                         if isinstance(key, ast.Constant) and isinstance(key.value, str):
                             self.stored_keys.add(key.value)
+                            if isinstance(node.value, ast.Attribute) and node.value.attr == "_CHEETAH__globalSetVars":
+                                self.global_names.add(key.value)
                     elif lookup := name_lookup(node, NAMESPACE_LOOKUPS):
                         self.namespace_reads.add(lookup[1].split(".")[0])
         for method in [template.main, *template.helpers.values()]:
@@ -232,8 +263,16 @@ class PythonAudit:
             if isinstance(node, ast.Call) and self.is_get_var(node.func):
                 name = node.args[0] if node.args else None
                 if isinstance(name, ast.Constant) and isinstance(name.value, str):
-                    if not self.is_template_name(name.value.split(".")[0]):
-                        self.judge(name.value.split("."), line)
+                    if (chain := self.get_var_chain(name.value)) is not None:
+                        self.judge(chain, line)
+                    else:
+                        self.add(
+                            "template-reflection",
+                            MEDIUM,
+                            f"Reaches the template object with `getVar('{name.value}')`",
+                            "getVar",
+                            line,
+                        )
                 else:
                     self.add(
                         "template-reflection",
@@ -335,6 +374,32 @@ class PythonAudit:
             return func.attr == "getVar"
         lookup = name_lookup(func, NAMESPACE_LOOKUPS)
         return lookup is not None and lookup[1] in ("getVar", "self.getVar")
+
+    def get_var_chain(self, name: str) -> list[str] | None:
+        """What `getVar(name)` reaches, as a chain to judge; None for the template object (a method or
+        attribute of it). Its search list is the `#set global` values, the template object, then the
+        namespace: never the locals of the template."""
+        parts = name.replace("$", "").split(".")
+        root = parts[0]
+        # A dict attribute is found on the #set global store; a #set global of a member may not have run yet.
+        if (
+            root in self.members
+            or root in _template_attributes()
+            or (root.startswith("_") and root not in ("__app__", "__user__") and not self.is_special(root))
+        ):
+            return None
+        # A #set global of these may run after the read, or never.
+        if root in ("__app__", "__user__"):
+            return parts
+        if root in self.global_names:
+            return ["$"] + parts[1:]
+        if self.model is not None and self.model.lookup(root) is not None:
+            return ["$"] + parts[1:]
+        return parts
+
+    def is_special(self, name: str) -> bool:
+        """A name Galaxy puts in the namespace of every job (`__tool_directory__`, `__user_email__`)."""
+        return name in SAFE_SPECIALS or (self.model is not None and name in self.model.specials)
 
     def is_template_name(self, name: str) -> bool:
         if name in ("__app__", "__user__"):

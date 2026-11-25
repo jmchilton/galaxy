@@ -32,6 +32,7 @@ from .interp import (
     TemplateAnalysis,
     unresolved_names,
 )
+from .known_helpers import specialise_known_helpers
 from .model import (
     build_model,
     Model,
@@ -83,7 +84,7 @@ def _include_templates(source: str, templates: dict[str, str]) -> str:
 
 def _compile(source: str, location: str, report: Report) -> CompiledTemplate | None:
     try:
-        return compile_template(source)
+        return compile_template(source, specialise_known_helpers)
     except CompileTimeExecution as e:
         report.add(
             Finding(

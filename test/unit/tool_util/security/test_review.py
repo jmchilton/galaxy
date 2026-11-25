@@ -559,6 +559,9 @@ def test_charsets():
         ("#import base64\ntool '${base64.b64decode(str($word.value)).decode()}'", ("shell-injection", "high")),
         ("echo 'x\n#capture v\n$no_quote\n#end capture\n' && tool $v", ("shell-injection", "high")),
         (FIVE_HELPERS_DEEP + "tool '$a($text.value)'", ("shell-injection", "high")),
+        ("tool '${getVar('$free', '')}'", ("shell-injection", "high")),
+        # getVar reads #set global values, never #set locals.
+        ("#set global $g = $free\ntool '${getVar('g')}'", ("shell-injection", "high")),
     ],
 )
 def test_escaping_values_found_by_review(tmp_path, command, expected):
@@ -588,6 +591,21 @@ def test_parameters_read_through_the_dict_of_a_group(tmp_path, command):
     assert ("shell-injection", "high") in rules(review(tmp_path, command, inputs=GROUP))
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "#silent $c.update({'sel': $free})\ntool '$c.sel'",
+        "#silent $c.__setitem__('sel', $free)\ntool '$c.sel'",
+        "#silent $c.setdefault('x', $free)\ntool '$c.x'",
+        "#set $d = $c.copy()\ntool '$d.t'",
+        "tool '${c.pop('t')}'",
+    ],
+)
+def test_a_group_changed_or_copied_is_not_followed(tmp_path, command):
+    report = review(tmp_path, command, inputs=INPUTS + GROUP)
+    assert any("of a conditional or section, its values were not followed" in note for note in report.unanalyzed)
+
+
 def test_a_group_looked_up_by_a_literal_key_is_that_parameter(tmp_path):
     assert rules(review(tmp_path, "tool '${c.get('sel')}'", inputs=GROUP)) == set()
 
@@ -607,6 +625,19 @@ def test_script_read_from_standard_input_is_a_program(tmp_path):
         ("#if False\n#set $eval = 1\n#end if\ntool ${eval('1')}", ("template-exec", "critical")),
         ("tool ${getVar('__app__').config.database_connection}", ("template-app-access", "high")),
         ("tool ${getVar('__ap' + 'p__')}", ("template-reflection", "medium")),
+        # getVar drops `$` from the name.
+        ("tool ${getVar('$__app__').config.database_connection}", ("template-app-access", "high")),
+        ("tool ${getVar('input.unsanitized.history.name')}", ("template-model-access", "medium")),
+        # The template object comes before the namespace.
+        ("tool ${getVar('searchList')()}", ("template-reflection", "medium")),
+        ("#set $searchList = 1\ntool ${getVar('searchList')()}", ("template-reflection", "medium")),
+        ("tool ${getVar('_CHEETAH__searchList')}", ("template-reflection", "medium")),
+        ("#def evil()\n#return 1\n#end def\ntool ${getVar('evil')}", ("template-reflection", "medium")),
+        # The #set global may run after the read, or never.
+        (
+            "tool ${getVar('__app__.config.database_connection')}\n#if False\n#set global $__app__ = 1\n#end if",
+            ("template-app-access", "high"),
+        ),
         ("tool $os.system('id')", ("template-exec", "critical")),
         ("#def f($x=__import__('os').system('id'))\n#end def\ntool", ("template-exec", "critical")),
         ("#import operator\ntool ${operator.methodcaller('system', 'id')}", ("template-reflection", "high")),
