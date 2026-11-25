@@ -38,6 +38,10 @@ SliceType = slice
 BufferType = SliceType
 DictProxyType = SliceType
 
+from galaxy.security.render_recording import (
+    recorded_view,
+    UNSANITIZED,
+)
 from galaxy.util import sanitize_lists_to_string as _sanitize_lists_to_string
 
 log = logging.getLogger(__name__)
@@ -201,7 +205,7 @@ def wrap_with_safe_string(value, no_wrap_classes=None):
                     return (
                         wrapped_class,
                         (
-                            safe_object.unsanitized,
+                            safe_object._unsanitized_value,
                             do_wrap_func,
                         ),
                     )
@@ -241,7 +245,14 @@ class SafeStringWrapper:
     """
 
     __UNSANITIZED_ATTRIBUTE_NAME__ = "unsanitized"
-    __NO_WRAP_NAMES__ = ["__safe_string_wrapper_function__", "__class__", __UNSANITIZED_ATTRIBUTE_NAME__]
+    # The wrapped value: what `unsanitized` gives outside a recording of what templates read.
+    __RAW_ATTRIBUTE_NAME__ = "_unsanitized_value"
+    __NO_WRAP_NAMES__ = [
+        "__safe_string_wrapper_function__",
+        "__class__",
+        __UNSANITIZED_ATTRIBUTE_NAME__,
+        __RAW_ATTRIBUTE_NAME__,
+    ]
 
     def __new__(cls, *arg, **kwd):
         # We need to define a __new__ since, we are subclassing from e.g. immutable str, which internally sets data
@@ -257,59 +268,59 @@ class SafeStringWrapper:
             return super().__new__(cls)
 
     def __init__(self, value, safe_string_wrapper_function=wrap_with_safe_string):
-        self.unsanitized = value
+        self._unsanitized_value = value
         self.__safe_string_wrapper_function__ = safe_string_wrapper_function
 
     def __str__(self):
         return sanitize_lists_to_string(
-            self.unsanitized, valid_characters=VALID_CHARACTERS, character_map=CHARACTER_MAP
+            self._unsanitized_value, valid_characters=VALID_CHARACTERS, character_map=CHARACTER_MAP
         )
 
     def __repr__(self):
-        return f"{sanitize_lists_to_string(self.__class__.__name__, valid_characters=VALID_CHARACTERS, character_map=CHARACTER_MAP)} object at {id(self):x} on: {sanitize_lists_to_string(repr(self.unsanitized), valid_characters=VALID_CHARACTERS, character_map=CHARACTER_MAP)}"
+        return f"{sanitize_lists_to_string(self.__class__.__name__, valid_characters=VALID_CHARACTERS, character_map=CHARACTER_MAP)} object at {id(self):x} on: {sanitize_lists_to_string(repr(self._unsanitized_value), valid_characters=VALID_CHARACTERS, character_map=CHARACTER_MAP)}"
 
     def __lt__(self, other):
         while isinstance(other, SafeStringWrapper):
-            other = other.unsanitized
-        return self.unsanitized < other
+            other = other._unsanitized_value
+        return self._unsanitized_value < other
 
     def __le__(self, other):
         while isinstance(other, SafeStringWrapper):
-            other = other.unsanitized
-        return self.unsanitized <= other
+            other = other._unsanitized_value
+        return self._unsanitized_value <= other
 
     def __eq__(self, other):
         while isinstance(other, SafeStringWrapper):
-            other = other.unsanitized
-        return self.unsanitized == other
+            other = other._unsanitized_value
+        return self._unsanitized_value == other
 
     def __ne__(self, other):
         while isinstance(other, SafeStringWrapper):
-            other = other.unsanitized
-        return self.unsanitized != other
+            other = other._unsanitized_value
+        return self._unsanitized_value != other
 
     def __gt__(self, other):
         while isinstance(other, SafeStringWrapper):
-            other = other.unsanitized
-        return self.unsanitized > other
+            other = other._unsanitized_value
+        return self._unsanitized_value > other
 
     def __ge__(self, other):
         while isinstance(other, SafeStringWrapper):
-            other = other.unsanitized
-        return self.unsanitized >= other
+            other = other._unsanitized_value
+        return self._unsanitized_value >= other
 
     def __cmp__(self, other):
         while isinstance(other, SafeStringWrapper):
-            other = other.unsanitized
-        return cmp(self.unsanitized, other)
+            other = other._unsanitized_value
+        return cmp(self._unsanitized_value, other)
 
     # Do not implement __rcmp__, python 2.2 < 2.6
 
     def __hash__(self):
-        return hash(self.unsanitized)
+        return hash(self._unsanitized_value)
 
     def __bool__(self):
-        return bool(self.unsanitized)
+        return bool(self._unsanitized_value)
 
     __nonzero__ = __bool__
 
@@ -319,12 +330,12 @@ class SafeStringWrapper:
         if name in SafeStringWrapper.__NO_WRAP_NAMES__:
             # FIXME: is this ever reached?
             return object.__getattribute__(self, name)
-        return self.__safe_string_wrapper_function__(getattr(self.unsanitized, name))
+        return self.__safe_string_wrapper_function__(getattr(self._unsanitized_value, name))
 
     def __setattr__(self, name, value):
         # A class mapped declaratively is a subclass of DeclarativeMeta. It will check at creation time
         # if self has _sa_instance_state set, and if not, it'll try to set it. This happens BEFORE self.__init__
-        # has been called, so self.unsanitized does not exists, which raises an AttributeError.
+        # has been called, so self._unsanitized_value does not exists, which raises an AttributeError.
         # To avoid this, as well as to avoid SQLAlchemy state to be set on SafeStringWrapper,
         # we simply ignore this call.
         if isinstance(value, sqlalchemy.orm.state.InstanceState):
@@ -332,17 +343,20 @@ class SafeStringWrapper:
 
         if name in SafeStringWrapper.__NO_WRAP_NAMES__:
             return object.__setattr__(self, name, value)
-        return setattr(self.unsanitized, name, value)
+        return setattr(self._unsanitized_value, name, value)
 
     def __delattr__(self, name):
         if name in SafeStringWrapper.__NO_WRAP_NAMES__:
             return object.__delattr__(self, name)
-        return delattr(self.unsanitized, name)
+        return delattr(self._unsanitized_value, name)
 
     def __getattribute__(self, name):
+        if name == SafeStringWrapper.__UNSANITIZED_ATTRIBUTE_NAME__:
+            # A template that unwraps a value reads it raw: record what it reads while rendering.
+            return recorded_view(object.__getattribute__(self, "_unsanitized_value"), UNSANITIZED)
         if name in SafeStringWrapper.__NO_WRAP_NAMES__:
             return object.__getattribute__(self, name)
-        return self.__safe_string_wrapper_function__(getattr(object.__getattribute__(self, "unsanitized"), name))
+        return self.__safe_string_wrapper_function__(getattr(object.__getattribute__(self, "_unsanitized_value"), name))
 
     # Skip Descriptors
 
@@ -358,24 +372,24 @@ class SafeStringWrapper:
     # We address __call__ as needed based upon unsanitized, through the use of a CallableSafeStringWrapper class
 
     def __len__(self):
-        original_value = self.unsanitized
+        original_value = self._unsanitized_value
         while isinstance(original_value, SafeStringWrapper):
-            original_value = self.unsanitized
-        return len(self.unsanitized)
+            original_value = self._unsanitized_value
+        return len(self._unsanitized_value)
 
     def __getitem__(self, key):
-        return self.__safe_string_wrapper_function__(self.unsanitized[key])
+        return self.__safe_string_wrapper_function__(self._unsanitized_value[key])
 
     def __setitem__(self, key, value):
         while isinstance(value, SafeStringWrapper):
-            value = value.unsanitized
-        self.unsanitized[key] = value
+            value = value._unsanitized_value
+        self._unsanitized_value[key] = value
 
     def __delitem__(self, key):
-        del self.unsanitized[key]
+        del self._unsanitized_value[key]
 
     def __iter__(self):
-        return iter(map(self.__safe_string_wrapper_function__, iter(self.unsanitized)))
+        return iter(map(self.__safe_string_wrapper_function__, iter(self._unsanitized_value)))
 
     # Do not implement __reversed__
 
@@ -383,147 +397,147 @@ class SafeStringWrapper:
         # FIXME: Do we need to consider if item is/isn't or does/doesn't contain SafeStringWrapper?
         # When considering e.g. nested lists/dicts/etc, this gets complicated
         while isinstance(item, SafeStringWrapper):
-            item = item.unsanitized
-        return item in self.unsanitized
+            item = item._unsanitized_value
+        return item in self._unsanitized_value
 
     # Not sure that we need these slice methods, but will provide anyway
     def __getslice__(self, i, j):
-        return self.__safe_string_wrapper_function__(self.unsanitized[i:j])
+        return self.__safe_string_wrapper_function__(self._unsanitized_value[i:j])
 
     def __setslice__(self, i, j, value):
-        self.unsanitized[i:j] = value
+        self._unsanitized_value[i:j] = value
 
     def __delslice__(self, i, j):
-        del self.unsanitized[i:j]
+        del self._unsanitized_value[i:j]
 
     def __add__(self, other):
         while isinstance(other, SafeStringWrapper):
-            other = other.unsanitized
-        return self.__safe_string_wrapper_function__(self.unsanitized + other)
+            other = other._unsanitized_value
+        return self.__safe_string_wrapper_function__(self._unsanitized_value + other)
 
     def __sub__(self, other):
         while isinstance(other, SafeStringWrapper):
-            other = other.unsanitized
-        return self.__safe_string_wrapper_function__(self.unsanitized - other)
+            other = other._unsanitized_value
+        return self.__safe_string_wrapper_function__(self._unsanitized_value - other)
 
     def __mul__(self, other):
         while isinstance(other, SafeStringWrapper):
-            other = other.unsanitized
-        return self.__safe_string_wrapper_function__(self.unsanitized * other)
+            other = other._unsanitized_value
+        return self.__safe_string_wrapper_function__(self._unsanitized_value * other)
 
     def __floordiv__(self, other):
         while isinstance(other, SafeStringWrapper):
-            other = other.unsanitized
-        return self.__safe_string_wrapper_function__(self.unsanitized // other)
+            other = other._unsanitized_value
+        return self.__safe_string_wrapper_function__(self._unsanitized_value // other)
 
     def __mod__(self, other):
         while isinstance(other, SafeStringWrapper):
-            other = other.unsanitized
-        return self.__safe_string_wrapper_function__(self.unsanitized % other)
+            other = other._unsanitized_value
+        return self.__safe_string_wrapper_function__(self._unsanitized_value % other)
 
     def __divmod__(self, other):
         while isinstance(other, SafeStringWrapper):
-            other = other.unsanitized
-        return self.__safe_string_wrapper_function__(divmod(self.unsanitized, other))
+            other = other._unsanitized_value
+        return self.__safe_string_wrapper_function__(divmod(self._unsanitized_value, other))
 
     def __pow__(self, *other):
         while isinstance(other, SafeStringWrapper):
-            other = other.unsanitized
-        return self.__safe_string_wrapper_function__(pow(self.unsanitized, *other))
+            other = other._unsanitized_value
+        return self.__safe_string_wrapper_function__(pow(self._unsanitized_value, *other))
 
     def __lshift__(self, other):
         while isinstance(other, SafeStringWrapper):
-            other = other.unsanitized
-        return self.__safe_string_wrapper_function__(self.unsanitized << other)
+            other = other._unsanitized_value
+        return self.__safe_string_wrapper_function__(self._unsanitized_value << other)
 
     def __rshift__(self, other):
         while isinstance(other, SafeStringWrapper):
-            other = other.unsanitized
-        return self.__safe_string_wrapper_function__(self.unsanitized >> other)
+            other = other._unsanitized_value
+        return self.__safe_string_wrapper_function__(self._unsanitized_value >> other)
 
     def __and__(self, other):
         while isinstance(other, SafeStringWrapper):
-            other = other.unsanitized
-        return self.__safe_string_wrapper_function__(self.unsanitized & other)
+            other = other._unsanitized_value
+        return self.__safe_string_wrapper_function__(self._unsanitized_value & other)
 
     def __xor__(self, other):
         while isinstance(other, SafeStringWrapper):
-            other = other.unsanitized
-        return self.__safe_string_wrapper_function__(self.unsanitized ^ other)
+            other = other._unsanitized_value
+        return self.__safe_string_wrapper_function__(self._unsanitized_value ^ other)
 
     def __or__(self, other):
         while isinstance(other, SafeStringWrapper):
-            other = other.unsanitized
-        return self.__safe_string_wrapper_function__(self.unsanitized | other)
+            other = other._unsanitized_value
+        return self.__safe_string_wrapper_function__(self._unsanitized_value | other)
 
     def __div__(self, other):
         while isinstance(other, SafeStringWrapper):
-            other = other.unsanitized
-        return self.__safe_string_wrapper_function__(self.unsanitized / other)
+            other = other._unsanitized_value
+        return self.__safe_string_wrapper_function__(self._unsanitized_value / other)
 
     def __truediv__(self, other):
         while isinstance(other, SafeStringWrapper):
-            other = other.unsanitized
-        return self.__safe_string_wrapper_function__(self.unsanitized / other)
+            other = other._unsanitized_value
+        return self.__safe_string_wrapper_function__(self._unsanitized_value / other)
 
     # The only reflected operand that we will define is __rpow__, due to coercion rules complications as per docs
     def __rpow__(self, other):
         while isinstance(other, SafeStringWrapper):
-            other = other.unsanitized
-        return self.__safe_string_wrapper_function__(pow(other, self.unsanitized))
+            other = other._unsanitized_value
+        return self.__safe_string_wrapper_function__(pow(other, self._unsanitized_value))
 
     # Do not implement in-place operands
 
     def __neg__(self):
-        return self.__safe_string_wrapper_function__(-self.unsanitized)
+        return self.__safe_string_wrapper_function__(-self._unsanitized_value)
 
     def __pos__(self):
-        return self.__safe_string_wrapper_function__(+self.unsanitized)
+        return self.__safe_string_wrapper_function__(+self._unsanitized_value)
 
     def __abs__(self):
-        return self.__safe_string_wrapper_function__(abs(self.unsanitized))
+        return self.__safe_string_wrapper_function__(abs(self._unsanitized_value))
 
     def __invert__(self):
-        return self.__safe_string_wrapper_function__(~self.unsanitized)
+        return self.__safe_string_wrapper_function__(~self._unsanitized_value)
 
     def __complex__(self):
-        return self.__safe_string_wrapper_function__(complex(self.unsanitized))
+        return self.__safe_string_wrapper_function__(complex(self._unsanitized_value))
 
     def __int__(self):
-        return int(self.unsanitized)
+        return int(self._unsanitized_value)
 
     def __float__(self):
-        return float(self.unsanitized)
+        return float(self._unsanitized_value)
 
     def __oct__(self):
-        return oct(self.unsanitized)
+        return oct(self._unsanitized_value)
 
     def __hex__(self):
-        return hex(self.unsanitized)
+        return hex(self._unsanitized_value)
 
     def __index__(self):
-        return self.unsanitized.index()
+        return self._unsanitized_value.index()
 
     def __coerce__(self, other):
         while isinstance(other, SafeStringWrapper):
-            other = other.unsanitized
-        return coerce(self.unsanitized, other)
+            other = other._unsanitized_value
+        return coerce(self._unsanitized_value, other)
 
     def __enter__(self):
-        return self.unsanitized.__enter__()
+        return self._unsanitized_value.__enter__()
 
     def __exit__(self, *args):
-        return self.unsanitized.__exit__(*args)
+        return self._unsanitized_value.__exit__(*args)
 
 
 class CallableSafeStringWrapper(SafeStringWrapper):
     def __call__(self, *args, **kwds):
-        return self.__safe_string_wrapper_function__(self.unsanitized(*args, **kwds))
+        return self.__safe_string_wrapper_function__(self._unsanitized_value(*args, **kwds))
 
 
 # Enable pickling/deepcopy
 def pickle_SafeStringWrapper(safe_object):
-    args = (safe_object.unsanitized,)
+    args = (safe_object._unsanitized_value,)
     cls = SafeStringWrapper
     if isinstance(safe_object, CallableSafeStringWrapper):
         cls = CallableSafeStringWrapper

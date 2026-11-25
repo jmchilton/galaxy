@@ -34,7 +34,15 @@ from galaxy.model import (
 from galaxy.model.metadata import FileParameter
 from galaxy.model.none_like import NoneDataset
 from galaxy.schema.schema import SampleSheetRow
-from galaxy.security.object_wrapper import wrap_with_safe_string
+from galaxy.security.object_wrapper import (
+    SafeStringWrapper,
+    wrap_with_safe_string,
+)
+from galaxy.security.render_recording import (
+    MODEL,
+    recorded_view,
+    USER,
+)
 from galaxy.tools.parameters.basic import (
     BooleanToolParameter,
     TextToolParameter,
@@ -97,8 +105,9 @@ class RawObjectWrapper(ToolParameterValueWrapper):
     Wraps an object so that __str__ returns module_name:class_name.
     """
 
-    def __init__(self, obj: Any):
+    def __init__(self, obj: Any, records: bool = False):
         self.obj = obj
+        self.records = records
 
     def __bool__(self) -> bool:
         return bool(
@@ -115,7 +124,11 @@ class RawObjectWrapper(ToolParameterValueWrapper):
             return str(self.obj)
 
     def __getattr__(self, key: Any) -> Any:
-        return getattr(self.obj, key)
+        value = getattr(self.obj, key)
+        if self.records and not isinstance(self.obj, SafeStringWrapper):
+            # The user object of a tool that turns the sanitizer off: record what a template reads.
+            return recorded_view(value, USER, (key,))
+        return value
 
 
 @total_ordering
@@ -385,13 +398,13 @@ class DatasetFilenameWrapper(ToolParameterValueWrapper):
                 direct_match, target_ext, converted_dataset = dataset_instance.find_conversion_destination(formats)
                 if not direct_match and target_ext and converted_dataset:
                     dataset_instance = converted_dataset
-            self.unsanitized: DatasetInstance = dataset_instance
+            self._unsanitized_value: DatasetInstance = dataset_instance
             self.dataset = wrap_with_safe_string(dataset_instance, no_wrap_classes=ToolParameterValueWrapper)
             self.metadata = self.MetadataWrapper(dataset_instance, compute_environment)
             if isinstance(dataset_instance, HasTags):
                 self.groups = {
                     tag.user_value.lower()
-                    for tag in dataset_instance.tags  # type:ignore[unused-ignore, attr-defined]
+                    for tag in dataset_instance.tags  # type: ignore[unused-ignore, attr-defined]
                     if tag.user_tname == "group"
                 }
             else:
@@ -431,7 +444,7 @@ class DatasetFilenameWrapper(ToolParameterValueWrapper):
     def file_ext(self) -> str:
         return str(
             getattr(
-                self.unsanitized.datatype,
+                self._unsanitized_value.datatype,
                 "file_ext_export_alias",
                 self.dataset.extension,
             )
@@ -455,7 +468,7 @@ class DatasetFilenameWrapper(ToolParameterValueWrapper):
 
     @property
     def all_metadata_files(self) -> list[tuple[str, str]]:
-        return self.unsanitized.get_metadata_file_paths_and_extensions() if self else []
+        return self._unsanitized_value.get_metadata_file_paths_and_extensions() if self else []
 
     def serialize(self, invalid_chars: Sequence[str] = ("/",)) -> dict[str, Any]:
         return data_input_to_staging_path_and_source_path(self, invalid_chars=invalid_chars) if self else {}
@@ -466,7 +479,7 @@ class DatasetFilenameWrapper(ToolParameterValueWrapper):
 
     @property
     def is_deferred(self) -> bool:
-        return self.unsanitized.has_deferred_data
+        return self._unsanitized_value.has_deferred_data
 
     def is_of_type(self, *exts: str) -> bool:
         datatypes = []
@@ -487,11 +500,11 @@ class DatasetFilenameWrapper(ToolParameterValueWrapper):
 
     def _path_or_uri(self) -> str:
         if self.is_deferred:
-            return self.unsanitized.deferred_source_uri or ""
+            return self._unsanitized_value.deferred_source_uri or ""
         if self.false_path is not None:
             return self.false_path
         else:
-            return str(self.unsanitized.get_file_name())
+            return str(self._unsanitized_value.get_file_name())
 
     @property
     def file_name(self) -> str:
@@ -505,15 +518,20 @@ class DatasetFilenameWrapper(ToolParameterValueWrapper):
     def single_item(self) -> Self:
         return self
 
+    @property
+    def unsanitized(self) -> DatasetInstance:
+        """The dataset model as users set it: while a template renders, a view that records what it reads."""
+        return cast(DatasetInstance, recorded_view(self._unsanitized_value, MODEL))
+
     def __getattr__(self, key: Any) -> Any:
         if key in ("extra_files_path", "files_path"):
             if not self.compute_environment:
                 # Only happens in WrappedParameters context, refactor!
-                return self.unsanitized.extra_files_path
+                return self._unsanitized_value.extra_files_path
             if self.__io_type == "input":
-                return self.compute_environment.input_extra_files_rewrite(self.unsanitized)
+                return self.compute_environment.input_extra_files_rewrite(self._unsanitized_value)
             else:
-                return self.compute_environment.output_extra_files_rewrite(self.unsanitized)
+                return self.compute_environment.output_extra_files_rewrite(self._unsanitized_value)
         elif key == "name":
             if self.tool_evaluator:
                 self.tool_evaluator.consumes_names = True
