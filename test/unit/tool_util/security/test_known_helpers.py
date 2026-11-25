@@ -9,7 +9,11 @@ from galaxy.tool_util.security.report import (
     CODE_CAPABILITIES,
     rendered,
 )
-from .test_review import review
+from .test_review import (
+    INPUTS,
+    review,
+    rules,
+)
 
 # tools-iuc bowtie2, bwa, bwa_mem2 and picard: read_group_macros.xml.
 RG_PARAM = """#def rg_param(name)
@@ -19,6 +23,34 @@ RG_PARAM = """#def rg_param(name)
         #return $getVar($name, None)
     #end if
 #end def
+"""
+
+# tools-iuc picrust2: macros.xml, now and before 2.5.0.
+GET_VAR_COND = """    #def getVarCond($sec_cond, $var)
+        #if $varExists($var)
+            #return $getVar($var)
+        #else if $varExists($sec_cond + "." + $var)
+            #return $getVar($sec_cond + "." + $var)
+        #else
+            #return
+        #end if
+    #end def
+"""
+GET_VAR_COND_PATHWAYS = """#def getVarCond($var)
+    ## $var $varExists($var) $varExists("predict_pathways." + $var)
+    #if $varExists($var)
+        #return $getVar($var)
+    #else if $varExists("predict_pathways." + $var)
+        #return $getVar("predict_pathways." + $var)
+    #else
+        #return
+    #end if
+#end def
+"""
+
+SECTIONS = """
+<section name="sec" title="sec"><param name="inner" type="text"><sanitizer sanitize="false"/></param></section>
+<section name="predict_pathways" title="p"><param name="inner" type="text"><sanitizer sanitize="false"/></param></section>
 """
 
 
@@ -43,7 +75,84 @@ def code(report: Report) -> set[str]:
         RG_PARAM.replace("None)\n    #end if", "'')\n    #end if") + "tool '${rg_param('free')}'",
         RG_PARAM + "#def varExists($n)\n#return False\n#end def\ntool '${rg_param('free')}'",
         RG_PARAM + "#include source=$text#\ntool '${rg_param('free')}'",
+        RG_PARAM + "$_handleCheetahInclude(str($text), includeFrom='str')\ntool '${rg_param('free')}'",
+        # Python reads the full-width letter as the plain one: this rebinds the helper.
+        RG_PARAM + "#set ｒg_param = getVar\ntool '${rg_param('free')}'",
+        RG_PARAM + "#silent $rg_param.__call__('free')\ntool",
+        RG_PARAM + "#silent self._CHEETAH__globalSetVars.update({'f': 1})\ntool '${rg_param('free')}'",
+        RG_PARAM + "#set $write = $getVar\ntool '${rg_param('free')}'",
+        # The template object comes before the namespace.
+        RG_PARAM + "tool '${rg_param('searchList')}'",
+        RG_PARAM + "#set $searchList = 1\ntool '${rg_param('searchList')}'",
+        RG_PARAM + "tool '${rg_param('_CHEETAH__searchList')}'",
+        RG_PARAM + "#def evil()\n#return $free\n#end def\ntool '${rg_param('evil')}'",
+        RG_PARAM + "#def text()\n#return $free\n#end def\ntool '${rg_param('text')}'",
+        # A name the template binds anywhere, run or not.
+        RG_PARAM + "#set global $g = $free\ntool '${rg_param('g')}'",
+        RG_PARAM
+        + "#def text()\n#return $free\n#end def\ntool '${rg_param('text')}'\n#if False\n#set global $text = 1\n#end if",
+        RG_PARAM + "#set $text = $free\ntool '${rg_param('text')}'",
+        RG_PARAM + "#set $self.text = $free\ntool '${rg_param('text')}'",
+        # Found on the template object or on the #set global dict before the namespace.
+        RG_PARAM + "tool '${rg_param('__unicode__')}'",
+        RG_PARAM + "#set global $g = $free\n#for $v in $rg_param('values')\ntool '$v'\n#end for",
+        RG_PARAM + "tool '${rg_param('text.__class__')}'",
+        # The TreeDict Galaxy retries a namespace as has the raw values under `data`.
+        RG_PARAM + "tool '${rg_param('data.free')}'",
+        # The helper's own `$rg` is a #def or a #set global value.
+        RG_PARAM + "#def rg()\n#return {'text': $free}\n#end def\ntool '${rg_param('text')}'",
+        RG_PARAM + "#set global $rg = {'text': $free}\ntool '${rg_param('text')}'",
     ],
 )
 def test_misused_known_helper_is_reflection(tmp_path, command):
-    assert code(review(tmp_path, command)) & {"template-reflection", "template-include"}
+    assert "template-reflection" in code(review(tmp_path, command))
+
+
+def test_known_helper_reaching_the_model_is_model_access(tmp_path):
+    report = review(tmp_path, RG_PARAM + "tool '${rg_param('input.unsanitized.history.name')}'")
+    assert code(report) == {"template-model-access"}
+
+
+@pytest.mark.parametrize("name,injection", [("free", True), ("$free", True), ("text", False), ("absent", False)])
+def test_known_helper_called_with_literal_text_reads_that_parameter(tmp_path, name, injection):
+    report = review(tmp_path, RG_PARAM + f"tool '${{rg_param('{name}')}}' '${{rg_param('text')}}'")
+    assert code(report) == set()
+    assert (("shell-injection", "high") in rules(report)) is injection
+
+
+@pytest.mark.parametrize(
+    "helper,call",
+    [
+        (GET_VAR_COND, "getVarCond('sec', 'inner')"),
+        (GET_VAR_COND, "getVarCond('sec', 'free')"),
+        (GET_VAR_COND_PATHWAYS, "getVarCond('inner')"),
+    ],
+)
+def test_known_helper_with_a_section_reads_the_parameter_in_it(tmp_path, helper, call):
+    report = review(tmp_path, helper + f"tool '${{{call}}}'", inputs=INPUTS + SECTIONS)
+    assert code(report) == set()
+    assert ("shell-injection", "high") in rules(report)
+
+
+@pytest.mark.parametrize("name", ["str", "time", "absent"])
+def test_known_helper_reads_a_name_no_input_has_as_a_job_parameter(tmp_path, name):
+    report = review(tmp_path, RG_PARAM + f"tool ${{rg_param('{name}')}}", extra='<options sanitize="False"/>')
+    keys = {ref.key for f in report.findings if f.rule == "shell-injection" for ref in f.refs}
+    assert name in keys
+
+
+def nested(body: str, depth: int = 9) -> str:
+    """`body` in a #def called through ``depth`` #defs."""
+    defs = f"#def f1()\n{body}\n#end def\n"
+    defs += "".join(f"#def f{i}()\n$f{i - 1}()\n#end def\n" for i in range(2, depth + 1))
+    return defs + f"tool $f{depth}()"
+
+
+@pytest.mark.parametrize("body", ["${rg_param('free')}", "$free"])
+def test_helpers_nested_past_the_limit_are_not_followed(tmp_path, body):
+    report = review(tmp_path, RG_PARAM + nested(body))
+    assert any("#def calls nest deeper than" in note for note in report.unanalyzed)
+
+
+def test_known_helper_never_called_is_dropped(tmp_path):
+    assert code(review(tmp_path, RG_PARAM + "tool")) == set()

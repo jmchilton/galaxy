@@ -308,6 +308,37 @@ inputs:
   word: say "hi"
 ```
 
+#### known_helper
+
+The read group helper of bwa and bowtie2 looks a parameter up with `getVar` by the name it is called with. Called with literal names only, it reads the parameters it names, whose values are checked as usual.
+
+Tool `known_helper.xml`:
+
+```
+#def rg_param(name)
+    #if $varExists("rg")
+        #return $rg.get($name, None)
+    #else
+        #return $getVar($name, None)
+    #end if
+#end def
+echo '${rg_param('word').value}' > '$out'
+```
+
+Refused
+
+```
+inputs:
+  word: a';touch harm-marker;'
+```
+
+Runs
+
+```
+inputs:
+  word: a;b|c && d
+```
+
 ### `nested-interpreter`
 
 A value is written into the program of another interpreter (`bash -c`, `sed`, `perl -e`, ...) and can change what that program does.

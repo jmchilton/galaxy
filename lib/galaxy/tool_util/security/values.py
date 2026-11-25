@@ -481,6 +481,10 @@ def gets_attribute(receiver: AV, args: list[AV], keywords: list[AV], nodes: list
 
 # Methods of the dict a conditional or a section is, which reach its parameters by name.
 GROUP_DICT_METHODS = frozenset(("get", "values", "items", "keys"))
+# Every method of the dict a conditional or a section is: the read ones above, and those that change or copy it.
+DICT_METHODS = frozenset(name for name in dir({}) if not name.startswith("__")) | frozenset(
+    ("__setitem__", "__delitem__", "__ior__", "__or__")
+)
 
 
 def attribute(value: AV, name: str) -> AV:
@@ -490,7 +494,7 @@ def attribute(value: AV, name: str) -> AV:
     if name == "__getattr__":
         return AV(bound=(value, gets_attribute))
     if value.nodes:
-        if name in GROUP_DICT_METHODS and all(isinstance(n, Group) and n.attr(name) is None for n in value.nodes):
+        if name in DICT_METHODS and all(isinstance(n, Group) and n.attr(name) is None for n in value.nodes):
             # The dict a conditional or a section is in the namespace: `$cond.get(name, default)`.
             return AV(bound=(value, name))
         return join(*(node.attr(name) or CLEAN for node in value.nodes))

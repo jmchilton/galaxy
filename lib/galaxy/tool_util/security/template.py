@@ -24,6 +24,7 @@ from dataclasses import (
     field,
 )
 from functools import lru_cache
+from typing import Callable
 
 from Cheetah.Compiler import Compiler
 from Cheetah.Parser import Parser
@@ -37,7 +38,8 @@ ENCODING_DIRECTIVE = re.compile(r"(?:^|\r\n|\r|\n)\s*#\s{0,5}encoding[:\s]*([-\w
 _ASCII_COMPATIBLE = frozenset(("", "ascii", "us-ascii", "utf-8", "utf8", "latin-1", "latin1", "iso-8859-1"))
 
 _LINE_COMMENT = re.compile(r"# .*?\bline (\d+), col (\d+)\.?\s*$")
-_BODY_START = "_filter"
+# The last statement of the code Cheetah puts before the body of every method.
+BODY_START = "_filter"
 
 
 # The NameMapper calls a compiled template makes for `$name`: VFFSL and VFSL look a dotted name up
@@ -141,6 +143,8 @@ class CompiledTemplate:
     attrs: list[ast.stmt] = field(default_factory=list)
     # Template line of each generated statement, by id() of the statement.
     statement_lines: dict[int, int] = field(default_factory=dict)
+    # getVar calls, by id(), known to read the tool namespace: an input, a job parameter or the default.
+    namespace_get_vars: set[int] = field(default_factory=set)
 
     def template_line(self, node: ast.AST) -> int | None:
         """Template line of a generated statement; an estimate where Cheetah left no annotation."""
@@ -160,6 +164,18 @@ def _generate(source: str) -> str:
     return str(compiler.getModuleCode())
 
 
+def _parse(code: str) -> ast.Module:
+    with warnings.catch_warnings():
+        # Template authors write regexes such as '\w' in plain strings; that is not our finding to make.
+        warnings.simplefilter("ignore", SyntaxWarning)
+        return ast.parse(code)
+
+
+def compiled_module(source: str) -> ast.Module:
+    """The module Cheetah compiles a template to, as an AST, for a template known not to run code while it compiles."""
+    return _parse(_generate(source))
+
+
 def _imports(tree: ast.Module) -> list[ast.stmt]:
     return [node for node in tree.body if isinstance(node, (ast.Import, ast.ImportFrom))]
 
@@ -167,7 +183,7 @@ def _imports(tree: ast.Module) -> list[ast.stmt]:
 @lru_cache(maxsize=1)
 def _baseline_imports() -> Counter[str]:
     """Imports Cheetah puts in every generated module (``os``, ``sys``, ``time``, ``types`` among them)."""
-    return Counter(ast.dump(node) for node in _imports(ast.parse(_generate("x"))))
+    return Counter(ast.dump(node) for node in _imports(compiled_module("x")))
 
 
 def _method(func: ast.FunctionDef) -> Method:
@@ -178,7 +194,7 @@ def _method(func: ast.FunctionDef) -> Method:
             isinstance(stmt, ast.Assign)
             and len(stmt.targets) == 1
             and isinstance(stmt.targets[0], ast.Name)
-            and stmt.targets[0].id == _BODY_START
+            and stmt.targets[0].id == BODY_START
         ):
             start = i + 1
             break
@@ -246,9 +262,11 @@ def _is_placeholder(stmt: ast.stmt) -> bool:
     )
 
 
-def compile_template(source: str) -> CompiledTemplate:
+def compile_template(source: str, rewrite: Callable[[ast.Module], set[int]] | None = None) -> CompiledTemplate:
     """Parse ``source`` with Cheetah's own compiler and return the generated code as an AST.
 
+    ``rewrite`` changes the module in place, into one that renders the same, before it is taken apart; it
+    returns the getVar calls it made that read the tool namespace.
     Raises :class:`CompileTimeExecution` instead of compiling a template that would run code
     during compilation, and Cheetah's ``ParseError`` or ``SyntaxError`` for a broken template.
     """
@@ -258,10 +276,8 @@ def compile_template(source: str) -> CompiledTemplate:
         if match.group(1).lower() not in _ASCII_COMPATIBLE:
             raise CompileTimeExecution("encoding", source.count("\n", 0, match.end()) + 1)
     code = _generate(source)
-    with warnings.catch_warnings():
-        # Template authors write regexes such as '\w' in plain strings; that is not our finding to make.
-        warnings.simplefilter("ignore", SyntaxWarning)
-        tree = ast.parse(code)
+    tree = _parse(code)
+    namespace_get_vars = rewrite(tree) if rewrite is not None else set()
     annotated: dict[int, int] = {}
     for lineno, text in enumerate(code.splitlines(), start=1):
         if match := _LINE_COMMENT.search(text):
@@ -308,4 +324,5 @@ def compile_template(source: str) -> CompiledTemplate:
         imports=imports,
         attrs=attrs,
         statement_lines=statement_lines,
+        namespace_get_vars=namespace_get_vars,
     )
