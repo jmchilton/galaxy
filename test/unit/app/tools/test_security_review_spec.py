@@ -11,6 +11,7 @@ from galaxy.app_unittest_utils.security_review_spec import (
 )
 from galaxy.tool_util.security.spec import (
     expected_codes,
+    expected_warnings,
     iter_jobs,
     load_cases,
     sweep_jobs,
@@ -44,7 +45,7 @@ def test_job(runner, case_id, color, index, job, evaluator):
     codes = expected_codes(CASES[case_id], job)
     assert outcome.rejected is job.expect.rejected, outcome.message
     assert outcome.codes == codes
-    assert _warned_codes(outcome) == {code.value for code in codes}
+    assert _warned_codes(outcome) == {code.value for code in expected_warnings(CASES[case_id], job)}
     if outcome.rejected:
         # Galaxy keeps the first 255 characters of a job's info.
         assert outcome.message and outcome.message.startswith(
@@ -58,7 +59,7 @@ def test_job(runner, case_id, color, index, job, evaluator):
 def test_log_mode_runs_and_warns_with_the_codes(runner, case_id, color, index, job):
     outcome = runner(case_id).run(job, mode=LOG)
     assert not outcome.rejected
-    assert _warned_codes(outcome) == {code.value for code in expected_codes(CASES[case_id], job)}
+    assert _warned_codes(outcome) == {code.value for code in expected_warnings(CASES[case_id], job)}
 
 
 @pytest.mark.parametrize("case_id,color,index,job", _params(j for j in JOBS if j.job.harm))

@@ -36,11 +36,12 @@ from galaxy.tools.parameters.basic import (
 from galaxy.tools.security_review import (
     _identifiers,
     ANALYSED,
-    ENFORCE,
+    ENFORCE_CODE,
     LOG,
     NOT_ANALYSED,
     OFF,
     reviewed_tool_source,
+    STRICT,
     ToolInputRejected,
     ToolSecurityReviewer,
 )
@@ -94,8 +95,8 @@ def broken(*args, **kwds):
     raise RuntimeError("analyser bug")
 
 
-def reviewer(tmp_path, mode: str = LOG, strict_when_unsure: bool = True) -> ToolSecurityReviewer:
-    return ToolSecurityReviewer(mode, strict_when_unsure=strict_when_unsure)
+def reviewer(tmp_path, mode: str = LOG, when_unsure: str = STRICT) -> ToolSecurityReviewer:
+    return ToolSecurityReviewer(mode, when_unsure=when_unsure)
 
 
 def hdca(name: str, identifiers: list[str]) -> model.HistoryDatasetCollectionAssociation:
@@ -187,7 +188,7 @@ def test_concurrent_first_jobs_review_once(app, tmp_path, monkeypatch):
 def test_analyser_error_is_recorded_as_not_analysed(app, tmp_path, monkeypatch):
     monkeypatch.setattr(security_review, "review_tool_source", broken)
     tool = make_tool(app, tmp_path)
-    r = reviewer(tmp_path, ENFORCE, strict_when_unsure=False)
+    r = reviewer(tmp_path, ENFORCE_CODE, when_unsure=LOG)
     review = r.review(tool)
     assert review is not None and review.status == NOT_ANALYSED and review.reason == "error: RuntimeError"
     # Kept, so the next job does not review again.
@@ -251,7 +252,7 @@ def test_enforce_refuses_an_identifier_that_closes_the_quotes(app, tmp_path):
     tool = make_tool(app, tmp_path)
     job = evaluator(app, tool, ["sample_1", "it';id;'s"])
     with pytest.raises(ToolInputRejected) as e:
-        reviewer(tmp_path, ENFORCE).check_job(tool, job)
+        reviewer(tmp_path, ENFORCE_CODE).check_job(tool, job)
     message = str(e.value)
     assert "an element identifier or the name of input 'input' contains the characters [' ;]" in message
     assert "Echo identifiers" in message and "echo_ids" in message
@@ -271,7 +272,7 @@ def test_log_warns_and_lets_the_job_run(app, tmp_path, caplog):
     assert all("it'|'s" not in w and "x';y" not in w for w in warnings)
 
 
-@pytest.mark.parametrize("mode", [LOG, ENFORCE])
+@pytest.mark.parametrize("mode", [LOG, ENFORCE_CODE])
 def test_harmless_values_pass(app, tmp_path, caplog, mode):
     tool = make_tool(app, tmp_path)
     # A command character stays inside the quotes.
@@ -279,7 +280,7 @@ def test_harmless_values_pass(app, tmp_path, caplog, mode):
     assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
 
 
-@pytest.mark.parametrize("mode", [LOG, ENFORCE])
+@pytest.mark.parametrize("mode", [LOG, ENFORCE_CODE])
 def test_lone_quote_passes_when_it_is_the_only_user_value(app, tmp_path, caplog, mode):
     tool = make_tool(app, tmp_path, ECHO_ONE, "one.xml")
     reviewer(tmp_path, mode).check_job(tool, evaluator(app, tool, ["sample 1", "Bob's reads"], name="Bob's list"))
@@ -290,12 +291,12 @@ def test_lone_quote_counts_when_another_value_brings_a_command(app, tmp_path):
     # `echo 'Bob's' ...; echo 'a;b'`: the stray quote leaves the `;` of the next value unquoted.
     tool = make_tool(app, tmp_path)
     with pytest.raises(ToolInputRejected) as e:
-        reviewer(tmp_path, ENFORCE).check_job(tool, evaluator(app, tool, ["Bob's reads"], word="a;b"))
+        reviewer(tmp_path, ENFORCE_CODE).check_job(tool, evaluator(app, tool, ["Bob's reads"], word="a;b"))
     assert "the value of input 'word' contains the characters [;]" in str(e.value)
     assert "an element identifier or the name of input 'input' contains the characters [']" in str(e.value)
 
 
-@pytest.mark.parametrize("mode", [LOG, ENFORCE])
+@pytest.mark.parametrize("mode", [LOG, ENFORCE_CODE])
 def test_lone_quote_passes_next_to_harmless_values(app, tmp_path, caplog, mode):
     tool = make_tool(app, tmp_path)
     reviewer(tmp_path, mode).check_job(tool, evaluator(app, tool, ["Bob's reads"], word="it's fine"))
@@ -323,9 +324,9 @@ def test_quote_from_a_medium_finding_frees_another_value(app, tmp_path, written)
     job = evaluator(app, tool, ["a"], word=";id;#")
     job.param_dict["q"] = InputValueWrapper(cast(ToolParameter, tool.inputs["q"]), "'")
     with pytest.raises(ToolInputRejected):
-        reviewer(tmp_path, ENFORCE).check_job(tool, job)
+        reviewer(tmp_path, ENFORCE_CODE).check_job(tool, job)
     job.param_dict["q"] = InputValueWrapper(cast(ToolParameter, tool.inputs["q"]), "plain")
-    reviewer(tmp_path, ENFORCE).check_job(tool, job)
+    reviewer(tmp_path, ENFORCE_CODE).check_job(tool, job)
 
 
 SCRIPT = """<tool id="script" name="Script" version="1.0" profile="24.0">
@@ -357,29 +358,29 @@ def test_value_after_an_escaped_quote_counts_only_when_one_is_escaped(app, tmp_p
     }
     if refused:
         with pytest.raises(ToolInputRejected):
-            reviewer(tmp_path, ENFORCE).check_job(tool, job)
+            reviewer(tmp_path, ENFORCE_CODE).check_job(tool, job)
     else:
-        reviewer(tmp_path, ENFORCE).check_job(tool, job)
+        reviewer(tmp_path, ENFORCE_CODE).check_job(tool, job)
 
 
 def test_collection_name_is_checked(app, tmp_path):
     # `$c.name` gives the collection's name, and the review does not tell it from element identifiers.
     tool = make_tool(app, tmp_path)
     with pytest.raises(ToolInputRejected):
-        reviewer(tmp_path, ENFORCE).check_job(tool, evaluator(app, tool, ["a"], name="Bob's;list"))
+        reviewer(tmp_path, ENFORCE_CODE).check_job(tool, evaluator(app, tool, ["a"], name="Bob's;list"))
 
 
 def test_characters_of_all_values_count_together(app, tmp_path):
     # A template may join the identifiers into one string, where one brings the quote and another the `;`.
     tool = make_tool(app, tmp_path, ECHO_ONE, "one.xml")
     with pytest.raises(ToolInputRejected):
-        reviewer(tmp_path, ENFORCE).check_job(tool, evaluator(app, tool, ["Bob's", "a;b"]))
+        reviewer(tmp_path, ENFORCE_CODE).check_job(tool, evaluator(app, tool, ["Bob's", "a;b"]))
 
 
 def test_raw_value_is_checked(app, tmp_path):
     tool = make_tool(app, tmp_path)
     with pytest.raises(ToolInputRejected) as e:
-        reviewer(tmp_path, ENFORCE).check_job(tool, evaluator(app, tool, ["a"], word="it';id"))
+        reviewer(tmp_path, ENFORCE_CODE).check_job(tool, evaluator(app, tool, ["a"], word="it';id"))
     assert "the value of input 'word' contains the characters [' ;]" in str(e.value)
 
 
@@ -387,13 +388,11 @@ def test_rewritten_value_is_reported_as_not_checkable(app, tmp_path, caplog):
     caplog.set_level(logging.INFO, logger=security_review.__name__)
     rewriting = ECHO_IDS.replace("echo '${word.value}'", "echo ${str($word).replace('__gt__', '>')}")
     tool = make_tool(app, tmp_path, rewriting, "rewriting.xml")
-    review = reviewer(tmp_path, ENFORCE).review(tool)
+    review = reviewer(tmp_path, ENFORCE_CODE).review(tool)
     # The rewritten value can bring the quote that lets the identifiers out: nothing is checkable.
     assert review is not None and len(review.unchecked_findings) == 2 and not review.checked_findings
     assert "(2 cannot be checked against job values)" in caplog.text
-    reviewer(tmp_path, ENFORCE, strict_when_unsure=False).check_job(
-        tool, evaluator(app, tool, ["a"], word="a__gt__/tmp/x")
-    )
+    reviewer(tmp_path, ENFORCE_CODE, when_unsure=LOG).check_job(tool, evaluator(app, tool, ["a"], word="a__gt__/tmp/x"))
 
 
 def test_identifiers_of_nested_collections_and_multiple_inputs(app):
@@ -418,7 +417,7 @@ def test_identifiers_of_nested_collections_and_multiple_inputs(app):
 def test_check_errors_do_not_fail_the_job_unless_strict(app, tmp_path, monkeypatch, caplog):
     monkeypatch.setattr(security_review, "find_violations", broken)
     tool = make_tool(app, tmp_path)
-    reviewer(tmp_path, ENFORCE, strict_when_unsure=False).check_job(tool, evaluator(app, tool, ["it's"]))
+    reviewer(tmp_path, ENFORCE_CODE, when_unsure=LOG).check_job(tool, evaluator(app, tool, ["it's"]))
     assert "checking values against the security review of tool echo_ids failed" in caplog.text
 
 
@@ -431,7 +430,7 @@ def test_finding_refs_name_the_inputs(app, tmp_path):
 
 def refused(app, tmp_path, tool: Tool, identifiers: list[str], word: str = "plain") -> bool:
     try:
-        reviewer(tmp_path, ENFORCE).check_job(tool, evaluator(app, tool, identifiers, word=word))
+        reviewer(tmp_path, ENFORCE_CODE).check_job(tool, evaluator(app, tool, identifiers, word=word))
     except ToolInputRejected:
         return True
     return False
@@ -530,7 +529,7 @@ def two_values_refused(app, tmp_path, command: str, q_sanitizer: str, q: str, x:
         name: InputValueWrapper(cast(ToolParameter, tool.inputs[name]), value) for name, value in (("q", q), ("x", x))
     }
     try:
-        reviewer(tmp_path, ENFORCE).check_job(tool, job)
+        reviewer(tmp_path, ENFORCE_CODE).check_job(tool, job)
     except ToolInputRejected:
         return True
     return False
@@ -596,7 +595,7 @@ def test_template_that_pipes_into_a_shell_is_reported_as_not_checked(app, tmp_pa
     caplog.set_level(logging.INFO, logger=security_review.__name__)
     piping = ECHO_IDS.replace("echo '${word.value}' >> '$out'", "echo '${word.value}' | sh >> '$out'")
     tool = make_tool(app, tmp_path, piping, "piping.xml")
-    review = reviewer(tmp_path, ENFORCE).review(tool)
+    review = reviewer(tmp_path, ENFORCE_CODE).review(tool)
     assert review is not None and review.unchecked_locations == {"command": "it sends text to a shell to run"}
     assert not review.checked_findings
     assert "values written in command are not checked, it sends text to a shell to run" in caplog.text
@@ -625,7 +624,7 @@ def test_newline_in_a_shell_script_starts_a_command(app, tmp_path, script, q, ex
     job: Any = SimpleNamespace(job=SimpleNamespace(id=7), consumes_names=False, consumes_identifiers=False)
     job.param_dict = {"q": InputValueWrapper(cast(ToolParameter, tool.inputs["q"]), q)}
     with pytest.raises(ToolInputRejected) if expected else contextlib.nullcontext():
-        reviewer(tmp_path, ENFORCE).check_job(tool, job)
+        reviewer(tmp_path, ENFORCE_CODE).check_job(tool, job)
 
 
 OPEN_FILE = """<tool id="open_file" name="Open file" version="1.0" profile="24.0">
@@ -646,7 +645,7 @@ def test_content_of_a_dataset_the_template_opens_is_checked(app, tmp_path, conte
     job: Any = SimpleNamespace(job=SimpleNamespace(id=7), consumes_names=False, consumes_identifiers=False)
     job.param_dict = {"n_file": DatasetFilenameWrapper(hda, datatypes_registry=app.datatypes_registry)}
     with pytest.raises(ToolInputRejected) if expected else contextlib.nullcontext():
-        reviewer(tmp_path, ENFORCE).check_job(tool, job)
+        reviewer(tmp_path, ENFORCE_CODE).check_job(tool, job)
 
 
 def test_content_of_a_dataset_over_the_limit_counts_as_every_character_unread(app, tmp_path, monkeypatch):
@@ -664,7 +663,7 @@ def test_content_of_a_dataset_over_the_limit_counts_as_every_character_unread(ap
     job: Any = SimpleNamespace(job=SimpleNamespace(id=7), consumes_names=False, consumes_identifiers=False)
     job.param_dict = {"n_file": DatasetFilenameWrapper(hda, datatypes_registry=app.datatypes_registry)}
     with pytest.raises(ToolInputRejected):
-        reviewer(tmp_path, ENFORCE).check_job(tool, job)
+        reviewer(tmp_path, ENFORCE_CODE).check_job(tool, job)
 
 
 @pytest.mark.parametrize("content,expected", [("15\n", False), ("15; id\n", True)])
@@ -682,7 +681,7 @@ def test_content_is_read_from_the_galaxy_side_file_when_the_job_runs_elsewhere(a
         )
     }
     with pytest.raises(ToolInputRejected) if expected else contextlib.nullcontext():
-        reviewer(tmp_path, ENFORCE).check_job(tool, job)
+        reviewer(tmp_path, ENFORCE_CODE).check_job(tool, job)
 
 
 # A backslash at the end of the content escapes the closing quote and frees the `;` in it.
@@ -699,7 +698,7 @@ def test_backslash_counts_only_at_the_end_of_a_large_dataset(app, tmp_path, cont
     job: Any = SimpleNamespace(job=SimpleNamespace(id=7), consumes_names=False, consumes_identifiers=False)
     job.param_dict = {"n_file": DatasetFilenameWrapper(hda, datatypes_registry=app.datatypes_registry)}
     with pytest.raises(ToolInputRejected) if expected else contextlib.nullcontext():
-        reviewer(tmp_path, ENFORCE).check_job(tool, job)
+        reviewer(tmp_path, ENFORCE_CODE).check_job(tool, job)
 
 
 def test_content_that_cannot_be_read_counts_as_every_character(app, tmp_path):
@@ -710,7 +709,7 @@ def test_content_that_cannot_be_read_counts_as_every_character(app, tmp_path):
     job: Any = SimpleNamespace(job=SimpleNamespace(id=7), consumes_names=False, consumes_identifiers=False)
     job.param_dict = {"n_file": DatasetFilenameWrapper(missing, datatypes_registry=app.datatypes_registry)}
     with pytest.raises(ToolInputRejected):
-        reviewer(tmp_path, ENFORCE).check_job(tool, job)
+        reviewer(tmp_path, ENFORCE_CODE).check_job(tool, job)
 
 
 USER_PREFERENCE = """<tool id="user_preference" name="User preference" version="1.0" profile="24.0">
@@ -727,7 +726,7 @@ def test_user_preference_is_checked(app, tmp_path, name, expected):
     job: Any = SimpleNamespace(job=SimpleNamespace(id=7), consumes_names=False, consumes_identifiers=False)
     job.param_dict = {"__user__": RawObjectWrapper(SimpleNamespace(extra_preferences={"account|name": name}))}
     with pytest.raises(ToolInputRejected) if expected else contextlib.nullcontext():
-        reviewer(tmp_path, ENFORCE).check_job(tool, job)
+        reviewer(tmp_path, ENFORCE_CODE).check_job(tool, job)
 
 
 # -- strict when unsure ------------------------------------------------------------------------
@@ -752,7 +751,7 @@ def strict_refusal(r: ToolSecurityReviewer, tool: Tool, job: Any) -> str:
 
 def test_strict_when_unsure_runs_plain_values_only(app, tmp_path):
     tool = make_tool(app, tmp_path, unsure(), "unsure.xml")
-    r = reviewer(tmp_path, ENFORCE)
+    r = reviewer(tmp_path, ENFORCE_CODE)
     r.check_job(tool, evaluator(app, tool, ["sample_1.fastq", "FastQC on data 1: RawData"], word="My title"))
     message = strict_refusal(r, tool, evaluator(app, tool, ["sample (1)"]))
     assert message.startswith(
@@ -762,7 +761,7 @@ def test_strict_when_unsure_runs_plain_values_only(app, tmp_path):
     assert "because this tool writes values in places that no check of their characters can judge (command)" in message
     assert "Echo identifiers" in message and "echo_ids" in message
     # With strict_when_unsure off the same job runs.
-    reviewer(tmp_path, ENFORCE, strict_when_unsure=False).check_job(tool, evaluator(app, tool, ["sample (1)"]))
+    reviewer(tmp_path, ENFORCE_CODE, when_unsure=LOG).check_job(tool, evaluator(app, tool, ["sample (1)"]))
 
 
 @pytest.mark.parametrize(
@@ -778,14 +777,18 @@ def test_strict_when_unsure_runs_plain_values_only(app, tmp_path):
 )
 def test_strict_check_refuses_what_can_leave_any_place(app, tmp_path, identifier, harm):
     tool = make_tool(app, tmp_path, unsure(), "unsure.xml")
-    assert f"contains [{harm}]" in strict_refusal(reviewer(tmp_path, ENFORCE), tool, evaluator(app, tool, [identifier]))
+    assert f"contains [{harm}]" in strict_refusal(
+        reviewer(tmp_path, ENFORCE_CODE), tool, evaluator(app, tool, [identifier])
+    )
 
 
 def test_strict_check_reads_dataset_names(app, tmp_path):
     tool = make_tool(app, tmp_path, unsure(), "unsure.xml")
     job = evaluator(app, tool, ["a"])
     next(iter(job.param_dict["input"])).unsanitized.name = "Trimmomatic on data 1 (R1 paired)"
-    assert "the name of a dataset of input 'input' contains" in strict_refusal(reviewer(tmp_path, ENFORCE), tool, job)
+    assert "the name of a dataset of input 'input' contains" in strict_refusal(
+        reviewer(tmp_path, ENFORCE_CODE), tool, job
+    )
 
 
 READS_MORE = ECHO_IDS.replace(
@@ -801,7 +804,7 @@ def test_strict_check_reads_what_the_template_names(app, tmp_path):
         job.param_dict["__user__"] = RawObjectWrapper(SimpleNamespace(extra_preferences={"account|name": preference}))
         return job
 
-    r = reviewer(tmp_path, ENFORCE)
+    r = reviewer(tmp_path, ENFORCE_CODE)
     # A template that names neither: a tool's output summary and a password do not count.
     tool = make_tool(app, tmp_path, unsure(), "unsure.xml")
     r.check_job(tool, job_with('aligned "95.3%"', "a&b"))
@@ -821,7 +824,7 @@ def test_strict_check_reads_the_email_a_template_names(app, tmp_path):
         job.param_dict["__user_email__"] = email
         return job
 
-    r = reviewer(tmp_path, ENFORCE)
+    r = reviewer(tmp_path, ENFORCE_CODE)
     tool = make_tool(app, tmp_path, unsure(), "unsure.xml")
     r.check_job(tool, job_with("a`b`@example.org"))
     tool = make_tool(app, tmp_path, unsure(USER_EMAIL), "user_email.xml")
@@ -845,14 +848,14 @@ def test_strict_check_leaves_select_options_the_tool_defines_alone(app, tmp_path
     tool = make_tool(app, tmp_path, PIPING_SELECT, "unsure_select.xml")
     job = evaluator(app, tool, ["a"], word="b")
     job.param_dict["mode"] = SelectToolParameterWrapper(cast(SelectToolParameter, tool.inputs["mode"]), "--fast")
-    reviewer(tmp_path, ENFORCE).check_job(tool, job)
+    reviewer(tmp_path, ENFORCE_CODE).check_job(tool, job)
 
 
 @pytest.mark.parametrize("patched", ["review_tool_source", "reviewed_tool_source"])
 def test_strict_when_unsure_refuses_every_job_of_a_tool_it_could_not_review(app, tmp_path, monkeypatch, patched):
     monkeypatch.setattr(security_review, patched, broken)
     tool = make_tool(app, tmp_path)
-    message = strict_refusal(reviewer(tmp_path, ENFORCE), tool, evaluator(app, tool, ["a"], word="b"))
+    message = strict_refusal(reviewer(tmp_path, ENFORCE_CODE), tool, evaluator(app, tool, ["a"], word="b"))
     assert "the security review of this tool failed, and nothing is known about what its templates do" in message
 
 
@@ -872,7 +875,7 @@ def test_strict_when_unsure_refuses_every_job_when_no_value_can_be_plain(app, tm
         job.param_dict = {}
     else:
         job = evaluator(app, tool, ["a"], word="b")
-    message = strict_refusal(reviewer(tmp_path, ENFORCE), tool, job)
+    message = strict_refusal(reviewer(tmp_path, ENFORCE_CODE), tool, job)
     assert why in message
     assert message.startswith(f"[{code}] This job was not run: this Galaxy server cannot check any value for tool")
 
@@ -885,7 +888,7 @@ def test_rewrites_in_several_templates_are_named_once(app, tmp_path):
   <inputs>""",
     )
     tool = make_tool(app, tmp_path, unsure(contents), "two_rewrites.xml")
-    message = strict_refusal(reviewer(tmp_path, ENFORCE), tool, evaluator(app, tool, ["a"], word="b"))
+    message = strict_refusal(reviewer(tmp_path, ENFORCE_CODE), tool, evaluator(app, tool, ["a"], word="b"))
     assert message.count("its templates change values with chr") == 1
 
 
@@ -925,7 +928,7 @@ def test_plain_replacements_and_shell_text_are_no_rewrites(app, tmp_path, conten
 def test_strict_when_unsure_checks_strictly_when_the_check_fails(app, tmp_path, monkeypatch):
     monkeypatch.setattr(security_review, "find_violations", broken)
     tool = make_tool(app, tmp_path)
-    r = reviewer(tmp_path, ENFORCE)
+    r = reviewer(tmp_path, ENFORCE_CODE)
     r.check_job(tool, evaluator(app, tool, ["a"]))
     message = strict_refusal(r, tool, evaluator(app, tool, ["it's"]))
     assert "checking the job's values against the security review failed" in message
@@ -933,7 +936,7 @@ def test_strict_when_unsure_checks_strictly_when_the_check_fails(app, tmp_path, 
 
 def test_strict_when_unsure_lets_checked_values_run(app, tmp_path):
     tool = make_tool(app, tmp_path)
-    reviewer(tmp_path, ENFORCE).check_job(tool, evaluator(app, tool, ["5' UTR"], word="x"))
+    reviewer(tmp_path, ENFORCE_CODE).check_job(tool, evaluator(app, tool, ["5' UTR"], word="x"))
 
 
 REWRITING_SCRIPT = ECHO_IDS.replace("echo '${word.value}' >> '$out'", "bash '$script' >> '$out'").replace(
@@ -947,7 +950,7 @@ def test_strict_when_unsure_names_the_harmful_value_first(app, tmp_path):
     tool = make_tool(app, tmp_path, REWRITING_SCRIPT, "unchecked.xml")
     review = reviewer(tmp_path).review(tool)
     assert review is not None and review.checked_findings and review.unchecked_findings
-    message = strict_refusal(reviewer(tmp_path, ENFORCE), tool, evaluator(app, tool, ["it';id;'s"]))
+    message = strict_refusal(reviewer(tmp_path, ENFORCE_CODE), tool, evaluator(app, tool, ["it';id;'s"]))
     assert "contains the characters" in message
 
 
@@ -969,14 +972,14 @@ def test_strict_check_errors_fail_the_job_only_in_enforce_mode(app, tmp_path, mo
     tool = make_tool(app, tmp_path, unsure(), "unsure.xml")
     reviewer(tmp_path, LOG).check_job(tool, evaluator(app, tool, ["a"]))
     assert "the strict check of the values of job 7 of tool echo_ids failed" in caplog.text
-    message = strict_refusal(reviewer(tmp_path, ENFORCE), tool, evaluator(app, tool, ["a"]))
+    message = strict_refusal(reviewer(tmp_path, ENFORCE_CODE), tool, evaluator(app, tool, ["a"]))
     assert "checking its values strictly failed" in message
 
 
 def test_strict_when_unsure_leaves_tools_without_a_template_alone(app, tmp_path):
     tool = make_tool(app, tmp_path, NO_COMMAND)
     job: Any = SimpleNamespace(job=SimpleNamespace(id=7))
-    reviewer(tmp_path, ENFORCE).check_job(tool, job)
+    reviewer(tmp_path, ENFORCE_CODE).check_job(tool, job)
 
 
 # -- literal rewrites ------------------------------------------------------------------------
@@ -1070,7 +1073,7 @@ def test_rewrite_of_dataset_content_refuses_the_job(app, tmp_path):
     job: Any = SimpleNamespace(job=SimpleNamespace(id=7), consumes_names=False, consumes_identifiers=False)
     job.param_dict = {"n_file": DatasetFilenameWrapper(hda, datatypes_registry=app.datatypes_registry)}
     with pytest.raises(ToolInputRejected):
-        reviewer(tmp_path, ENFORCE).check_job(tool, job)
+        reviewer(tmp_path, ENFORCE_CODE).check_job(tool, job)
 
 
 @pytest.mark.parametrize("word,expected", [("a_id", True), ("a.id", False)])
@@ -1087,7 +1090,7 @@ def test_sanitizer_tokens_hold_what_a_literal_rewrite_replaces(app, tmp_path, wo
 
 def test_strict_check_counts_what_a_literal_rewrite_adds(app, tmp_path):
     tool = make_tool(app, tmp_path, unsure(ids_tool("echo '${str($word.value).replace('_', ';')}' > '$out'")), "s.xml")
-    r = reviewer(tmp_path, ENFORCE)
+    r = reviewer(tmp_path, ENFORCE_CODE)
     r.check_job(tool, evaluator(app, tool, ["x"], word="ab"))
     assert "contains [;]" in strict_refusal(r, tool, evaluator(app, tool, ["x"], word="a_b"))
 
@@ -1096,4 +1099,4 @@ def test_strict_check_counts_spaces_a_rewrite_adds_as_option_words(app, tmp_path
     command = "tar -cf o.tar ${str($word.value).replace('_', ' ')} > '$out'"
     tool = make_tool(app, tmp_path, unsure(ids_tool(command)), "words.xml")
     job = evaluator(app, tool, ["x"], word="a_--checkpoint=1_--checkpoint-action=exec=id")
-    assert "contains [-]" in strict_refusal(reviewer(tmp_path, ENFORCE), tool, job)
+    assert "contains [-]" in strict_refusal(reviewer(tmp_path, ENFORCE_CODE), tool, job)
