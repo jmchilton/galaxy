@@ -1,0 +1,20 @@
+<tool id="spec_sections_loop" name="Parameter in a list of sections" version="1.0" profile="24.0">
+    <description>looks up a parameter in each section of a literal list</description>
+    <command><![CDATA[
+#set global $sections = ['', 'optional.']
+#for $sect in $sections
+    #if $varExists($sect + "label")
+        echo '$getVar($sect + "label")' >> '$out' &&
+    #end if
+#end for
+true
+    ]]></command>
+    <inputs>
+        <section name="optional" title="Optional">
+            <param name="label" type="text"><sanitizer sanitize="false"/></param>
+        </section>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

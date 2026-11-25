@@ -117,7 +117,9 @@ def _analyse(
     names[location] = audit.names
     for name in sorted(unresolved_names(template, model, audit.assigned | audit.stored_keys, audit.namespace_reads)):
         report.unanalyzed.append(f"{location}: ${name} is not a tool input, its value was not followed")
-    analysis = TemplateAnalysis(model, template, report, location, language, audit.literal_rewrites)
+    analysis = TemplateAnalysis(
+        model, template, report, location, language, audit.literal_rewrites, audit.computed_lookups
+    )
     try:
         analysis.run()
     except RecursionError:

@@ -55,6 +55,11 @@ def name_lookup(node: ast.AST, functions: frozenset[str] = NAME_MAPPER) -> tuple
     return None
 
 
+def plain_attribute(name: object) -> bool:
+    """A name getattr can read in place of `.name`: an identifier that is not private or Python's internals."""
+    return isinstance(name, str) and name.isidentifier() and not name.startswith("_")
+
+
 def constant(node: ast.AST | None) -> object:
     """The value of a literal in the compiled template, None for anything else."""
     return node.value if isinstance(node, ast.Constant) else None

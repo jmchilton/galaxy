@@ -308,6 +308,162 @@ inputs:
   word: say "hi"
 ```
 
+#### getattr_literal_name
+
+`getattr` with a literal name is that attribute: `getattr($input, 'unsanitized').name` is the dataset's name as the user set it, which the check reads from the model too.
+
+Tool `reflection_getattr.xml`:
+
+```
+#set $name = getattr($input, 'unsanitized').name
+echo '${name}' > '$out'
+```
+
+Refused
+
+```
+datasets:
+  input:
+    name: x'; touch harm-marker; echo '
+```
+
+Runs
+
+```
+datasets:
+  input:
+    name: a;b|c
+```
+
+#### getattr_value
+
+`getattr($label, "value", $label)` reads the value as submitted, past its sanitizer, like `$label.value`.
+
+Tool `getattr_value.xml`:
+
+```
+#set $v = getattr($label, "value", $label)
+echo '$v' > '$out'
+```
+
+Refused
+
+```
+inputs:
+  label: a';touch harm-marker;'
+```
+
+Runs
+
+```
+inputs:
+  label: a;b|c
+```
+
+#### read_group_lookup
+
+A #def that looks a value up by the name it is called with, in a conditional (`$rg.get($name)`) or the namespace (`$getVar($name)`): the names are the literals of its calls, and the values those parameters.
+
+Tool `read_group_lookup.xml`:
+
+```
+#def rg_param($name)
+    #if $varExists("rg")
+        #return $rg.get($name, None)
+    #else
+        #return $getVar($name, None)
+    #end if
+#end def
+#set $rg_id = str($rg_param('ID'))
+#set $rg_ds = str($rg_param('DS'))
+echo '@RG\tID:$rg_id\tDS:$rg_ds' > '$out'
+```
+
+Refused
+
+```
+inputs:
+  rg:
+    rg_selector: set
+    ID: sample1
+    DS: a';touch harm-marker;'
+```
+
+Runs
+
+```
+inputs:
+  rg:
+    rg_selector: set
+    ID: sample1
+    DS: run 2;lane 1
+```
+
+#### section_lookup
+
+A name joined from the literal arguments of a #def (`$getVar($sec + "." + $var)`) is resolved to the parameters it can name.
+
+Tool `section_lookup.xml`:
+
+```
+#def getVarCond($sec, $var)
+    #if $varExists($var)
+        #return $getVar($var)
+    #else if $varExists($sec + "." + $var)
+        #return $getVar($sec + "." + $var)
+    #end if
+#end def
+echo '$getVarCond("advanced", "label")' > '$out'
+```
+
+Refused
+
+```
+inputs:
+  advanced:
+    label: a';touch harm-marker;'
+```
+
+Runs
+
+```
+inputs:
+  advanced:
+    label: a;b|c
+```
+
+#### sections_loop
+
+A name joined from each element of a literal list (`$getVar($sect + "label")`) is resolved to the parameters it can name.
+
+Tool `sections_loop.xml`:
+
+```
+#set global $sections = ['', 'optional.']
+#for $sect in $sections
+    #if $varExists($sect + "label")
+        echo '$getVar($sect + "label")' >> '$out' &&
+    #end if
+#end for
+true
+```
+
+Refused
+
+```
+inputs:
+  optional:
+    label: a';touch harm-marker;'
+```
+
+Runs
+
+```
+inputs:
+  optional:
+    label: a;b|c
+```
+
 ### `nested-interpreter`
 
 A value is written into the program of another interpreter (`bash -c`, `sed`, `perl -e`, ...) and can change what that program does.
@@ -986,39 +1142,30 @@ config:
   when_unsure: log
 ```
 
-#### reflection_bypass
+#### getvar_user_name
 
-Read by name through `getattr`, the dataset model is out of the review's sight: it can write any value without a finding about it, its history's name as well as its own, so every job is refused.
+A name the user gives (`$getVar(str($which))`) can be any variable, which no check of the job's values sees: every job is refused.
 
-Tool `reflection_getattr.xml`:
+Tool `getvar_user_name.xml`:
 
 ```
-#set $name = getattr($input, 'unsanitized').name
-echo '${name}' > '$out'
+echo '$getVar(str($which), "none")' > '$out'
 ```
 
 Refused
 
 ```
-datasets:
-  input:
-    name: x'; touch harm-marker; echo '
-```
-
-Refused: Even a plain name.
-
-```
-datasets:
-  input:
-    name: reads.fq
+inputs:
+  which: label
+  label: hello
 ```
 
 Runs
 
 ```
-datasets:
-  input:
-    name: reads.fq
+inputs:
+  which: label
+  label: hello
 config:
   when_unsure: log
 ```
@@ -1309,11 +1456,38 @@ user:
     spec|label: a';touch harm-marker;'
 ```
 
+#### select_named_outputs
+
+The names a select's options give (`$getVar($o)` for each selected output) are the tool's own: they name its outputs, whose paths Galaxy writes.
+
+Tool `select_named_outputs.xml`:
+
+```
+#for o in str($oformat).split(','):
+    cp '$input' '$getVar($o, 'MISSING_OUTPUT' + $o)' &&
+#end for
+true
+```
+
+Runs
+
+```
+inputs:
+  oformat:
+  - tblout
+  - domtblout
+datasets:
+  input:
+    name: reads
+```
+
 ## Access patterns
 
-The review also reports reads it cannot follow to a value of the job. A read by name (reflection) can
-write any value without a finding about it, so it refuses every job of the tool. For the others, a job
-is refused only when the review also sees the value written where it can do harm.
+The review also reports reads it cannot follow to a value of the job. A variable looked up by a name
+the template computes from values the review cannot list, or Python reached by name, can write any
+value without a finding about it, so it refuses every job of the tool. Names built from literal text or
+a select's options are resolved, and `getattr` with a literal name is that attribute. For the others, a
+job is refused only when the review also sees the value written where it can do harm.
 A case marked as a known bypass is a tool whose jobs run whatever their values.
 
 ### Reads the job check cannot see
@@ -1322,13 +1496,30 @@ A case marked as a known bypass is a tool whose jobs run whatever their values.
 
 Reaches objects by name (`getattr`, `__getattribute__`, `getVar` with a computed name, Python or Cheetah internals). The review loses track of what is read, `.unsanitized` values included.
 
-Refused cases with it: `reflection_bypass`.
+Refused cases with it: `getvar_user_name`.
+
+##### output_filter_vars
+
+`vars()` in an output filter reaches Python objects, but Galaxy evaluates filters when it creates the outputs: nothing it reads is written into the command, which is checked as usual.
+
+Tool `output_filter_vars.xml`:
+
+```
+echo '$label' > '$out'
+```
+
+Runs
+
+```
+inputs:
+  label: a;b|c
+```
 
 #### `model-access`
 
 Reads Galaxy's database objects (`.unsanitized`, `.dataset`, `.creating_job`, ...): names, metadata and parameters as users set them, without the sanitizer.
 
-Refused cases with it: `raw_dataset_model`, `raw_dataset_history`.
+Refused cases with it: `raw_dataset_model`, `raw_dataset_history`, `getattr_literal_name`.
 
 #### `app-access`
 

@@ -23,6 +23,7 @@ from typing import (
 
 from Cheetah.Template import Template
 
+
 from . import (
     charsets,
     sed,
@@ -40,6 +41,7 @@ from .nodes import (
     Special,
 )
 from .report import (
+    CAPABILITY,
     Finding,
     OPAQUE,
     QUOTE_CLOSERS,
@@ -55,6 +57,7 @@ from .template import (
     Method,
     name_lookup,
     NAMESPACE_LOOKUPS,
+    plain_attribute,
 )
 from .validators import regex_constraint
 from .values import (
@@ -68,8 +71,12 @@ from .values import (
     element,
     Group,
     introduced,
+    GROUP_DICT_METHODS,
     join,
     joins_arguments,
+    literal_product,
+    literal_strings,
+    literal_union,
     raw,
     recording,
     REPR_PUNCTUATION,
@@ -85,6 +92,30 @@ _MAX_STEPS = 50_000
 
 class _BudgetExceeded(Exception):
     pass
+
+
+# getVar looks a name up in the `#set global` variables, then the template object itself (its #def
+# methods, getVar, searchList...), then the namespace. Names of the template object reach Python's and
+# Cheetah's objects.
+_TEMPLATE_ATTRIBUTES = frozenset(dir(Template)) | frozenset(("respond", "trans", "self", "SL"))
+
+
+def _assigned_names(body: list[ast.stmt]) -> set[str]:
+    names: set[str] = set()
+    for node in ast.walk(ast.Module(body=body, type_ignores=[])):
+        if isinstance(node, ast.Assign):
+            names.update(target.id for target in node.targets if isinstance(target, ast.Name))
+        elif isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name):
+            names.add(node.target.id)
+    return names
+
+
+def _reaches_objects(variable: str) -> bool:
+    """A name getVar would resolve to an object of Galaxy, Cheetah or Python, not to a value of the job."""
+    parts = variable.split(".")
+    return (
+        parts[0] in _TEMPLATE_ATTRIBUTES or parts[0] in ("__app__", "__user__") or any(p.startswith("_") for p in parts)
+    )
 
 
 _MUTATORS = frozenset(("append", "extend", "add", "insert", "update", "setdefault", "appendleft", "__setitem__"))
@@ -447,6 +478,7 @@ class TemplateAnalysis:
         location: str = "command",
         language: str = "shell",
         literal_rewrites: dict[int, str] | None = None,
+        computed_lookups: dict[int, int | None] | None = None,
     ):
         self.model = model
         self.template = template
@@ -458,6 +490,11 @@ class TemplateAnalysis:
         self.literal_rewrites = literal_rewrites or {}
         self._judged: set[int] = set()
         self._not_judged: set[int] = set()
+        # getVar calls (by id, with their line) whose name is not a literal, see PythonAudit: one this
+        # analysis does not resolve to a set of names on every visit reaches objects by a computed name.
+        self.computed_lookups = computed_lookups or {}
+        self._resolved: set[int] = set()
+        self._unresolved: set[int] = set()
         # A shell script keeps its lines; Galaxy writes the command on one line.
         self.script = language == "shell" and location != "command"
         self.events: set[shell.Event] = set()
@@ -617,6 +654,19 @@ class TemplateAnalysis:
             # Also a call the analysis never reached: past its depth or its budget.
             if call in self._not_judged or call not in self._judged:
                 self.report.add_rewrite(self.location, name)
+        for call, line in self.computed_lookups.items():
+            if call in self._unresolved or call not in self._resolved:
+                self.report.add(
+                    Finding(
+                        rule="template-reflection",
+                        kind=CAPABILITY,
+                        severity=charsets.MEDIUM,
+                        message="Looks up a variable by a computed name with `getVar`",
+                        location=self.location,
+                        line=line,
+                        expr="getVar",
+                    )
+                )
         if not poisoned:
             for recorded, into in ((self._written, self.report.writes), (self._closers, self.report.closers)):
                 if recorded:
@@ -670,12 +720,13 @@ class TemplateAnalysis:
                 # Cheetah writes a placeholder as `_v = <expr>` followed by `if _v is not None: write(...)`.
                 self._pending = stmt.value
                 return states
-            value = self.ev(stmt.value, env)
+            value = self._certified(stmt.value, self.ev(stmt.value, env), env)
             for target in stmt.targets:
                 self.bind(target, value, env)
             return states
         if isinstance(stmt, ast.AugAssign):
-            value = self.ev(stmt.value, env)
+            # `x += y` is no longer one of the strings either was.
+            value = dataclasses.replace(self.ev(stmt.value, env), literals=None)
             if isinstance(stmt.target, ast.Name):
                 env.assign(stmt.target.id, stringify(value) if value.nodes else value, weak=True)
             else:
@@ -705,11 +756,18 @@ class TemplateAnalysis:
             return out
         if isinstance(stmt, (ast.For, ast.While)):
             before = dict(env.local)
+            # Each iteration assigns the loop variable an element: what it can be is what an element can be.
+            targets = {stmt.target.id} if isinstance(stmt, ast.For) and isinstance(stmt.target, ast.Name) else set()
+            targets -= _assigned_names(stmt.body)
+            elements = self._element_strings(stmt.iter, env) if isinstance(stmt, ast.For) else None
             out = states
             current = states
             for _ in range(3):
                 if isinstance(stmt, ast.For):
-                    self.bind(stmt.target, element(self.ev(stmt.iter, env)), env, weak=True)
+                    item = dataclasses.replace(element(self.ev(stmt.iter, env)), literals=elements)
+                    self.bind(stmt.target, item, env, weak=True)
+                    for name in targets:
+                        env.local[name] = dataclasses.replace(env.local[name], literals=elements)
                 else:
                     self.ev(stmt.test, env)
                 current = self.block(stmt.body, current, env)
@@ -723,8 +781,11 @@ class TemplateAnalysis:
                     continue
                 if _narrowing_key(key):
                     del env.local[key]
-                elif key in before:
-                    env.local[key] = join(before[key], value)
+                    continue
+                if key in before:
+                    value = join(before[key], value)
+                # The iterations followed are not all the loop can do: what a string can be is not known.
+                env.local[key] = dataclasses.replace(value, literals=elements if key in targets else None)
             return self.block(stmt.orelse, out, env)
         if isinstance(stmt, ast.Try):
             self._speculative += 1
@@ -1308,7 +1369,8 @@ class TemplateAnalysis:
             elif keywords and name in keywords:
                 helper_env.local[name] = keywords[name]
             else:
-                helper_env.local[name] = self.ev(method.defaults.get(name), env)
+                default = method.defaults.get(name)
+                helper_env.local[name] = self._certified(default, self.ev(default, env), env)
         return helper_env
 
     def _too_deep(self, method: Method | None, args: list[AV], keywords: dict[str, AV] | None) -> bool:
@@ -1395,6 +1457,75 @@ class TemplateAnalysis:
             value = self._autocall(value, env) if autocall else value
             value = attribute(value, part)
         return self._autocall(value, env) if autocall else value
+
+    def _certified(self, node: ast.expr | None, value: AV, env: Env) -> AV:
+        """``value`` of ``node`` with the strings it can be, when the expression is literal text only."""
+        literals = self._name_strings(node, env) if node is not None else None
+        items = value.items
+        if isinstance(node, (ast.List, ast.Tuple)) and items is not None and len(items) == len(node.elts):
+            items = tuple(self._certified(elt, item, env) for elt, item in zip(node.elts, items))
+        return dataclasses.replace(value, literals=literals, items=items)
+
+    def _name_strings(self, node: ast.AST | None, env: Env) -> frozenset[str] | None:
+        """Every string the expression can be, when it is built from literal text only: string literals
+        joined with `+` or in a plain f-string, either branch of a conditional, `str()`, and names bound to
+        such expressions or to the options of a select. None for anything else."""
+        if isinstance(node, ast.Constant):
+            return frozenset((node.value,)) if isinstance(node.value, str) else None
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            return literal_product(self._name_strings(node.left, env), self._name_strings(node.right, env))
+        if isinstance(node, ast.IfExp):
+            return literal_union(self._name_strings(node.body, env), self._name_strings(node.orelse, env))
+        if isinstance(node, ast.BoolOp):
+            return literal_union(*(self._name_strings(value, env) for value in node.values))
+        if isinstance(node, ast.JoinedStr):
+            pieces = []
+            for value in node.values:
+                if isinstance(value, ast.FormattedValue):
+                    if value.conversion != -1 or value.format_spec is not None:
+                        return None
+                    pieces.append(self._name_strings(value.value, env))
+                else:
+                    pieces.append(self._name_strings(value, env))
+            return literal_product(*pieces)
+        if isinstance(node, ast.Name):
+            bound = env.local.get(node.id, env.shared.get(node.id))
+            return literal_strings(bound) if bound is not None else None
+        if node is not None and (lookup := name_lookup(node, NAMESPACE_LOOKUPS)) and "." not in lookup[1]:
+            return literal_strings(self.resolve(lookup[1], env, False))
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "str"
+            and len(node.args) == 1
+            and not node.keywords
+        ):
+            return self._name_strings(node.args[0], env)
+        return None
+
+    def _element_strings(self, node: ast.AST, env: Env) -> frozenset[str] | None:
+        """Every string an element of the expression can be: of a list of literal text, or a split of it."""
+        if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+            if any(isinstance(elt, ast.Starred) for elt in node.elts):
+                return None
+            return literal_union(*(self._name_strings(elt, env) for elt in node.elts))
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "split"
+            and len(node.args) == 1
+            and not node.keywords
+            and isinstance(separator := _const(node.args[0]), str)
+            and separator
+        ):
+            strings = self._name_strings(node.func.value, env)
+            if strings is None:
+                return None
+            return literal_union(frozenset(piece for string in strings for piece in string.split(separator)))
+        if isinstance(node, ast.Name) or name_lookup(node, NAMESPACE_LOOKUPS):
+            bound = self.ev(node, env)
+            return literal_strings(element(bound)) if not bound.tainted else None
+        return None
 
     def _autocall(self, value: AV, env: Env) -> AV:
         # Cheetah calls a callable it meets while resolving a dotted name.
@@ -1566,6 +1697,9 @@ class TemplateAnalysis:
                     env.assign(local, AV(elem=element(grown, strict=True)), weak=True)
             return self.call_bound(receiver, method, args, node.args, env, keywords, node)
         if callee.helper:
+            # A #def's arguments are bound like a #set: with the strings they can be.
+            args = [self._certified(arg, value, env) for arg, value in zip(node.args, args)]
+            named = {k.arg: self._certified(k.value, value, env) for k, value in zip(node.keywords, keywords) if k.arg}
             return self.call_helper(callee.helper, args, env, named)
         if callee.py:
             return self.call_python(callee.py, args, keywords, node, env)
@@ -1619,13 +1753,25 @@ class TemplateAnalysis:
         if name == "dict":
             return AV(elem=join(*(element(a, strict=True) for a in args), *keywords))
         if name == "getVar":
-            variable = _const(node.args[0]) if node.args else None
             default = args[1] if len(args) > 1 else CLEAN
-            if isinstance(variable, str):
-                known = self.model.lookup(variable.split(".")[0]) or env.local.get(variable.split(".")[0])
-                if known is not None:
-                    return join(self.resolve(variable, env, True), default)
-            return default
+            names = self._name_strings(node.args[0], env) if node.args else None
+            variables = sorted({variable.replace("$", "") for variable in names}) if names is not None else []
+            # No variable has the empty name: getVar gives the default.
+            variables = [variable for variable in variables if variable]
+            if names is None or any(_reaches_objects(v) or v.split(".")[0] in self.template.helpers for v in variables):
+                # A name the template computes from values the analysis cannot list, or one of an object or a
+                # #def of the template: refused as reflection.
+                self._unresolved.add(id(node))
+                return default
+            self._resolved.add(id(node))
+            # getVar does not see #set locals: the `#set global` variables, then the namespace.
+            view = Env({key: value for key, value in env.local.items() if _narrowing_key(key)}, env.shared)
+            return join(*(self.resolve(variable, view, True) for variable in variables), default)
+        if name == "getattr" and len(node.args) >= 2 and not node.keywords:
+            attr = self._name_strings(node.args[1], env)
+            if attr is not None and len(attr) == 1 and plain_attribute(next(iter(attr))):
+                # getattr(x, "name"[, default]) is x.name, or the default.
+                return join(attribute(first, next(iter(attr))), *args[2:3])
         if _DECODERS.match(name):
             text = contents(first)
             self._introduce(text)
@@ -1785,13 +1931,30 @@ class TemplateAnalysis:
                 # list.reverse(), list.sort()...: they change the list in place and return None.
                 return CLEAN
             if name in ("pop", "get", "copy", "setdefault"):
-                return receiver if name == "copy" else element(receiver)
+                # Or the default given.
+                return receiver if name == "copy" else join(element(receiver), *args[1:2])
             if name in ("keys", "values", "items"):
                 item = element(receiver)
                 return AV(elem=AV(items=(item, item)) if name == "items" else item)
             if name in _MUTATORS:
                 return CLEAN
             return receiver
+        if name in GROUP_DICT_METHODS and receiver.nodes and all(isinstance(n, Group) for n in receiver.nodes):
+            # The dict of a conditional or a section: by a literal key or a list of them, else any child.
+            groups = [n for n in receiver.nodes if isinstance(n, Group)]
+            children = AV(nodes=tuple(n for group in groups for nodes in group.children.values() for n in nodes))
+            names = frozenset(key for group in groups for key in group.children if key)
+            if name == "values":
+                return AV(elem=children)
+            if name == "keys":
+                return AV(elem=AV(literals=names))
+            if name == "items":
+                return AV(elem=AV(items=(AV(literals=names), children)))
+            default = args[1] if len(args) > 1 else CLEAN
+            keys = self._name_strings(arg_nodes[0], env) if arg_nodes else None
+            if keys is None:
+                return join(children, default)
+            return join(*(attribute(receiver, key) for key in sorted(keys)), default)
         text = raw(receiver) if receiver.nodes else stringify(receiver)
         first_literal = _const(arg_nodes[0]) if arg_nodes else None
         if name in ("split", "rsplit", "splitlines", "partition", "rpartition"):

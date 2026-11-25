@@ -991,3 +991,97 @@ def test_marks_tell_what_a_word_starts_with(value, expected):
 def test_variable_assignments(tmp_path, command, expected):
     found = rules(review(tmp_path, command)) - {("option-injection", "low")}
     assert {r for r in found if r[0] in ("variable-name", "argument-injection")} == expected
+
+
+@pytest.mark.parametrize(
+    "command,expected",
+    [
+        # Names built from literal text are resolved to the parameters they name.
+        ("#set $n = 'fr' + 'ee'\necho '$getVar($n)'", {("shell-injection", "high")}),
+        ("#for $n in ['free', 'word']\necho '$getVar($n)'\n#end for", {("shell-injection", "high")}),
+        ("#for $n in ['word', 'letters']\necho '$getVar($n, '')'\n#end for", set()),
+        # A name that is the user's, here the value of a parameter, is any variable.
+        ("echo '$getVar($getVar('text'))'", {("template-reflection", "medium")}),
+        ("echo '$getVar(str($text))'", {("template-reflection", "medium")}),
+        # Names that reach Python's or Galaxy's objects are not resolved.
+        ("#set $n = '__' + 'app__'\necho '$getVar($n)'", {("template-reflection", "medium")}),
+        ("echo '${getattr($input, '__class__')}'", {("template-reflection", "high")}),
+        ("#set $a = '__class__'\necho '${getattr($input, $a)}'", {("template-reflection", "high")}),
+    ],
+)
+def test_names_looked_up_by_a_computed_name(tmp_path, command, expected):
+    found = rules(review(tmp_path, command), "vulnerability") | rules(review(tmp_path, command), "capability")
+    assert {r for r in found if r[0] in ("shell-injection", "template-reflection")} == expected
+
+
+def test_a_conditional_looked_up_by_an_unknown_key_is_any_of_its_parameters(tmp_path):
+    inputs = """<conditional name="rg"><param name="sel" type="select"><option value="a">a</option></param>
+      <when value="a"><param name="ID" type="text"/><param name="DS" type="text"><sanitizer sanitize="false"/></param>
+      </when></conditional><param name="key" type="text"/>"""
+    report = review(tmp_path, "echo '${rg.get(str($key), '')}'", inputs=inputs)
+    assert {(f.rule, ref.param) for f in report.findings for ref in f.refs if f.rule == "shell-injection"} == {
+        ("shell-injection", "rg.ID"),
+        ("shell-injection", "rg.DS"),
+    }
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        # getVar does not see #set locals: the parameter is what it reads.
+        "#set $free = 'safe'\necho '${getVar('fr' + 'ee')}'",
+        "#set $free = 'safe'\necho '${getVar('free')}'",
+        # Nor does it leave out `$`.
+        "echo '${getVar('$' + 'free')}'",
+        # Strings changed after they were joined are not the strings joined.
+        "echo '${getVar('xfree'[1:])}'",
+        "echo '${getVar('%.4s' % 'freex')}'",
+        "echo '${getVar(''.join(['f', 'r', 'ee']))}'",
+        "echo '${getVar('x_free_y'.split('_', 1)[1])}'",
+        "#set $n = ''\n#for $s in ['fr', 'ee']\n#set $n = $n + $s\n#end for\necho '${getVar($n)}'",
+        "#for $n in ['fr']\n#set $n = $n + 'ee'\n#end for\necho '${getVar($n)}'",
+        "#set $d = {'a': 'x'}\necho '${getVar($d.get(str($text), 'free'))}'",
+    ],
+)
+def test_a_computed_name_is_checked_or_refused(tmp_path, command):
+    report = review(tmp_path, command)
+    refused = any(f.rule == "template-reflection" for f in report.findings)
+    checked = any(
+        f.rule == "shell-injection" and f.checkable and any(ref.param == "free" for ref in f.refs)
+        for f in report.findings
+    )
+    assert refused or checked
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        # Names of the template object and its #def methods reach Cheetah's and Python's objects.
+        "#def foo\n$free#slurp\n#end def\necho '${getVar('f' + 'oo')}'",
+        "echo '${getVar('search' + 'List')[-1]['free']}'",
+        "echo '${getVar('get' + 'Var', None, False)(str($text))}'",
+        "echo '${getVar('getFile' + 'Contents', None, False)('/etc/hosts')}'",
+        "echo '${getVar('$_' + '_app__.config.database_connection', 'none')}'",
+        "echo '${getVar('$__app__.config.database_connection', 'none')}'",
+    ],
+)
+def test_names_of_objects_looked_up_by_name_are_reflection(tmp_path, command):
+    assert any(f.rule == "template-reflection" for f in review(tmp_path, command).findings)
+
+
+def test_the_values_of_a_conditional_are_its_parameters(tmp_path):
+    inputs = """<conditional name="c"><param name="sel" type="select"><option value="a">a</option></param>
+      <when value="a"><param name="t" type="text"><sanitizer sanitize="false"/></param></when></conditional>"""
+    for command in (
+        "#for $v in getattr($c, 'values')()\necho '$v'\n#end for",
+        "#for $v in $c.values()\necho '$v'\n#end for",
+    ):
+        report = review(tmp_path, command, inputs=inputs)
+        assert any(f.rule == "shell-injection" and any(r.param == "c.t" for r in f.refs) for f in report.findings)
+
+
+def test_options_built_when_the_form_is_are_not_literals(tmp_path):
+    inputs = """<param name="which" type="select"><option value="label">label</option>
+      <options from_parameter="tool.app.config.x"/></param>"""
+    report = review(tmp_path, "echo '${getVar(str($which))}'", inputs=inputs)
+    assert any(f.rule == "template-reflection" for f in report.findings)

@@ -1,0 +1,21 @@
+<tool id="spec_section_lookup" name="Parameter in one of two sections" version="1.0" profile="24.0">
+    <description>looks up a parameter by a name joined from a #def's arguments</description>
+    <command><![CDATA[
+#def getVarCond($sec, $var)
+    #if $varExists($var)
+        #return $getVar($var)
+    #else if $varExists($sec + "." + $var)
+        #return $getVar($sec + "." + $var)
+    #end if
+#end def
+echo '$getVarCond("advanced", "label")' > '$out'
+    ]]></command>
+    <inputs>
+        <section name="advanced" title="Advanced">
+            <param name="label" type="text"><sanitizer sanitize="false"/></param>
+        </section>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

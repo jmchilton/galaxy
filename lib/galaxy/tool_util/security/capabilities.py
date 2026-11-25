@@ -46,6 +46,7 @@ from .template import (
     literal_rewrite_call,
     name_lookup,
     NAMESPACE_LOOKUPS,
+    plain_attribute,
 )
 
 SERVER = "runs in the Galaxy server process"
@@ -94,6 +95,18 @@ _REWRITE_CALLS = frozenset(
     " b85decode a85decode urlsafe_b64decode standard_b64decode decodebytes a2b_base64 a2b_hex a2b_qp".split()
 )
 _VFN = frozenset(("VFN",))
+
+
+def _literal_getattr(node: ast.Call) -> str | None:
+    """The attribute of `getattr(x, "name"[, default])` with a plain literal name."""
+    if not (isinstance(node.func, ast.Name) and node.func.id == "getattr") or node.keywords:
+        return None
+    if not 2 <= len(node.args) <= 3 or not isinstance(node.args[1], ast.Constant):
+        return None
+    name = node.args[1].value
+    return name if isinstance(name, str) and plain_attribute(name) else None
+
+
 # `getattr(x, "name")` has the shape of a NameMapper call: the name is its second argument.
 _GETATTR = frozenset(("getattr",))
 # Codecs whose decode() keeps the characters of the text that encode() was given.
@@ -117,6 +130,9 @@ class PythonAudit:
         # to it, which judges those of a value as the job carries it per job and flags the others.
         self.analysed = analysed
         self.literal_rewrites: dict[int, str] = {}
+        # getVar calls (by id) whose name is not a literal, with their line: left to the template
+        # analysis when it follows, which resolves names built from literal text and flags the others.
+        self.computed_lookups: dict[int, int | None] = {}
         # The names the template mentions: which attributes, metadata and account values it reads.
         self.names: set[str] = set()
         # Keys the template stores into dicts, and the first names of what it looks up in the namespace.
@@ -231,10 +247,15 @@ class PythonAudit:
                 continue
             if isinstance(node, ast.Call) and self.is_get_var(node.func):
                 name = node.args[0] if node.args else None
+                if self.analysed:
+                    # The analysis resolves the name, literal or computed, the way getVar looks it up.
+                    self.computed_lookups[id(node)] = line
                 if isinstance(name, ast.Constant) and isinstance(name.value, str):
-                    if not self.is_template_name(name.value.split(".")[0]):
-                        self.judge(name.value.split("."), line)
-                else:
+                    # getVar ignores `$` in the name.
+                    variable = name.value.replace("$", "")
+                    if not self.is_template_name(variable.split(".")[0]):
+                        self.judge(variable.split("."), line)
+                elif not self.analysed:
                     self.add(
                         "template-reflection",
                         MEDIUM,
@@ -242,6 +263,10 @@ class PythonAudit:
                         "getVar",
                         line,
                     )
+            if isinstance(node, ast.Call) and (attr := _literal_getattr(node)) is not None:
+                # getattr(x, "name"[, default]) reads x.name: judged as that, not as reflection.
+                seen.add(id(node.func))
+                self.judge((self.chain(node.args[0], seen) or ["$"]) + [attr], line)
             chain = self.chain(node, seen)
             if chain:
                 self.judge(chain, line)
