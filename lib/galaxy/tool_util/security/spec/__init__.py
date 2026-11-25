@@ -74,14 +74,16 @@ class UserContext(_Model):
 
 
 class ReviewConfig(_Model):
-    mode: Literal["log", "enforce"] = "enforce"
-    strict_when_unsure: bool = True
+    mode: Literal["log", "enforce_code", "enforce_data", "enforce_all"] = "enforce_code"
+    when_unsure: Literal["strict", "refuse", "log"] = "strict"
 
 
 class JobExpectation(_Model):
     rejected: bool
     # The codes of the refusal; a red job of a case defaults to the case's code.
     codes: Optional[List[RefusalCode]] = None
+    # The codes of the warnings of a job that runs, such as one the server only logs.
+    warns: List[RefusalCode] = []
     message_contains: List[str] = []
 
 
@@ -149,6 +151,11 @@ def expected_codes(case: SpecCase, job: JobCase) -> List[RefusalCode]:
         return sorted(job.expect.codes)
     assert case.code is not None, "a rejected job needs codes or a case code"
     return [case.code]
+
+
+def expected_warnings(case: SpecCase, job: JobCase) -> List[RefusalCode]:
+    """The codes of the warnings Galaxy logs for a job: those of its refusal, or those it only logs."""
+    return expected_codes(case, job) if job.expect.rejected else sorted(job.expect.warns)
 
 
 def tool_path(tool: str) -> str:
