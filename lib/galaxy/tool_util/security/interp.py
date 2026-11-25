@@ -1094,6 +1094,19 @@ class TemplateAnalysis:
             verdicts.append(
                 Verdict("command-position", charsets.HIGH, chars, "chooses the program that is run", charsets.NONE)
             )
+        if context.assign == "name":
+            why = "names the variable that is set, such as BASH_ENV, PATH or LD_PRELOAD"
+            verdicts.append(Verdict("variable-name", charsets.HIGH, chars, why, charsets.NONE))
+        elif context.assign and not context.quote and (split := chars & charsets.WHITESPACE):
+            if context.assign in ("env", "split"):
+                why = "can split into more words, which set other variables or run a command"
+                verdicts.append(Verdict("argument-injection", charsets.HIGH, split, why))
+            else:
+                # bash and dash from 0.5.11 take a declaration's operand whole; older dash splits it.
+                why = "can split into more operands where the shell splits them, which set other variables"
+                verdicts.append(
+                    Verdict("argument-injection", charsets.MEDIUM, split, why, data_requires=frozenset("="))
+                )
         quoted_for_here = text.quoted == "shlex" and not context.quote and not context.lang
         if not quoted_for_here:
             if text.quoted == "shlex":

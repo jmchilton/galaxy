@@ -572,6 +572,70 @@ config:
   mode: enforce_all
 ```
 
+#### env_assignment
+
+`env` takes every word before the command as an assignment or the command: an unquoted value that splits runs a command of its own.
+
+Tool `env_assignment.xml`:
+
+```
+env LABEL=$label sort '$input' > '$out'
+```
+
+Refused
+
+```
+inputs:
+  label: x touch harm-marker
+datasets:
+  input:
+    name: reads.txt
+```
+
+Runs
+
+```
+inputs:
+  label: x
+datasets:
+  input:
+    name: reads.txt
+```
+
+#### export_value
+
+bash and dash from 0.5.11 take an operand of `export` whole, older dash splits it into more assignments. With `enforce_data`, an unquoted value of one that holds a space and a `=` is refused.
+
+Tool `export_value.xml`:
+
+```
+export LABEL=$label && sort '$input' > '$out'
+```
+
+Refused
+
+```
+inputs:
+  label: x OTHER=1
+datasets:
+  input:
+    name: reads.txt
+config:
+  mode: enforce_data
+```
+
+Runs
+
+```
+inputs:
+  label: x y
+datasets:
+  input:
+    name: reads.txt
+config:
+  mode: enforce_data
+```
+
 ### `path-like-name`
 
 An element identifier or a dataset name that a template writes contains `/` or starts with `-` or `~`. Tools use names as file names and arguments in ways the review does not follow (a program's own options, paths in R or Python), where such a name is a path or an option. Refused from `enforce_data` on.
@@ -982,6 +1046,38 @@ config:
 ### `uncheckable-letters-are-code`
 
 Letters alone can be code where the tool writes a value: the program to run, text piped to a shell that runs it (not one that runs a script file), or unquoted Perl or Ruby code.
+
+#### export_name
+
+A value that names the variable `export` sets can set BASH_ENV, PATH or LD_PRELOAD with letters alone.
+
+Tool `export_name.xml`:
+
+```
+export $name=1 && sort '$input' > '$out'
+```
+
+Refused
+
+```
+inputs:
+  name: LABEL
+datasets:
+  input:
+    name: reads.txt
+```
+
+Runs
+
+```
+inputs:
+  name: LABEL
+datasets:
+  input:
+    name: reads.txt
+config:
+  when_unsure: log
+```
 
 #### pipe_to_shell
 

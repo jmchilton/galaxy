@@ -43,6 +43,8 @@ WRAPPERS = frozenset(
     ("env", "nohup", "nice", "ionice", "exec", "command", "xargs", "parallel", "sudo", "stdbuf", "timeout", "setsid")
 )
 SHELLS = frozenset(("sh", "bash", "dash", "zsh", "ksh"))
+# Builtins whose operands are variable assignments: the name an operand starts with is the variable set.
+DECLARATIONS = frozenset(("export", "declare", "typeset", "local", "readonly"))
 _AWK = frozenset(("awk", "gawk", "mawk", "nawk"))
 _SED = frozenset(("sed", "gsed"))
 # Commands that take their program as an argument, so that a file they are given is data.
@@ -107,6 +109,7 @@ class Frame(NamedTuple):
     sandbox: bool = False  # sed --sandbox: the program can neither run commands nor open files
     cmd: str | None = None  # "?" when the command word contains a placeholder
     wrapper: bool = False
+    wrapped: bool = False  # the command came after a wrapper: `command export` splits its operands
     piped: bool = False
     expect: str = ""  # role forced on the next word: redir, optarg, code:<lang>
     script: str = ""  # the command still expects a program argument in this language
@@ -149,6 +152,10 @@ class Context:
     option_position: bool = False
     sed: Optional[SedState] = None  # where in a sed program the value lands
     sandbox: bool = False  # the sed program cannot run commands or open files
+    # In a variable assignment: "name" of the variable a declaration sets, "value" of a declaration's
+    # operand (the shell may split it), "split" one it always splits, "env" an assignment of a wrapper
+    # (`env A=$x cmd`), where more words can be assignments or the command.
+    assign: str = ""
 
     def describe(self) -> str:
         where = {
@@ -286,7 +293,7 @@ class _Lexer:
         if name in WRAPPERS:
             self.set(wrapper=True)
             return
-        self.set(cmd=name, wrapper=False, has_args=False, sandbox=False, stdin=stdin)
+        self.set(cmd=name, wrapper=False, wrapped=f.wrapper, has_args=False, sandbox=False, stdin=stdin)
         if name == "eval":
             self.set(code_all="sh")
         elif name in _AWK:
@@ -492,6 +499,7 @@ class _Lexer:
         self.amp = False
         f = self.top
         lead = f.word is None or (f.word == "" and not f.dynamic)
+        before = f.word or ""
         self.start_word("x")
         f = self.top
         self.set(dynamic=True, tool_path=tool_path and (lead or f.tool_path), lead=f.lead or lead)
@@ -504,9 +512,17 @@ class _Lexer:
                 lang, inner, sed_state, sandbox = frame.role[5:], frame.inner, frame.sed, frame.sandbox
                 break
         role = f.role
+        assign = ""
         if role == "cmd" and _ASSIGNMENT.match(f.word or ""):
             # The value of a `NAME=value` prefix, not the command itself.
             role = "arg"
+            if f.wrapper:
+                assign = "env"
+        elif role == "arg" and f.cmd in DECLARATIONS:
+            if "=" not in before:
+                assign = "name"
+            else:
+                assign = "split" if f.wrapped else "value"
         first_arg = role == "arg" and not f.has_args and not (f.word or "").startswith("-")
         option_position = role == "arg" and f.lead and not f.after_option and bool(f.cmd) and f.cmd != "?"
         return Context(
@@ -522,6 +538,7 @@ class _Lexer:
             option_position,
             sed_state,
             sandbox,
+            assign,
         )
 
 
