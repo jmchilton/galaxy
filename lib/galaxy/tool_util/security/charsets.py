@@ -59,6 +59,57 @@ def worst(a: str, b: str) -> str:
     return a if SEVERITIES.index(a) >= SEVERITIES.index(b) else b
 
 
+# What a value that leaves its place can do, which decides the level of tool_security_review that
+# refuses it: become code, stop being the data it is meant to be, or split into more words.
+CODE = "code"
+DATA = "data"
+ALL = "all"
+LEVELS = (CODE, DATA, ALL)
+_SEVERITY_LEVELS = {CRITICAL: CODE, HIGH: CODE, MEDIUM: DATA, LOW: ALL}
+
+
+def level_of(severity: str) -> str | None:
+    """The level of a finding of this severity, unless its verdict says otherwise."""
+    return _SEVERITY_LEVELS.get(severity)
+
+
+def enforced(level: str | None, at: str) -> bool:
+    """Whether a finding of ``level`` is refused at the enforcement level ``at``."""
+    return level is not None and LEVELS.index(level) <= LEVELS.index(at)
+
+
+def stricter(a: str | None, b: str | None) -> str | None:
+    if a is None or b is None:
+        return a or b
+    return a if LEVELS.index(a) <= LEVELS.index(b) else b
+
+
+# Marks the job check adds to the characters of a value for what no single character tells: a word
+# of it can be read as an option or expands to a home directory. A quote before the dash is removed
+# by the shell (`'$x'` with `a' '-rf`).
+LEADING_DASH = "a leading -"
+DASH_WORD = "a word starting with -"
+TILDE_WORD = "a word starting with ~"
+_LEADING_DASH = re.compile(r"""^['"]*-""")
+_DASH_WORD = re.compile(r"""(?:^|\s)['"]*-""")
+_TILDE_WORD = re.compile(r"(?:^|\s)~")
+# Where a value splits into words or closes its quotes, what it must also hold to stop being data:
+# a word that is an option or a home directory, a path, a glob or a brace expansion.
+DATA_HARM: Chars = frozenset((DASH_WORD, TILDE_WORD, "/", "*", "?", "[", "{"))
+
+
+def marks(value: str) -> frozenset[str]:
+    """The marks of a value (see LEADING_DASH)."""
+    found = set()
+    if _LEADING_DASH.search(value):
+        found.add(LEADING_DASH)
+    if _DASH_WORD.search(value):
+        found.add(DASH_WORD)
+    if _TILDE_WORD.search(value):
+        found.add(TILDE_WORD)
+    return frozenset(found)
+
+
 def probe(text: str) -> Chars:
     return PROBE.intersection(text)
 
@@ -91,6 +142,11 @@ class Verdict(NamedTuple):
     # When not empty, the value must also contain one of these: closing single quotes starts a
     # command only with a command character after the quote.
     requires: Chars = frozenset()
+    # The level that refuses the finding, when it is not the one of its severity (level_of).
+    level: Optional[str] = None
+    # At the data level, the value must also contain one of these (DATA_HARM): splitting into
+    # plain words is refused only at the level of all.
+    data_requires: Chars = frozenset()
 
 
 # Characters that can leave a value's place somewhere: in the shell, in a string of a program, or
@@ -134,7 +190,13 @@ def unquoted(chars: Chars, word_first: Chars | None = None, script: bool = False
         if hit <= WHITESPACE and not dash and "/" not in chars:
             # A list of plain words: none of them can be an option or name a file elsewhere.
             return Verdict("argument-injection", LOW, hit, "can split the word into extra plain words")
-        return Verdict("argument-injection", MEDIUM, hit, "can split the word into extra arguments or globs")
+        return Verdict(
+            "argument-injection",
+            MEDIUM,
+            hit,
+            "can split the word into extra arguments or globs",
+            data_requires=DATA_HARM,
+        )
     return None
 
 
@@ -151,7 +213,7 @@ def single_quoted(chars: Chars, script: bool = False) -> Verdict | None:
             frozenset("'"),
             after.chars,
         )
-    return Verdict("argument-injection", MEDIUM, frozenset("'"), "can close the single quotes")
+    return Verdict("argument-injection", MEDIUM, frozenset("'"), "can close the single quotes", data_requires=DATA_HARM)
 
 
 def double_quoted(chars: Chars, script: bool = False) -> Verdict | None:
@@ -184,7 +246,9 @@ def double_quoted(chars: Chars, script: bool = False) -> Verdict | None:
                 frozenset('"'),
                 after.chars,
             )
-        return Verdict("argument-injection", MEDIUM, frozenset('"'), "can close the double quotes")
+        return Verdict(
+            "argument-injection", MEDIUM, frozenset('"'), "can close the double quotes", data_requires=DATA_HARM
+        )
     if "$" in chars:
         return Verdict(
             "argument-injection", MEDIUM, frozenset("$"), "can expand shell variables inside the double quotes"

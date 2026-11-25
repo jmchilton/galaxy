@@ -276,6 +276,96 @@ configfile_python:
       harm: true
       expect: {rejected: false}
 
+path_traversal:
+  doc: >-
+    A file name the user gives is written as a path `cp` writes to. With `enforce_data`, a slash in it is refused,
+    since it can name a file outside the job's directory.
+  tool: copy_to_named_file.xml
+  code: path-traversal
+  review:
+    findings:
+      - {rule: path-traversal, severity: medium, accessor: text, param: name, checkable: true}
+  red:
+    - config: {mode: enforce_data}
+      datasets: {input: {name: reads.txt}}
+      inputs: {name: "../harm-marker"}
+      harm: true
+      expect:
+        rejected: true
+        message_contains: ["the value of input 'name' contains the characters [/]"]
+  green:
+    - config: {mode: enforce_data}
+      datasets: {input: {name: reads.txt}}
+      inputs: {name: reads.txt}
+      harm: true
+      expect: {rejected: false}
+    - doc: With `enforce_code`, the default, a path is not refused.
+      datasets: {input: {name: reads.txt}}
+      inputs: {name: "../reads.txt"}
+      expect: {rejected: false}
+
+option_injection:
+  doc: >-
+    A quoted value that starts an argument can begin with a dash, and `sort` reads it as an option. With
+    `enforce_data`, a leading dash is refused.
+  tool: sort_quoted_operand.xml
+  code: option-injection
+  review:
+    findings:
+      - {rule: option-injection, severity: low, accessor: text, param: file, checkable: true}
+  red:
+    - config: {mode: enforce_data}
+      datasets: {input: {name: reads.txt}}
+      inputs: {file: "-oharm-marker"}
+      harm: true
+      expect:
+        rejected: true
+        message_contains: ["the value of input 'file' contains the characters [a leading -]"]
+  green:
+    - doc: A dash inside the value is not an option.
+      config: {mode: enforce_data}
+      datasets: {input: {name: reads.txt}}
+      inputs: {file: "reads-1.txt"}
+      expect: {rejected: false}
+    - doc: With `enforce_code`, the default, a leading dash is not refused.
+      datasets: {input: {name: reads.txt}}
+      inputs: {file: "-r"}
+      expect: {rejected: false}
+
+argument_injection:
+  doc: >-
+    An unquoted value splits into words. With `enforce_data`, a job is refused when a word can be an option, a home
+    directory, a path or a glob; with `enforce_all`, also when the words are plain.
+  tool: sort_unquoted_operands.xml
+  code: argument-injection
+  review:
+    findings:
+      - {rule: argument-injection, severity: medium, accessor: text, param: files, checkable: true}
+  red:
+    - config: {mode: enforce_data}
+      datasets: {input: {name: reads.txt}}
+      inputs: {files: "reads.txt -o harm-marker"}
+      harm: true
+      expect:
+        rejected: true
+        message_contains: ["the value of input 'files' contains the characters [space a word starting with -]"]
+    - doc: Plain words are refused only with `enforce_all`.
+      config: {mode: enforce_all}
+      datasets: {input: {name: reads.txt}}
+      inputs: {files: "reads.txt reads.txt"}
+      expect: {rejected: true}
+  green:
+    - config: {mode: enforce_data}
+      datasets: {input: {name: reads.txt}}
+      inputs: {files: "reads.txt reads.txt"}
+      harm: true
+      expect: {rejected: false}
+    - config: {mode: enforce_all}
+      datasets: {input: {name: reads.txt}}
+      inputs: {files: "reads.txt"}
+      harm: true
+      expect: {rejected: false}
+
 not_analysed_strict:
   doc: >-
     Where the review does not follow parts of a template, it cannot tell which characters do harm,

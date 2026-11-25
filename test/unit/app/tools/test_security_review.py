@@ -958,12 +958,15 @@ def test_strict_when_unsure_in_log_mode_warns_and_lets_the_job_run(app, tmp_path
     tool = make_tool(app, tmp_path, unsure(), "unsure.xml")
     reviewer(tmp_path, LOG).check_job(tool, evaluator(app, tool, ["a"], word="a|b"))
     warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    prefix = (
+        "Tool security review (not-plain-unchecked-place): job 7 of tool echo_ids version 1.0 cannot be checked,"
+        " this tool writes values in places that no check of their characters can judge (command), and"
+    )
+    # Log mode warns of what enforce_all refuses, whose plain values have no spaces.
     assert warnings == [
-        (
-            "Tool security review (not-plain-unchecked-place): job 7 of tool echo_ids version 1.0 cannot be checked,"
-            " this tool writes values in places that no check of their characters can judge (command), and the value"
-            " of input 'word' contains [|]"
-        )
+        f"{prefix} an element identifier or the name of input 'input' contains [space]",
+        f"{prefix} the value of input 'word' contains [|]",
+        f"{prefix} the name of a dataset of input 'input' contains [space]",
     ]
 
 
