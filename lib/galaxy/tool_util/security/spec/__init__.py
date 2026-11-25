@@ -67,6 +67,10 @@ class CollectionContext(_Model):
     elements: List[ElementContext]
 
 
+class HistoryContext(_Model):
+    name: str = "spec"
+
+
 class UserContext(_Model):
     email: str = "user@example.org"
     username: str = "user"
@@ -94,6 +98,8 @@ class JobCase(_Model):
     datasets: Dict[str, DatasetContext] = {}
     collections: Dict[str, CollectionContext] = {}
     user: UserContext = UserContext()
+    # The history the job runs in, which the user owns.
+    history: HistoryContext = HistoryContext()
     config: ReviewConfig = ReviewConfig()
     # Make a step of the review fail, for the refusals only a bug in it can cause.
     fault: Optional[Literal["review", "check", "strict_check"]] = None

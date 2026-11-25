@@ -53,8 +53,10 @@ def _patterns(cases: Dict[str, SpecCase]) -> List[str]:
         "## Access patterns",
         "",
         "The review also reports reads it cannot follow to a value of the job. A read by name (reflection) can",
-        "write any value without a finding about it, so it refuses every job of the tool. For the others, a job",
-        "is refused only when the review also sees the value written where it can do harm.",
+        "write any value without a finding about it, so it refuses every job of the tool. What a template reads",
+        "from the dataset model or the user object is recorded while Galaxy builds the command, where the job is",
+        "prepared or, with `tool_evaluation_strategy: remote`, where it runs, and every string must be plain. For",
+        "the others, a job is refused only when the review also sees the value written where it can do harm.",
         "A case marked as a known bypass is a tool whose jobs run whatever their values.",
         "",
     ]

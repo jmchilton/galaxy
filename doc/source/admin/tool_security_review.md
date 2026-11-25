@@ -46,7 +46,8 @@ The examples below are the cases of the review's declarative spec,
 and the jobs it refuses and runs. A job lists everything a template can read: parameter values (`inputs`),
 datasets (`name`, `content`, `metadata`, `tags`), collections (element identifiers), the user's preferences,
 and the review's settings (`config`). Galaxy's unit tests run every job through the evaluator that prepares
-real jobs, in the mode of the job's `config` and in `log` mode. For the refused jobs that show `harm-marker`, they also build the
+real jobs, in the mode of the job's `config` and in `log` mode, both where the job is prepared and, as with
+`tool_evaluation_strategy: remote`, split between where it is prepared and where it runs. For the refused jobs that show `harm-marker`, they also build the
 command with the review off and run it, to show that the value does harm without the review. They also
 sweep every job: with the default settings, each value a job sets, each of a few preferences, and the user's
 email and name in turn hold a value that starts a command, and the job must be refused or run without harm.
@@ -799,6 +800,95 @@ inputs:
 fault: check
 ```
 
+### `not-plain-untraced-value`
+
+The templates write values of the dataset model (`.unsanitized`) or of the user object that the review cannot trace, such as the name of a dataset's history. Galaxy records every string the templates read from them while it builds the command, and one is not plain.
+
+#### raw_dataset_history
+
+Beyond the dataset's own strings and metadata, the model reaches its history, its tags and the job that made it, which the review cannot trace. Galaxy records every string the templates read from the model while it builds the command, and each must be plain.
+
+Tool `raw_dataset_history.xml`:
+
+```
+echo '${input.unsanitized.history.name}' > '$out'
+```
+
+Refused
+
+```
+datasets:
+  input:
+    name: reads
+history:
+  name: a';touch harm-marker;'
+```
+
+Runs
+
+```
+datasets:
+  input:
+    name: reads
+history:
+  name: RNA-seq run 2
+```
+
+#### dataset_object_unsanitized
+
+`$input.dataset` is the dataset model behind the sanitizer, and its `.unsanitized` the model as users set it, which the review takes for a sanitized value. Galaxy records what the templates read from it.
+
+Tool `dataset_object_unsanitized.xml`:
+
+```
+echo '${input.dataset.unsanitized.name}' > '$out'
+```
+
+Refused
+
+```
+datasets:
+  input:
+    name: a';touch harm-marker;'
+```
+
+Runs
+
+```
+datasets:
+  input:
+    name: reads.fq
+```
+
+#### user_object_unsanitized
+
+With the sanitizer off, the user object is read as it is stored. A template that reads it other than by the name of one preference, here every preference in a loop, writes values the review cannot trace. Galaxy records them while it builds the command, and each must be plain.
+
+Tool `user_preferences_unsanitized_loop.xml`:
+
+```
+#for $name in $__user__.extra_preferences
+echo '${__user__.extra_preferences[$name]}' >> '$out' &&
+#end for
+true
+```
+
+Refused
+
+```
+user:
+  preferences:
+    spec|label: a';touch harm-marker;'
+```
+
+Runs
+
+```
+user:
+  preferences:
+    spec|label: Bob
+```
+
 ### `uncheckable-review-failed`
 
 The review of the tool failed, so nothing is known about what its templates do.
@@ -899,34 +989,6 @@ config:
 
 The templates run Python that can read text the job does not carry (imports, `open()`, `$__app__`, `getattr`, what the dataset model behind `.unsanitized` reaches beyond its own strings and metadata).
 
-#### raw_dataset_history
-
-Beyond the dataset's own strings and metadata, the model reaches its history, its tags and the job that made it, which no check of the job's values sees: every job is refused.
-
-Tool `raw_dataset_history.xml`:
-
-```
-echo '${input.unsanitized.history.name}' > '$out'
-```
-
-Refused
-
-```
-datasets:
-  input:
-    name: reads
-```
-
-Runs
-
-```
-datasets:
-  input:
-    name: reads
-config:
-  when_unsure: log
-```
-
 #### template_code
 
 A template that imports code can read text the job does not carry, so no value counts as plain.
@@ -951,37 +1013,6 @@ Runs
 ```
 inputs:
   word: hello
-config:
-  when_unsure: log
-```
-
-#### user_object_unsanitized
-
-With the sanitizer off, the user object is read as it is stored. A template that reads it other than by the name of one preference, here every preference in a loop, writes values the job check cannot trace.
-
-Tool `user_preferences_unsanitized_loop.xml`:
-
-```
-#for $name in $__user__.extra_preferences
-echo '${__user__.extra_preferences[$name]}' >> '$out' &&
-#end for
-true
-```
-
-Refused
-
-```
-user:
-  preferences:
-    spec|label: a';touch harm-marker;'
-```
-
-Runs
-
-```
-user:
-  preferences:
-    spec|label: Bob
 config:
   when_unsure: log
 ```
@@ -1124,31 +1155,30 @@ The templates write a value the review cannot trace to one input or preference (
 
 #### untraced_value
 
-A preference read in a loop, by a name the template computes, cannot be traced to one preference, so no check sees its value. Galaxy sanitizes it here, but the job is refused whatever its values.
+A conditional whose cases Galaxy builds when the job runs can hold any value of any name, which no check sees: the job is refused whatever its values.
 
-Tool `user_preferences_loop.xml`:
+Tool `runtime_conditional.xml`:
 
 ```
-#for $name in $__user__.extra_preferences
-echo '${__user__.extra_preferences[$name]}' >> '$out' &&
-#end for
-true
+echo '${meta.kind}' > '$out'
 ```
 
 Refused
 
 ```
-user:
-  preferences:
-    spec|label: hello
+inputs:
+  kind: txt
+  meta:
+    kind: txt
 ```
 
 Runs
 
 ```
-user:
-  preferences:
-    spec|label: a';touch harm-marker;'
+inputs:
+  kind: txt
+  meta:
+    kind: txt
 config:
   when_unsure: log
 ```
@@ -1309,11 +1339,34 @@ user:
     spec|label: a';touch harm-marker;'
 ```
 
+#### user_object_sanitized_loop
+
+A preference read in a loop, by a name the template computes, cannot be traced to one preference, but Galaxy sanitizes the user object here: the job runs whatever the preference holds.
+
+Tool `user_preferences_loop.xml`:
+
+```
+#for $name in $__user__.extra_preferences
+echo '${__user__.extra_preferences[$name]}' >> '$out' &&
+#end for
+true
+```
+
+Runs
+
+```
+user:
+  preferences:
+    spec|label: a';touch harm-marker;'
+```
+
 ## Access patterns
 
 The review also reports reads it cannot follow to a value of the job. A read by name (reflection) can
-write any value without a finding about it, so it refuses every job of the tool. For the others, a job
-is refused only when the review also sees the value written where it can do harm.
+write any value without a finding about it, so it refuses every job of the tool. What a template reads
+from the dataset model or the user object is recorded while Galaxy builds the command, where the job is
+prepared or, with `tool_evaluation_strategy: remote`, where it runs, and every string must be plain. For
+the others, a job is refused only when the review also sees the value written where it can do harm.
 A case marked as a known bypass is a tool whose jobs run whatever their values.
 
 ### Reads the job check cannot see
@@ -1328,7 +1381,7 @@ Refused cases with it: `reflection_bypass`.
 
 Reads Galaxy's database objects (`.unsanitized`, `.dataset`, `.creating_job`, ...): names, metadata and parameters as users set them, without the sanitizer.
 
-Refused cases with it: `raw_dataset_model`, `raw_dataset_history`.
+Refused cases with it: `raw_dataset_model`, `raw_dataset_history`, `dataset_object_unsanitized`.
 
 #### `app-access`
 

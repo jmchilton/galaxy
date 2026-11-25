@@ -19,7 +19,9 @@ when the review failed, when the review found template code that can turn a plai
 unsafe one or read text the job does not carry, or where letters alone can be code.
 """
 
+import json
 import logging
+import os
 import threading
 import time
 from contextlib import contextmanager
@@ -62,7 +64,22 @@ from galaxy.tool_util.security.charsets import (
     TILDE_WORD,
     WHITESPACE,
 )
+from galaxy.security.render_recording import (
+    MODEL,
+    Read,
+    Recording,
+    UNSANITIZED,
+    USER,
+)
 from galaxy.tool_util.security.codes import RefusalCode
+from galaxy.tool_util.security.nodes import (
+    METADATA_CLEAN,
+    RAW_DATASET_CLEAN,
+)
+from galaxy.tool_util.security.patterns import (
+    PatternCode,
+    pattern_of,
+)
 from galaxy.tool_util.security.report import (
     CODE_CAPABILITIES,
     DATASET_ATTRIBUTE,
@@ -75,6 +92,7 @@ from galaxy.tool_util.security.report import (
     RAW,
     RAW_DATASET_ATTRIBUTE,
     RAW_METADATA,
+    RECORDED,
     REFLECTION_RULE,
     RUNS_TEXT_RULES,
     SANITIZE_OFF,
@@ -130,6 +148,30 @@ def _keeping_consumes(evaluator: "ToolEvaluator") -> Iterator[None]:
         yield
     finally:
         evaluator.consumes_names, evaluator.consumes_identifiers = consumes
+
+
+# Where a job that evaluates its templates where it runs (tool_evaluation_strategy: remote) leaves the
+# refusal of the check of what they read, for the job handler to fail the job with.
+REMOTE_REFUSAL = os.path.join("metadata", "outputs_populated", "tool_security_review_refusal.json")
+
+
+def write_remote_refusal(working_directory: str, rejected: "ToolInputRejected", warnings: list[str]) -> None:
+    path = os.path.join(working_directory, REMOTE_REFUSAL)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as fh:
+        json.dump({"message": str(rejected), "warnings": warnings}, fh)
+
+
+def read_remote_refusal(working_directory: str) -> Optional[str]:
+    """The message of a refusal where the job ran, after logging its warnings here as where the job was prepared."""
+    path = os.path.join(working_directory, REMOTE_REFUSAL)
+    if not os.path.exists(path):
+        return None
+    with open(path) as fh:
+        refusal = json.load(fh)
+    for warning in refusal.get("warnings", []):
+        log.warning("%s", warning)
+    return str(refusal["message"])
 
 
 class ToolInputRejected(Exception):
@@ -358,7 +400,11 @@ class ToolSecurityReviewer:
         if violations and self.enforcing:
             # A rule without a code fails the job unexpectedly rather than letting it run.
             raise ToolInputRejected(rejection_message(tool, violations), (RefusalCode(v.rule) for v in violations))
-        unchecked = sorted({f.location for f in review.unchecked_at(self.level)} | set(review.unchecked_locations))
+        records = self._records(evaluator)
+        unchecked = sorted(
+            {f.location for f in review.unchecked_at(self.level) if not (records and _recorded_finding(f))}
+            | set(review.unchecked_locations)
+        )
         # A template that reads objects by name can write any value without a finding about it.
         reflection = sorted({f.location for f in review.report.findings if f.rule == REFLECTION_RULE})
         unchecked = sorted(set(unchecked) | set(reflection))
@@ -372,6 +418,52 @@ class ToolSecurityReviewer:
                 RefusalCode.NOT_PLAIN_UNCHECKED_PLACE,
                 unchecked,
             )
+
+    def _records(self, evaluator: "ToolEvaluator") -> bool:
+        """Whether the evaluator records what the templates read from raw objects, and Galaxy checks it."""
+        return bool(getattr(evaluator, "records_untraced_values", False)) and self.when_unsure != REFUSE
+
+    def check_rendered(self, tool: "Tool", evaluator: "ToolEvaluator", recorded: Recording) -> None:
+        """Check the strings the templates read from the dataset model and the user object as they rendered.
+
+        Like the strict check: each must be plain at the enforcement level, except what the review traced
+        (a dataset's own name, metadata, a preference read by its name), which the job check judged before.
+        With when_unsure refuse, a job is refused when it read any of them.
+        """
+        if not self.enabled:
+            return
+        review = self.review(tool)
+        if review is None or review.report is None or not recorded.reads:
+            return
+        job_id = evaluator.job.id
+        keys = set(_preferences(evaluator.param_dict))
+        untraced = [read for read in recorded.reads if not _traced_read(read, review.report, keys)]
+        if not untraced:
+            return
+        harmful: dict[str, set[str]] = {}
+        for read in untraced:
+            harm = strict_harm(read.value, self.level) if self.when_unsure != REFUSE else frozenset()
+            if harm or self.when_unsure == REFUSE:
+                harmful.setdefault(_describe_read(read), set()).update(harm)
+        if not harmful:
+            log.debug("Job %s of tool %s: every value read past the sanitizer is plain", job_id, tool.id)
+            return
+        code = (
+            RefusalCode.UNCHECKABLE_WHEN_UNSURE if self.when_unsure == REFUSE else RefusalCode.NOT_PLAIN_UNTRACED_VALUE
+        )
+        for what, chars in harmful.items():
+            log.warning(
+                "Tool security review (%s): job %s of tool %s version %s writes values it cannot trace, and %s"
+                " contains [%s]",
+                code.value,
+                job_id,
+                tool.id,
+                tool.version,
+                what,
+                show(frozenset(chars)),
+            )
+        if self.enforcing and self.when_unsure != LOG:
+            raise ToolInputRejected(recorded_message(tool, harmful, self.level), [code])
 
     def _cannot_check(
         self,
@@ -404,7 +496,7 @@ class ToolSecurityReviewer:
                     [RefusalCode.UNCHECKABLE_WHEN_UNSURE],
                 )
             return
-        if no_plain := _no_plain_value(report):
+        if no_plain := _no_plain_value(report, self._records(evaluator)):
             codes = sorted({code.value for code, _ in no_plain})
             why = [text for _, text in no_plain]
             log.warning(
@@ -745,8 +837,23 @@ def _describe(ref: SourceRef) -> str:
     return f"{_DESCRIPTIONS.get(ref.accessor, 'the value of')} input '{ref.param}'"
 
 
-def _no_plain_value(report: Optional[Report]) -> list[tuple[RefusalCode, str]]:
-    """Why no value counts as plain for a tool: the strict check refuses its jobs outright."""
+def _recorded_finding(finding: Finding) -> bool:
+    """A finding of values of the dataset model or the user object only, whose strings Galaxy records as the
+    templates render and checks after (ToolSecurityReviewer.check_rendered)."""
+    return (
+        bool(finding.breakout or finding.closes)
+        and bool(finding.refs)
+        and all(ref.accessor == OPAQUE and ref.key in RECORDED for ref in finding.refs)
+    )
+
+
+# Access patterns whose values check_rendered checks when the evaluator records them.
+_RECORDED_PATTERNS = frozenset((PatternCode.MODEL_ACCESS, PatternCode.USER_OBJECT))
+
+
+def _no_plain_value(report: Optional[Report], recorded: bool = False) -> list[tuple[RefusalCode, str]]:
+    """Why no value counts as plain for a tool: the strict check refuses its jobs outright. ``recorded``: the
+    strings the templates read from the dataset model and the user object are checked as they render."""
     if report is None:
         return [(RefusalCode.UNCHECKABLE_REVIEW_FAILED, "nothing is known about what its templates do")]
     why = []
@@ -758,7 +865,10 @@ def _no_plain_value(report: Optional[Report]) -> list[tuple[RefusalCode, str]]:
         {
             f.expr
             for f in report.findings
-            if f.rule in CODE_CAPABILITIES and f.expr and not (sanitized and f.expr.startswith("__user__"))
+            if f.rule in CODE_CAPABILITIES
+            and f.expr
+            and not (sanitized and f.expr.startswith("__user__"))
+            and not (recorded and pattern_of(f, sanitized) in _RECORDED_PATTERNS)
         }
     )
     if capabilities:
@@ -785,7 +895,14 @@ def _no_plain_value(report: Optional[Report]) -> list[tuple[RefusalCode, str]]:
         )
     # The strict check reads the sources of a template, and an opaque value of no input has none.
     if untraced := sorted(
-        {f.location for f in serious if any(ref.accessor == OPAQUE and ref.param is None for ref in f.refs)}
+        {
+            f.location
+            for f in serious
+            if any(
+                ref.accessor == OPAQUE and ref.param is None and not (recorded and ref.key in RECORDED)
+                for ref in f.refs
+            )
+        }
     ):
         why.append(
             (
@@ -856,6 +973,54 @@ def _preferences(param_dict: dict[str, Any]) -> dict[str, Any]:
     """The preferences of the job's user, from the wrapped user object Galaxy puts in the namespace."""
     user = param_dict.get("__user__")
     return getattr(getattr(user, "obj", user), "extra_preferences", None) or {}
+
+
+_ORIGINS = {
+    MODEL: "of the dataset model of an input",
+    UNSANITIZED: "of a value read past its sanitizer",
+    USER: "of your user account",
+}
+
+
+def _describe_read(read: Read) -> str:
+    path = "".join(step if step.startswith(("[", "(")) else f".{step}" for step in read.path).lstrip(".")
+    return f"'{path}' {_ORIGINS.get(read.origin, 'read past the sanitizer')}"
+
+
+def _traced_read(read: Read, report: Report, preference_keys: set[str]) -> bool:
+    """A string the job check judged before the templates rendered, or that Galaxy sets itself."""
+    path = read.path
+    head = path[0] if path else ""
+    if head in RAW_DATASET_CLEAN:
+        return True
+    traced = {(ref.accessor, ref.key) for refs in report.reads.values() for ref in refs}
+    if read.origin == MODEL:
+        if len(path) == 1 and (RAW_DATASET_ATTRIBUTE, head) in traced:
+            return True
+        if head == "metadata" and len(path) > 1:
+            key = path[1]
+            return key in METADATA_CLEAN or key.endswith(("_index", "Col")) or (RAW_METADATA, key) in traced
+    if read.origin == USER:
+        if path in (("email",), ("username",)):
+            key = "__user_email__" if head == "email" else "__user_name__"
+            return (SPECIAL, key) in traced
+        if head == "extra_preferences":
+            # The names of the preferences are the server's.
+            if len(path) > 1 and path[1] == "[]" and read.value in preference_keys:
+                return True
+            name = path[1][1:-1] if len(path) == 2 and path[1].startswith("[") else None
+            return name is not None and name in preference_keys and (USER_PREFERENCE, name) in traced
+    return False
+
+
+def recorded_message(tool: "Tool", harmful: dict[str, set[str]], level: str = CODE) -> str:
+    parts = [f"{what} contains [{show(frozenset(chars))}]" if chars else what for what, chars in harmful.items()]
+    return (
+        f"This job was not run: {', and '.join(parts)}. Use {_PLAIN[level]}, or contact the administrators of"
+        f" this server. This Galaxy server allows only plain names and values for tool '{tool.name}' ({tool.id}"
+        f" version {tool.version}), because this tool writes values it cannot trace, which Galaxy checks as they"
+        " are read."
+    )
 
 
 def unchecked_message(tool: "Tool", reason: str, why: list[str]) -> str:

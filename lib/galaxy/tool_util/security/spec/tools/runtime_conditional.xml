@@ -1,0 +1,13 @@
+<tool id="spec_runtime_conditional" name="A conditional built at run time" version="1.0" profile="24.0">
+    <description>writes a value of a conditional whose cases Galaxy builds when the job runs</description>
+    <command><![CDATA[echo '${meta.kind}' > '$out']]></command>
+    <inputs>
+        <param name="kind" type="select">
+            <option value="txt">txt</option>
+        </param>
+        <conditional name="meta" value_from="self:app.datatypes_registry.get_upload_metadata_params" value_ref="kind"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

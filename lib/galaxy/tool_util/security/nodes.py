@@ -28,6 +28,8 @@ from .report import (
     OPAQUE,
     RAW_DATASET_ATTRIBUTE,
     RAW_METADATA,
+    RECORDED_MODEL,
+    RECORDED_USER,
     source_refs,
     SourceRef,
     SPECIAL,
@@ -115,7 +117,7 @@ _DATA_CLEAN = frozenset(
         " get_size has_data serialize is_input_supplied"
     ).split()
 )
-_METADATA_CLEAN = frozenset(
+METADATA_CLEAN = _METADATA_CLEAN = frozenset(
     "columns data_lines comment_lines sequences column_types delimiter blocks bases number_of_models".split()
 )
 
@@ -174,7 +176,7 @@ class Data(Node):
         if name == "metadata":
             return AV(nodes=(Metadata(self.path, self),))
         if name == "unsanitized":
-            raw_model = source(f"raw model of dataset '{self.path}'", OPAQUE, self.path)
+            raw_model = source(f"raw model of dataset '{self.path}'", OPAQUE, self.path, RECORDED_MODEL)
             return AV(nodes=(RawDataset(f"{self.path}.unsanitized", tainted(PROBE, raw_model), self.path),))
         if name == "dataset":
             return AV(nodes=(DatasetObject(self.path, self),))
@@ -192,7 +194,7 @@ class Data(Node):
 
 
 # Attributes of a dataset model that Galaxy sets itself: its type, its id, its paths and state.
-_RAW_DATASET_CLEAN = frozenset(
+RAW_DATASET_CLEAN = _RAW_DATASET_CLEAN = frozenset(
     "ext extension id hid extra_files_path get_file_name file_name get_size has_data state".split()
 )
 
@@ -364,7 +366,7 @@ def dataset_content(datasets: tuple[Data, ...]) -> AV:
     return join(*contents)
 
 
-_USER_OBJECT = tainted(PROBE, source("attribute of the $__user__ object (not sanitized)", OPAQUE))
+_USER_OBJECT = tainted(PROBE, source("attribute of the $__user__ object (not sanitized)", OPAQUE, key=RECORDED_USER))
 
 
 # The attributes of the user object that Galaxy also puts into the namespace as account values.

@@ -49,6 +49,11 @@ USER_PREFERENCE = "user_preference"  # a preference the user set, $__user__.extr
 RAW_DATASET_ATTRIBUTE = "raw_dataset_attribute"
 RAW_METADATA = "raw_metadata"
 OPAQUE = "opaque"  # an object the template can read anything from: no single value to compare
+# The key of an opaque source whose strings Galaxy records while the templates render (see
+# galaxy.security.render_recording): the dataset model and the user object.
+RECORDED_MODEL = "model"
+RECORDED_USER = "user"
+RECORDED = frozenset((RECORDED_MODEL, RECORDED_USER))
 # Why the values of a location cannot be checked (Report.unchecked_locations).
 NOT_ANALYSED = "parts of it were not analysed"
 RUNS_TEXT = "it sends text to a shell to run"

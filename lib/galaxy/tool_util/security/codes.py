@@ -17,6 +17,7 @@ class RefusalCode(str, Enum):
     # The review cannot judge the job's values, and one of them is not plain.
     NOT_PLAIN_UNCHECKED_PLACE = "not-plain-unchecked-place"
     NOT_PLAIN_CHECK_ERROR = "not-plain-check-error"
+    NOT_PLAIN_UNTRACED_VALUE = "not-plain-untraced-value"
     # No value of the job can be checked: it is refused whatever its values.
     UNCHECKABLE_REVIEW_FAILED = "uncheckable-review-failed"
     UNCHECKABLE_REWRITES = "uncheckable-rewrites"
@@ -52,6 +53,9 @@ DESCRIPTIONS = {
     " template it did not follow, or values it cannot trace), and a value is not plain.",
     RefusalCode.NOT_PLAIN_CHECK_ERROR: "Comparing the job's values with the review's findings failed (a bug), so"
     " the job got the strict check instead, and a value is not plain.",
+    RefusalCode.NOT_PLAIN_UNTRACED_VALUE: "The templates write values of the dataset model (`.unsanitized`) or"
+    " of the user object that the review cannot trace, such as the name of a dataset's history. Galaxy records"
+    " every string the templates read from them while it builds the command, and one is not plain.",
     RefusalCode.UNCHECKABLE_REVIEW_FAILED: "The review of the tool failed, so nothing is known about what its"
     " templates do.",
     RefusalCode.UNCHECKABLE_REWRITES: "The templates change values in ways that can bring back characters the"

@@ -41,6 +41,7 @@ from galaxy.tools import (
 )
 from galaxy.tools.evaluation import (
     PartialToolEvaluator,
+    RemoteToolEvaluator,
     ToolEvaluator,
 )
 from galaxy.tools.security_review import (
@@ -49,7 +50,9 @@ from galaxy.tools.security_review import (
     ToolSecurityReviewer,
 )
 
-EVALUATORS = {"full": ToolEvaluator, "partial": PartialToolEvaluator}
+# How a job's templates are evaluated: all where the job is prepared, or with tool_evaluation_strategy:
+# remote, the environment where it is prepared and the rest where it runs.
+EVALUATORS = {"full": (ToolEvaluator,), "remote": (PartialToolEvaluator, RemoteToolEvaluator)}
 
 # The functions of security_review a fault replaces with one that raises.
 _FAULTS = {
@@ -152,17 +155,18 @@ class SpecJobRunner:
         logger.addHandler(warnings)
         try:
             with _fault(job_case.fault):
-                tool_evaluator = EVALUATORS[evaluator](
-                    cast(MinimalToolApp, self.app), self.tool, job, working_directory, security_reviewer=reviewer
-                )
-                tool_evaluator.set_compute_environment(_ComputeEnvironment(working_directory))
-                try:
-                    built = tool_evaluator.build()
-                except ToolInputRejected as e:
-                    return JobOutcome(True, codes=list(e.codes), message=str(e), warnings=warnings.messages)
+                for evaluator_class in EVALUATORS[evaluator]:
+                    tool_evaluator = evaluator_class(
+                        cast(MinimalToolApp, self.app), self.tool, job, working_directory, security_reviewer=reviewer
+                    )
+                    tool_evaluator.set_compute_environment(_ComputeEnvironment(working_directory))
+                    try:
+                        built = tool_evaluator.build()
+                    except ToolInputRejected as e:
+                        return JobOutcome(True, codes=list(e.codes), message=str(e), warnings=warnings.messages)
         finally:
             logger.removeHandler(warnings)
-        command_line = built[0] if evaluator == "full" else None
+        command_line = built[0]
         return JobOutcome(False, command_line=command_line, warnings=warnings.messages)
 
     def harms(self, job_case: JobCase) -> tuple[bool, int]:
@@ -184,7 +188,7 @@ class SpecJobRunner:
     def _job(self, job_case: JobCase, working_directory: str) -> model.Job:
         session = self.app.model.session
         user = self._user(job_case)
-        history = model.History(user=user, name="spec")
+        history = model.History(user=user, name=job_case.history.name)
         session.add(history)
         state: dict[str, Any] = dict(job_case.inputs)
         job = model.Job()

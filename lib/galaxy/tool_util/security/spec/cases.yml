@@ -528,23 +528,49 @@ raw_dataset_model:
 raw_dataset_history:
   doc: >-
     Beyond the dataset's own strings and metadata, the model reaches its history, its tags and the job that
-    made it, which no check of the job's values sees: every job is refused.
+    made it, which the review cannot trace. Galaxy records every string the templates read from the model while
+    it builds the command, and each must be plain.
   tool: raw_dataset_history.xml
-  code: uncheckable-template-code
+  code: not-plain-untraced-value
   review:
     patterns: [model-access]
     findings:
-      - {rule: shell-injection, accessor: opaque, param: input, checkable: false}
+      - {rule: shell-injection, accessor: opaque, param: input, key: model, checkable: false}
   red:
     - datasets:
         input: {name: reads}
-      expect: {rejected: true, message_contains: ["$unsanitized.history"]}
-  green:
-    - config: {when_unsure: log}
-      datasets:
-        input: {name: reads}
+      history: {name: "a';touch harm-marker;'"}
       harm: true
-      expect: {rejected: false, warns: [uncheckable-template-code]}
+      expect:
+        rejected: true
+        message_contains: ["'history.name' of the dataset model of an input contains [' ;]"]
+  green:
+    - datasets:
+        input: {name: reads}
+      history: {name: "RNA-seq run 2"}
+      harm: true
+      expect: {rejected: false}
+
+dataset_object_unsanitized:
+  doc: >-
+    `$input.dataset` is the dataset model behind the sanitizer, and its `.unsanitized` the model as users set it,
+    which the review takes for a sanitized value. Galaxy records what the templates read from it.
+  tool: dataset_object_unsanitized.xml
+  code: not-plain-untraced-value
+  review:
+    patterns: [model-access]
+  red:
+    - datasets:
+        input: {name: "a';touch harm-marker;'"}
+      harm: true
+      expect:
+        rejected: true
+        message_contains: ["'name' of a value read past its sanitizer contains [' ;]"]
+  green:
+    - datasets:
+        input: {name: reads.fq}
+      harm: true
+      expect: {rejected: false}
 
 pipe_to_shell:
   doc: A value in text piped to a shell is code whatever its characters, so every job is refused.
@@ -693,45 +719,54 @@ template_code:
 user_object_unsanitized:
   doc: >-
     With the sanitizer off, the user object is read as it is stored. A template that reads it other than by
-    the name of one preference, here every preference in a loop, writes values the job check cannot trace.
+    the name of one preference, here every preference in a loop, writes values the review cannot trace.
+    Galaxy records them while it builds the command, and each must be plain.
   tool: user_preferences_unsanitized_loop.xml
-  code: uncheckable-template-code
+  code: not-plain-untraced-value
   review:
     patterns: [user-object]
     findings:
       - {rule: template-app-access, severity: medium}
-      - {rule: shell-injection, accessor: opaque, checkable: false}
+      - {rule: shell-injection, accessor: opaque, key: user, checkable: false}
   red:
     - user: {preferences: {"spec|label": "a';touch harm-marker;'"}}
       harm: true
       expect:
         rejected: true
-        codes: [uncheckable-template-code, uncheckable-untraced-value]
-        message_contains:
-          - "run code or read data the job does not carry"
-          - "it writes values it cannot trace to an input (command)"
+        message_contains: ["'extra_preferences[spec|label]' of your user account contains [' ;]"]
   green:
-    - config: {when_unsure: log}
-      user: {preferences: {"spec|label": "Bob"}}
+    - user: {preferences: {"spec|label": "Bob"}}
       harm: true
-      expect: {rejected: false, warns: [uncheckable-template-code, uncheckable-untraced-value]}
+      expect: {rejected: false}
+
+user_object_sanitized_loop:
+  doc: >-
+    A preference read in a loop, by a name the template computes, cannot be traced to one preference, but
+    Galaxy sanitizes the user object here: the job runs whatever the preference holds.
+  tool: user_preferences_loop.xml
+  review:
+    findings:
+      - {rule: shell-injection, accessor: opaque, key: user, checkable: false}
+  green:
+    - user: {preferences: {"spec|label": "a';touch harm-marker;'"}}
+      harm: true
+      expect: {rejected: false}
 
 untraced_value:
   doc: >-
-    A preference read in a loop, by a name the template computes, cannot be traced to one preference, so no
-    check sees its value. Galaxy sanitizes it here, but the job is refused whatever its values.
-  tool: user_preferences_loop.xml
+    A conditional whose cases Galaxy builds when the job runs can hold any value of any name, which no check
+    sees: the job is refused whatever its values.
+  tool: runtime_conditional.xml
   code: uncheckable-untraced-value
   review:
     findings:
       - {rule: shell-injection, accessor: opaque, checkable: false}
   red:
-    - user: {preferences: {"spec|label": "hello"}}
+    - inputs: {kind: txt, meta: {kind: txt}}
       expect: {rejected: true, message_contains: ["it writes values it cannot trace to an input (command)"]}
   green:
     - config: {when_unsure: log}
-      user: {preferences: {"spec|label": "a';touch harm-marker;'"}}
-      harm: true
+      inputs: {kind: txt, meta: {kind: txt}}
       expect: {rejected: false, warns: [uncheckable-untraced-value]}
 
 review_failed:

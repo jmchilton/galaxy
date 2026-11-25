@@ -29,6 +29,10 @@ from galaxy.model.deferred import (
 )
 from galaxy.model.none_like import NoneDataset
 from galaxy.security.object_wrapper import wrap_with_safe_string
+from galaxy.security.render_recording import (
+    recording,
+    Recording,
+)
 from galaxy.structured_app import (
     BasicSharedApp,
     MinimalManagerApp,
@@ -649,7 +653,7 @@ class ToolEvaluator:
         # datatypes conf path, so we can load the datatypes registry
         param_dict["__root_dir__"] = param_dict["GALAXY_ROOT_DIR"] = os.path.abspath(self.app.config.root)
         param_dict["__admin_users__"] = self.app.config.admin_users
-        param_dict["__user__"] = RawObjectWrapper(param_dict.get("__user__", None))
+        param_dict["__user__"] = RawObjectWrapper(param_dict.get("__user__", None), records=True)
 
     def __populate_unstructured_path_rewrites(self, param_dict):
         def rewrite_unstructured_paths(input_values, input):
@@ -729,19 +733,26 @@ class ToolEvaluator:
         """
         self._check_input_values()
         config_file = self.tool.config_file
-        global_tool_logs(
-            self._create_interactivetools_entry_points, config_file, "Building Interactive Tool Entry Points", self.tool
-        )
-        global_tool_logs(
-            self._build_config_files,
-            config_file,
-            "Building Config Files",
-            self.tool,
-        )
-        global_tool_logs(self._build_param_file, config_file, "Building Param File", self.tool)
-        global_tool_logs(self._build_command_line, config_file, "Building Command Line", self.tool)
-        global_tool_logs(self._build_version_command, config_file, "Building Version Command Line", self.tool)
-        global_tool_logs(self._build_environment_variables, config_file, "Building Environment Variables", self.tool)
+        with recording() as recorded:
+            global_tool_logs(
+                self._create_interactivetools_entry_points,
+                config_file,
+                "Building Interactive Tool Entry Points",
+                self.tool,
+            )
+            global_tool_logs(
+                self._build_config_files,
+                config_file,
+                "Building Config Files",
+                self.tool,
+            )
+            global_tool_logs(self._build_param_file, config_file, "Building Param File", self.tool)
+            global_tool_logs(self._build_command_line, config_file, "Building Command Line", self.tool)
+            global_tool_logs(self._build_version_command, config_file, "Building Version Command Line", self.tool)
+            global_tool_logs(
+                self._build_environment_variables, config_file, "Building Environment Variables", self.tool
+            )
+        self._check_rendered_values(recorded)
         return (
             self.command_line,
             self.version_command_line,
@@ -749,6 +760,14 @@ class ToolEvaluator:
             self.environment_variables,
             self.interactivetools,
         )
+
+    # The templates render inside recording(): what they read from raw objects is checked after.
+    records_untraced_values = True
+
+    def _check_rendered_values(self, recorded: Recording) -> None:
+        """Check what the templates read past the sanitizer as they rendered, before the job runs."""
+        if self.security_reviewer is not None:
+            self.security_reviewer.check_rendered(self.tool, self, recorded)
 
     def _check_input_values(self) -> None:
         """Log, or refuse with ToolInputRejected, values that can leave their place in the templates.
@@ -1033,7 +1052,11 @@ class PartialToolEvaluator(ToolEvaluator):
         # The command line is built where the job runs; its values are checked here.
         self._check_input_values()
         config_file = self.tool.config_file
-        global_tool_logs(self._build_environment_variables, config_file, "Building Environment Variables", self.tool)
+        with recording() as recorded:
+            global_tool_logs(
+                self._build_environment_variables, config_file, "Building Environment Variables", self.tool
+            )
+        self._check_rendered_values(recorded)
         return (
             self.command_line,
             self.version_command_line,
@@ -1131,11 +1154,14 @@ class RemoteToolEvaluator(ToolEvaluator):
         pass
 
     def build(self):
+        # The job check ran where the job was prepared; what the templates read as they render is checked here.
         config_file = self.tool.config_file
-        global_tool_logs(self._build_config_files, config_file, "Building Config Files", self.tool)
-        global_tool_logs(self._build_param_file, config_file, "Building Param File", self.tool)
-        global_tool_logs(self._build_command_line, config_file, "Building Command Line", self.tool)
-        global_tool_logs(self._build_version_command, config_file, "Building Version Command Line", self.tool)
+        with recording() as recorded:
+            global_tool_logs(self._build_config_files, config_file, "Building Config Files", self.tool)
+            global_tool_logs(self._build_param_file, config_file, "Building Param File", self.tool)
+            global_tool_logs(self._build_command_line, config_file, "Building Command Line", self.tool)
+            global_tool_logs(self._build_version_command, config_file, "Building Version Command Line", self.tool)
+        self._check_rendered_values(recorded)
         return (
             self.command_line,
             self.version_command_line,
