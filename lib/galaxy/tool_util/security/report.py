@@ -190,6 +190,9 @@ class Report:
     # can judge them: what the strict check of a job reads. METADATA and USER_PREFERENCE with
     # key=None stand for any metadata element and any preference.
     reads: dict[str, list[SourceRef]] = field(default_factory=dict)
+    # Every user-controlled source of a job of the tool, which the strict check reads where a template
+    # writes a value the review cannot trace.
+    every_source: list[SourceRef] = field(default_factory=list)
 
     def add(self, finding: Finding) -> None:
         for i, existing in enumerate(self.findings):
@@ -265,6 +268,7 @@ class Report:
                 for trigger, added in rules
             ],
             "reads": {location: [asdict(ref) for ref in refs] for location, refs in sorted(self.reads.items())},
+            "every_source": [asdict(ref) for ref in self.every_source],
         }
 
 

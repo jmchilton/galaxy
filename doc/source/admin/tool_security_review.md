@@ -657,6 +657,148 @@ inputs:
 fault: check
 ```
 
+### `not-plain-untraced-value`
+
+The templates write a value the review cannot trace: read by name (`getattr`), from the dataset model (`.unsanitized`), from the user object in a loop. Every value the value can be, of the input it comes from or else of the whole job, must be plain, and one is not.
+
+#### raw_dataset_model
+
+A template that reads the dataset model behind `$input.unsanitized` writes values as users set them, which the review cannot trace to one of them: every value of the input must be plain.
+
+Tool `raw_dataset_model.xml`:
+
+```
+echo '${input.unsanitized.name}' > '$out'
+```
+
+Refused
+
+```
+datasets:
+  input:
+    name: a';touch harm-marker;'
+```
+
+Refused: Even a value the template does not write, since the review cannot tell which it writes.
+
+```
+datasets:
+  input:
+    name: reads
+    info: a;b
+```
+
+Refused: The name as the model holds it, not as the sanitizer writes it (`aXb`).
+
+```
+datasets:
+  input:
+    name: a;b
+```
+
+Runs
+
+```
+datasets:
+  input:
+    name: reads
+```
+
+#### user_object_unsanitized
+
+With the sanitizer off, the user object is read as it is stored. A template that reads it other than by the name of one preference, here every preference in a loop, writes values the review cannot trace: every value the job carries must be plain.
+
+Tool `user_preferences_unsanitized_loop.xml`:
+
+```
+#for $name in $__user__.extra_preferences
+echo '${__user__.extra_preferences[$name]}' >> '$out' &&
+#end for
+true
+```
+
+Refused
+
+```
+user:
+  preferences:
+    spec|label: a';touch harm-marker;'
+```
+
+Runs
+
+```
+user:
+  preferences:
+    spec|label: Bob
+```
+
+#### untraced_value
+
+A preference read in a loop, by a name the template computes, cannot be traced to one preference, so every value the job carries must be plain. Galaxy sanitizes it here, so the refused value is harmless.
+
+Tool `user_preferences_loop.xml`:
+
+```
+#for $name in $__user__.extra_preferences
+echo '${__user__.extra_preferences[$name]}' >> '$out' &&
+#end for
+true
+```
+
+Refused: A quote, which the sanitizer writes as a token.
+
+```
+user:
+  preferences:
+    spec|label: it's
+```
+
+Runs
+
+```
+user:
+  preferences:
+    spec|label: hello
+```
+
+Runs
+
+```
+user:
+  preferences:
+    spec|label: a';touch harm-marker;'
+config:
+  when_unsure: log
+```
+
+#### reflection_bypass
+
+Read by name through `getattr`, the unsanitized dataset model is out of the review's sight: every value the job carries must be plain, and a name that closes the quotes is refused.
+
+Tool `reflection_getattr.xml`:
+
+```
+#set $name = getattr($input, 'unsanitized').name
+echo '${name}' > '$out'
+```
+
+Refused
+
+```
+datasets:
+  input:
+    name: x'; touch harm-marker; echo '
+```
+
+Runs
+
+```
+datasets:
+  input:
+    name: reads.fq
+```
+
 ### `uncheckable-review-failed`
 
 The review of the tool failed, so nothing is known about what its templates do.
@@ -755,43 +897,7 @@ config:
 
 ### `uncheckable-template-code`
 
-The templates run Python that can read text the job does not carry (imports, `open()`, `$__app__`, the models behind `.unsanitized`).
-
-#### raw_dataset_model
-
-A template that reads the dataset model behind `$input.unsanitized` can read text the job does not carry, so no value counts as plain.
-
-Tool `raw_dataset_model.xml`:
-
-```
-echo '${input.unsanitized.name}' > '$out'
-```
-
-Refused
-
-```
-datasets:
-  input:
-    name: a';touch harm-marker;'
-```
-
-Refused: Even a plain name.
-
-```
-datasets:
-  input:
-    name: reads
-```
-
-Runs
-
-```
-datasets:
-  input:
-    name: reads
-config:
-  when_unsure: log
-```
+The templates run Python that can read text the job does not carry (imports, `exec`, `open()`, `$__app__`).
 
 #### template_code
 
@@ -817,37 +923,6 @@ Runs
 ```
 inputs:
   word: hello
-config:
-  when_unsure: log
-```
-
-#### user_object_unsanitized
-
-With the sanitizer off, the user object is read as it is stored. A template that reads it other than by the name of one preference, here every preference in a loop, writes values the job check cannot trace.
-
-Tool `user_preferences_unsanitized_loop.xml`:
-
-```
-#for $name in $__user__.extra_preferences
-echo '${__user__.extra_preferences[$name]}' >> '$out' &&
-#end for
-true
-```
-
-Refused
-
-```
-user:
-  preferences:
-    spec|label: a';touch harm-marker;'
-```
-
-Runs
-
-```
-user:
-  preferences:
-    spec|label: Bob
 config:
   when_unsure: log
 ```
@@ -911,41 +986,6 @@ Runs
 ```
 inputs:
   program: echo
-config:
-  when_unsure: log
-```
-
-### `uncheckable-untraced-value`
-
-The templates write a value the review cannot trace to one input or preference (the user object read in a loop, a conditional built at run time), so no check sees it.
-
-#### untraced_value
-
-A preference read in a loop, by a name the template computes, cannot be traced to one preference, so no check sees its value. Galaxy sanitizes it here, but the job is refused whatever its values.
-
-Tool `user_preferences_loop.xml`:
-
-```
-#for $name in $__user__.extra_preferences
-echo '${__user__.extra_preferences[$name]}' >> '$out' &&
-#end for
-true
-```
-
-Refused
-
-```
-user:
-  preferences:
-    spec|label: hello
-```
-
-Runs
-
-```
-user:
-  preferences:
-    spec|label: a';touch harm-marker;'
 config:
   when_unsure: log
 ```
@@ -1108,9 +1148,11 @@ user:
 
 ## Access patterns
 
-The review also reports reads it cannot follow to a value of the job. The job check refuses no job for
-them alone: a job is refused only when the review also sees the value written where it can do harm.
-A case marked as a known bypass is a tool whose jobs run whatever their values.
+The review also reports reads it cannot follow to a value of the job. Where a template writes a value
+read by name (reflection), the strict check reads every value the job carries; where it writes one of
+the dataset model or the user object, every value of its input, or of the job. A read of data the job
+does not carry refuses every job of the tool the review cannot check otherwise. A case marked as a
+known bypass is a tool whose jobs run whatever their values.
 
 ### Reads the job check cannot see
 
@@ -1118,24 +1160,7 @@ A case marked as a known bypass is a tool whose jobs run whatever their values.
 
 Reaches objects by name (`getattr`, `__getattribute__`, `getVar` with a computed name, Python or Cheetah internals). The review loses track of what is read, `.unsanitized` values included.
 
-##### reflection_bypass
-
-A known bypass. Read by name through `getattr`, the unsanitized dataset model is out of the review's sight: it reports no finding the job check could compare values with, so the job runs whatever the dataset is named, and a name that closes the quotes starts a command.
-
-Tool `reflection_getattr.xml`:
-
-```
-#set $name = getattr($input, 'unsanitized').name
-echo '${name}' > '$out'
-```
-
-Runs
-
-```
-datasets:
-  input:
-    name: reads.fq
-```
+Refused cases with it: `reflection_bypass`.
 
 #### `model-access`
 
