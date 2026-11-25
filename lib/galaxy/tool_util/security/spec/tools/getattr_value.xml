@@ -1,0 +1,13 @@
+<tool id="spec_getattr_value" name="Value read with getattr" version="1.0" profile="24.0">
+    <description>reads a parameter's value with getattr and a literal name</description>
+    <command><![CDATA[
+#set $v = getattr($label, "value", $label)
+echo '$v' > '$out'
+    ]]></command>
+    <inputs>
+        <param name="label" type="text"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

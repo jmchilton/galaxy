@@ -148,6 +148,15 @@ def _user_select(input_source: InputSource) -> str | None:
     return None
 
 
+def _static_options(input_source: InputSource) -> AV:
+    """The values of a select whose options the tool lists, as the literals they are."""
+    if input_source.parse_dynamic_options() is not None:
+        # The options Galaxy offers are built when the form is: the listed ones are not all.
+        return CLEAN
+    options = frozenset(str(option[1]) for option in input_source.parse_static_options())
+    return AV(literals=options) if options else CLEAN
+
+
 def _escapes_single_quote(sanitizer: ToolParameterSanitizer | None) -> bool:
     """The sanitizer rewrites ' to the sequence that writes a quote inside a single-quoted shell word."""
     return sanitizer is not None and sanitizer.sanitize_param("'") in ("'\"'\"'", "'\\''")
@@ -173,7 +182,9 @@ def _value(input_source: InputSource, path: str, tool_sanitize: bool) -> Node:
     if ptype in ("select", "drill_down") or ptype in _USER_SELECT_TYPES:
         reason = _user_select(input_source)
         if reason is None:
-            return Value(path, ptype)
+            # Its options are the tool's: a name a template looks up a variable by can be built from them.
+            options = _static_options(input_source)
+            return Value(path, ptype, as_text=options, as_raw=options)
         label = f"{reason} param '{path}'" if reason in _USER_SELECT_TYPES else f"'{path}' ({reason})"
         if ptype == "data_column":
             # Galaxy checks a column against the dataset's columns, except for an empty dataset.

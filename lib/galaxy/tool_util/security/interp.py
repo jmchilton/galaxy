@@ -23,16 +23,22 @@ from typing import (
 
 from Cheetah.Template import Template
 
+
 from . import (
     charsets,
     sed,
     shell,
 )
 from .charsets import Verdict
+from .capabilities import (
+    MODEL_ATTRS,
+    REFLECTION_ATTRS,
+)
 from .model import (
     Model,
     SAFE_SPECIALS,
 )
+from .names import NameStrings
 from .nodes import (
     Data,
     dataset_content,
@@ -40,6 +46,7 @@ from .nodes import (
     Special,
 )
 from .report import (
+    CAPABILITY,
     Finding,
     OPAQUE,
     QUOTE_CLOSERS,
@@ -55,6 +62,7 @@ from .template import (
     Method,
     name_lookup,
     NAMESPACE_LOOKUPS,
+    plain_attribute,
 )
 from .validators import regex_constraint
 from .values import (
@@ -68,6 +76,7 @@ from .values import (
     element,
     Group,
     introduced,
+    GROUP_DICT_METHODS,
     join,
     joins_arguments,
     raw,
@@ -85,6 +94,21 @@ _MAX_STEPS = 50_000
 
 class _BudgetExceeded(Exception):
     pass
+
+
+# getVar looks a name up in the `#set global` variables, then the template object itself (its #def
+# methods, getVar, searchList...), then the namespace. Names of the template object reach Python's and
+# Cheetah's objects.
+_TEMPLATE_ATTRIBUTES = frozenset(dir(Template)) | frozenset(("respond", "trans", "self", "SL"))
+
+
+def _reaches_objects(variable: str) -> bool:
+    """A name getVar would resolve to an object of Galaxy, Cheetah or Python, not to a value of the job."""
+    parts = variable.split(".")
+    if parts[0] in _TEMPLATE_ATTRIBUTES or parts[0] in ("__app__", "__user__"):
+        return True
+    # What PythonAudit.judge would flag in the dotted name: the dataset model, Python's internals.
+    return any(p.startswith("_") or p in MODEL_ATTRS or REFLECTION_ATTRS.match(p) for p in parts)
 
 
 _MUTATORS = frozenset(("append", "extend", "add", "insert", "update", "setdefault", "appendleft", "__setitem__"))
@@ -447,6 +471,7 @@ class TemplateAnalysis:
         location: str = "command",
         language: str = "shell",
         literal_rewrites: dict[int, str] | None = None,
+        computed_lookups: dict[int, int | None] | None = None,
     ):
         self.model = model
         self.template = template
@@ -458,6 +483,13 @@ class TemplateAnalysis:
         self.literal_rewrites = literal_rewrites or {}
         self._judged: set[int] = set()
         self._not_judged: set[int] = set()
+        # getVar calls (by id, with their line) whose name is not a literal, see PythonAudit: one this
+        # analysis does not resolve to a set of names on every visit reaches objects by a computed name.
+        self.computed_lookups = computed_lookups or {}
+        # What the names variables are looked up by can be, decided on the whole template.
+        self.names = NameStrings(template, model)
+        self._resolved: set[int] = set()
+        self._unresolved: set[int] = set()
         # A shell script keeps its lines; Galaxy writes the command on one line.
         self.script = language == "shell" and location != "command"
         self.events: set[shell.Event] = set()
@@ -617,6 +649,19 @@ class TemplateAnalysis:
             # Also a call the analysis never reached: past its depth or its budget.
             if call in self._not_judged or call not in self._judged:
                 self.report.add_rewrite(self.location, name)
+        for call, line in self.computed_lookups.items():
+            if call in self._unresolved or call not in self._resolved:
+                self.report.add(
+                    Finding(
+                        rule="template-reflection",
+                        kind=CAPABILITY,
+                        severity=charsets.MEDIUM,
+                        message="Looks up a variable by a computed name with `getVar`",
+                        location=self.location,
+                        line=line,
+                        expr="getVar",
+                    )
+                )
         if not poisoned:
             for recorded, into in ((self._written, self.report.writes), (self._closers, self.report.closers)):
                 if recorded:
@@ -1619,13 +1664,26 @@ class TemplateAnalysis:
         if name == "dict":
             return AV(elem=join(*(element(a, strict=True) for a in args), *keywords))
         if name == "getVar":
-            variable = _const(node.args[0]) if node.args else None
             default = args[1] if len(args) > 1 else CLEAN
-            if isinstance(variable, str):
-                known = self.model.lookup(variable.split(".")[0]) or env.local.get(variable.split(".")[0])
-                if known is not None:
-                    return join(self.resolve(variable, env, True), default)
-            return default
+            names = self.names.strings(node.args[0]) if node.args else None
+            variables = sorted({variable.replace("$", "") for variable in names}) if names is not None else []
+            # No variable has the empty name: getVar gives the default.
+            variables = [variable for variable in variables if variable]
+            if names is None or any(_reaches_objects(v) or v.split(".")[0] in self.template.helpers for v in variables):
+                # A name the template computes from values the analysis cannot list, or one of an object or a
+                # #def of the template: refused as reflection.
+                self._unresolved.add(id(node))
+                return default
+            self._resolved.add(id(node))
+            # getVar does not see #set locals, nor what tests of them showed: the `#set global` variables, then
+            # the namespace.
+            view = Env({}, env.shared)
+            return join(*(self.resolve(variable, view, True) for variable in variables), default)
+        if name == "getattr" and len(node.args) >= 2 and not node.keywords:
+            attr = _const(node.args[1])
+            if isinstance(attr, str) and plain_attribute(attr):
+                # getattr(x, "name"[, default]) is x.name, or the default.
+                return join(attribute(first, attr), *args[2:3])
         if _DECODERS.match(name):
             text = contents(first)
             self._introduce(text)
@@ -1785,13 +1843,29 @@ class TemplateAnalysis:
                 # list.reverse(), list.sort()...: they change the list in place and return None.
                 return CLEAN
             if name in ("pop", "get", "copy", "setdefault"):
-                return receiver if name == "copy" else element(receiver)
+                # Or the default given.
+                return receiver if name == "copy" else join(element(receiver), *args[1:2])
             if name in ("keys", "values", "items"):
                 item = element(receiver)
                 return AV(elem=AV(items=(item, item)) if name == "items" else item)
             if name in _MUTATORS:
                 return CLEAN
             return receiver
+        if name in GROUP_DICT_METHODS and receiver.nodes and all(isinstance(n, Group) for n in receiver.nodes):
+            # The dict of a conditional or a section: by a literal key or a list of them, else any child.
+            groups = [n for n in receiver.nodes if isinstance(n, Group)]
+            children = AV(nodes=tuple(n for group in groups for nodes in group.children.values() for n in nodes))
+            if name == "values":
+                return AV(elem=children)
+            if name == "keys":
+                return AV(elem=CLEAN)
+            if name == "items":
+                return AV(elem=AV(items=(CLEAN, children)))
+            default = args[1] if len(args) > 1 else CLEAN
+            keys = self.names.strings(arg_nodes[0]) if arg_nodes else None
+            if keys is None:
+                return join(children, default)
+            return join(*(attribute(receiver, key) for key in sorted(keys)), default)
         text = raw(receiver) if receiver.nodes else stringify(receiver)
         first_literal = _const(arg_nodes[0]) if arg_nodes else None
         if name in ("split", "rsplit", "splitlines", "partition", "rpartition"):

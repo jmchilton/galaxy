@@ -52,9 +52,11 @@ def _patterns(cases: Dict[str, SpecCase]) -> List[str]:
     lines = [
         "## Access patterns",
         "",
-        "The review also reports reads it cannot follow to a value of the job. A read by name (reflection) can",
-        "write any value without a finding about it, so it refuses every job of the tool. For the others, a job",
-        "is refused only when the review also sees the value written where it can do harm.",
+        "The review also reports reads it cannot follow to a value of the job. A variable looked up by a name",
+        "the template computes from values the review cannot list, or Python reached by name, can write any",
+        "value without a finding about it, so it refuses every job of the tool. Names built from literal text or",
+        "a select's options are resolved, and `getattr` with a literal name is that attribute. For the others, a",
+        "job is refused only when the review also sees the value written where it can do harm.",
         "A case marked as a known bypass is a tool whose jobs run whatever their values.",
         "",
     ]

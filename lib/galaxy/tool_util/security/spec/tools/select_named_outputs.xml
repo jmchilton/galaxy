@@ -1,0 +1,20 @@
+<tool id="spec_select_named_outputs" name="Outputs named by a select" version="1.0" profile="24.0">
+    <description>writes the outputs a multiple select names</description>
+    <command><![CDATA[
+#for o in str($oformat).split(','):
+    cp '$input' '$getVar($o, 'MISSING_OUTPUT' + $o)' &&
+#end for
+true
+    ]]></command>
+    <inputs>
+        <param name="input" type="data" format="txt"/>
+        <param name="oformat" type="select" multiple="true">
+            <option value="tblout" selected="true">table</option>
+            <option value="domtblout">domains</option>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="tblout" format="txt"/>
+        <data name="domtblout" format="txt"/>
+    </outputs>
+</tool>

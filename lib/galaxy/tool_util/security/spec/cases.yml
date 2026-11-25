@@ -779,29 +779,142 @@ strict_check_failed:
           elements: [{identifier: sample1}]
       expect: {rejected: false, warns: [uncheckable-strict-check-error]}
 
-reflection_bypass:
+getattr_literal_name:
   doc: >-
-    Read by name through `getattr`, the dataset model is out of the review's sight: it can write any value
-    without a finding about it, its history's name as well as its own, so every job is refused.
+    `getattr` with a literal name is that attribute: `getattr($input, 'unsanitized').name` is the dataset's name as
+    the user set it, which the check reads from the model too.
   tool: reflection_getattr.xml
-  code: uncheckable-template-code
+  code: shell-injection
   review:
-    patterns: [reflection]
-    serious_rules: []
+    patterns: [model-access]
+    findings:
+      - {rule: shell-injection, accessor: raw_dataset_attribute, param: input, key: name, checkable: true}
   red:
     - datasets:
         input: {name: "x'; touch harm-marker; echo '"}
       harm: true
-      expect: {rejected: true, message_contains: ["run code or read data the job does not carry (getattr)"]}
-    - doc: Even a plain name.
-      datasets:
-        input: {name: reads.fq}
+      expect:
+        rejected: true
+        message_contains: ["the name of a dataset of input 'input' contains the characters [' ;]"]
+  green:
+    - datasets:
+        input: {name: "a;b|c"}
+      harm: true
+      expect: {rejected: false}
+
+getattr_value:
+  doc: >-
+    `getattr($label, "value", $label)` reads the value as submitted, past its sanitizer, like `$label.value`.
+  tool: getattr_value.xml
+  code: shell-injection
+  review:
+    findings:
+      - {rule: shell-injection, accessor: raw, param: label, checkable: true}
+  red:
+    - inputs: {label: "a';touch harm-marker;'"}
+      harm: true
       expect: {rejected: true}
   green:
-    - config: {when_unsure: log}
-      datasets:
-        input: {name: reads.fq}
+    - inputs: {label: "a;b|c"}
       harm: true
+      expect: {rejected: false}
+
+read_group_lookup:
+  doc: >-
+    A #def that looks a value up by the name it is called with, in a conditional (`$rg.get($name)`) or the
+    namespace (`$getVar($name)`): the names are the literals of its calls, and the values those parameters.
+  tool: read_group_lookup.xml
+  code: shell-injection
+  review:
+    findings:
+      - {rule: shell-injection, accessor: text, param: rg.DS, checkable: true}
+  red:
+    - inputs: {rg: {rg_selector: set, ID: sample1, DS: "a';touch harm-marker;'"}}
+      harm: true
+      expect:
+        rejected: true
+        message_contains: ["the value of input 'rg.DS' contains the characters [' ;]"]
+  green:
+    - inputs: {rg: {rg_selector: set, ID: sample1, DS: "run 2;lane 1"}}
+      harm: true
+      expect: {rejected: false}
+
+section_lookup:
+  doc: >-
+    A name joined from the literal arguments of a #def (`$getVar($sec + "." + $var)`) is resolved to the
+    parameters it can name.
+  tool: section_lookup.xml
+  code: shell-injection
+  review:
+    findings:
+      - {rule: shell-injection, accessor: text, param: advanced.label, checkable: true}
+  red:
+    - inputs: {advanced: {label: "a';touch harm-marker;'"}}
+      harm: true
+      expect: {rejected: true}
+  green:
+    - inputs: {advanced: {label: "a;b|c"}}
+      harm: true
+      expect: {rejected: false}
+
+sections_loop:
+  doc: >-
+    A name joined from each element of a literal list (`$getVar($sect + "label")`) is resolved to the
+    parameters it can name.
+  tool: sections_loop.xml
+  code: shell-injection
+  review:
+    findings:
+      - {rule: shell-injection, accessor: text, param: optional.label, checkable: true}
+  red:
+    - inputs: {optional: {label: "a';touch harm-marker;'"}}
+      harm: true
+      expect: {rejected: true}
+  green:
+    - inputs: {optional: {label: "a;b|c"}}
+      harm: true
+      expect: {rejected: false}
+
+select_named_outputs:
+  doc: >-
+    The names a select's options give (`$getVar($o)` for each selected output) are the tool's own: they name its
+    outputs, whose paths Galaxy writes.
+  tool: select_named_outputs.xml
+  review:
+    serious_rules: []
+  green:
+    - datasets:
+        input: {name: reads}
+      inputs: {oformat: [tblout, domtblout]}
+      harm: true
+      expect: {rejected: false}
+
+output_filter_vars:
+  doc: >-
+    `vars()` in an output filter reaches Python objects, but Galaxy evaluates filters when it creates the outputs:
+    nothing it reads is written into the command, which is checked as usual.
+  tool: output_filter_vars.xml
+  review:
+    patterns: [reflection]
+  green:
+    - inputs: {label: "a;b|c"}
+      harm: true
+      expect: {rejected: false}
+
+getvar_user_name:
+  doc: >-
+    A name the user gives (`$getVar(str($which))`) can be any variable, which no check of the job's values sees:
+    every job is refused.
+  tool: getvar_user_name.xml
+  code: uncheckable-template-code
+  review:
+    patterns: [reflection]
+  red:
+    - inputs: {which: label, label: hello}
+      expect: {rejected: true, message_contains: ["run code or read data the job does not carry (getVar)"]}
+  green:
+    - config: {when_unsure: log}
+      inputs: {which: label, label: hello}
       expect: {rejected: false, warns: [uncheckable-template-code]}
 
 app_model_read:

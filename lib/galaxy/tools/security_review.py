@@ -360,7 +360,9 @@ class ToolSecurityReviewer:
             raise ToolInputRejected(rejection_message(tool, violations), (RefusalCode(v.rule) for v in violations))
         unchecked = sorted({f.location for f in review.unchecked_at(self.level)} | set(review.unchecked_locations))
         # A template that reads objects by name can write any value without a finding about it.
-        reflection = sorted({f.location for f in review.report.findings if f.rule == REFLECTION_RULE})
+        reflection = sorted(
+            {f.location for f in review.report.findings if f.rule == REFLECTION_RULE and _rendered(f.location)}
+        )
         unchecked = sorted(set(unchecked) | set(reflection))
         # Log mode warns of both; an enforcing mode has refused a job with violations already.
         if unchecked:
@@ -745,6 +747,11 @@ def _describe(ref: SourceRef) -> str:
     return f"{_DESCRIPTIONS.get(ref.accessor, 'the value of')} input '{ref.param}'"
 
 
+def _rendered(location: str) -> bool:
+    """Whether a location of the review is a template Galaxy renders into what the job runs."""
+    return location == "command" or location.startswith("configfile:")
+
+
 def _no_plain_value(report: Optional[Report]) -> list[tuple[RefusalCode, str]]:
     """Why no value counts as plain for a tool: the strict check refuses its jobs outright."""
     if report is None:
@@ -759,6 +766,8 @@ def _no_plain_value(report: Optional[Report]) -> list[tuple[RefusalCode, str]]:
             f.expr
             for f in report.findings
             if f.rule in CODE_CAPABILITIES and f.expr and not (sanitized and f.expr.startswith("__user__"))
+            # Reflection in an output filter or an option list cannot write into what the job runs.
+            and not (f.rule == REFLECTION_RULE and not _rendered(f.location))
         }
     )
     if capabilities:

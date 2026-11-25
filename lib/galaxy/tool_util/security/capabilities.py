@@ -46,6 +46,7 @@ from .template import (
     literal_rewrite_call,
     name_lookup,
     NAMESPACE_LOOKUPS,
+    plain_attribute,
 )
 
 SERVER = "runs in the Galaxy server process"
@@ -82,11 +83,11 @@ _GENERATED_SELF = frozenset(("_CHEETAH__globalSetVars", "_CHEETAH__isBuffering",
 # Modules that act when passed around as a value (`#set $o = $os`): the call on them cannot be followed.
 _MODULE_VALUES = frozenset(("os", "sys", "builtins", "__builtins__", "builtin"))
 _GENERATED_NAMES = frozenset(("trans", "SL", "KWS", "write", "_filter", "_dummyTrans", "Template", "types"))
-_REFLECTION_ATTRS = re.compile(
+REFLECTION_ATTRS = re.compile(
     r"^(__(class|globals|dict|subclasses|mro|bases|base|init|code|builtins|reduce|reduce_ex|getattribute|import"
     r"|loader|spec|module|closure|func|self|wrapped)__|func_globals|gi_frame|f_globals|f_locals|f_back|f_builtins)$"
 )
-_MODEL_ATTRS = frozenset("unsanitized sa_session api_keys object_store galaxy_session security creating_job".split())
+MODEL_ATTRS = frozenset("unsanitized sa_session api_keys object_store galaxy_session security creating_job".split())
 # Calls whose result can hold characters that the value they read did not: a plain value can come
 # out of them unsafe.
 _REWRITE_CALLS = frozenset(
@@ -94,6 +95,18 @@ _REWRITE_CALLS = frozenset(
     " b85decode a85decode urlsafe_b64decode standard_b64decode decodebytes a2b_base64 a2b_hex a2b_qp".split()
 )
 _VFN = frozenset(("VFN",))
+
+
+def _literal_getattr(node: ast.Call) -> str | None:
+    """The attribute of `getattr(x, "name"[, default])` with a plain literal name."""
+    if not (isinstance(node.func, ast.Name) and node.func.id == "getattr") or node.keywords:
+        return None
+    if not 2 <= len(node.args) <= 3 or not isinstance(node.args[1], ast.Constant):
+        return None
+    name = node.args[1].value
+    return name if isinstance(name, str) and plain_attribute(name) else None
+
+
 # `getattr(x, "name")` has the shape of a NameMapper call: the name is its second argument.
 _GETATTR = frozenset(("getattr",))
 # Codecs whose decode() keeps the characters of the text that encode() was given.
@@ -117,6 +130,9 @@ class PythonAudit:
         # to it, which judges those of a value as the job carries it per job and flags the others.
         self.analysed = analysed
         self.literal_rewrites: dict[int, str] = {}
+        # getVar calls (by id) whose name is not a literal, with their line: left to the template
+        # analysis when it follows, which resolves names built from literal text and flags the others.
+        self.computed_lookups: dict[int, int | None] = {}
         # The names the template mentions: which attributes, metadata and account values it reads.
         self.names: set[str] = set()
         # Keys the template stores into dicts, and the first names of what it looks up in the namespace.
@@ -231,10 +247,15 @@ class PythonAudit:
                 continue
             if isinstance(node, ast.Call) and self.is_get_var(node.func):
                 name = node.args[0] if node.args else None
+                if self.analysed:
+                    # The analysis resolves the name, literal or computed, the way getVar looks it up.
+                    self.computed_lookups[id(node)] = line
                 if isinstance(name, ast.Constant) and isinstance(name.value, str):
-                    if not self.is_template_name(name.value.split(".")[0]):
-                        self.judge(name.value.split("."), line)
-                else:
+                    # getVar ignores `$` in the name.
+                    parts = name.value.replace("$", "").split(".")
+                    # A tool input or a template variable: only its attributes are of interest.
+                    self.judge(["$"] + parts[1:] if self.is_template_name(parts[0]) else parts, line)
+                elif not self.analysed:
                     self.add(
                         "template-reflection",
                         MEDIUM,
@@ -242,10 +263,14 @@ class PythonAudit:
                         "getVar",
                         line,
                     )
+            if isinstance(node, ast.Call) and (attr := _literal_getattr(node)) is not None:
+                # getattr(x, "name"[, default]) reads x.name: judged as that, not as reflection.
+                seen.add(id(node.func))
+                self.judge((self.chain(node.args[0], seen) or ["$"]) + [attr], line)
             chain = self.chain(node, seen)
             if chain:
                 self.judge(chain, line)
-            elif isinstance(node, ast.Attribute) and _REFLECTION_ATTRS.match(node.attr):
+            elif isinstance(node, ast.Attribute) and REFLECTION_ATTRS.match(node.attr):
                 self.add(
                     "template-reflection", HIGH, f"Reaches Python internals through `.{node.attr}`", node.attr, line
                 )
@@ -407,10 +432,10 @@ class PythonAudit:
         elif root == "time" and first == "sleep":
             self.add("template-file-io", MEDIUM, "Calls `time.sleep`: blocks a job handler", dotted, line)
         for part in rest:
-            if _REFLECTION_ATTRS.match(part):
+            if REFLECTION_ATTRS.match(part):
                 self.add("template-reflection", HIGH, f"Reaches Python internals through `{dotted}`", dotted, line)
                 break
-            if part in _MODEL_ATTRS:
+            if part in MODEL_ATTRS:
                 self.add(
                     "template-model-access",
                     MEDIUM,

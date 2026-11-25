@@ -57,6 +57,8 @@ class AV:
     alts: tuple[AV, ...] = ()
     # The value of one source as the job check reads it, not changed by template code.
     verbatim: bool = False
+    # Every string a select whose options the tool lists can be (see names.NameStrings).
+    literals: frozenset[str] | None = None
 
     @property
     def tainted(self) -> bool:
@@ -100,6 +102,40 @@ def tainted(chars: Chars, source: str, verbatim: bool = False) -> AV:
 def source(text: str, accessor: str, param: str | None = None, key: str | None = None) -> Source:
     """A source description with the input and accessor it names; the same text always gets the same reference."""
     return Source(text, SourceRef(accessor, param, key))
+
+
+# The most strings literal_strings keeps track of: beyond, the value is unknown.
+_MAX_LITERALS = 1024
+
+
+def literal_strings(value: AV) -> frozenset[str] | None:
+    """Every string a value can be, when it is a select's options; None when not known."""
+    if value.tainted:
+        return None
+    if value.nodes:
+        return literal_union(*(node.text().literals for node in value.nodes))
+    return value.literals
+
+
+def literal_product(*options: frozenset[str] | None) -> frozenset[str] | None:
+    """The strings of each of ``options`` joined in order."""
+    strings = frozenset(("",))
+    for option in options:
+        if option is None:
+            return None
+        strings = frozenset(left + right for left in strings for right in option)
+        if len(strings) > _MAX_LITERALS:
+            return None
+    return strings
+
+
+def literal_union(*options: frozenset[str] | None) -> frozenset[str] | None:
+    found: set[str] = set()
+    for option in options:
+        if option is None:
+            return None
+        found |= option
+    return frozenset(found) if len(found) <= _MAX_LITERALS else None
 
 
 def concat(parts: list[str | AV]) -> AV:
@@ -382,7 +418,10 @@ class Repeat(Node):
 def stringify(value: AV) -> AV:
     """The value as written into the output."""
     if value.nodes:
-        return join(*(node.text() for node in value.nodes))
+        # A value that is a parameter or a string (`getattr($p, "value", $p)`) is the text of either.
+        rest = replace(value, nodes=())
+        own = [stringify(rest)] if rest.tainted else []
+        return join(*(node.text() for node in value.nodes), *own)
     if value.parts is not None:
         return value
     if value.elem is not None or value.items is not None:
@@ -476,6 +515,10 @@ def gets_attribute(receiver: AV, args: list[AV], keywords: list[AV], nodes: list
     return attribute(receiver, name) if isinstance(name, str) else None
 
 
+# Methods of the dict a conditional or a section is, which reach its parameters by name.
+GROUP_DICT_METHODS = frozenset(("get", "values", "items", "keys"))
+
+
 def attribute(value: AV, name: str) -> AV:
     if name == "__str__":
         # `$x.__str__` is str($x), whatever x is.
@@ -483,6 +526,9 @@ def attribute(value: AV, name: str) -> AV:
     if name == "__getattr__":
         return AV(bound=(value, gets_attribute))
     if value.nodes:
+        if name in GROUP_DICT_METHODS and all(isinstance(n, Group) and n.attr(name) is None for n in value.nodes):
+            # The dict a conditional or a section is in the namespace: `$cond.get(name, default)`.
+            return AV(bound=(value, name))
         return join(*(node.attr(name) or CLEAN for node in value.nodes))
     if value.py:
         return AV(py=f"{value.py}.{name}")
