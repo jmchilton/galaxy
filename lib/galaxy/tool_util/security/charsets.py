@@ -90,7 +90,8 @@ def stricter(a: str | None, b: str | None) -> str | None:
 LEADING_DASH = "a leading -"
 DASH_WORD = "a word starting with -"
 TILDE_WORD = "a word starting with ~"
-_LEADING_DASH = re.compile(r"""^['"]*-""")
+# Leading whitespace too: a template can strip it.
+_LEADING_DASH = re.compile(r"""^\s*['"]*-""")
 _DASH_WORD = re.compile(r"""(?:^|\s)['"]*-""")
 _TILDE_WORD = re.compile(r"(?:^|\s)~")
 # Where a value splits into words or closes its quotes, what it must also hold to stop being data:
