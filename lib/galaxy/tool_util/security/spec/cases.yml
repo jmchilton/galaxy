@@ -804,6 +804,34 @@ reflection_bypass:
       harm: true
       expect: {rejected: false, warns: [uncheckable-template-code]}
 
+output_filter_vars:
+  doc: >-
+    `vars()` in an output filter reaches Python objects, but Galaxy evaluates filters when it creates the outputs:
+    nothing it reads is written into the command, which is checked as usual.
+  tool: output_filter_vars.xml
+  review:
+    patterns: [reflection]
+  green:
+    - inputs: {label: "a;b|c"}
+      harm: true
+      expect: {rejected: false}
+
+getvar_user_name:
+  doc: >-
+    A name the user gives (`$getVar(str($which))`) can be any variable, which no check of the job's values sees:
+    every job is refused.
+  tool: getvar_user_name.xml
+  code: uncheckable-template-code
+  review:
+    patterns: [reflection]
+  red:
+    - inputs: {which: label, label: hello}
+      expect: {rejected: true, message_contains: ["run code or read data the job does not carry (getVar)"]}
+  green:
+    - config: {when_unsure: log}
+      inputs: {which: label, label: hello}
+      expect: {rejected: false, warns: [uncheckable-template-code]}
+
 app_model_read:
   doc: >-
     The application object reaches any data of the server. The review flags the read but follows no value

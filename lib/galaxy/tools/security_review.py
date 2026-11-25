@@ -76,6 +76,7 @@ from galaxy.tool_util.security.report import (
     RAW_DATASET_ATTRIBUTE,
     RAW_METADATA,
     REFLECTION_RULE,
+    rendered,
     RUNS_TEXT_RULES,
     SANITIZE_OFF,
     serious_findings,
@@ -360,7 +361,9 @@ class ToolSecurityReviewer:
             raise ToolInputRejected(rejection_message(tool, violations), (RefusalCode(v.rule) for v in violations))
         unchecked = sorted({f.location for f in review.unchecked_at(self.level)} | set(review.unchecked_locations))
         # A template that reads objects by name can write any value without a finding about it.
-        reflection = sorted({f.location for f in review.report.findings if f.rule == REFLECTION_RULE})
+        reflection = sorted(
+            {f.location for f in review.report.findings if f.rule == REFLECTION_RULE and rendered(f.location)}
+        )
         unchecked = sorted(set(unchecked) | set(reflection))
         # Log mode warns of both; an enforcing mode has refused a job with violations already.
         if unchecked:
@@ -759,6 +762,8 @@ def _no_plain_value(report: Optional[Report]) -> list[tuple[RefusalCode, str]]:
             f.expr
             for f in report.findings
             if f.rule in CODE_CAPABILITIES and f.expr and not (sanitized and f.expr.startswith("__user__"))
+            # Reflection in an output filter or an option list cannot write into what the job runs.
+            and not (f.rule == REFLECTION_RULE and not rendered(f.location))
         }
     )
     if capabilities:

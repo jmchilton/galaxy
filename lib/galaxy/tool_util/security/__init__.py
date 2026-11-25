@@ -40,6 +40,7 @@ from .report import (
     CAPABILITY,
     Finding,
     NOT_ANALYSED,
+    rendered,
     Report,
     RUNS_TEXT,
     RUNS_TEXT_RULES,
@@ -179,7 +180,7 @@ def _mark_unchecked_locations(report: Report) -> None:
     """
     for note in report.unanalyzed:
         location, separator, _ = note.partition(": ")
-        if separator and (location == "command" or location.startswith("configfile:")):
+        if separator and rendered(location):
             report.unchecked_locations.setdefault(location, NOT_ANALYSED)
     for finding in report.findings:
         if finding.rule in RUNS_TEXT_RULES:
