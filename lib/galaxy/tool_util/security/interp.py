@@ -67,6 +67,7 @@ from .values import (
     contents,
     element,
     Group,
+    GROUP_DICT_METHODS,
     introduced,
     join,
     joins_arguments,
@@ -1785,13 +1786,29 @@ class TemplateAnalysis:
                 # list.reverse(), list.sort()...: they change the list in place and return None.
                 return CLEAN
             if name in ("pop", "get", "copy", "setdefault"):
-                return receiver if name == "copy" else element(receiver)
+                # Or the default given.
+                return receiver if name == "copy" else join(element(receiver), *args[1:2])
             if name in ("keys", "values", "items"):
                 item = element(receiver)
                 return AV(elem=AV(items=(item, item)) if name == "items" else item)
             if name in _MUTATORS:
                 return CLEAN
             return receiver
+        if name in GROUP_DICT_METHODS and receiver.nodes and all(isinstance(n, Group) for n in receiver.nodes):
+            # The dict of a conditional or a section: by a literal key, else any of its parameters.
+            groups = [n for n in receiver.nodes if isinstance(n, Group)]
+            children = AV(nodes=tuple(n for group in groups for nodes in group.children.values() for n in nodes))
+            if name == "values":
+                return AV(elem=children)
+            if name == "keys":
+                return AV(elem=CLEAN)
+            if name == "items":
+                return AV(elem=AV(items=(CLEAN, children)))
+            default = args[1] if len(args) > 1 else CLEAN
+            key = _const(arg_nodes[0]) if arg_nodes else None
+            if not isinstance(key, str) or keywords:
+                return join(children, default)
+            return join(attribute(receiver, key), default)
         text = raw(receiver) if receiver.nodes else stringify(receiver)
         first_literal = _const(arg_nodes[0]) if arg_nodes else None
         if name in ("split", "rsplit", "splitlines", "partition", "rpartition"):

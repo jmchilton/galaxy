@@ -109,6 +109,11 @@ class Source(str):
         return (Source, (str(self), self.ref))
 
 
+def rendered(location: str) -> bool:
+    """Whether a location of the review is the command or a configfile: a template rendered into what the job runs."""
+    return location == "command" or location.startswith("configfile:")
+
+
 def sorted_refs(refs: Any) -> tuple[SourceRef, ...]:
     return tuple(sorted(set(refs), key=lambda r: (r.accessor, r.param or "", r.key or "")))
 

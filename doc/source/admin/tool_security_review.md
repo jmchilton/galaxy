@@ -1023,6 +1023,34 @@ config:
   when_unsure: log
 ```
 
+#### getvar_user_name
+
+A name the user gives (`$getVar(str($which))`) can be any variable, which no check of the job's values sees: every job is refused.
+
+Tool `getvar_user_name.xml`:
+
+```
+echo '$getVar(str($which), "none")' > '$out'
+```
+
+Refused
+
+```
+inputs:
+  which: label
+  label: hello
+```
+
+Runs
+
+```
+inputs:
+  which: label
+  label: hello
+config:
+  when_unsure: log
+```
+
 ### `uncheckable-letters-are-code`
 
 Letters alone can be code where the tool writes a value: the program to run, text piped to a shell that runs it (not one that runs a script file), or unquoted Perl or Ruby code.
@@ -1322,7 +1350,24 @@ A case marked as a known bypass is a tool whose jobs run whatever their values.
 
 Reaches objects by name (`getattr`, `__getattribute__`, `getVar` with a computed name, Python or Cheetah internals). The review loses track of what is read, `.unsanitized` values included.
 
-Refused cases with it: `reflection_bypass`.
+Refused cases with it: `reflection_bypass`, `getvar_user_name`.
+
+##### output_filter_vars
+
+`vars()` in an output filter reaches Python objects, but Galaxy evaluates filters when it creates the outputs: nothing it reads is written into the command, which is checked as usual.
+
+Tool `output_filter_vars.xml`:
+
+```
+echo '$label' > '$out'
+```
+
+Runs
+
+```
+inputs:
+  label: a;b|c
+```
 
 #### `model-access`
 

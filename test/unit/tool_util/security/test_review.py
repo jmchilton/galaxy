@@ -565,6 +565,33 @@ def test_escaping_values_found_by_review(tmp_path, command, expected):
     assert expected in rules(review(tmp_path, command))
 
 
+GROUP = """
+<conditional name="c">
+  <param name="sel" type="select"><option value="a">a</option></param>
+  <when value="a"><param name="t" type="text"><sanitizer sanitize="false"/></param></when>
+</conditional>
+"""
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "#for $v in $c.values()\ntool '$v'\n#end for",
+        "#for $k, $v in $c.items()\ntool '$v'\n#end for",
+        "tool '${c.get('t')}'",
+        "#set $k = 't'\ntool '${c.get($k)}'",
+        "tool '${c.get('none', $c.t)}'",
+        "tool '${ {}.get('x', $c.t) }'",
+    ],
+)
+def test_parameters_read_through_the_dict_of_a_group(tmp_path, command):
+    assert ("shell-injection", "high") in rules(review(tmp_path, command, inputs=GROUP))
+
+
+def test_a_group_looked_up_by_a_literal_key_is_that_parameter(tmp_path):
+    assert rules(review(tmp_path, "tool '${c.get('sel')}'", inputs=GROUP)) == set()
+
+
 def test_script_read_from_standard_input_is_a_program(tmp_path):
     report = review(tmp_path, "R --vanilla < '$script'", CONFIG.format("<![CDATA[x = $text]]>"))
     assert ("configfile-injection", "high") in rules(report)
@@ -587,6 +614,20 @@ def test_script_read_from_standard_input_is_a_program(tmp_path):
 )
 def test_capability_evasions_found_by_review(tmp_path, command, expected):
     assert expected in rules(review(tmp_path, command), kind="capability")
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "#set $v = getattr($input, 'unsanitized').name\ntool '$v'",
+        "#if getattr($text, 'value')\ntool\n#end if",
+        "tool '${getattr($input, 'unsanitized').name}'",
+        "#for $v in getattr($c, 'values')()\ntool '$v'\n#end for",
+    ],
+)
+def test_getattr_is_reflection(tmp_path, command):
+    report = review(tmp_path, command, inputs=INPUTS + GROUP)
+    assert ("template-reflection", "high") in rules(report, kind="capability")
 
 
 def test_capture_is_not_a_capability(tmp_path):

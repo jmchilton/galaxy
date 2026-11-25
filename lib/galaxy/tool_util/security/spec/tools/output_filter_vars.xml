@@ -1,0 +1,12 @@
+<tool id="spec_output_filter_vars" name="Output filtered with vars()" version="1.0" profile="24.0">
+    <description>filters an output by whether a parameter exists</description>
+    <command><![CDATA[echo '$label' > '$out']]></command>
+    <inputs>
+        <param name="label" type="text"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt">
+            <filter>'mode' not in vars() or mode != 'none'</filter>
+        </data>
+    </outputs>
+</tool>

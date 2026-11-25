@@ -382,7 +382,10 @@ class Repeat(Node):
 def stringify(value: AV) -> AV:
     """The value as written into the output."""
     if value.nodes:
-        return join(*(node.text() for node in value.nodes))
+        # A value that is a parameter or a string (`getattr($p, "value", $p)`) is the text of either.
+        rest = replace(value, nodes=())
+        own = [stringify(rest)] if rest.tainted else []
+        return join(*(node.text() for node in value.nodes), *own)
     if value.parts is not None:
         return value
     if value.elem is not None or value.items is not None:
@@ -476,6 +479,10 @@ def gets_attribute(receiver: AV, args: list[AV], keywords: list[AV], nodes: list
     return attribute(receiver, name) if isinstance(name, str) else None
 
 
+# Methods of the dict a conditional or a section is, which reach its parameters by name.
+GROUP_DICT_METHODS = frozenset(("get", "values", "items", "keys"))
+
+
 def attribute(value: AV, name: str) -> AV:
     if name == "__str__":
         # `$x.__str__` is str($x), whatever x is.
@@ -483,6 +490,9 @@ def attribute(value: AV, name: str) -> AV:
     if name == "__getattr__":
         return AV(bound=(value, gets_attribute))
     if value.nodes:
+        if name in GROUP_DICT_METHODS and all(isinstance(n, Group) and n.attr(name) is None for n in value.nodes):
+            # The dict a conditional or a section is in the namespace: `$cond.get(name, default)`.
+            return AV(bound=(value, name))
         return join(*(node.attr(name) or CLEAN for node in value.nodes))
     if value.py:
         return AV(py=f"{value.py}.{name}")
