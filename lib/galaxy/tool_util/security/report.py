@@ -44,12 +44,18 @@ GROUP_TAGS = "group_tags"  # the group: tags of the input datasets
 SPECIAL = "special"  # a value Galaxy adds for the user, such as $__user_email__ (key)
 DATASET_CONTENT = "dataset_content"  # the content of the input datasets, which the template reads with open()
 USER_PREFERENCE = "user_preference"  # a preference the user set, $__user__.extra_preferences (key)
+# An attribute (key) or a metadata element (key) of the input datasets as users set them, through
+# `$input.unsanitized`: not sanitized.
+RAW_DATASET_ATTRIBUTE = "raw_dataset_attribute"
+RAW_METADATA = "raw_metadata"
 OPAQUE = "opaque"  # an object the template can read anything from: no single value to compare
 # Why the values of a location cannot be checked (Report.unchecked_locations).
 NOT_ANALYSED = "parts of it were not analysed"
 RUNS_TEXT = "it sends text to a shell to run"
 # Capability findings of a template that sends text to a program that runs it.
 RUNS_TEXT_RULES = frozenset(("capability-pipe-to-shell",))
+# The capability finding of a template that reaches objects by name (getattr).
+REFLECTION_RULE = "template-reflection"
 # The capability finding of a tool that turns the sanitizer off.
 SANITIZE_OFF = "tool-sanitize-off"
 # Capabilities with which a template runs code or reads text that the job does not carry.
@@ -59,7 +65,7 @@ CODE_CAPABILITIES = frozenset(
         "template-compile-exec",
         "template-file-io",
         "template-network",
-        "template-reflection",
+        REFLECTION_RULE,
         "template-app-access",
         "template-model-access",
     )
@@ -190,9 +196,6 @@ class Report:
     # can judge them: what the strict check of a job reads. METADATA and USER_PREFERENCE with
     # key=None stand for any metadata element and any preference.
     reads: dict[str, list[SourceRef]] = field(default_factory=dict)
-    # Every user-controlled source of a job of the tool, which the strict check reads where a template
-    # writes a value the review cannot trace.
-    every_source: list[SourceRef] = field(default_factory=list)
 
     def add(self, finding: Finding) -> None:
         for i, existing in enumerate(self.findings):
@@ -268,7 +271,6 @@ class Report:
                 for trigger, added in rules
             ],
             "reads": {location: [asdict(ref) for ref in refs] for location, refs in sorted(self.reads.items())},
-            "every_source": [asdict(ref) for ref in self.every_source],
         }
 
 

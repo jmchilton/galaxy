@@ -962,6 +962,8 @@ def test_inline_code_of_other_interpreters(tmp_path, interpreter):
         # The shell removes the quote: `'$x'` with `'-rf` gives `''-rf'`.
         ("'-rf", {LEADING_DASH, DASH_WORD}),
         ("a' '-rf", {DASH_WORD}),
+        # A template can strip the space.
+        (" -rf", {LEADING_DASH, DASH_WORD}),
         ("a-b c-d", set()),
         ("x ~/y", {TILDE_WORD}),
         ("a~b", set()),

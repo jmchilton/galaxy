@@ -26,6 +26,8 @@ from .report import (
     GROUP_TAGS,
     METADATA,
     OPAQUE,
+    RAW_DATASET_ATTRIBUTE,
+    RAW_METADATA,
     source_refs,
     SourceRef,
     SPECIAL,
@@ -98,6 +100,12 @@ class Opaque(Node):
     def element(self) -> AV | None:
         return AV(chars=self.value.chars, sources=self.value.sources, nodes=(self,))
 
+    def _beyond(self, name: str) -> AV:
+        """An attribute that reaches other objects: opaque, whatever this node knows of its own."""
+        return AV(
+            chars=self.value.chars, sources=self.value.sources, nodes=(Opaque(f"{self.path}.{name}", self.value),)
+        )
+
 
 # Attributes of a dataset wrapper that Galaxy computes itself.
 _DATA_CLEAN = frozenset(
@@ -167,7 +175,7 @@ class Data(Node):
             return AV(nodes=(Metadata(self.path, self),))
         if name == "unsanitized":
             raw_model = source(f"raw model of dataset '{self.path}'", OPAQUE, self.path)
-            return AV(nodes=(RawDataset(f"{self.path}.unsanitized", tainted(PROBE, raw_model)),))
+            return AV(nodes=(RawDataset(f"{self.path}.unsanitized", tainted(PROBE, raw_model), self.path),))
         if name == "dataset":
             return AV(nodes=(DatasetObject(self.path, self),))
         if name == "single_item":
@@ -189,26 +197,58 @@ _RAW_DATASET_CLEAN = frozenset(
 )
 
 
+# String attributes of a dataset model that users set: the job check reads them from the model too.
+_RAW_DATASET_STRINGS = frozenset(("name", "info", "created_from_basename", "dbkey"))
+
+
 @dataclass(eq=False)
 class RawDataset(Opaque):
-    """``$input.unsanitized``: the dataset model itself, whose strings are not sanitized."""
+    """``$input.unsanitized``: the dataset model itself, whose strings are not sanitized.
+
+    Its own strings and metadata are values of the job; anything else it reaches (its history, its
+    tags, the job that made it) stays opaque."""
+
+    data_path: str = ""
 
     def attr(self, name: str) -> AV | None:
         if name in _RAW_DATASET_CLEAN:
             return CLEAN
         if name == "metadata":
-            return AV(nodes=(RawMetadata(f"{self.path}.metadata", self.value),))
-        return super().attr(name)
+            return AV(nodes=(RawMetadata(f"{self.path}.metadata", self.value, self.data_path),))
+        if name in _RAW_DATASET_STRINGS:
+            return tainted(
+                PROBE,
+                source(
+                    f"raw {name} of dataset '{self.data_path}' (not sanitized)",
+                    RAW_DATASET_ATTRIBUTE,
+                    self.data_path,
+                    name,
+                ),
+                verbatim=True,
+            )
+        return self._beyond(name)
 
 
 @dataclass(eq=False)
 class RawMetadata(Opaque):
     """The metadata of a dataset model: Galaxy computes some of it from the file."""
 
+    data_path: str = ""
+
     def attr(self, name: str) -> AV | None:
         if name in _METADATA_CLEAN or name.endswith(("_index", "Col")):
             return CLEAN
-        return super().attr(name)
+        if name.isidentifier() and not name.startswith("_") and name not in ("spec", "items", "get", "parent"):
+            return tainted(
+                PROBE,
+                source(
+                    f"raw metadata '{name}' of dataset '{self.data_path}' (not sanitized)",
+                    RAW_METADATA,
+                    self.data_path,
+                    name,
+                ),
+            )
+        return self._beyond(name)
 
 
 @dataclass(eq=False)
