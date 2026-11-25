@@ -7,14 +7,24 @@ run: the templates are compiled with Cheetah's compiler and the resulting syntax
 that prepares jobs reviews a tool when it prepares the tool's first job, and keeps the review as long as it
 keeps the tool.
 
-Before a job's command line is built, the values of the job are compared with the tool's high and critical
-findings. Two options in `galaxy.yml` control what happens then:
+Before a job's command line is built, the values of the job are compared with the tool's findings. Two
+options in `galaxy.yml` control what happens then:
 
-- `tool_security_review`: `enforce` (the default) fails a job whose value contains a character that can leave
-  its place, `log` only logs a warning, `off` turns the review and the checks off.
-- `tool_security_review_strict_when_unsure`: for jobs the review cannot check, `true` (the default) requires
-  every value the job carries to be plain, and refuses every job of a tool none of whose values can be
-  checked. `false` runs such jobs without a check.
+- `tool_security_review` sets what a value may not do. Each level fails the jobs the one before it fails, and
+  more:
+  - `enforce_code` (the default): a value may not become code, such as starting a shell command, changing the
+    program of another interpreter or the code of a configfile, or choosing the program that is run.
+  - `enforce_data`: a value also stays the data it is meant to be. It may not name a path outside the job's
+    directory, be read as an option, split into words that are options or paths, or change the structure of a
+    data configfile. Element identifiers and dataset names that a template writes may not contain `/` or start
+    with `-` or `~`.
+  - `enforce_all`: a value also may not split into extra plain words or close its quotes.
+
+  `log` only logs a warning for what `enforce_all` would fail, and `off` turns the review and the checks off.
+
+- `tool_security_review_when_unsure`: for jobs the review cannot check, `strict` (the default) requires every
+  value the job carries to be plain, and refuses every job of a tool none of whose values can be checked.
+  `refuse` fails every such job, and `log` runs it and logs what `strict` would fail.
 
 A plain value has no quotes, no `$ ; & | < > \ ( ) { } [ ] % # *`, no newline or tab, no word that starts with
 `-`, and none of Galaxy's sanitizer tokens such as `__gt__`.
@@ -36,7 +46,7 @@ The examples below are the cases of the review's declarative spec,
 and the jobs it refuses and runs. A job lists everything a template can read: parameter values (`inputs`),
 datasets (`name`, `content`, `metadata`, `tags`), collections (element identifiers), the user's preferences,
 and the review's settings (`config`). Galaxy's unit tests run every job through the evaluator that prepares
-real jobs, in `enforce` and `log` mode. For the refused jobs that show `harm-marker`, they also build the
+real jobs, in the mode of the job's `config` and in `log` mode. For the refused jobs that show `harm-marker`, they also build the
 command with the review off and run it, to show that the value does harm without the review. They also
 sweep every job: with the default settings, each value a job sets, each of a few preferences, and the user's
 email and name in turn hold a value that starts a command, and the job must be refused or run without harm.
@@ -448,7 +458,7 @@ collections:
     - identifier: sample 1/reads.fq
 ```
 
-Runs: An administrator can run such jobs unchecked.
+Runs: An administrator can run such jobs and only log what the strict check refuses.
 
 ```
 collections:
@@ -456,7 +466,7 @@ collections:
     elements:
     - identifier: a;b
 config:
-  strict_when_unsure: false
+  when_unsure: log
 ```
 
 ### `not-plain-check-error`
@@ -517,7 +527,7 @@ Runs
 inputs:
   word: hello
 config:
-  strict_when_unsure: false
+  when_unsure: log
 fault: review
 ```
 
@@ -555,7 +565,7 @@ Runs
 inputs:
   word: hello
 config:
-  strict_when_unsure: false
+  when_unsure: log
 ```
 
 #### rewrites_and_template_code
@@ -582,7 +592,7 @@ Runs
 inputs:
   word: hello
 config:
-  strict_when_unsure: false
+  when_unsure: log
 ```
 
 ### `uncheckable-template-code`
@@ -622,7 +632,7 @@ datasets:
   input:
     name: reads
 config:
-  strict_when_unsure: false
+  when_unsure: log
 ```
 
 #### template_code
@@ -650,7 +660,7 @@ Runs
 inputs:
   word: hello
 config:
-  strict_when_unsure: false
+  when_unsure: log
 ```
 
 #### user_object_unsanitized
@@ -681,7 +691,7 @@ user:
   preferences:
     spec|label: Bob
 config:
-  strict_when_unsure: false
+  when_unsure: log
 ```
 
 ### `uncheckable-letters-are-code`
@@ -718,7 +728,7 @@ Runs
 inputs:
   word: hello
 config:
-  strict_when_unsure: false
+  when_unsure: log
 ```
 
 #### command_position
@@ -744,7 +754,7 @@ Runs
 inputs:
   program: echo
 config:
-  strict_when_unsure: false
+  when_unsure: log
 ```
 
 ### `uncheckable-untraced-value`
@@ -779,7 +789,7 @@ user:
   preferences:
     spec|label: a';touch harm-marker;'
 config:
-  strict_when_unsure: false
+  when_unsure: log
 ```
 
 ### `uncheckable-strict-check-error`
@@ -817,8 +827,45 @@ collections:
     elements:
     - identifier: sample1
 config:
-  strict_when_unsure: false
+  when_unsure: log
 fault: strict_check
+```
+
+### `uncheckable-when-unsure`
+
+The review cannot check the job, and the server refuses every such job (`tool_security_review_when_unsure: refuse`) instead of checking its values strictly.
+
+#### refused_when_unsure
+
+An administrator can refuse every job the review cannot check instead of checking its values strictly.
+
+Tool `search_list.xml`:
+
+```
+#for $e in $input
+echo '$e.element_identifier' >> '$out';
+#end for
+echo '$searchList' > /dev/null
+```
+
+Refused
+
+```
+collections:
+  input:
+    elements:
+    - identifier: sample1
+config:
+  when_unsure: refuse
+```
+
+Runs: With the default `strict`, the same job runs, since its values are plain.
+
+```
+collections:
+  input:
+    elements:
+    - identifier: sample1
 ```
 
 ### Jobs that run

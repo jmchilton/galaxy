@@ -146,9 +146,7 @@ class SpecJobRunner:
         """The outcome of the job's check, in the job's own mode unless ``mode`` is given."""
         working_directory = tempfile.mkdtemp(dir=self.directory)
         job = self._job(job_case, working_directory)
-        reviewer = ToolSecurityReviewer(
-            mode or job_case.config.mode, strict_when_unsure=job_case.config.strict_when_unsure
-        )
+        reviewer = ToolSecurityReviewer(mode or job_case.config.mode, when_unsure=job_case.config.when_unsure)
         warnings = _Warnings()
         logger = logging.getLogger(security_review.__name__)
         logger.addHandler(warnings)

@@ -9,10 +9,10 @@ and the analyser's step budget bounds the work on any one template. It is never 
 
 Before a job's command line is built, :meth:`ToolSecurityReviewer.check_job` compares the values of
 the job's inputs with the tool's high and critical findings: a value that contains a character that
-can leave its place is logged (``log``) or fails the job (``enforce``).
+can leave its place is logged (``log``) or fails the job (``enforce_code`` and the stricter levels).
 
 A job that the review cannot check (a finding no character test can decide, an error in the check)
-gets a stricter check instead, unless ``strict_when_unsure`` is off: every value the job carries must
+gets a stricter check instead, unless ``when_unsure`` says otherwise: every value the job carries must
 be plain, without a character that can leave its place anywhere. The values come from the same
 sources the findings name, read the same way. No value is plain, and the job is refused outright,
 when the review failed, when the review found template code that can turn a plain value into an
@@ -86,8 +86,17 @@ log = logging.getLogger(__name__)
 
 OFF = "off"
 LOG = "log"
-ENFORCE = "enforce"
-MODES = (OFF, LOG, ENFORCE)
+# The levels of enforcement, each refusing what the one before it does and more.
+ENFORCE_CODE = "enforce_code"
+ENFORCE_DATA = "enforce_data"
+ENFORCE_ALL = "enforce_all"
+ENFORCING = (ENFORCE_CODE, ENFORCE_DATA, ENFORCE_ALL)
+MODES = (OFF, LOG, *ENFORCING)
+
+# What to do with a job the review cannot check (tool_security_review_when_unsure).
+STRICT = "strict"
+REFUSE = "refuse"
+WHEN_UNSURE = (STRICT, REFUSE, LOG)
 
 ANALYSED = "analysed"
 NOT_ANALYSED = "not_analysed"
@@ -160,12 +169,15 @@ def reviewed_tool_source(tool: "Tool") -> Optional[ToolSource]:
 class ToolSecurityReviewer:
     """Reviews tools when their jobs are prepared, and checks job values against the reviews."""
 
-    def __init__(self, mode: str, strict_when_unsure: bool = True) -> None:
+    def __init__(self, mode: str, when_unsure: str = STRICT) -> None:
         if mode not in MODES:
             raise ValueError(f"tool_security_review must be one of {', '.join(MODES)}, not '{mode}'")
+        if when_unsure not in WHEN_UNSURE:
+            raise ValueError(
+                f"tool_security_review_when_unsure must be one of {', '.join(WHEN_UNSURE)}, not '{when_unsure}'"
+            )
         self.mode = mode
-        # Check a job the review cannot check with the strict character set.
-        self.strict_when_unsure = strict_when_unsure
+        self.when_unsure = when_unsure
         # Keyed by the Tool object: a review lives as long as the tool it is about.
         self._reviews: WeakKeyDictionary[Tool, ToolReview] = WeakKeyDictionary()
         self._tool_locks: WeakKeyDictionary[Tool, threading.Lock] = WeakKeyDictionary()
@@ -175,12 +187,16 @@ class ToolSecurityReviewer:
     def from_config(cls, config: Any) -> "ToolSecurityReviewer":
         return cls(
             mode=config.tool_security_review,
-            strict_when_unsure=bool(config.tool_security_review_strict_when_unsure),
+            when_unsure=config.tool_security_review_when_unsure,
         )
 
     @property
     def enabled(self) -> bool:
         return self.mode != OFF
+
+    @property
+    def enforcing(self) -> bool:
+        return self.mode in ENFORCING
 
     # -- reviews -------------------------------------------------------------------------------
 
@@ -288,7 +304,7 @@ class ToolSecurityReviewer:
                 with _keeping_consumes(evaluator):
                     violations = list(find_violations(review.report, evaluator.param_dict))
             except Exception:
-                # Without strict_when_unsure, the check must never be the reason a job fails.
+                # With when_unsure log, the check must never be the reason a job fails.
                 log.exception("Job %s: checking values against the security review of tool %s failed", job_id, tool.id)
                 self._cannot_check(
                     tool,
@@ -312,7 +328,7 @@ class ToolSecurityReviewer:
                 violation.location,
                 violation.severity,
             )
-        if violations and self.mode == ENFORCE:
+        if violations and self.enforcing:
             # A rule without a code fails the job unexpectedly rather than letting it run.
             raise ToolInputRejected(rejection_message(tool, violations), (RefusalCode(v.rule) for v in violations))
         unchecked = sorted({f.location for f in review.unchecked_findings} | set(review.unchecked_locations))
@@ -335,13 +351,27 @@ class ToolSecurityReviewer:
         code: RefusalCode,
         locations: Optional[list[str]] = None,
     ) -> None:
-        """A job the review cannot judge: its values must all be plain, unless strict_when_unsure is off.
+        """A job the review cannot judge: with when_unsure strict its values must all be plain, with refuse it
+        is refused, with log what strict would refuse is only logged.
 
         ``code`` names the refusal of a job with a value that is not plain.
         """
         job_id = evaluator.job.id
-        if not self.strict_when_unsure:
-            log.debug("Job %s of tool %s: values are not checked, %s", job_id, tool.id, reason)
+        refuses = self.enforcing and self.when_unsure != LOG
+        if self.when_unsure == REFUSE:
+            log.warning(
+                "Tool security review (%s): job %s of tool %s version %s cannot be checked, %s",
+                RefusalCode.UNCHECKABLE_WHEN_UNSURE.value,
+                job_id,
+                tool.id,
+                tool.version,
+                reason,
+            )
+            if refuses:
+                raise ToolInputRejected(
+                    unchecked_message(tool, reason, ["this server refuses every job it cannot check"]),
+                    [RefusalCode.UNCHECKABLE_WHEN_UNSURE],
+                )
             return
         if no_plain := _no_plain_value(report):
             codes = sorted({code.value for code, _ in no_plain})
@@ -355,7 +385,7 @@ class ToolSecurityReviewer:
                 reason,
                 "; ".join(why),
             )
-            if self.mode == ENFORCE:
+            if refuses:
                 raise ToolInputRejected(unchecked_message(tool, reason, why), (code for code, _ in no_plain))
             return
         assert report is not None  # _no_plain_value refuses a job without a report
@@ -363,14 +393,14 @@ class ToolSecurityReviewer:
             with _keeping_consumes(evaluator):
                 harmful = list(strict_violations(report, locations, evaluator.param_dict))
         except Exception:
-            # Only enforce mode may fail a job, and then with a message for the user.
+            # Only an enforcing mode may fail a job, and then with a message for the user.
             log.exception(
                 "Tool security review (%s): the strict check of the values of job %s of tool %s failed",
                 RefusalCode.UNCHECKABLE_STRICT_CHECK_ERROR.value,
                 job_id,
                 tool.id,
             )
-            if self.mode == ENFORCE:
+            if refuses:
                 raise ToolInputRejected(
                     unchecked_message(tool, reason, ["checking its values strictly failed"]),
                     [RefusalCode.UNCHECKABLE_STRICT_CHECK_ERROR],
@@ -390,7 +420,7 @@ class ToolSecurityReviewer:
                 _describe(ref),
                 show(chars),
             )
-        if self.mode == ENFORCE:
+        if refuses:
             raise ToolInputRejected(strict_message(tool, reason, harmful), [code])
 
 

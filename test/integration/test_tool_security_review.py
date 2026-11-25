@@ -108,7 +108,7 @@ class BaseToolSecurityReviewTestCase(integration_util.IntegrationTestCase):
 
 
 class TestToolSecurityReviewEnforce(BaseToolSecurityReviewTestCase):
-    mode = "enforce"
+    mode = "enforce_code"
 
     def test_identifier_that_leaves_its_quotes_fails_the_job(self):
         with self.dataset_populator.test_history() as history_id:
@@ -175,12 +175,12 @@ class TestToolSecurityReviewDefaults(BaseToolSecurityReviewTestCase):
 
 
 class TestToolSecurityReviewNotStrict(BaseToolSecurityReviewTestCase):
-    mode = "enforce"
+    mode = "enforce_code"
 
     @classmethod
     def handle_galaxy_config_kwds(cls, config):
         super().handle_galaxy_config_kwds(config)
-        config["tool_security_review_strict_when_unsure"] = False
+        config["tool_security_review_when_unsure"] = "log"
 
     def test_value_the_review_cannot_judge_runs(self):
         with self.dataset_populator.test_history() as history_id:

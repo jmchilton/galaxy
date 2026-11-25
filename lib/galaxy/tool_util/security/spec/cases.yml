@@ -306,13 +306,13 @@ not_analysed_strict:
           elements: [{identifier: "sample 1/reads.fq"}]
       harm: true
       expect: {rejected: false}
-    - doc: An administrator can run such jobs unchecked.
-      config: {strict_when_unsure: false}
+    - doc: An administrator can run such jobs and only log what the strict check refuses.
+      config: {when_unsure: log}
       collections:
         input:
           elements: [{identifier: "a;b"}]
       harm: true
-      expect: {rejected: false}
+      expect: {rejected: false, warns: [not-plain-unchecked-place]}
 
 raw_dataset_model:
   doc: >-
@@ -336,11 +336,11 @@ raw_dataset_model:
         input: {name: reads}
       expect: {rejected: true}
   green:
-    - config: {strict_when_unsure: false}
+    - config: {when_unsure: log}
       datasets:
         input: {name: reads}
       harm: true
-      expect: {rejected: false}
+      expect: {rejected: false, warns: [uncheckable-template-code]}
 
 pipe_to_shell:
   doc: A value in text piped to a shell is code whatever its characters, so every job is refused.
@@ -356,10 +356,10 @@ pipe_to_shell:
       inputs: {word: hello}
       expect: {rejected: true}
   green:
-    - config: {strict_when_unsure: false}
+    - config: {when_unsure: log}
       inputs: {word: hello}
       harm: true
-      expect: {rejected: false}
+      expect: {rejected: false, warns: [uncheckable-letters-are-code]}
 
 shell_runs_script_file:
   doc: >-
@@ -395,10 +395,10 @@ command_position:
       harm: true
       expect: {rejected: true, message_contains: ["letters alone can be code"]}
   green:
-    - config: {strict_when_unsure: false}
+    - config: {when_unsure: log}
       inputs: {program: echo}
       harm: true
-      expect: {rejected: false}
+      expect: {rejected: false, warns: [uncheckable-letters-are-code]}
 
 rewrites_restore_tokens:
   doc: A template that turns the sanitizer's tokens back into quotes and redirects undoes the sanitizer.
@@ -415,10 +415,10 @@ rewrites_restore_tokens:
       inputs: {word: hello}
       expect: {rejected: true}
   green:
-    - config: {strict_when_unsure: false}
+    - config: {when_unsure: log}
       inputs: {word: hello}
       harm: true
-      expect: {rejected: false}
+      expect: {rejected: false, warns: [uncheckable-rewrites]}
 
 literal_rewrite:
   doc: >-
@@ -463,10 +463,10 @@ rewrites_and_template_code:
       harm: true
       expect: {rejected: true, codes: [uncheckable-rewrites, uncheckable-template-code]}
   green:
-    - config: {strict_when_unsure: false}
+    - config: {when_unsure: log}
       inputs: {word: hello}
       harm: true
-      expect: {rejected: false}
+      expect: {rejected: false, warns: [uncheckable-rewrites, uncheckable-template-code]}
 
 template_code:
   doc: A template that imports code can read text the job does not carry, so no value counts as plain.
@@ -481,10 +481,10 @@ template_code:
     - inputs: {word: hello}
       expect: {rejected: true, message_contains: ["run code or read data the job does not carry"]}
   green:
-    - config: {strict_when_unsure: false}
+    - config: {when_unsure: log}
       inputs: {word: hello}
       harm: true
-      expect: {rejected: false}
+      expect: {rejected: false, warns: [uncheckable-template-code]}
 
 user_object_unsanitized:
   doc: >-
@@ -507,10 +507,10 @@ user_object_unsanitized:
           - "run code or read data the job does not carry"
           - "it writes values it cannot trace to an input (command)"
   green:
-    - config: {strict_when_unsure: false}
+    - config: {when_unsure: log}
       user: {preferences: {"spec|label": "Bob"}}
       harm: true
-      expect: {rejected: false}
+      expect: {rejected: false, warns: [uncheckable-template-code, uncheckable-untraced-value]}
 
 untraced_value:
   doc: >-
@@ -525,10 +525,10 @@ untraced_value:
     - user: {preferences: {"spec|label": "hello"}}
       expect: {rejected: true, message_contains: ["it writes values it cannot trace to an input (command)"]}
   green:
-    - config: {strict_when_unsure: false}
+    - config: {when_unsure: log}
       user: {preferences: {"spec|label": "a';touch harm-marker;'"}}
       harm: true
-      expect: {rejected: false}
+      expect: {rejected: false, warns: [uncheckable-untraced-value]}
 
 review_failed:
   doc: A tool whose review fails cannot have any job checked.
@@ -540,9 +540,9 @@ review_failed:
       expect: {rejected: true, message_contains: ["the security review of this tool failed"]}
   green:
     - fault: review
-      config: {strict_when_unsure: false}
+      config: {when_unsure: log}
       inputs: {word: hello}
-      expect: {rejected: false}
+      expect: {rejected: false, warns: [uncheckable-review-failed]}
 
 check_failed:
   doc: When comparing a job's values with the review fails, every value must be plain.
@@ -569,11 +569,11 @@ strict_check_failed:
       expect: {rejected: true, message_contains: ["checking its values strictly failed"]}
   green:
     - fault: strict_check
-      config: {strict_when_unsure: false}
+      config: {when_unsure: log}
       collections:
         input:
           elements: [{identifier: sample1}]
-      expect: {rejected: false}
+      expect: {rejected: false, warns: [uncheckable-strict-check-error]}
 
 reflection_bypass:
   doc: >-
@@ -623,4 +623,25 @@ server_config_read:
     serious_rules: []
   green:
     - harm: true
+      expect: {rejected: false}
+
+refused_when_unsure:
+  doc: >-
+    An administrator can refuse every job the review cannot check instead of checking its values strictly.
+  tool: search_list.xml
+  code: uncheckable-when-unsure
+  review:
+    unchecked_locations: {command: parts of it were not analysed}
+  red:
+    - config: {when_unsure: refuse}
+      collections:
+        input:
+          elements: [{identifier: sample1}]
+      expect: {rejected: true, message_contains: ["this server refuses every job it cannot check"]}
+  green:
+    - doc: With the default `strict`, the same job runs, since its values are plain.
+      collections:
+        input:
+          elements: [{identifier: sample1}]
+      harm: true
       expect: {rejected: false}

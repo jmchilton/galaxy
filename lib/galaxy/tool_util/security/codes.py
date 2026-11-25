@@ -19,6 +19,7 @@ class RefusalCode(str, Enum):
     UNCHECKABLE_LETTERS_ARE_CODE = "uncheckable-letters-are-code"
     UNCHECKABLE_UNTRACED_VALUE = "uncheckable-untraced-value"
     UNCHECKABLE_STRICT_CHECK_ERROR = "uncheckable-strict-check-error"
+    UNCHECKABLE_WHEN_UNSURE = "uncheckable-when-unsure"
 
 
 DESCRIPTIONS = {
@@ -48,4 +49,6 @@ DESCRIPTIONS = {
     " preference (the user object read in a loop, a conditional built at run time), so no check sees it.",
     RefusalCode.UNCHECKABLE_STRICT_CHECK_ERROR: "The strict check itself failed (a bug), so none of the job's"
     " values could be checked.",
+    RefusalCode.UNCHECKABLE_WHEN_UNSURE: "The review cannot check the job, and the server refuses every such job"
+    " (`tool_security_review_when_unsure: refuse`) instead of checking its values strictly.",
 }

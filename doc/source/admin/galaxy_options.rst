@@ -4993,23 +4993,33 @@
     when it prepares the tool's first job, and keeps the review in
     memory as long as it keeps the tool. Before a job's command line
     is built, the values of its inputs are compared with the tool's
-    high and critical findings. With ``enforce`` (the default), Galaxy
-    fails a job whose value contains a character that can leave its
-    place, with a message that names the input and the characters, and
-    logs a warning. Set to ``log`` to only log the warning and run the
-    job, or ``off`` to turn off the review and the checks.
-:Default: ``enforce``
+    findings. Each level fails the jobs the one before it fails, and
+    more, with a message that names the input and the characters, and
+    logs a warning: ``enforce_code`` (the default) fails a job whose
+    value can become code: start a shell command, change the program
+    of another interpreter or the code of a configfile, choose the
+    program that is run. ``enforce_data`` also fails a job whose value
+    can stop being the data it is meant to be: name a path outside the
+    job's directory, be read as an option, split into words that are
+    options or paths, or change the structure of a data configfile. It
+    also fails a job whose element identifiers or dataset names, where
+    a template writes them, contain ``/`` or start with ``-`` or
+    ``~``. ``enforce_all`` also fails a job whose value can split into
+    extra plain words or close its quotes. Set to ``log`` to log what
+    ``enforce_all`` would fail and run the job, or ``off`` to turn off
+    the review and the checks.
+:Default: ``enforce_code``
 :Type: str
 
 
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-``tool_security_review_strict_when_unsure``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+``tool_security_review_when_unsure``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 :Description:
     Some jobs the security review cannot check: the tool's review
     failed, the tool writes values in places that no check of their
-    characters can judge, or the check itself fails. With ``true``
+    characters can judge, or the check itself fails. With ``strict``
     (the default), Galaxy checks such jobs strictly: every value the
     job carries must be plain. That is the values of text and select
     parameters whose options users can choose, element identifiers,
@@ -5025,13 +5035,15 @@
     ``$__app__``), or when letters alone can be code where the tool
     writes a value (a shell it pipes text into, a sed command,
     unquoted Perl or Ruby code). Galaxy logs a warning for each job
-    that fails the strict check, and with ``tool_security_review:
-    enforce`` also fails the job, with a message that names the values
-    or the reason. Set to ``false`` to run such jobs without a check.
-    Tools without a command template, user-defined tools and
-    expression tools are not reviewed and are not affected.
-:Default: ``true``
-:Type: bool
+    that fails the strict check, and with an ``enforce_*`` level of
+    ``tool_security_review`` also fails the job, with a message that
+    names the values or the reason. With ``refuse``, Galaxy fails
+    every such job whatever its values. With ``log``, Galaxy only logs
+    what ``strict`` would fail and runs the job. Tools without a
+    command template, user-defined tools and expression tools are not
+    reviewed and are not affected.
+:Default: ``strict``
+:Type: str
 
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
