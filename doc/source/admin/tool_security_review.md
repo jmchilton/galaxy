@@ -572,6 +572,58 @@ config:
   mode: enforce_all
 ```
 
+### `path-like-name`
+
+An element identifier or a dataset name that a template writes contains `/` or starts with `-` or `~`. Tools use names as file names and arguments in ways the review does not follow (a program's own options, paths in R or Python), where such a name is a path or an option. Refused from `enforce_data` on.
+
+#### path_like_name
+
+`sort -o` writes to a file named after the element identifier, which the review does not take for a path of its own. With `enforce_data`, an identifier or dataset name that a template writes may not contain a slash or start with a dash or a tilde.
+
+Tool `sort_to_named_file.xml`:
+
+```
+mkdir -p sorted && sort -o 'sorted/${input.element_identifier}' '$input' && cp '$input' '$out'
+```
+
+Refused
+
+```
+datasets:
+  input:
+    name: ../harm-marker
+config:
+  mode: enforce_data
+```
+
+Refused
+
+```
+datasets:
+  input:
+    name: -reads.txt
+config:
+  mode: enforce_data
+```
+
+Runs
+
+```
+datasets:
+  input:
+    name: reads 1.txt
+config:
+  mode: enforce_data
+```
+
+Runs: With `enforce_code`, the default, a path is not refused.
+
+```
+datasets:
+  input:
+    name: ../reads.txt
+```
+
 ### `not-plain-unchecked-place`
 
 The tool writes values in places the review cannot judge (parts of the template it did not follow, or values it cannot trace), and a value is not plain.

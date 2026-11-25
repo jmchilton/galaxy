@@ -1,0 +1,10 @@
+<tool id="spec_sort_to_named_file" name="Sort into a file named after the input" version="1.0" profile="24.0">
+    <description>names an output file after the element identifier</description>
+    <command><![CDATA[mkdir -p sorted && sort -o 'sorted/${input.element_identifier}' '$input' && cp '$input' '$out']]></command>
+    <inputs>
+        <param name="input" type="data" format="txt"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

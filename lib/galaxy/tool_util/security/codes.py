@@ -13,6 +13,7 @@ class RefusalCode(str, Enum):
     PATH_TRAVERSAL = "path-traversal"
     OPTION_INJECTION = "option-injection"
     ARGUMENT_INJECTION = "argument-injection"
+    PATH_LIKE_NAME = "path-like-name"
     # The review cannot judge the job's values, and one of them is not plain.
     NOT_PLAIN_UNCHECKED_PLACE = "not-plain-unchecked-place"
     NOT_PLAIN_CHECK_ERROR = "not-plain-check-error"
@@ -43,6 +44,10 @@ DESCRIPTIONS = {
     RefusalCode.ARGUMENT_INJECTION: "A value is written unquoted, or can close its quotes, and can split into"
     " more words. From `enforce_data` on, a job is refused when a word can then be an option, a home directory,"
     " a path or a glob; with `enforce_all`, also when the words are plain or the value only closes its quotes.",
+    RefusalCode.PATH_LIKE_NAME: "An element identifier or a dataset name that a template writes contains `/` or"
+    " starts with `-` or `~`. Tools use names as file names and arguments in ways the review does not follow"
+    " (a program's own options, paths in R or Python), where such a name is a path or an option. Refused from"
+    " `enforce_data` on.",
     RefusalCode.NOT_PLAIN_UNCHECKED_PLACE: "The tool writes values in places the review cannot judge (parts of the"
     " template it did not follow, or values it cannot trace), and a value is not plain.",
     RefusalCode.NOT_PLAIN_CHECK_ERROR: "Comparing the job's values with the review's findings failed (a bug), so"
