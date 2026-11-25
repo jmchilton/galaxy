@@ -52,7 +52,9 @@ from galaxy.tool_util.security.charsets import (
     DATA,
     enforced,
     HIGH,
+    LEADING_DASH,
     marks,
+    MEDIUM,
     not_plain,
     NOT_PLAIN,
     PROBE,
@@ -324,7 +326,7 @@ class ToolSecurityReviewer:
             )
             return
         violations: list[Violation] = []
-        if review.checked_at(self.level) or review.report.writes:
+        if review.checked_at(self.level) or review.report.writes or self.level != CODE:
             try:
                 with _keeping_consumes(evaluator):
                     violations = list(find_violations(review.report, evaluator.param_dict, self.level))
@@ -478,6 +480,8 @@ class Violation:
 
 # The rule of a value that a stray quote of another value leaves outside its quotes.
 STRAY_QUOTE = RefusalCode.STRAY_QUOTE.value
+# The rule of an element identifier or dataset name that is a path or an option, from enforce_data on.
+PATH_LIKE_NAME = RefusalCode.PATH_LIKE_NAME.value
 
 
 def find_violations(report: Report, param_dict: dict[str, Any], level: str = CODE) -> Iterator[Violation]:
@@ -561,6 +565,15 @@ def find_violations(report: Report, param_dict: dict[str, Any], level: str = COD
             if violation.chars and first(violation):
                 yield violation
 
+    if level != CODE:
+        for location, refs in report.reads.items():
+            for ref in refs:
+                if ref.accessor == ELEMENT_IDENTIFIER or (ref.accessor == DATASET_ATTRIBUTE and ref.key == "name"):
+                    if (harm := _path_like(source_values(ref, param_dict))) and first(
+                        violation := Violation(ref, harm, PATH_LIKE_NAME, MEDIUM, location)
+                    ):
+                        yield violation
+
     for location, quoted in closers.items():
         freed = []
         for ref, harm in report.writes.get(location, {}).items():
@@ -572,6 +585,19 @@ def find_violations(report: Report, param_dict: dict[str, Any], level: str = COD
             for violation in freed:
                 if first(violation):
                     yield violation
+
+
+def _path_like(names: Iterable[str]) -> frozenset[str]:
+    """What makes names a path or an option: a slash, a leading dash or a leading tilde."""
+    harm: set[str] = set()
+    for name in names:
+        if "/" in name:
+            harm.add("/")
+        if name.startswith("-"):
+            harm.add(LEADING_DASH)
+        if name.startswith("~"):
+            harm.add("~")
+    return frozenset(harm)
 
 
 def source_values(ref: SourceRef, param_dict: dict[str, Any], raw: bool = False) -> Iterator[str]:

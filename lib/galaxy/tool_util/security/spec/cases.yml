@@ -366,6 +366,38 @@ argument_injection:
       harm: true
       expect: {rejected: false}
 
+path_like_name:
+  doc: >-
+    `sort -o` writes to a file named after the element identifier, which the review does not take for a path
+    of its own. With `enforce_data`, an identifier or dataset name that a template writes may not contain a
+    slash or start with a dash or a tilde.
+  tool: sort_to_named_file.xml
+  code: path-like-name
+  red:
+    - config: {mode: enforce_data}
+      datasets:
+        input: {name: "../harm-marker"}
+      harm: true
+      expect:
+        rejected: true
+        message_contains: ["an element identifier or the name of input 'input' contains the characters [/]"]
+    - config: {mode: enforce_data}
+      datasets:
+        input: {name: "-reads.txt"}
+      expect:
+        rejected: true
+        message_contains: ["an element identifier or the name of input 'input' contains the characters [a leading -]"]
+  green:
+    - config: {mode: enforce_data}
+      datasets:
+        input: {name: "reads 1.txt"}
+      harm: true
+      expect: {rejected: false}
+    - doc: With `enforce_code`, the default, a path is not refused.
+      datasets:
+        input: {name: "../reads.txt"}
+      expect: {rejected: false}
+
 not_analysed_strict:
   doc: >-
     Where the review does not follow parts of a template, it cannot tell which characters do harm,
