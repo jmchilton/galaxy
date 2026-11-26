@@ -1,0 +1,346 @@
+# Cases of the tool security review. See __init__.py for the format.
+#
+# Each case is a synthetic tool and what the review of its templates must report.
+
+raw_text_shell_injection:
+  doc: A text value written past its sanitizer can close its single quotes and start a command.
+  tool: raw_text_single_quoted.xml
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, accessor: raw, param: word, checkable: true}
+
+sanitized_text_stays_quoted:
+  doc: The default sanitizer turns quotes into tokens, so a sanitized text value cannot leave its quotes.
+  tool: sanitized_text_single_quoted.xml
+  review:
+    serious_rules: []
+
+element_identifier_shell_injection:
+  doc: Element identifiers are not sanitized; one in single quotes can start a command.
+  tool: element_identifier_single_quoted.xml
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, accessor: element_identifier, param: input, checkable: true}
+
+dataset_name_stays_quoted:
+  doc: >-
+    Outside a collection, the element identifier of a dataset input is its name, which Galaxy sanitizes.
+    The review still reports it as written as the user set it.
+  tool: dataset_name_identifier.xml
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, accessor: element_identifier, param: input, checkable: true}
+
+wrapped_names_stay_quoted:
+  doc: >-
+    Galaxy sanitizes dataset names and metadata read through the dataset wrapper even in a tool that turns
+    the sanitizer off. The review still reports them as written as users set them.
+  tool: dataset_name_unsanitized.xml
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, accessor: dataset_attribute, param: input, key: name, checkable: true}
+      - {rule: shell-injection, accessor: metadata, param: input, key: column_names, checkable: true}
+
+group_tags_shell_injection:
+  doc: Group tags are not sanitized.
+  tool: group_tags.xml
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, accessor: group_tags, param: input, checkable: true}
+
+dataset_content_shell_injection:
+  doc: A template that reads a dataset with open() writes its content, which the review follows.
+  tool: dataset_content_first_line.xml
+  review:
+    patterns: [file-access]
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, accessor: dataset_content, param: input, checkable: true}
+      - {rule: template-file-io}
+
+user_preference_stays_quoted:
+  doc: >-
+    Unless the tool turns the sanitizer off, Galaxy sanitizes what a template reads from the user object,
+    preferences included. The review still reports a preference as written as the user set it.
+  tool: user_preference.xml
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, accessor: user_preference, key: "spec|label", checkable: true}
+
+user_preference_shell_injection:
+  doc: >-
+    With the sanitizer off, a preference is written as the user set it. Read by name, with a subscript or a
+    Cheetah name, it can close its single quotes and start a command.
+  tool: user_preference_unsanitized.xml
+  review:
+    patterns: [user-object]
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, accessor: user_preference, key: "spec|label", checkable: true}
+      - {rule: shell-injection, accessor: user_preference, key: label, checkable: true}
+
+stray_quote:
+  doc: >-
+    A lone quote in one value is harmless by itself, but it flips the quoting of the rest of the line,
+    which leaves the command characters of the next value unquoted.
+  tool: stray_quote.xml
+  review:
+    serious_rules: [shell-injection]
+
+nested_shell:
+  doc: A value in the program of `bash -c` is shell code again, inside the outer quotes.
+  tool: nested_shell.xml
+  review:
+    serious_rules: [nested-interpreter]
+    findings:
+      - {rule: nested-interpreter, accessor: raw, param: word, checkable: true}
+
+sed_program:
+  doc: A value in a sed program can end the s command and add one that runs a shell command (`e`, GNU sed).
+  tool: sed_program.xml
+  review:
+    serious_rules: [nested-interpreter]
+
+configfile_python:
+  doc: A value in a string of a Python configfile can end the string and add Python code.
+  tool: configfile_python.xml
+  review:
+    serious_rules: [configfile-injection]
+    findings:
+      - {rule: configfile-injection, location: "configfile:script", accessor: raw, param: word, checkable: true}
+
+path_traversal:
+  doc: >-
+    A file name the user gives is written as a path `cp` writes to. A slash in it can name a file outside the
+    job's directory.
+  tool: copy_to_named_file.xml
+  review:
+    findings:
+      - {rule: path-traversal, severity: medium, accessor: text, param: name, checkable: true}
+
+option_injection:
+  doc: >-
+    A quoted value that starts an argument can begin with a dash, and `sort` reads it as an option.
+  tool: sort_quoted_operand.xml
+  review:
+    findings:
+      - {rule: option-injection, severity: low, accessor: text, param: file, checkable: true}
+
+argument_injection:
+  doc: >-
+    An unquoted value splits into words, and a word can be an option, a home directory, a path or a glob.
+  tool: sort_unquoted_operands.xml
+  review:
+    findings:
+      - {rule: argument-injection, severity: medium, accessor: text, param: files, checkable: true}
+
+path_like_name:
+  doc: >-
+    `sort -o` writes to a file named after the element identifier. The review reports that the identifier can
+    close its quotes.
+  tool: sort_to_named_file.xml
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, accessor: element_identifier, param: input, checkable: true}
+
+env_assignment:
+  doc: >-
+    `env` takes every word before the command as an assignment or the command: an unquoted value that splits
+    runs a command of its own.
+  tool: env_assignment.xml
+  review:
+    findings:
+      - {rule: argument-injection, severity: high, accessor: text, param: label, checkable: true}
+
+export_name:
+  doc: >-
+    A value that names the variable `export` sets can set BASH_ENV, PATH or LD_PRELOAD with letters alone.
+  tool: export_name.xml
+  review:
+    serious_rules: [variable-name]
+
+export_value:
+  doc: >-
+    bash and dash from 0.5.11 take an operand of `export` whole, older dash splits it into more assignments:
+    an unquoted value of one that holds a space and a `=` can set another variable.
+  tool: export_value.xml
+  review:
+    findings:
+      - {rule: argument-injection, severity: medium, accessor: text, param: label, checkable: true}
+
+not_analysed_strict:
+  doc: >-
+    Where the review does not follow parts of a template, it cannot tell which characters do harm there,
+    and it lists the template as unchecked.
+  tool: search_list.xml
+  review:
+    unchecked_locations: {command: parts of it were not analysed}
+
+raw_dataset_model:
+  doc: >-
+    `$input.unsanitized.name` is the dataset's name as the user set it, without the sanitizer.
+  tool: raw_dataset_model.xml
+  review:
+    patterns: [model-access]
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, accessor: raw_dataset_attribute, param: input, key: name, checkable: true}
+      - {rule: template-model-access}
+
+raw_dataset_history:
+  doc: >-
+    Beyond the dataset's own strings and metadata, the model reaches its history, its tags and the job that
+    made it, which the review cannot trace to one value: its finding is not checkable.
+  tool: raw_dataset_history.xml
+  review:
+    patterns: [model-access]
+    findings:
+      - {rule: shell-injection, accessor: opaque, param: input, checkable: false}
+
+pipe_to_shell:
+  doc: A value in text piped to a shell is code whatever its characters, so the review lists the command as unchecked.
+  tool: pipe_to_shell.xml
+  review:
+    unchecked_locations: {command: it sends text to a shell to run}
+
+shell_runs_script_file:
+  doc: >-
+    A shell given a script file reads the data piped into it as input, not as code, so the value is reviewed where
+    it is written.
+  tool: pipe_to_shell_script.xml
+  review:
+    serious_rules: [shell-injection]
+    unchecked_locations: {}
+    findings:
+      - {rule: shell-injection, severity: high, accessor: raw, param: word, checkable: true}
+
+command_position:
+  doc: A value that names the program to run is code with letters alone.
+  tool: command_position.xml
+  review:
+    serious_rules: [command-position]
+    findings:
+      - {rule: command-position, accessor: text, param: program, checkable: false}
+
+rewrites_restore_tokens:
+  doc: A template that turns the sanitizer's tokens back into quotes and redirects undoes the sanitizer.
+  tool: rewrites_restore_tokens.xml
+  review:
+    rewrites: true
+    serious_rules: [shell-injection]
+
+literal_rewrite:
+  doc: >-
+    A rewrite with literal text of a value adds what it writes only to a value that holds what it replaces, so
+    the review does not count it among the rewrites it cannot follow. Escaping the double quote of a value that a
+    string method reads past its sanitizer leaves `$` and backticks live.
+  tool: raw_text_escaped_double_quoted.xml
+  review:
+    rewrites: false
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, accessor: raw, param: word, checkable: true}
+
+rewrites_and_template_code:
+  doc: The review reports both the rewrite of a value and the template code.
+  tool: rewrites_and_template_code.xml
+  review:
+    patterns: [template-code]
+    rewrites: true
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: template-exec, severity: critical}
+
+template_code:
+  doc: A template that imports code can read text no input carries, and the review does not follow it.
+  tool: template_code.xml
+  review:
+    patterns: [template-code]
+    unchecked_locations: {command: parts of it were not analysed}
+    findings:
+      - {rule: template-exec, severity: critical}
+
+user_object_unsanitized:
+  doc: >-
+    With the sanitizer off, the user object is read as it is stored. A template that reads it other than by
+    the name of one preference, here every preference in a loop, writes values the review cannot trace.
+  tool: user_preferences_unsanitized_loop.xml
+  review:
+    patterns: [user-object]
+    findings:
+      - {rule: template-app-access, severity: medium}
+      - {rule: shell-injection, accessor: opaque, checkable: false}
+
+untraced_value:
+  doc: >-
+    A preference read in a loop, by a name the template computes, cannot be traced to one preference. Galaxy
+    sanitizes it here, but the review reports a value it cannot check.
+  tool: user_preferences_loop.xml
+  review:
+    findings:
+      - {rule: shell-injection, accessor: opaque, checkable: false}
+
+reflection_bypass:
+  doc: >-
+    Read by name through `getattr`, the dataset model is out of the review's sight: it can write any value
+    without a finding about it, its history's name as well as its own. The review reports the reflection.
+  tool: reflection_getattr.xml
+  review:
+    patterns: [reflection]
+    serious_rules: []
+
+output_filter_vars:
+  doc: >-
+    `vars()` in an output filter reaches Python objects, but Galaxy evaluates filters when it creates the outputs:
+    nothing it reads is written into the command, which is reviewed as usual.
+  tool: output_filter_vars.xml
+  review:
+    patterns: [reflection]
+
+getvar_user_name:
+  doc: >-
+    A name the user gives (`$getVar(str($which))`) can be any variable, which the review cannot follow: it
+    reports the reflection.
+  tool: getvar_user_name.xml
+  review:
+    patterns: [reflection]
+
+known_helper:
+  doc: >-
+    The read group helper of bwa and bowtie2 looks a parameter up with `getVar` by the name it is called with. Called
+    with literal names only, it reads the parameters it names, whose values are reviewed as usual.
+  tool: known_helper.xml
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, accessor: raw, param: word, checkable: true}
+
+app_model_read:
+  doc: >-
+    The application object reaches any data of the server. The review flags the read but follows no value
+    of it, and this tool writes only a count.
+  tool: app_model.xml
+  review:
+    patterns: [app-access]
+    serious_rules: []
+
+job_metadata_read:
+  doc: The tool version of the job that made a dataset is set by the server, not by a user.
+  tool: job_metadata.xml
+  review:
+    patterns: [job-metadata]
+    serious_rules: []
+
+server_config_read:
+  doc: An id the server encodes is the server's value, not a user's.
+  tool: server_config.xml
+  review:
+    patterns: [server-config]
+    serious_rules: []

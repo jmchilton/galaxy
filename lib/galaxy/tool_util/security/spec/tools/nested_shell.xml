@@ -1,0 +1,12 @@
+<tool id="spec_nested_shell" name="Raw text in a nested shell" version="1.0" profile="24.0">
+    <description>writes a text value into the program of bash -c</description>
+    <command><![CDATA[bash -c 'echo ${word.value}' > '$out']]></command>
+    <inputs>
+        <param name="word" type="text">
+            <validator type="regex" message="No quotes or backslashes">^[^'\\]*$</validator>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

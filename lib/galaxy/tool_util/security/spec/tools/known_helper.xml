@@ -1,0 +1,19 @@
+<tool id="spec_known_helper" name="Text read by a known helper" version="1.0" profile="24.0">
+    <description>reads a text value through the read group helper of bwa and bowtie2</description>
+    <command><![CDATA[
+#def rg_param(name)
+    #if $varExists("rg")
+        #return $rg.get($name, None)
+    #else
+        #return $getVar($name, None)
+    #end if
+#end def
+echo '${rg_param('word').value}' > '$out'
+    ]]></command>
+    <inputs>
+        <param name="word" type="text"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

@@ -1,0 +1,13 @@
+<tool id="spec_dataset_content_first_line" name="First line of a dataset in single quotes" version="1.0" profile="24.0">
+    <description>reads the first line of the input while the command is built</description>
+    <command><![CDATA[
+#set $first = open(str($input)).readline().strip()
+echo '$first' > '$out'
+    ]]></command>
+    <inputs>
+        <param name="input" type="data" format="txt"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

@@ -1,0 +1,13 @@
+<tool id="spec_raw_text_escaped_double_quoted" name="Raw text with its double quotes escaped" version="1.0" profile="24.0">
+    <description>escapes the double quotes of a text value that a string method reads past the sanitizer</description>
+    <command><![CDATA[
+#set $escaped = $word.replace('"', '\\"')
+echo "$escaped" > '$out'
+    ]]></command>
+    <inputs>
+        <param name="word" type="text"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

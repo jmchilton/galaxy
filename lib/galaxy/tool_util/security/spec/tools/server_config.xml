@@ -1,0 +1,8 @@
+<tool id="spec_server_config" name="Encoded id" version="1.0" profile="24.0">
+    <description>writes an id the server encodes</description>
+    <command><![CDATA[echo '${__app__.security.encode_id(1)}' > '$out']]></command>
+    <inputs/>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

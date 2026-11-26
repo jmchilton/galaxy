@@ -1,0 +1,14 @@
+<tool id="spec_group_tags" name="Group tags in single quotes" version="1.0" profile="24.0">
+    <description>writes the group tags of the input dataset</description>
+    <command><![CDATA[
+#for $g in $input.groups
+echo '$g' >> '$out';
+#end for
+    ]]></command>
+    <inputs>
+        <param name="input" type="data" format="txt"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

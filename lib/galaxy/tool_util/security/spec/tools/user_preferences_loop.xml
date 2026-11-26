@@ -1,0 +1,13 @@
+<tool id="spec_user_preferences_loop" name="Every user preference" version="1.0" profile="24.0">
+    <description>writes every preference the user set</description>
+    <command><![CDATA[
+#for $name in $__user__.extra_preferences
+echo '${__user__.extra_preferences[$name]}' >> '$out' &&
+#end for
+true
+    ]]></command>
+    <inputs/>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

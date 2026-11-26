@@ -1,0 +1,11 @@
+<tool id="spec_getvar_user_name" name="Variable named by the user" version="1.0" profile="24.0">
+    <description>looks up a variable by a name the user gives</description>
+    <command><![CDATA[echo '$getVar(str($which), "none")' > '$out']]></command>
+    <inputs>
+        <param name="which" type="text"/>
+        <param name="label" type="text"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>
