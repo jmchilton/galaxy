@@ -35,6 +35,7 @@ from .xmlutil import (
     element_children,
     find,
     parse_fragment,
+    remove_keeping_tail,
     SINGLETON_TAGS,
 )
 
@@ -58,15 +59,6 @@ def _outside(text: str, old: str, new: str) -> int:
     """Occurrences of old not contained in an occurrence of new."""
     news = _spans(text, new)
     return sum(1 for a, b in _spans(text, old) if not any(x <= a and b <= y for x, y in news))
-
-
-def _ancestors(el: etree._Element) -> list[etree._Element]:
-    out = []
-    parent = el.getparent()
-    while parent is not None:
-        out.append(parent)
-        parent = parent.getparent()
-    return out
 
 
 def _position_index(parent: etree._Element, position: str) -> int | None:
@@ -104,7 +96,7 @@ def classify(root: etree._Element, body: OpBody) -> str:
         keyed = [(c, canon(c)) for c in candidates]
         news = [c for c, k in keyed if k == c_new]
         olds = [c for c, k in keyed if k == c_old]
-        olds_outside = [c for c in olds if not any(a in news for a in _ancestors(c))]
+        olds_outside = [c for c in olds if not any(a in news for a in c.iterancestors())]
         if len(news) == n and not olds_outside:
             return POST
         if len(olds) == n:
@@ -158,20 +150,14 @@ def apply_op(root: etree._Element, body: OpBody) -> None:
             assert i is not None
             children = list(p)
             ref = children[i - 1] if i > 0 else None
-            new.tail = (ref.tail if ref is not None else p.text) if children else None
+            indent = (ref.tail if ref is not None else p.text) if children else None
+            # Reuse the sibling indentation only; never duplicate real text.
+            new.tail = indent if indent and not indent.strip() else None
             p.insert(i, new)
     else:
         c_old = canon_fragment(body.old)
         for e in [c for c in find(root, body.path) if canon(c) == c_old]:
-            parent = e.getparent()
-            assert parent is not None
-            if e.tail and e.tail.strip():
-                prev = e.getprevious()
-                if prev is not None:
-                    prev.tail = (prev.tail or "") + e.tail
-                else:
-                    parent.text = (parent.text or "") + e.tail
-            parent.remove(e)
+            remove_keeping_tail(e)
 
 
 def selector_counts(root: etree._Element, bodies: Sequence[OpBody]) -> list[int]:

@@ -24,19 +24,26 @@ def parse_fragment(text: str) -> etree._Element:
     return etree.fromstring(text.strip().encode("utf-8"), parser=_FRAGMENT_PARSER)
 
 
+def remove_keeping_tail(el: etree._Element) -> None:
+    """Remove ``el`` from its parent, keeping any non-whitespace tail text in place."""
+    parent = el.getparent()
+    assert parent is not None
+    if el.tail and el.tail.strip():
+        prev = el.getprevious()
+        if prev is not None:
+            prev.tail = (prev.tail or "") + el.tail
+        else:
+            parent.text = (parent.text or "") + el.tail
+    parent.remove(el)
+
+
 def _normalized(el: etree._Element) -> etree._Element:
     el = copy.deepcopy(el)
     for c in list(el.iter(etree.Comment, etree.ProcessingInstruction)):
         parent = c.getparent()
         if parent is None:
             continue
-        if c.tail and c.tail.strip():
-            prev = c.getprevious()
-            if prev is not None:
-                prev.tail = (prev.tail or "") + c.tail
-            else:
-                parent.text = (parent.text or "") + c.tail
-        parent.remove(c)
+        remove_keeping_tail(c)
     for e in el.iter():
         if e.text is not None and not e.text.strip() and len(e):
             e.text = None

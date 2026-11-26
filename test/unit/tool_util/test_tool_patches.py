@@ -831,7 +831,9 @@ def test_digests_follow_file_content(tmp_path: Path) -> None:
 def test_collection_digest_is_computed_from_contents(tmp_path: Path) -> None:
     root = write_collection(tmp_path / "c", {LOCAL_PROBE: security_doc(QUOTE_LABEL)}, extra={"digest": "0" * 64})
     rel = f"patches/{LOCAL_PROBE}"
-    expected = hashlib.sha256(rel.encode() + b"\0" + hashlib.sha256((root / rel).read_bytes()).digest()).hexdigest()
+    expected = hashlib.sha256(
+        rel.encode() + b"\0" + hashlib.sha256((root / rel).read_bytes()).digest() + b"\0codes.yml\0"
+    ).hexdigest()
     (summary,) = load_db(root).collections_summary().collections
     assert (summary.name, summary.version, summary.digest) == ("test-patches", "2026.11.25", expected)
 
@@ -1042,7 +1044,7 @@ def test_builtin_collection_is_empty() -> None:
     db = load_tool_patch_database(["builtin"])
     (summary,) = db.collections_summary().collections
     assert summary.name == "galaxy-builtin"
-    assert summary.digest == hashlib.sha256().hexdigest()
+    assert summary.digest == hashlib.sha256(b"\0codes.yml\0").hexdigest()
 
 
 @pytest.mark.parametrize(
@@ -1208,3 +1210,52 @@ def test_dirstate_of_real_repository(tmp_path: Path, v2: bool) -> None:
     node = subprocess.run([*hg, "log", "-r", ".", "-T", "{node}"], check=True, capture_output=True, text=True).stdout
     assert ("dirstate-v2" in (repo / ".hg" / "requires").read_text()) == v2
     assert read_working_parent(str(repo)) == node
+
+
+def test_override_keeps_its_security_fix_when_its_compat_unit_mismatches(tmp_path: Path) -> None:
+    tool = shed_repo_tool(tmp_path)
+    override = security_doc(
+        {**OVERRIDE_OP, "kind": "security"},
+        {**text_op("absent anchor", "x"), "kind": "compat"},
+        kind="mixed",
+        needed_from="26.1",
+        galaxy_change=GALAXY_CHANGE,
+        upstream=[{**UPSTREAM, "kind": "security"}],
+    )
+    root = write_collection(
+        tmp_path / "c", {f"{SHED_PROBE}.yml": security_doc(text_op("absent anchor", "y")), OVERRIDE_REL: override}
+    )
+
+    patched = load_db(root).apply_patches(tool, guid=SHED_GUID)
+
+    assert {(s.kind, s.state, s.path) for s in patch_states(patched)} == {
+        ("security", "applied", f"patches/{OVERRIDE_REL}"),
+        ("compat", "mismatch", f"patches/{OVERRIDE_REL}"),
+    }
+    assert "cat -- '$input1'" in command_text(patched.parse_command())
+
+
+def test_digests_follow_coverage_and_codes(tmp_path: Path) -> None:
+    root = write_collection(tmp_path / "c", {LOCAL_PROBE: security_doc(QUOTE_LABEL)})
+    db = load_db(root)
+    digests = [(db.digest_for(LOCAL_KEY), db.token())]
+    write_collection(root, {}, coverage={"_local/patch_probe/1.0+galaxy0.json": ["0" * 64]})
+    db = load_db(root)
+    digests.append((db.digest_for(LOCAL_KEY), db.token()))
+    write_collection(root, {}, codes=CODES)
+    db = load_db(root)
+    digests.append((db.digest_for(LOCAL_KEY), db.token()))
+    assert len(set(digests)) == 3
+
+
+@pytest.mark.parametrize("position", ["first", "before:b"])
+def test_add_element_keeps_mixed_text_once(tmp_path: Path, position: str) -> None:
+    tool = write_tool(
+        tmp_path / "probe.xml", PROBE_TOOL.replace("<help>Old help.</help>", "<help>Real text <b>x</b></help>")
+    )
+    op = {"add_element": {"parent": "help", "new": "<i/>", "position": position, "occurrences": 1}}
+    result = run(tool, op)
+    assert result.tree is not None
+    help_el = result.tree.getroot().find("help")
+    assert help_el is not None
+    assert "".join(help_el.itertext()).count("Real text") == 1

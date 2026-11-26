@@ -1,6 +1,7 @@
 """Patch keys and Go module-cache style path segment encoding."""
 
 from galaxy.tool_util.parser.interface import ToolSource
+from galaxy.util.tool_version import is_shed_guid
 
 LOCAL = "_local"
 PatchKey = tuple[str, ...]
@@ -64,13 +65,9 @@ def key_string(key: PatchKey) -> str:
     return "/".join(key)
 
 
-def _is_shed_guid(guid: str | None) -> bool:
-    return bool(guid) and "/repos/" in str(guid)
-
-
 def key_from_ids(guid: str | None, tool_id: str | None, version: str | None) -> PatchKey | None:
     """``(owner, repo, tool_id, version)`` from a shed guid, else ``(_local, tool_id, version)``."""
-    if guid and _is_shed_guid(guid):
+    if guid and is_shed_guid(guid):
         parts = guid.split("/repos/", 1)[1].split("/")
         if len(parts) != 4 or not all(parts):
             return None
@@ -82,6 +79,6 @@ def key_from_ids(guid: str | None, tool_id: str | None, version: str | None) -> 
 
 def patch_key(tool_source: ToolSource, guid: str | None = None) -> PatchKey | None:
     """Key for a tool source; the XML id and version are read only for non-shed tools."""
-    if _is_shed_guid(guid):
+    if guid and is_shed_guid(guid):
         return key_from_ids(guid, None, None)
     return key_from_ids(None, tool_source.parse_id(), tool_source.parse_version())

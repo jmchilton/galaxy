@@ -69,6 +69,14 @@ def _read_yaml(path: str) -> Any:
         return yaml.safe_load(f)
 
 
+def _file_sha256(path: str) -> str | None:
+    try:
+        with open(path, "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()
+    except OSError:
+        return None
+
+
 class PatchCollection:
     """Patch files under ``<root>/patches``, indexed by key without parsing them."""
 
@@ -90,6 +98,8 @@ class PatchCollection:
         self.name = metadata.name
         self.version = metadata.version
         self._codes = self._load_codes()
+        # Advisory levels and file validity depend on codes.yml, so digests fold it in.
+        self.codes_sha256 = _file_sha256(os.path.join(self.root, "codes.yml")) or ""
         self._files: dict[PatchKey, str] = {}
         self._overrides: dict[PatchKey, dict[str, str]] = {}
         self._resolved: dict[str, str] = {}
@@ -316,11 +326,23 @@ class PatchCollection:
 
     @property
     def digest(self) -> str:
-        """sha256 over sorted (relative path, NUL, sha256 of the resolved content) of every patch file."""
+        """sha256 over every patch file (path, NUL, resolved content sha256), ``codes.yml`` and ``coverage/``."""
         if self._digest is None:
             h = hashlib.sha256()
             for rel in self.paths():
                 sha256 = self.file_sha256(rel)
                 h.update(rel.encode("utf-8") + b"\0" + (bytes.fromhex(sha256) if sha256 else b""))
+            h.update(b"\0codes.yml\0" + self.codes_sha256.encode("ascii"))
+            for rel in self._coverage_paths():
+                h.update(f"\0coverage/{rel}\0{_file_sha256(os.path.join(self.root, 'coverage', rel)) or ''}".encode())
             self._digest = h.hexdigest()
         return self._digest
+
+    def _coverage_paths(self) -> list[str]:
+        coverage_root = os.path.join(self.root, "coverage")
+        return sorted(
+            os.path.relpath(os.path.join(dirpath, name), coverage_root)
+            for dirpath, _, names in os.walk(coverage_root)
+            for name in names
+            if name.endswith(".json")
+        )
