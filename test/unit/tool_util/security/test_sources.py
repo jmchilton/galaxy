@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+from dataclasses import replace
 
 import pytest
 
@@ -15,7 +16,13 @@ from galaxy.tool_util.security import (
     SourceRef,
 )
 from galaxy.tool_util.security.charsets import (
+    ALL,
+    CODE,
+    DATA,
+    DATA_HARM,
     HIGH,
+    LOW,
+    MEDIUM,
     SHELL_EXEC,
 )
 from galaxy.tool_util.security.report import (
@@ -31,8 +38,12 @@ from galaxy.tool_util.security.report import (
     SPECIAL,
     TEXT,
     USER_PREFERENCE,
+    VULNERABILITY,
 )
-from .test_review import review
+from .test_review import (
+    CONFIG,
+    review,
+)
 
 UNSANITIZED = '<options sanitize="False"/>'
 
@@ -241,7 +252,9 @@ def test_writes_record_what_does_harm_outside_quotes(tmp_path):
     assert writes[SourceRef(TEXT, "free")] == SHELL_EXEC
     assert writes[SourceRef(TEXT, "no_quote")] == SHELL_EXEC
     assert writes[SourceRef(TEXT, "word")] == frozenset()
-    json.dumps(report.to_dict())
+    as_json = json.loads(json.dumps(report.to_dict()))
+    word = {"location": "command", "ref": {"accessor": TEXT, "param": "word", "key": None}, "chars": []}
+    assert word in as_json["writes"]
 
 
 def test_a_quote_left_raw_by_escaping_closes(tmp_path):
@@ -250,6 +263,117 @@ def test_a_quote_left_raw_by_escaping_closes(tmp_path):
     report = review(tmp_path, """echo "${repr(str($quotes))}" && echo '$word'""")
     (finding,) = [f for f in report.findings if f.kind == "vulnerability" and f.refs == (SourceRef(TEXT, "quotes"),)]
     assert finding.closes == frozenset("'\"") and finding.checkable
+
+
+@pytest.mark.parametrize(
+    "command,closers",
+    [
+        # Outside quotes, a quote of the value opens a string and a backslash escapes what follows.
+        ("echo $free && echo '$word'", {SourceRef(TEXT, "free"): frozenset("'\"\\")}),
+        # Inside double quotes, a trailing backslash escapes the closing quote.
+        (
+            'echo "${free}" "${no_quote}"',
+            {SourceRef(TEXT, "free"): frozenset("\\"), SourceRef(TEXT, "no_quote"): frozenset("\\")},
+        ),
+        # repr() writes the closing quote; the value's own quotes open new ones.
+        ("""echo "${repr(str($quotes))}" && echo '$word'""", {SourceRef(TEXT, "quotes"): frozenset("'\"")}),
+    ],
+)
+def test_closers_record_what_flips_the_quoting_of_the_line(tmp_path, command, closers):
+    assert review(tmp_path, command).closers == {"command": closers}
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        # Inside single quotes only a quote closes, and that is a finding.
+        "echo '${free}' && echo '${no_quote}'",
+        "echo $free | sh",
+        "echo $free && echo ${str($free).replace('Q', ';')}",
+    ],
+)
+def test_no_closers_where_quotes_cannot_flip_or_no_character_test_can_judge(tmp_path, command):
+    assert review(tmp_path, command).closers == {}
+
+
+@pytest.mark.parametrize(
+    "command,configfiles,rule,expected",
+    [
+        ('echo "${free}" "${no_quote}"', "", "shell-injection", {(True, frozenset('"\\')), (False, frozenset('"`'))}),
+        (
+            "python '$script'",
+            CONFIG.format("<![CDATA[adata.obs['$no_quote'] = adata.obs['$no_quote']]]>"),
+            "configfile-injection",
+            {(True, frozenset("\\")), (False, frozenset("\\"))},
+        ),
+    ],
+)
+def test_a_value_after_one_that_can_end_in_a_backslash_needs_a_closer(tmp_path, command, configfiles, rule, expected):
+    # Until another value escapes the closing quote, only that quote or a backslash closes it.
+    report = review(tmp_path, command, configfiles)
+    mine = [f for f in report.findings if f.rule == rule and f.refs == (SourceRef(TEXT, "no_quote"),)]
+    assert {(f.needs_closer, f.closes) for f in mine} == expected
+    assert all(("after a value that can end in a backslash" in (f.context or "")) == f.needs_closer for f in mine)
+
+
+@pytest.mark.parametrize(
+    "command,configfiles,rule,severity,level",
+    [
+        ("echo $free", "", "shell-injection", HIGH, CODE),
+        ("echo $text", "", "argument-injection", MEDIUM, DATA),
+        ("echo $words", "", "argument-injection", LOW, ALL),
+        # Verdicts that set a level other than the one of their severity.
+        ("echo '$text'", "", "option-injection", LOW, DATA),
+        ("cat '$script'", CONFIG.format("<![CDATA[label='$free']]>"), "configfile-injection", LOW, DATA),
+        ("python '$script'", CONFIG.format("<![CDATA[label='$no_quote']]>"), "configfile-injection", LOW, ALL),
+        # A value free only on an empty dataset is a severity lower, and so is its level.
+        ("#for $c in $column\necho '$c'\n#end for", "", "shell-injection", MEDIUM, DATA),
+    ],
+)
+def test_level(tmp_path, command, configfiles, rule, severity, level):
+    findings = [f for f in review(tmp_path, command, configfiles).findings if f.rule == rule]
+    assert [(f.severity, f.level) for f in findings] == [(severity, level)]
+
+
+@pytest.mark.parametrize(
+    "command,data_requires",
+    [
+        ("echo $text", DATA_HARM),
+        ("echo $words", frozenset()),
+        ("env LABEL=$text tool", frozenset()),
+        # Report.add merges the split operand of a declaration (`=`) with the unquoted word's finding.
+        ("export LABEL=$text", DATA_HARM | {"="}),
+    ],
+)
+def test_data_requires(tmp_path, command, data_requires):
+    (finding,) = [f for f in review(tmp_path, command).findings if f.rule == "argument-injection"]
+    assert finding.data_requires == data_requires
+
+
+def test_findings_of_one_key_merge_into_one_that_holds_when_either_does():
+    base = Finding(rule="shell-injection", kind=VULNERABILITY, severity=HIGH, message="m", source="s", context="c")
+    report = Report()
+    report.add(
+        replace(base, line=1, level=DATA, needs_closer=True, requires=frozenset(";"), data_requires=frozenset("/"))
+    )
+    report.add(replace(base, line=2, level=CODE, needs_closer=False, requires=frozenset("|")))
+    (merged,) = report.findings
+    assert (merged.line, merged.more_lines, merged.level, merged.needs_closer) == (1, (2,), CODE, False)
+    assert (merged.requires, merged.data_requires) == (frozenset(";|"), frozenset())
+
+
+def test_json_report_carries_the_fields_of_a_value_check(tmp_path):
+    as_json = json.loads(json.dumps(review(tmp_path, "echo $free").to_dict()))
+    (finding,) = [f for f in as_json["findings"] if f["rule"] == "shell-injection"]
+    assert finding["breakout"] == sorted(SHELL_EXEC) and finding["requires"] == []
+    assert (finding["closes"], finding["needs_closer"], finding["level"], finding["data_requires"]) == (
+        ["`"],
+        False,
+        CODE,
+        [],
+    )
+    free = {"accessor": TEXT, "param": "free", "key": None}
+    assert as_json["closers"] == [{"location": "command", "ref": free, "chars": sorted("'\"\\")}]
 
 
 def test_writes_are_left_out_when_a_value_is_rewritten(tmp_path):
