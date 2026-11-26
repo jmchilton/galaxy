@@ -9,9 +9,12 @@ from typing import (
 import pytest
 
 from galaxy.config import (
+    GALAXY_APP_NAME,
+    GALAXY_CONFIG_SCHEMA_PATH,
     GalaxyAppConfiguration,
     STATIC_FINDINGS_SEVERITIES,
 )
+from galaxy.config.schema import AppSchema
 from galaxy.exceptions import ConfigurationError
 from galaxy.tool_util.parser import get_tool_source
 from galaxy.tool_util.patches import load_tool_patch_database
@@ -151,3 +154,8 @@ def test_unknown_severity_is_a_configuration_error(severity: str) -> None:
 def test_configurable_severities_are_the_findings_severities_but_info() -> None:
     assert STATIC_FINDINGS_SEVERITIES == tuple(reversed(SEVERITIES[1:]))
     assert SEVERITIES[0] == INFO
+    schema = AppSchema(GALAXY_CONFIG_SCHEMA_PATH, GALAXY_APP_NAME)
+    assert (
+        tuple(schema.get_app_option("tool_security_refuse_static_findings_severity")["enum"])
+        == STATIC_FINDINGS_SEVERITIES
+    )
