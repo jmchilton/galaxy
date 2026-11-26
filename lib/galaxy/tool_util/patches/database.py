@@ -14,7 +14,10 @@ from dataclasses import (
     field,
 )
 from functools import partial
-from typing import Any
+from typing import (
+    Any,
+    Final,
+)
 
 from galaxy.tool_util.parser.factory import get_tool_source
 from galaxy.tool_util.parser.interface import ToolSource
@@ -58,24 +61,25 @@ from .model import (
     ChangeKind,
     CollectionRef,
     CollectionSummary,
-    COMPAT,
     level_index,
     NEEDED_FROM_PATTERN,
     op_touches_requirements,
     PatchFile,
     PatchPolicy,
     PatchState,
+    PatchStateName,
     ReproducibilityLevel,
     SECURITY,
     ToolPatchCollectionsSummary,
     ToolPatchInfo,
+    Vulnerable,
 )
 
 log = logging.getLogger(__name__)
 
 BUILTIN = "builtin"
 BUILTIN_COLLECTION_DIR = os.path.join(os.path.dirname(__file__), "builtin")
-ADVISORY = "advisory"
+ADVISORY: Final = "advisory"
 
 
 def _sha256(text: str) -> str:
@@ -145,14 +149,14 @@ class ToolPatchDatabase:
         matched = override_used = False
         for c in self._active:
             override = c.override_for(key, changeset)
-            for rel in (override, c.version_file(key)):
-                if rel is None:
-                    continue
-                matched = True
+            rels = [rel for rel in (override, c.version_file(key)) if rel is not None]
+            if not rels:
+                continue
+            matched = True
+            for rel in rels:
                 h.update(f"{c.name}\0{rel}\0{c.file_sha256(rel) or ''}\0".encode())
-            if override is not None or c.version_file(key) is not None:
-                coverage = ",".join(sorted(c.coverage(key)))
-                h.update(f"{c.codes_sha256}\0{coverage}\0".encode())
+            coverage = ",".join(sorted(c.coverage(key)))
+            h.update(f"{c.codes_sha256}\0{coverage}\0".encode())
             override_used = override_used or override is not None
         if not matched:
             return None
@@ -260,7 +264,7 @@ class ToolPatchDatabase:
             log.info("tool patches: %s override %s is for other content, ignored", key_string(key), rel)
             return None
 
-        def state(kind: ChangeKind, name: str, **fields: Any) -> PatchState:
+        def state(kind: ChangeKind, name: PatchStateName, **fields: Any) -> PatchState:
             return PatchState(
                 state=name,
                 kind=kind,
@@ -281,24 +285,23 @@ class ToolPatchDatabase:
                 continue
             result = evaluate_unit(tree, [op.body for op in unit.ops])
             advisory = file_advisory if patch.advisory_kind == unit.kind else None
-            if result.state == APPLIED:
+            demotion = self._demotion(patch, unit) if result.state == APPLIED else None
+            if result.state == ALREADY_APPLIED:
+                states.append(state(unit.kind, ALREADY_APPLIED))
+            elif result.state == APPLIED and demotion is None:
                 assert result.tree is not None
-                demotion = self._demotion(patch, unit)
+                tree = result.tree
+                verified = current.sha256() in c.coverage(key)
+                states.append(state(unit.kind, APPLIED, verified=verified, advisory=advisory))
+            else:
+                # Demoted or mismatched: the generated advisory, then the file's own.
                 if demotion is not None:
                     states.append(state(unit.kind, ADVISORY, advisory=self._generated(demotion, unit.kind, patch, key)))
                 else:
-                    tree = result.tree
-                    verified = current.sha256() in c.coverage(key)
-                    states.append(state(unit.kind, APPLIED, verified=verified, advisory=advisory))
-                    advisory = None
-            elif result.state == MISMATCH:
-                generated = self._generated(REVISION_MISMATCH, unit.kind, patch, key)
-                states.append(state(unit.kind, MISMATCH, advisory=generated, detail=result.detail))
-            else:
-                states.append(state(unit.kind, ALREADY_APPLIED))
-                advisory = None
-            if advisory is not None:
-                states.append(state(unit.kind, ADVISORY, advisory=advisory))
+                    generated = self._generated(REVISION_MISMATCH, unit.kind, patch, key)
+                    states.append(state(unit.kind, MISMATCH, advisory=generated, detail=result.detail))
+                if advisory is not None:
+                    states.append(state(unit.kind, ADVISORY, advisory=advisory))
         advisory_kind = patch.advisory_kind
         if file_advisory is not None and advisory_kind is not None and advisory_kind not in {u.kind for u in units}:
             states.append(state(advisory_kind, ADVISORY, advisory=file_advisory))
@@ -308,7 +311,7 @@ class ToolPatchDatabase:
         upstream = [u for u in patch.upstream if patch.upstream_kind(u) == kind]
         if not patch.ops_of_kind(kind):
             return {"upstream": upstream}
-        if patch.kind == "mixed" and kind == COMPAT:
+        if not patch.policy_governs(kind):
             return {"upstream": upstream, "reproducibility": "identical"}
         return {
             "upstream": upstream,
@@ -319,7 +322,7 @@ class ToolPatchDatabase:
 
     def _demotion(self, patch: PatchFile, unit: PatchUnit) -> str | None:
         """Generated code when site policy blocks an applicable unit."""
-        if patch.kind == "mixed" and unit.kind != SECURITY:
+        if not patch.policy_governs(unit.kind):
             return None
         level = patch.reproducibility
         if level is not None and level_index(level) > level_index(self.policy.reproducibility):
@@ -333,7 +336,7 @@ class ToolPatchDatabase:
         entry = GENERATED_CODES[code]
         level = entry.level if kind == SECURITY or entry.level == "info" else "consider"
         fixed_in = patch.advisory.fixed_in if patch.advisory else None
-        vulnerable: Any = None
+        vulnerable: Vulnerable | None = None
         if kind == SECURITY:
             vulnerable = "unknown" if code == REVISION_MISMATCH else True
         message = render_message(
