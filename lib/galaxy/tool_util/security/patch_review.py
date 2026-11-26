@@ -10,9 +10,14 @@ from galaxy.tool_util.patches import (
     ToolPatchDatabase,
     ToolPatchInfo,
 )
+from galaxy.tool_util.patches.engine import MISMATCH
+from galaxy.tool_util.patches.model import SECURITY
 from . import review_tool_source
 from .charsets import SEVERITIES
-from .classify import classify
+from .classify import (
+    Classification,
+    classify,
+)
 from .report import (
     CAPABILITY,
     Finding,
@@ -32,9 +37,8 @@ def finding_match(finding: Finding) -> FindingMatch:
     return (finding.rule, finding.kind, finding.location, finding.context, sorted_refs(finding.refs) or named)
 
 
-def _notes(report: Report) -> dict[tuple[str, str], str]:
-    """The CLI's NOTE lines for a report, keyed by unanalyzed part, unchecked location or uncheckable code."""
-    classification = classify(report)
+def note_lines(report: Report, classification: Classification) -> dict[tuple[str, str], str]:
+    """The NOTE lines of a report, keyed by unanalyzed part, unchecked location or uncheckable code."""
     notes = {("unanalyzed", note): note for note in report.unanalyzed}
     for location, why in classification.unchecked_locations.items():
         notes[("unchecked", location)] = f"unchecked {location}: {why}"
@@ -43,8 +47,8 @@ def _notes(report: Report) -> dict[tuple[str, str], str]:
     return notes
 
 
-def _report_dict(report: Report) -> dict[str, Any]:
-    classification = classify(report)
+def report_dict(report: Report, classification: Classification) -> dict[str, Any]:
+    """A report with its uncheckable codes and classified unchecked locations, as the CLI's JSON gives it."""
     return {
         **report.to_dict(),
         "codes": classification.codes,
@@ -77,14 +81,17 @@ class PatchReview:
     @property
     def notes_added(self) -> list[str]:
         """NOTE lines only after the patch: a template part it broke, a location or code it made uncheckable."""
-        before = _notes(self.before)
-        return [note for key, note in _notes(self.after).items() if key not in before]
+        before = note_lines(self.before, classify(self.before))
+        return [note for key, note in note_lines(self.after, classify(self.after)).items() if key not in before]
+
+    @property
+    def states(self) -> list[PatchState]:
+        return self.patch.states if self.patch else []
 
     @property
     def mismatched(self) -> list[PatchState]:
         """The security patch units whose ops no longer match the tool."""
-        states = self.patch.states if self.patch else []
-        return [s for s in states if s.state == "mismatch" and s.kind == "security"]
+        return [s for s in self.states if s.state == MISMATCH and s.kind == SECURITY]
 
     @property
     def regressed(self) -> bool:
@@ -94,7 +101,7 @@ class PatchReview:
     def to_dict(self) -> dict[str, Any]:
         return {
             "patches": patches_as_dicts(self.patch),
-            "before": _report_dict(self.before),
+            "before": report_dict(self.before, classify(self.before)),
             "cleared": [finding_to_dict(f) for f in self.cleared],
             "introduced": [finding_to_dict(f) for f in self.introduced],
             "notes_added": self.notes_added,
