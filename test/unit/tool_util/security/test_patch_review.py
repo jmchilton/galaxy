@@ -292,18 +292,21 @@ def test_cli_min_severity_hides_cleared_but_not_new_findings(
     assert any(line.startswith("  NEW      MEDIUM   argument-injection") for line in lines)
 
 
+def _compat_patch(ops: list[dict]) -> dict:
+    return {
+        "format_version": 1,
+        "kind": "compat",
+        "needed_from": "26.1",
+        "galaxy_change": [{"repo": "galaxyproject/galaxy", "pr": 2}],
+        "upstream": [],
+        "reproducibility": "identical",
+        "reproducibility_reason": "restores what older Galaxy releases did",
+        "reproducibility_doc": "No job behaves differently.",
+        "ops": ops,
+    }
+
+
 STALE_OP = replace_text_op("command", "echo 'no such text'", "echo 'other'")
-STALE_COMPAT = {
-    "format_version": 1,
-    "kind": "compat",
-    "needed_from": "26.1",
-    "galaxy_change": [{"repo": "galaxyproject/galaxy", "pr": 2}],
-    "upstream": [],
-    "reproducibility": "identical",
-    "reproducibility_reason": "restores what older Galaxy releases did",
-    "reproducibility_doc": "No job behaves differently.",
-    "ops": [STALE_OP],
-}
 
 
 @pytest.mark.parametrize(
@@ -311,7 +314,7 @@ STALE_COMPAT = {
     [
         (security_patch([STALE_OP], "unusual_inputs", DOC), [], 0),
         (security_patch([STALE_OP], "unusual_inputs", DOC), ["--fail-on", "mismatch"], 1),
-        (STALE_COMPAT, ["--fail-on", "mismatch"], 0),
+        (_compat_patch([STALE_OP]), ["--fail-on", "mismatch"], 0),
     ],
     ids=["default", "fail-on", "compat"],
 )
@@ -371,13 +374,23 @@ def test_cli_judges_the_patched_source(
     assert medium and all(f["assessment"]["verdict"] == "arg" for f in medium)
 
 
+UNCLEARED = ["--fail-on", "uncleared"]
+
+
 @pytest.mark.parametrize(
-    "patch,exit_code", [(CLEANING, 0), (COSMETIC, 1)], ids=["clears_its_finding", "clears_nothing"]
+    "patch,fail_on,exit_code",
+    [
+        (COSMETIC, [], 0),
+        (CLEANING, UNCLEARED, 0),
+        (COSMETIC, UNCLEARED, 1),
+        (_compat_patch(COSMETIC["ops"]), UNCLEARED, 0),
+    ],
+    ids=["default", "clears", "clears-nothing", "compat"],
 )
-def test_cli_fails_on_an_applied_security_patch_that_clears_nothing(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], patch: dict, exit_code: int
+def test_cli_fails_on_an_applied_security_patch_that_clears_nothing_only_when_asked(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], patch: dict, fail_on: list[str], exit_code: int
 ) -> None:
     collection = write_collection(tmp_path / "c", {KEY_FILE: patch})
-    got, report = _cli_json([TOOL, "--tool-patch-path", str(collection), "--fail-on", "uncleared"], capsys)
+    got, report = _cli_json([TOOL, "--tool-patch-path", str(collection), *fail_on], capsys)
     assert [s["state"] for s in report["patches"]] == ["applied"]
     assert got == exit_code
