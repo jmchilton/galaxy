@@ -7,7 +7,7 @@
     <include path="extract_GFF_Features.py"/>
   </required_files>
   <command>
-    python '$__tool_directory__/extract_GFF_Features.py'
+    python '$__tool_directory__/extract_GFF_Features.py' --
       '$input1' '$out_file1' '${column_choice.col}' '${column_choice.feature}'
   </command>
   <inputs>
