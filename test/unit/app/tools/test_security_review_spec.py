@@ -1,6 +1,7 @@
 """The jobs of the tool security review spec, through the evaluators that prepare real jobs."""
 
 import re
+from typing import get_args
 
 import pytest
 
@@ -14,12 +15,15 @@ from galaxy.tool_util.security.spec import (
     expected_warnings,
     iter_jobs,
     load_cases,
+    ReviewConfig,
     sweep_jobs,
 )
 from galaxy.tools.parameters.basic import ParameterValueError
 from galaxy.tools.security_review import (
     ENFORCE_ALL,
+    ENFORCING,
     LOG,
+    WHEN_UNSURE,
 )
 
 CASES = load_cases()
@@ -34,6 +38,13 @@ def _params(jobs):
 
 def _warned_codes(outcome: JobOutcome) -> set[str]:
     return {code for w in outcome.warnings if (m := WARNING_CODES.match(w)) for code in m.group(1).split(", ")}
+
+
+def test_review_config_offers_the_reviewer_settings():
+    # tool_util cannot import galaxy.tools, so the spec spells the settings out.
+    fields = ReviewConfig.model_fields
+    assert get_args(fields["mode"].annotation) == (LOG, *ENFORCING)
+    assert get_args(fields["when_unsure"].annotation) == WHEN_UNSURE
 
 
 @pytest.fixture

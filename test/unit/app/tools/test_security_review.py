@@ -19,6 +19,11 @@ from galaxy.tool_util.parser import get_tool_source
 from galaxy.tool_util.security import (
     review_tool_source,
 )
+from galaxy.tool_util.security.charsets import (
+    LEVELS,
+    PROBE,
+    WHITESPACE,
+)
 from galaxy.tool_util.security.report import (
     ELEMENT_IDENTIFIER,
     RAW,
@@ -36,6 +41,7 @@ from galaxy.tools.parameters.basic import (
 from galaxy.tools.security_refusal import ToolInputRejected
 from galaxy.tools.security_review import (
     _identifiers,
+    _PLAIN,
     ANALYSED,
     ENFORCE_ALL,
     ENFORCE_CODE,
@@ -45,6 +51,7 @@ from galaxy.tools.security_review import (
     OFF,
     reviewed_tool_source,
     STRICT,
+    strict_harm,
     ToolSecurityReviewer,
 )
 from galaxy.tools.wrappers import (
@@ -782,6 +789,15 @@ def test_strict_check_refuses_what_can_leave_any_place(app, tmp_path, identifier
     assert f"contains [{harm}]" in strict_refusal(
         reviewer(tmp_path, ENFORCE_CODE), tool, evaluator(app, tool, [identifier])
     )
+
+
+@pytest.mark.parametrize("level", LEVELS)
+def test_strict_message_lists_what_the_strict_check_lets_through(level):
+    # The message names a word's leading - or ~ apart.
+    text = _PLAIN[level]
+    listed = set(text.split(" in names")[0].split(" and ", 1)[1].split())
+    assert listed == {c for c in PROBE - WHITESPACE - {"-"} if not strict_harm(f"a{c}a", level)}
+    assert ("spaces" in text) is not bool(strict_harm("a b", level))
 
 
 def test_strict_check_reads_dataset_names(app, tmp_path):
