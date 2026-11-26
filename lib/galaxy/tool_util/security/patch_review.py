@@ -14,6 +14,7 @@ from . import review_tool_source
 from .charsets import SEVERITIES
 from .classify import classify
 from .report import (
+    CAPABILITY,
     Finding,
     finding_to_dict,
     Report,
@@ -25,8 +26,10 @@ FindingMatch = tuple[str, str, str, str | None, tuple[SourceRef, ...] | str | No
 
 
 def finding_match(finding: Finding) -> FindingMatch:
-    """Identity of a finding across a patch: rule, place, how the value lands there and what it reads."""
-    return (finding.rule, finding.kind, finding.location, finding.context, sorted_refs(finding.refs) or finding.expr)
+    """Identity of a finding across a patch: rule, place, how the value lands there and what it reads or names."""
+    # A capability's expr can be its whole #import line; its message names the module.
+    named = finding.message if finding.kind == CAPABILITY else finding.expr
+    return (finding.rule, finding.kind, finding.location, finding.context, sorted_refs(finding.refs) or named)
 
 
 def _notes(report: Report) -> dict[tuple[str, str], str]:
