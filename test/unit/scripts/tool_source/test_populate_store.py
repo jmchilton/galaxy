@@ -929,7 +929,7 @@ class TestToolPatches:
     def test_freshness_token_follows_collections_and_policy(self, tmp_path):
         cfg, collection = self._setup(tmp_path)
         tokens = [tool_confs_token(cfg)]
-        write_collection(collection, {"_local/ptest_2/1.0.yml": _command_patch("echo -- ptest_1")})
+        write_collection(collection, {"_local/ptest_1/1.0.yml": _command_patch("echo -- 'ptest_1'")})
         tokens.append(tool_confs_token(cfg))
         cfg.tool_patch_reproducibility = "rejects_inputs"
         tokens.append(tool_confs_token(cfg))
