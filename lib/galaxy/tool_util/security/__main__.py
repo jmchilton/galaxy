@@ -2,7 +2,9 @@
 
 Only XML tools are reviewed. A tool that fails to load or review, a tool that is not XML, and a directory with no
 tools are each listed with an error. A tool reached through several paths is reviewed once, under the first.
-The exit code is 1 when a path has an error, or when --fail-on is met; 0 otherwise.
+With --tool-patch-path, each tool is reviewed before and after its tool patches and reported as patched.
+The exit code is 1 when a path has an error, when --fail-on is met, or when a patch introduces a finding or
+leaves part of a template unreviewable; 0 otherwise.
 """
 
 from __future__ import annotations
@@ -22,6 +24,10 @@ from galaxy.tool_util.loader_directory import (
 from galaxy.tool_util.parser import get_tool_source
 from galaxy.tool_util.parser.interface import ToolSource
 from galaxy.tool_util.parser.xml import XmlToolSource
+from galaxy.tool_util.patches import (
+    load_tool_patch_database,
+    ToolPatchDatabase,
+)
 from . import review_tool_source
 from .charsets import SEVERITIES
 from .classify import (
@@ -32,6 +38,10 @@ from .classify import (
 from .judge import (
     AnthropicJudge,
     judge_report,
+)
+from .patch_review import (
+    PatchReview,
+    review_patches,
 )
 from .report import (
     Finding,
@@ -67,8 +77,10 @@ class FailOn:
 
 @dataclass(frozen=True)
 class Reviewed:
+    # The patched tool and its report when patch_review is set.
     tool_source: ToolSource
     report: Report
+    patch_review: PatchReview | None = None
 
 
 @dataclass(frozen=True)
@@ -88,13 +100,19 @@ class NotReviewed:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
+    parser = _parser()
+    args = parser.parse_args(argv)
+    if args.guid and (len(args.tools) != 1 or os.path.isdir(args.tools[0])):
+        parser.error("--guid needs exactly one tool file")
+    patch_db = _patch_database(args.tool_patch_paths)
+    if patch_db is not None and len(patch_db.collections) != len(args.tool_patch_paths):
+        parser.error("a --tool-patch-path is not a loadable tool patch collection (see the log)")
     threshold = SEVERITIES.index(args.min_severity)
     fail_on = FailOn.parse(args.fail_on)
     judge = AnthropicJudge() if args.judge else None
     reports: dict[str, dict[str, Any]] = {}
     failed = False
-    for path, result in _reviews(args.tools):
+    for path, result in _reviews(args.tools, patch_db, args.guid):
         if isinstance(result, NotReviewed):
             failed = True
             reports[path] = result.to_dict()
@@ -113,10 +131,13 @@ def main(argv: list[str] | None = None) -> int:
             "codes": classification.codes,
             "uncheckable_locations": classification.unchecked_locations,
         }
-        if fail_on.met(report, classification):
+        review = result.patch_review
+        if review is not None:
+            reports[path].update(review.to_dict())
+        if fail_on.met(report, classification) or (review is not None and review.regressed):
             failed = True
         if not args.json:
-            _print_report(path, tool_version, report, threshold, classification)
+            _print_report(path, tool_version, report, threshold, classification, review)
     if args.json:
         json.dump(reports, sys.stdout, indent=1)
     return 1 if failed else 0
@@ -147,20 +168,40 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="ask Claude whether each vulnerability of medium severity or above is real (needs Anthropic credentials)",
     )
+    parser.add_argument(
+        "--tool-patch-path",
+        action="append",
+        dest="tool_patch_paths",
+        help="tool patch collection to review each tool before and after (repeatable, in order); every op is applied",
+    )
+    parser.add_argument("--guid", help="Tool Shed guid of the one tool file reviewed, to match its shed patch key")
     return parser
 
 
-def _reviews(paths: list[str]) -> Iterator[tuple[str, Reviewed | NotReviewed]]:
+def _patch_database(paths: list[str] | None) -> ToolPatchDatabase | None:
+    if not paths:
+        return None
+    # Offline review applies every op, whatever a site's policy or release series would allow.
+    return load_tool_patch_database(paths, reproducibility="ordinary_inputs", requirement_changes=True)
+
+
+def _reviews(
+    paths: list[str], patch_db: ToolPatchDatabase | None = None, guid: str | None = None
+) -> Iterator[tuple[str, Reviewed | NotReviewed]]:
     for path, found in _tool_sources(paths):
         if isinstance(found, str):
             yield path, NotReviewed(found)
             continue
         try:
-            report = review_tool_source(found)
+            if patch_db is None:
+                reviewed = Reviewed(found, review_tool_source(found))
+            else:
+                review = review_patches(found, patch_db, guid=guid)
+                reviewed = Reviewed(review.patched, review.after, review)
         except Exception as e:
             yield path, NotReviewed(_describe_error(e), found)
         else:
-            yield path, Reviewed(found, report)
+            yield path, reviewed
 
 
 def _tool_sources(paths: list[str]) -> Iterator[tuple[str, ToolSource | str]]:
@@ -207,9 +248,16 @@ def _describe_error(e: BaseException) -> str:
 
 
 def _print_report(
-    path: str, tool_version: str | None, report: Report, threshold: int, classification: Classification
+    path: str,
+    tool_version: str | None,
+    report: Report,
+    threshold: int,
+    classification: Classification,
+    review: PatchReview | None = None,
 ) -> None:
     print(f"{path} ({' '.join(part for part in (report.tool_id, tool_version) if part)})")
+    if review is not None:
+        _print_patch_review(review)
     for finding in report.sorted():
         if SEVERITIES.index(finding.severity) < threshold:
             continue
@@ -224,6 +272,17 @@ def _print_report(
         print(f"  NOTE     unchecked {location}: {why}")
     for code, why in classification.reasons.items():
         print(f"  NOTE     {code}: {why}")
+
+
+def _print_patch_review(review: PatchReview) -> None:
+    for state in review.patch.states if review.patch else []:
+        print(f"  PATCH    {state.state:22} {state.kind:18} {state.key}")
+    for label, findings in (("CLEARED", review.cleared), ("NEW", review.introduced)):
+        for finding in findings:
+            where = _where(finding)
+            print(f"  {label:8} {finding.severity.upper():8} {finding.rule:22} {where:18} {finding.message}")
+    for note in review.unanalyzed_added:
+        print(f"  NEW      NOTE     {note}")
 
 
 def _where(finding: Finding) -> str:

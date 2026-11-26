@@ -249,7 +249,7 @@ class Report:
         return {
             "tool_id": self.tool_id,
             "max_severity": self.max_severity,
-            "findings": [_finding_to_dict(f) for f in self.sorted()],
+            "findings": [finding_to_dict(f) for f in self.sorted()],
             "unanalyzed": self.unanalyzed,
             "writes": _by_location(self.writes),
             "closers": _by_location(self.closers),
@@ -272,7 +272,7 @@ def _by_location(chars_by_location: dict[str, dict[SourceRef, frozenset[str]]]) 
     ]
 
 
-def _finding_to_dict(finding: Finding) -> dict[str, Any]:
+def finding_to_dict(finding: Finding) -> dict[str, Any]:
     as_dict = asdict(finding)
     as_dict["more_lines"] = list(finding.more_lines)
     as_dict["breakout"] = sorted(finding.breakout)
