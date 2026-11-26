@@ -264,7 +264,7 @@ def _print_report(
         if SEVERITIES.index(finding.severity) < threshold:
             continue
         print(f"  {finding.severity.upper():8} {finding.rule:22} {_where(finding):18} {finding.message}")
-    for note in note_lines(report, classification).values():
+    for _, note in note_lines(report, classification):
         print(f"  NOTE     {note}")
 
 
