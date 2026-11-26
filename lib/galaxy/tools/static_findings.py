@@ -1,18 +1,14 @@
-"""Refuse jobs of tools whose static security review still has findings after their tool patches.
-
-With ``tool_security_refuse_static_findings`` on, a tool is reviewed when it loads, on the source its tool
-patches produced, and the :class:`~galaxy.tool_util.security.refusal.StaticReview` is kept with it: on the
-tool source and the ``Tool``, and on the tool index entry of the cached toolbox. Preparing a job of a tool
-with a finding at or above ``tool_security_refuse_static_findings_severity`` raises :class:`ToolInputRejected`.
-"""
+"""Refuse jobs of tools whose static security review, run at load on the patched source, keeps findings."""
 
 import logging
 import os
 from typing import TYPE_CHECKING
 
+from galaxy.exceptions import ConfigurationError
 from galaxy.tool_util.parser.interface import ToolSource
 from galaxy.tool_util.patches import ToolPatchDatabase
 from galaxy.tool_util.security import review_tool_source
+from galaxy.tool_util.security.charsets import SEVERITIES
 from galaxy.tool_util.security.refusal import (
     STATIC_FINDINGS,
     StaticReview,
@@ -33,6 +29,14 @@ log = logging.getLogger(__name__)
 GALAXY_PACKAGE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # A stored review from another Galaxy version is redone: the analyser may have changed.
 REVIEW_VERSION: str = VERSION
+
+
+def validate_static_findings_config(config: "GalaxyAppConfiguration") -> None:
+    severity = config.tool_security_refuse_static_findings_severity
+    if config.tool_security_refuse_static_findings and severity not in SEVERITIES:
+        raise ConfigurationError(
+            f"tool_security_refuse_static_findings_severity must be one of {', '.join(SEVERITIES)}, not '{severity}'"
+        )
 
 
 def expected_review_version(config: "GalaxyAppConfiguration", path: StrPath | None) -> str | None:
@@ -58,16 +62,16 @@ def with_static_review(config: "GalaxyAppConfiguration", tool_source: ToolSource
         return tool_source
     try:
         review = StaticReview.of(review_tool_source(tool_source), version)
+        if rules := review.refused_rules(config.tool_security_refuse_static_findings_severity):
+            log.info("Jobs of tool %s are refused, its static security review reports %s", path, ", ".join(rules))
     except Exception as e:
         log.warning("Static security review of tool %s failed, its jobs are not refused: %s", path, e)
         review = StaticReview(error=type(e).__name__, version=version)
-    if rules := review.refused_rules(config.tool_security_refuse_static_findings_severity):
-        log.info("Jobs of tool %s are refused, its static security review reports %s", path, ", ".join(rules))
     tool_source.static_review = review
     return tool_source
 
 
-def load_tool_source(
+def patch_and_review_tool_source(
     config: "GalaxyAppConfiguration",
     db: ToolPatchDatabase | None,
     tool_source: ToolSource,
@@ -92,7 +96,7 @@ def check_static_findings(tool: "Tool", config: "GalaxyAppConfiguration") -> Non
 
 
 def static_findings_message(tool: "Tool", rules: list[str]) -> str:
-    # Galaxy keeps the first 255 characters of a dataset's info: the rules come before the tool's id.
+    # Galaxy keeps the first 255 characters of a job's info: the rules come before the tool's id.
     return (
         f"This job was not run: the security review of this tool reports {', '.join(rules)}, and this Galaxy server"
         f" does not run such tools. Please contact the administrators of this server. Tool '{tool.name}'"

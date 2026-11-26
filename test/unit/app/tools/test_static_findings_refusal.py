@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from galaxy.exceptions import ConfigurationError
 from galaxy.tool_util.parser import get_tool_source
 from galaxy.tool_util.security.refusal import StaticReview
 from galaxy.tool_util.unittest_utils import functional_test_tool_path
@@ -13,6 +14,7 @@ from galaxy.tools.static_findings import (
     GALAXY_PACKAGE_DIR,
     REVIEW_VERSION,
     static_review_is_current,
+    validate_static_findings_config,
     with_static_review,
 )
 
@@ -67,3 +69,9 @@ def test_failed_review_is_kept_and_refuses_nothing(monkeypatch: pytest.MonkeyPat
     review = with_static_review(_config(), get_tool_source(TOOL), TOOL).static_review
     assert review == StaticReview(error="RecursionError", version=REVIEW_VERSION)
     assert review.refused_rules("low") == []
+
+
+def test_unknown_severity_is_a_configuration_error() -> None:
+    validate_static_findings_config(_config(refuse=False, severity="High"))
+    with pytest.raises(ConfigurationError, match="not 'High'"):
+        validate_static_findings_config(_config(severity="High"))

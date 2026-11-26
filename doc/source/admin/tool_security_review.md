@@ -65,7 +65,8 @@ version (`_local` keys); `--guid` gives the Tool Shed guid of a single tool file
 With `tool_security_refuse_static_findings: true`, Galaxy reviews each tool when it loads, after its tool
 patches (`tool_patch_paths`), and refuses the jobs of a tool whose patched source has a finding at or above
 `tool_security_refuse_static_findings_severity` (default `high`). That is the tool `--fail-on <severity>`
-fails, run on the patched tool. A refused tool still loads and is listed in the tool panel. Its jobs fail when
+fails, run on the patched tool: capability findings count like vulnerabilities, so at `high` a data source tool
+that reads `$__app__` (`template-app-access`) or a tool with a `<code>` file (`tool-code-file`) is refused too. A refused tool still loads and is listed in the tool panel. Its jobs fail when
 they are prepared, with a message that names the rules of the findings and not their detail, for example
 `[static-findings] This job was not run: the security review of this tool reports shell-injection, ...`.
 

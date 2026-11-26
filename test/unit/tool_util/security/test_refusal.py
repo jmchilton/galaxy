@@ -58,11 +58,6 @@ def test_uncheckable_codes_and_unchecked_locations_alone_refuse_nothing() -> Non
     assert review.refused_rules("low") == []
 
 
-def test_failed_review_refuses_nothing() -> None:
-    review = StaticReview(error="RecursionError", version="1")
-    assert review.refused_rules("low") == []
-
-
 def test_finding_a_patch_lowered_still_refuses_at_its_new_severity(tmp_path: Path) -> None:
     _, _, patch_review = _awk_review(tmp_path, ";", "/")
     review = StaticReview.of(patch_review.after, version="1")

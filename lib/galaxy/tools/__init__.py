@@ -253,7 +253,7 @@ from galaxy.tools.parameters.workflow_utils import (
 from galaxy.tools.parameters.wrapped_json import json_wrap
 from galaxy.tools.patches import patch_blocks_job_cache
 from galaxy.tools.static_findings import (
-    load_tool_source,
+    patch_and_review_tool_source,
     with_static_review,
 )
 from galaxy.util import (
@@ -860,7 +860,9 @@ class ToolBox(AbstractToolBox):
                 tool_location_fetcher=self.tool_location_fetcher,
             )
             self._tools_parsed_from_file += 1
-            return load_tool_source(self.app.config, self.app.tool_patches, tool_source, tool_id, config_file)
+            return patch_and_review_tool_source(
+                self.app.config, self.app.tool_patches, tool_source, tool_id, config_file
+            )
         except Exception as e:
             # capture and log parsing errors
             global_tool_errors.add_error(config_file, "Tool XML parsing", e)

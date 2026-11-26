@@ -1103,7 +1103,7 @@ mapping:
         desc: |
           Refuse jobs of tools whose static security review (see
           `python -m galaxy.tool_util.security`) reports a finding at or above
-          `tool_security_refuse_static_findings_severity`. Tools are reviewed when they
+          `tool_security_refuse_static_findings_severity`, capability findings included. Tools are reviewed when they
           load, after their tool patches (`tool_patch_paths`), so a patch that clears a
           finding lets the tool run again. Refused tools still load and show in the tool
           panel; their jobs fail with the rule ids of the findings. Uncheckable codes,

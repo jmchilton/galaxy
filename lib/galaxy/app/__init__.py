@@ -196,6 +196,7 @@ from galaxy.tools.source_store import (
     ToolSourceStore,
 )
 from galaxy.tools.special_tools import load_lib_tools
+from galaxy.tools.static_findings import validate_static_findings_config
 from galaxy.tours import (
     build_tours_registry,
     ToursRegistry,
@@ -449,6 +450,7 @@ class MinimalGalaxyApplication(BasicSharedApp, HaltableContainer, SentryClientMi
 
         # Loaded once: tool patch collection changes need a restart.
         self.tool_patches = tool_patch_database_from_config(self.config)
+        validate_static_findings_config(self.config)
 
         # Initialize tool source store if configured
         self._init_tool_source_store()

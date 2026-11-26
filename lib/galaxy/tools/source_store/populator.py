@@ -112,7 +112,7 @@ from galaxy.tools.source_store.manifest import (
 from galaxy.tools.source_store.search import MAX_TOOL_SEARCH_HELP_CHARS
 from galaxy.tools.source_store.unavailable import UnavailableToolSourceStore
 from galaxy.tools.static_findings import (
-    load_tool_source,
+    patch_and_review_tool_source,
     static_review_is_current,
 )
 from galaxy.util import listify
@@ -895,7 +895,9 @@ def _populate_store_inline_unlocked(
             # Galaxy's tool source parser handles macro expansion (XML) and
             # YAML user-tool / CWL parsing transparently; ``to_string`` then
             # serialises whatever the source class needs to round-trip.
-            tool_source = load_tool_source(config, tool_patches, get_tool_source(config_file=path), d.guid, path)
+            tool_source = patch_and_review_tool_source(
+                config, tool_patches, get_tool_source(config_file=path), d.guid, path
+            )
             expanded_content = tool_source.to_string()
             content_hash = compute_hash(expanded_content)
             target_store = stores[store_name]
