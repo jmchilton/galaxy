@@ -30,7 +30,7 @@
     cellxgene launch --host 0.0.0.0 --port 80
         --user-generated-data-dir annotation_files
     #if $var_name and not $make_unique:
-        --var-names $var_name
+        --var-names '$var_name'
     #end if
     '${fancy_name}'
     ]]>
