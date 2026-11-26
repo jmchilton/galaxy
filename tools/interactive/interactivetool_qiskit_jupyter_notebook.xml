@@ -141,17 +141,17 @@ except FileNotFoundError:
             #if not $cleaned_name.endswith(".ipynb"):
                 #set $cleaned_name = "%s.ipynb" % $cleaned_name
             #end if
-            cp '$mode.ipynb' '${cleaned_name}' &&
-            jupyter trust '${cleaned_name}' &&
+            cp '$mode.ipynb' './${cleaned_name}' &&
+            jupyter trust './${cleaned_name}' &&
 
             #if $mode.run_it:
-                jupyter nbconvert --to notebook --execute --output '${output_notebook_name}' --allow-errors '${cleaned_name}' &&
+                jupyter nbconvert --to notebook --execute --output '${output_notebook_name}' --allow-errors './${cleaned_name}' &&
             #else:
                 #set $output_notebook_name = $cleaned_name
                 jupyter lab --allow-root --no-browser --ServerApp.quit_button=True &&
             #end if
         #end if
-        cp '${output_notebook_name}' '$jupyter_notebook'
+        cp './${output_notebook_name}' '$jupyter_notebook'
     ]]>
     </command>
     <inputs>
