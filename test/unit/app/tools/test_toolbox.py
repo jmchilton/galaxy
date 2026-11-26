@@ -620,6 +620,18 @@ class TestToolBox(BaseToolBoxTestCase):
         assert 'echo "$param1"' in unpatched.command
         assert "patches" not in unpatched.to_panel_entry(mock_trans())
 
+    def test_tool_patches_parse_from_disk_instead_of_unpatched_store_rows(self):
+        self._patch_shed_v1()
+        patched = self.toolbox.get_tool(SHED_GUID_V1, exact=True)
+        self.app.config.use_cached_toolbox = True
+        self.app.tool_source_store = MagicMock()
+
+        tool_source = self.toolbox.get_expanded_tool_source(patched.config_file, tool_id=SHED_GUID_V1)
+
+        self.app.tool_source_store.get_by_source_path.assert_not_called()
+        assert tool_source.patch_state is not None
+        assert tool_source.patch_state.states[0].state == "applied"
+
     def test_reload_tool_by_id_keeps_tool_patch(self):
         self._patch_shed_v1()
         old_tool = self.toolbox.get_tool(SHED_GUID_V1, exact=True)

@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import threading
+from collections import Counter
 from collections.abc import (
     Callable,
     Sequence,
@@ -17,6 +18,7 @@ from functools import partial
 from typing import (
     Any,
     Final,
+    get_args,
 )
 
 from galaxy.tool_util.parser.factory import get_tool_source
@@ -77,6 +79,9 @@ from .model import (
 
 log = logging.getLogger(__name__)
 
+# Bump when the engine's results change for unchanged patch files, so stored patched sources re-patch.
+ENGINE_VERSION = 1
+
 BUILTIN = "builtin"
 BUILTIN_COLLECTION_DIR = os.path.join(os.path.dirname(__file__), "builtin")
 ADVISORY: Final = "advisory"
@@ -136,12 +141,14 @@ class ToolPatchDatabase:
         self._active = [c for c in self.collections if c.has_patches]
         self._changesets: dict[str, tuple[tuple[int, int, int] | None, str | None]] = {}
         self._changeset_lock = threading.Lock()
+        self._state_counts: Counter[str] = Counter()
+        self._counts_lock = threading.Lock()
 
     # --- digests and summaries ---
 
     def _policy_bytes(self) -> bytes:
-        policy = f"{self.policy.reproducibility}\0{self.policy.requirement_changes}\0{self.galaxy_series or ''}"
-        return policy.encode("utf-8")
+        policy = f"{ENGINE_VERSION}\0{self.policy.reproducibility}\0{self.policy.requirement_changes}"
+        return f"{policy}\0{self.galaxy_series or ''}".encode()
 
     def digest_for(self, key: PatchKey, changeset: str | None = None) -> str | None:
         """sha256 over the files matched for key, their codes and coverage, the policy and series; None on a miss."""
@@ -215,9 +222,18 @@ class ToolPatchDatabase:
                 xml_tree=current.tree, config_file=tool_source.source_path, macro_paths=tool_source.macro_paths
             )
         patched.patch_state = info
+        with self._counts_lock:
+            self._state_counts.update(state.state for state in states)
         for state in states:
             _log_state(state)
         return patched
+
+    def summary(self) -> str:
+        """One line naming the collections and counting the patch states applied so far."""
+        collections = ", ".join(f"{c.name} {c.version} digest {c.digest[:12]}" for c in self.collections) or "none"
+        with self._counts_lock:
+            counts = ", ".join(f"{name} {self._state_counts[name]}" for name in get_args(PatchStateName))
+        return f"tool patches: {collections}; {counts}"
 
     def _checked_out_changeset(self, start: str | None) -> str | None:
         if not start:
