@@ -42,6 +42,7 @@ from galaxy.tool_util.deps.requirements import (
 from galaxy.tool_util.ontologies.ontology_data import curated_tool_tags
 from galaxy.tool_util.parameters.data_inputs import ToolDataInput
 from galaxy.tool_util.parser import get_tool_source
+from galaxy.tool_util.patches import patches_as_dicts
 from galaxy.tool_util.toolbox.base import (
     MaterializationReasonName,
     ToolConfRepository,
@@ -50,7 +51,6 @@ from galaxy.tool_util.toolbox.base import (
 from galaxy.tool_util.toolbox.lineages.factory import CachedLineageMap
 from galaxy.tool_util.toolbox.lineages.interface import ToolLineage
 from galaxy.tool_util.version import parse_tool_version
-from galaxy.tools.patches import patches_as_dicts
 from galaxy.tools.source_store import (
     StoredToolSource,
     ToolSourceStore,
@@ -1645,10 +1645,9 @@ class CachedToolBox(ToolBox):
                     repository_path=None,
                     tool_path=stored.tool_dir,
                 )
-        tool = create_tool_from_source(self.app, tool_source, **kwds)
         # The stored source is already patched; its patch state lives on the index entry.
-        tool.patch = entry.patch if entry else None
-        return tool
+        tool_source.patch_state = entry.patch if entry else None
+        return create_tool_from_source(self.app, tool_source, **kwds)
 
     def invalidate_index_cache(self) -> None:
         """Drop cached tool index so the next read picks up out-of-band updates.

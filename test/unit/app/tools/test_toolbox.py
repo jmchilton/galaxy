@@ -30,7 +30,10 @@ from galaxy.app_unittest_utils.tools_support import (
 from galaxy.managers.context import ProvidesHistoryContext
 from galaxy.managers.tools import DynamicToolManager
 from galaxy.tool_util.ontologies import ontology_data
-from galaxy.tool_util.patches import load_tool_patch_database
+from galaxy.tool_util.patches import (
+    load_tool_patch_database,
+    patches_as_dicts,
+)
 from galaxy.tool_util.unittest_utils import mock_trans
 from galaxy.tool_util.unittest_utils.sample_data import (
     SIMPLE_MACRO,
@@ -43,7 +46,6 @@ from galaxy.tool_util.unittest_utils.tool_patches import (
 )
 from galaxy.tool_util_models.dynamic_tool_models import DynamicToolCreatePayload
 from galaxy.tools import ToolBox
-from galaxy.tools.patches import patches_as_dicts
 from galaxy.webapps.galaxy.services.tools import ToolsService
 from galaxy.workflow import modules
 

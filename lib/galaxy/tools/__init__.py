@@ -128,7 +128,10 @@ from galaxy.tool_util.parser.xml import (
     XmlToolSource,
 )
 from galaxy.tool_util.parser.yaml import YamlToolSource
-from galaxy.tool_util.patches import ToolPatchInfo
+from galaxy.tool_util.patches import (
+    patches_as_dicts,
+    ToolPatchInfo,
+)
 from galaxy.tool_util.provided_metadata import (
     NullToolProvidedMetadata,
     parse_tool_provided_metadata,
@@ -250,7 +253,6 @@ from galaxy.tools.parameters.wrapped_json import json_wrap
 from galaxy.tools.patches import (
     apply_tool_patches,
     patch_blocks_job_cache,
-    patches_as_dicts,
 )
 from galaxy.util import (
     asbool,
