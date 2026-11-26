@@ -3,7 +3,7 @@
   <edam_operations>
     <edam_operation>operation_3434</edam_operation>
   </edam_operations>
-  <command interpreter="python">gtf_to_bedgraph_converter.py $input $out_file1 $attribute_name</command>
+  <command interpreter="python">gtf_to_bedgraph_converter.py '$input' '$out_file1' '$attribute_name'</command>
   <inputs>
     <param format="gtf" name="input" type="data" label="Convert this query"/>
     <param name="attribute_name" type="text" label="Attribute to Use for Value">
