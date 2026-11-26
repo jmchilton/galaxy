@@ -2,7 +2,7 @@
   <description>significant single- and multi-locus SNP associations in case-control studies</description>
 
   <command interpreter="bash">
-    BEAM2_wrapper.sh map=${input.extra_files_path}/${input.metadata.base_name}.map ped=${input.extra_files_path}/${input.metadata.base_name}.ped $burnin $mcmc $pvalue significance=$significance posterior=$posterior
+    BEAM2_wrapper.sh 'map=${input.extra_files_path}/${input.metadata.base_name}.map' 'ped=${input.extra_files_path}/${input.metadata.base_name}.ped' $burnin $mcmc $pvalue 'significance=$significance' 'posterior=$posterior'
   </command>
 
   <inputs>
