@@ -53,3 +53,14 @@ def test_docs_list_the_cases():
         text = fh.read()
     section = text[text.index(BEGIN) : text.index(END) + len(END)] + "\n"
     assert section == spec_cases_markdown(CASES), "regenerate with python -m galaxy.tool_util.security.spec.docs"
+
+
+def test_spec_files_are_packaged():
+    path = os.path.join(galaxy_directory(), "packages", "tool_util", "MANIFEST.in")
+    if not os.path.exists(path):
+        pytest.skip("Galaxy's packages are not next to this package")
+    with open(path) as fh:
+        included = {line.split()[1] for line in fh if line.startswith("include ")}
+    spec = "src/galaxy/tool_util/security/spec"
+    expected = {f"{spec}/cases.yml", *(f"{spec}/tools/{name}" for name in os.listdir(TOOLS_DIRECTORY))}
+    assert expected - included == set()

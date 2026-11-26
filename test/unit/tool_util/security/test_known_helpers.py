@@ -9,7 +9,7 @@ from galaxy.tool_util.security.report import (
     CODE_CAPABILITIES,
     rendered,
 )
-from .test_review import (
+from ._util import (
     INPUTS,
     review,
     rules,
