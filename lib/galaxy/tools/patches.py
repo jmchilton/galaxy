@@ -4,7 +4,6 @@ import os
 import threading
 import weakref
 from typing import (
-    Any,
     cast,
     TYPE_CHECKING,
 )
@@ -32,29 +31,34 @@ if TYPE_CHECKING:
 JOB_CACHE_SAFE_LEVEL: ReproducibilityLevel = "rejects_inputs"
 
 
+# (paths, reproducibility, requirement_changes)
+_Settings = tuple[tuple[str, ...], ReproducibilityLevel, bool]
+
 # Keyed by config object, then settings; weak so configs stay picklable and collectable.
-_databases: "weakref.WeakKeyDictionary[Any, dict[tuple[Any, ...], ToolPatchDatabase]]" = weakref.WeakKeyDictionary()
+_databases: "weakref.WeakKeyDictionary[GalaxyAppConfiguration, dict[_Settings, ToolPatchDatabase]]" = (
+    weakref.WeakKeyDictionary()
+)
 _databases_lock = threading.Lock()
 
 
 def tool_patch_database_from_config(config: "GalaxyAppConfiguration") -> ToolPatchDatabase | None:
     """The configured patch database, or None when ``tool_patch_paths`` is empty.
 
-    Loaded once per config object and settings, so a process applies one database until it restarts;
-    changed settings on the same config load another one.
+    Loaded once per config object and settings, so collection changes need a restart.
     """
     paths = tuple(config.tool_patch_paths or ())
     if not paths:
         return None
     reproducibility = cast(ReproducibilityLevel, config.tool_patch_reproducibility)
-    settings = (paths, reproducibility, bool(config.tool_patch_requirement_changes))
+    requirement_changes = bool(config.tool_patch_requirement_changes)
+    settings: _Settings = (paths, reproducibility, requirement_changes)
     with _databases_lock:
         databases = _databases.setdefault(config, {})
         if settings not in databases:
             databases[settings] = load_tool_patch_database(
                 list(paths),
                 reproducibility=reproducibility,
-                requirement_changes=settings[2],
+                requirement_changes=requirement_changes,
                 galaxy_series=VERSION_MAJOR,
             )
         return databases[settings]
