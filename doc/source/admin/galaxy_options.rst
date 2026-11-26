@@ -1466,15 +1466,17 @@
 
 :Description:
     The highest reproducibility impact of a tool patch that is
-    applied. Levels, lowest first: `identical` (no previously
-    successful job behaves differently), `rejects_inputs` (some
-    previously accepted inputs are rejected), `special_inputs` (jobs
-    with special-character or edge-case inputs run differently) and
-    `all_inputs` (any job may differ). Patches above this level are
-    reported as advisories and not applied. A tool with an applied
-    patch above `rejects_inputs` is never served from the job cache,
-    because jobs don't yet record which patch they ran with.
-:Default: ``all_inputs``
+    applied, by which previously successful jobs would now run
+    differently. Levels, lowest first: `identical` (none),
+    `rejects_inputs` (some previously accepted inputs are now
+    rejected), `unusual_inputs` (only jobs with unusual values, such
+    as quotes, shell metacharacters or odd characters) and
+    `ordinary_inputs` (ordinary jobs too; Galaxy's default dataset
+    names such as "data 1" count as ordinary). Patches above this
+    level are reported as advisories and not applied. A tool with an
+    applied patch above `rejects_inputs` is never served from the job
+    cache, because jobs don't yet record which patch they ran with.
+:Default: ``ordinary_inputs``
 :Type: str
 
 

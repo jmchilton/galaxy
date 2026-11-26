@@ -4,7 +4,7 @@ upstream:
   - repo: galaxyproject/galaxy
     pr: 1
     merge_commit: 0123456789abcdef0123456789abcdef01234567
-reproducibility: special_inputs
+reproducibility: unusual_inputs
 reproducibility_doc: >-
   Jobs whose input identifier contained a dot now write it as an underscore.
   Other jobs are unchanged.

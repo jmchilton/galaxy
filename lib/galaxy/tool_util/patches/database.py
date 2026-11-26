@@ -414,7 +414,7 @@ def _log_state(state: PatchState) -> None:
 
 def load_tool_patch_database(
     paths: Sequence[str],
-    reproducibility: ReproducibilityLevel = "all_inputs",
+    reproducibility: ReproducibilityLevel = "ordinary_inputs",
     requirement_changes: bool = False,
     galaxy_series: str | None = None,
 ) -> ToolPatchDatabase:
