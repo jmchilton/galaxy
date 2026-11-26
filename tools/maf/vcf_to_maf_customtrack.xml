@@ -8,20 +8,19 @@
       <import>macros.xml</import>
   </macros>
   <command>
-python '$__tool_directory__/vcf_to_maf_customtrack.py' '$out_file1'
+python '$__tool_directory__/vcf_to_maf_customtrack.py' ${vcf_source_type.vcf_source} -n '$track_name' -g
+-- '$out_file1'
 #if $vcf_source_type.vcf_file
     '${vcf_source_type.vcf_file[0].vcf_input.dbkey}'
 #else
     '?'
 #end if
-${vcf_source_type.vcf_source} -n '$track_name'
 #for $vcf_repeat in $vcf_source_type.vcf_file
     '${vcf_repeat.vcf_input}'
     #if $vcf_source_type.vcf_source == '-p'
         '${vcf_repeat.population_name}'
     #end if
 #end for
--g
   </command>
   <inputs>
     <param name="track_name" type="text" value="Galaxy Custom Track" label="Custom Track Name" />
