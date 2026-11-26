@@ -1,16 +1,21 @@
-"""The review of each spec tool reports what its case says."""
+"""The spec: each tool's review matches its case, the cases cover the catalogs, and bad cases fail to load."""
 
 import os
 
 import pytest
+from pydantic import ValidationError
 
+from galaxy.tool_util.security.classify import Uncheckable
 from galaxy.tool_util.security.patterns import (
     DESCRIPTIONS as PATTERN_DESCRIPTIONS,
     PatternCode,
 )
+from galaxy.tool_util.security.rules import VULNERABILITY_RULES
 from galaxy.tool_util.security.spec import (
+    FindingExpectation,
     load_cases,
     review_problems,
+    ReviewExpectation,
     TOOLS_DIRECTORY,
 )
 from galaxy.tool_util.security.spec.docs import (
@@ -35,14 +40,36 @@ def test_every_tool_has_a_case():
 def test_every_case_expects_something():
     for case_id, case in CASES.items():
         review = case.review
-        expects = (review.serious_rules, review.unchecked_locations, review.rewrites)
+        expects = (review.serious_rules, review.unchecked_locations, review.rewrites, review.codes)
         assert review.findings or review.patterns or any(e is not None for e in expects), case_id
 
 
-@pytest.mark.parametrize("code", list(PatternCode))
-def test_every_pattern_has_a_case(code):
-    assert any(code in case.review.patterns for case in CASES.values())
-    assert PATTERN_DESCRIPTIONS[code]
+def test_every_pattern_has_a_case():
+    assert set(PatternCode) - {code for case in CASES.values() for code in case.review.patterns} == set()
+
+
+def test_patterns_and_descriptions_match():
+    assert set(PATTERN_DESCRIPTIONS) == set(PatternCode)
+    assert all(PATTERN_DESCRIPTIONS.values())
+
+
+def test_every_vulnerability_rule_has_a_case():
+    assert VULNERABILITY_RULES - {rule for case in CASES.values() for rule in case.review.rules} == set()
+
+
+def test_spec_rejects_an_unknown_rule():
+    with pytest.raises(ValidationError):
+        FindingExpectation(rule="shell-injektion")
+
+
+def test_spec_rejects_an_unknown_severity():
+    with pytest.raises(ValidationError):
+        FindingExpectation(rule="shell-injection", severity="hihg")
+
+
+def test_spec_rejects_review_failed_as_a_classify_code():
+    with pytest.raises(ValidationError):
+        ReviewExpectation(codes=[Uncheckable.REVIEW_FAILED])
 
 
 def test_docs_list_the_cases():

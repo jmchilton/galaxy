@@ -1,7 +1,7 @@
 """Declarative cases for the tool security review: synthetic tools and what the review reports for them.
 
-``cases.yml`` maps case ids to a tool of ``tools/`` and the findings, access patterns and unchecked
-locations its review must report; :func:`review_problems` compares the two.
+``cases.yml`` maps case ids to a tool of ``tools/`` and the findings, access patterns, unchecked
+locations and uncheckable codes its review must report; :func:`review_problems` compares the two.
 """
 
 from __future__ import annotations
@@ -12,10 +12,16 @@ import yaml
 from pydantic import (
     BaseModel,
     ConfigDict,
+    field_validator,
 )
 
 from galaxy.tool_util.parser import get_tool_source
 from galaxy.tool_util.security import review_tool_source
+from galaxy.tool_util.security.charsets import SEVERITIES
+from galaxy.tool_util.security.classify import (
+    classify,
+    Uncheckable,
+)
 from galaxy.tool_util.security.patterns import (
     access_patterns,
     PatternCode,
@@ -24,6 +30,7 @@ from galaxy.tool_util.security.report import (
     Finding,
     serious_findings,
 )
+from galaxy.tool_util.security.rules import Rule
 
 SPEC_DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 TOOLS_DIRECTORY = os.path.join(SPEC_DIRECTORY, "tools")
@@ -37,7 +44,7 @@ class _Model(BaseModel):
 class FindingExpectation(_Model):
     """A finding the review reports: every field given must match."""
 
-    rule: str
+    rule: Rule
     severity: str | None = None
     location: str | None = None
     accessor: str | None = None
@@ -45,16 +52,37 @@ class FindingExpectation(_Model):
     key: str | None = None
     checkable: bool | None = None
 
+    @field_validator("severity")
+    @classmethod
+    def _known_severity(cls, severity: str | None) -> str | None:
+        if severity is not None and severity not in SEVERITIES:
+            raise ValueError(f"severity must be one of {', '.join(SEVERITIES)}")
+        return severity
+
 
 class ReviewExpectation(_Model):
     findings: list[FindingExpectation] = []
     # Exactly the rules of the high and critical vulnerabilities, when given.
-    serious_rules: list[str] | None = None
+    serious_rules: list[Rule] | None = None
     # Exactly these, when given.
     unchecked_locations: dict[str, str] | None = None
     rewrites: bool | None = None
     # Exactly the access patterns of the tool.
     patterns: list[PatternCode] = []
+    # Exactly the uncheckable codes of classify(), when given.
+    codes: list[Uncheckable] | None = None
+
+    @field_validator("codes")
+    @classmethod
+    def _classify_returns(cls, codes: list[Uncheckable] | None) -> list[Uncheckable] | None:
+        if codes and Uncheckable.REVIEW_FAILED in codes:
+            raise ValueError(f"classify() never returns {Uncheckable.REVIEW_FAILED}")
+        return codes
+
+    @property
+    def rules(self) -> frozenset[Rule]:
+        """The rules the case names, in ``serious_rules`` or ``findings``."""
+        return frozenset((*(self.serious_rules or ()), *(want.rule for want in self.findings)))
 
 
 class SpecCase(_Model):
@@ -84,7 +112,7 @@ def review_problems(case: SpecCase) -> list[str]:
     if expected.serious_rules is not None:
         serious = sorted({f.rule for f in serious_findings(report)})
         if serious != sorted(expected.serious_rules):
-            problems.append(f"serious rules are {serious}, expected {sorted(expected.serious_rules)}")
+            problems.append(f"serious rules are {serious}, expected {[str(r) for r in sorted(expected.serious_rules)]}")
     if expected.unchecked_locations is not None and report.unchecked_locations != expected.unchecked_locations:
         problems.append(f"unchecked locations are {report.unchecked_locations}")
     if expected.rewrites is not None and bool(report.rewrites) != expected.rewrites:
@@ -92,6 +120,10 @@ def review_problems(case: SpecCase) -> list[str]:
     patterns = sorted(access_patterns(report))
     if patterns != sorted(expected.patterns):
         problems.append(f"access patterns are {[p.value for p in patterns]}")
+    if expected.codes is not None:
+        codes = classify(report).codes
+        if codes != sorted(expected.codes):
+            problems.append(f"uncheckable codes are {[c.value for c in codes]}")
     return problems
 
 

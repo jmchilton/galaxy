@@ -6,6 +6,7 @@ raw_text_shell_injection:
   doc: A text value written past its sanitizer can close its single quotes and start a command.
   tool: raw_text_single_quoted.xml
   review:
+    codes: []
     serious_rules: [shell-injection]
     findings:
       - {rule: shell-injection, severity: high, accessor: raw, param: word, checkable: true}
@@ -14,6 +15,7 @@ sanitized_text_stays_quoted:
   doc: The default sanitizer turns quotes into tokens, so a sanitized text value cannot leave its quotes.
   tool: sanitized_text_single_quoted.xml
   review:
+    codes: []
     serious_rules: []
 
 element_identifier_shell_injection:
@@ -57,6 +59,7 @@ dataset_content_shell_injection:
   doc: A template that reads a dataset with open() writes its content, which the review follows.
   tool: dataset_content_first_line.xml
   review:
+    codes: []
     patterns: [file-access]
     serious_rules: [shell-injection]
     findings:
@@ -164,6 +167,7 @@ export_name:
     A value that names the variable `export` sets can set BASH_ENV, PATH or LD_PRELOAD with letters alone.
   tool: export_name.xml
   review:
+    codes: [uncheckable-letters-are-code]
     serious_rules: [variable-name]
 
 export_value:
@@ -181,6 +185,7 @@ not_analysed_strict:
     and it lists the template as unchecked.
   tool: search_list.xml
   review:
+    codes: []
     unchecked_locations: {command: parts of it were not analysed}
 
 raw_dataset_model:
@@ -200,6 +205,7 @@ raw_dataset_history:
     made it, which the review cannot trace to one value: its finding is not checkable.
   tool: raw_dataset_history.xml
   review:
+    codes: [uncheckable-template-code]
     patterns: [model-access]
     findings:
       - {rule: shell-injection, accessor: opaque, param: input, checkable: false}
@@ -208,6 +214,7 @@ pipe_to_shell:
   doc: A value in text piped to a shell is code whatever its characters, so the review lists the command as unchecked.
   tool: pipe_to_shell.xml
   review:
+    codes: [uncheckable-letters-are-code]
     unchecked_locations: {command: it sends text to a shell to run}
 
 shell_runs_script_file:
@@ -225,6 +232,7 @@ command_position:
   doc: A value that names the program to run is code with letters alone.
   tool: command_position.xml
   review:
+    codes: [uncheckable-letters-are-code]
     serious_rules: [command-position]
     findings:
       - {rule: command-position, accessor: text, param: program, checkable: false}
@@ -233,6 +241,7 @@ rewrites_restore_tokens:
   doc: A template that turns the sanitizer's tokens back into quotes and redirects undoes the sanitizer.
   tool: rewrites_restore_tokens.xml
   review:
+    codes: [uncheckable-rewrites]
     rewrites: true
     serious_rules: [shell-injection]
 
@@ -252,6 +261,7 @@ rewrites_and_template_code:
   doc: The review reports both the rewrite of a value and the template code.
   tool: rewrites_and_template_code.xml
   review:
+    codes: [uncheckable-rewrites, uncheckable-template-code]
     patterns: [template-code]
     rewrites: true
     serious_rules: [shell-injection]
@@ -262,10 +272,23 @@ template_code:
   doc: A template that imports code can read text no input carries, and the review does not follow it.
   tool: template_code.xml
   review:
+    codes: [uncheckable-template-code]
     patterns: [template-code]
     unchecked_locations: {command: parts of it were not analysed}
     findings:
       - {rule: template-exec, severity: critical}
+
+server_python_command:
+  doc: >-
+    Template Python runs in the Galaxy server process while the job is prepared. A value passed to a command it
+    runs decides what the server executes, whatever its characters.
+  tool: server_python_command.xml
+  review:
+    codes: [uncheckable-letters-are-code, uncheckable-template-code]
+    patterns: [template-code]
+    serious_rules: [server-injection]
+    findings:
+      - {rule: server-injection, severity: critical, accessor: text, param: word, checkable: false}
 
 user_object_unsanitized:
   doc: >-
@@ -273,6 +296,7 @@ user_object_unsanitized:
     the name of one preference, here every preference in a loop, writes values the review cannot trace.
   tool: user_preferences_unsanitized_loop.xml
   review:
+    codes: [uncheckable-template-code, uncheckable-untraced-value]
     patterns: [user-object]
     findings:
       - {rule: template-app-access, severity: medium}
@@ -284,6 +308,7 @@ untraced_value:
     sanitizes it here, but the review reports a value it cannot check.
   tool: user_preferences_loop.xml
   review:
+    codes: [uncheckable-untraced-value]
     findings:
       - {rule: shell-injection, accessor: opaque, checkable: false}
 
@@ -293,6 +318,7 @@ reflection_bypass:
     without a finding about it, its history's name as well as its own. The review reports the reflection.
   tool: reflection_getattr.xml
   review:
+    codes: [uncheckable-template-code]
     patterns: [reflection]
     serious_rules: []
 
@@ -302,6 +328,7 @@ output_filter_vars:
     nothing it reads is written into the command, which is reviewed as usual.
   tool: output_filter_vars.xml
   review:
+    codes: []
     patterns: [reflection]
 
 getvar_user_name:
@@ -310,6 +337,7 @@ getvar_user_name:
     reports the reflection.
   tool: getvar_user_name.xml
   review:
+    codes: [uncheckable-template-code]
     patterns: [reflection]
 
 known_helper:
@@ -335,6 +363,7 @@ job_metadata_read:
   doc: The tool version of the job that made a dataset is set by the server, not by a user.
   tool: job_metadata.xml
   review:
+    codes: []
     patterns: [job-metadata]
     serious_rules: []
 
