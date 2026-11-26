@@ -35,7 +35,7 @@ def test_every_tool_has_a_case():
 def test_every_case_expects_something():
     for case_id, case in CASES.items():
         review = case.review
-        expects = (review.serious_rules, review.unchecked_locations, review.rewrites)
+        expects = (review.serious_rules, review.unchecked_locations, review.rewrites, review.codes)
         assert review.findings or review.patterns or any(e is not None for e in expects), case_id
 
 

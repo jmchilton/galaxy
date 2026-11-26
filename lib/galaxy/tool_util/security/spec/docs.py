@@ -1,4 +1,4 @@
-"""Render the spec cases, the access patterns and the rules as the Markdown section of the admin docs.
+"""Render the spec cases, access patterns, rules and uncheckable codes as the Markdown section of the admin docs.
 
 ``python -m galaxy.tool_util.security.spec.docs`` prints the section.
 """
@@ -14,6 +14,7 @@ import yaml
 
 from galaxy.tool_util.parser import get_tool_source
 from galaxy.tool_util.security import (
+    classify,
     patterns,
     rules,
 )
@@ -35,6 +36,7 @@ def spec_cases_markdown(cases: dict[str, SpecCase]) -> str:
         lines += _case(case_id, case)
     lines += _patterns(cases)
     lines += _rules(cases)
+    lines += _uncheckable(cases)
     lines.append(END)
     return "\n".join(lines) + "\n"
 
@@ -61,6 +63,19 @@ def _rules(cases: dict[str, SpecCase]) -> list[str]:
         ("Capabilities", [r for r in rules.Rule if r not in rules.VULNERABILITY_RULES]),
     )
     return lines + _described(groups, rules.DESCRIPTIONS, cases, _case_rules)
+
+
+def _uncheckable(cases: dict[str, SpecCase]) -> list[str]:
+    lines = [
+        "## Uncheckable codes",
+        "",
+        "Where a template writes values that no character test of a finding can judge (`unchecked_locations`),",
+        "only a check that every value is plain could vet a job. `classify()` and the CLI give these codes when",
+        "not even that could: the review cannot decide the tool from its templates.",
+        "",
+    ]
+    groups = (("Codes", list(classify.Uncheckable)),)
+    return lines + _described(groups, classify.DESCRIPTIONS, cases, lambda case: case.review.codes or [])
 
 
 def _case_rules(case: SpecCase) -> list[str]:

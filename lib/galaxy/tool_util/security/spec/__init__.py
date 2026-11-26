@@ -1,7 +1,7 @@
 """Declarative cases for the tool security review: synthetic tools and what the review reports for them.
 
-``cases.yml`` maps case ids to a tool of ``tools/`` and the findings, access patterns and unchecked
-locations its review must report; :func:`review_problems` compares the two.
+``cases.yml`` maps case ids to a tool of ``tools/`` and the findings, access patterns, unchecked
+locations and uncheckable codes its review must report; :func:`review_problems` compares the two.
 """
 
 from __future__ import annotations
@@ -16,6 +16,10 @@ from pydantic import (
 
 from galaxy.tool_util.parser import get_tool_source
 from galaxy.tool_util.security import review_tool_source
+from galaxy.tool_util.security.classify import (
+    classify,
+    Uncheckable,
+)
 from galaxy.tool_util.security.patterns import (
     access_patterns,
     PatternCode,
@@ -56,6 +60,8 @@ class ReviewExpectation(_Model):
     rewrites: bool | None = None
     # Exactly the access patterns of the tool.
     patterns: list[PatternCode] = []
+    # Exactly the uncheckable codes of classify(), when given.
+    codes: list[Uncheckable] | None = None
 
 
 class SpecCase(_Model):
@@ -93,6 +99,10 @@ def review_problems(case: SpecCase) -> list[str]:
     patterns = sorted(access_patterns(report))
     if patterns != sorted(expected.patterns):
         problems.append(f"access patterns are {[p.value for p in patterns]}")
+    if expected.codes is not None:
+        codes = classify(report).codes
+        if codes != sorted(expected.codes):
+            problems.append(f"uncheckable codes are {[c.value for c in codes]}")
     return problems
 
 
