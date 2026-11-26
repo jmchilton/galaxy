@@ -54,13 +54,13 @@ from galaxy.tool_util.security.charsets import (
     DATA,
     HIGH,
     LEADING_DASH,
-    LEVELS,
     marks,
     MEDIUM,
     not_plain,
     NOT_PLAIN,
     PROBE,
     show,
+    stricter,
     TILDE_WORD,
     WHITESPACE,
 )
@@ -303,7 +303,7 @@ class ToolSecurityReviewer:
         """Compare the job values in the evaluator's param_dict with the tool's findings.
 
         Logs each value that contains a breakout character; raises :class:`ToolInputRejected`
-        in ``enforce`` mode.
+        in an enforcing mode.
         """
         if not self.enabled:
             return
@@ -455,20 +455,14 @@ class Violation:
     location: str
 
 
-# The rule of a value that a stray quote of another value leaves outside its quotes.
-STRAY_QUOTE = RefusalCode.STRAY_QUOTE.value
-# The rule of an element identifier or dataset name that is a path or an option, from enforce_data on.
-PATH_LIKE_NAME = RefusalCode.PATH_LIKE_NAME.value
-
-
-def _enforced(level: str | None, at: str) -> bool:
+def _refused_at(level: str | None, at: str) -> bool:
     """Whether a finding of ``level`` is refused at the enforcement level ``at``."""
-    return level is not None and LEVELS.index(level) <= LEVELS.index(at)
+    return level is not None and stricter(level, at) == level
 
 
 def _enforced_findings(report: Report, level: str) -> list[Finding]:
     """The vulnerability findings the enforcement ``level`` refuses jobs for, most severe first."""
-    return [f for f in report.sorted() if f.kind == VULNERABILITY and _enforced(f.level, level)]
+    return [f for f in report.sorted() if f.kind == VULNERABILITY and _refused_at(f.level, level)]
 
 
 def _added_by_rewrites(report: Report, ref: SourceRef, chars: Iterable[str]) -> frozenset[str]:
@@ -543,7 +537,7 @@ def find_violations(report: Report, param_dict: dict[str, Any], level: str = COD
                 closers.setdefault(location, {}).setdefault(ref, set()).update(chars_of(ref) & quotes)
 
     for finding in vulnerabilities:
-        if not _enforced(finding.level, level) or not finding.checkable:
+        if not _refused_at(finding.level, level) or not finding.checkable:
             continue
         if finding.needs_closer and not closers.get(finding.location):
             # No value of the job escapes the quote this finding is about.
@@ -567,7 +561,7 @@ def find_violations(report: Report, param_dict: dict[str, Any], level: str = COD
             for ref in refs:
                 if ref.accessor == ELEMENT_IDENTIFIER or (ref.accessor == DATASET_ATTRIBUTE and ref.key == "name"):
                     if (harm := _path_like(source_values(ref, param_dict))) and first(
-                        violation := Violation(ref, harm, PATH_LIKE_NAME, MEDIUM, location)
+                        violation := Violation(ref, harm, RefusalCode.PATH_LIKE_NAME, MEDIUM, location)
                     ):
                         yield violation
 
@@ -575,10 +569,10 @@ def find_violations(report: Report, param_dict: dict[str, Any], level: str = COD
         freed = []
         for ref, harm in report.writes.get(location, {}).items():
             if ref.accessor != OPAQUE and chars_of(ref) & harm:
-                freed.append(Violation(ref, chars_of(ref) & harm, STRAY_QUOTE, HIGH, location))
+                freed.append(Violation(ref, chars_of(ref) & harm, RefusalCode.STRAY_QUOTE, HIGH, location))
         if freed:
             for ref, closing in quoted.items():
-                freed.append(Violation(ref, frozenset(closing), STRAY_QUOTE, HIGH, location))
+                freed.append(Violation(ref, frozenset(closing), RefusalCode.STRAY_QUOTE, HIGH, location))
             for violation in freed:
                 if first(violation):
                     yield violation
@@ -781,7 +775,7 @@ def strict_violations(
         harm: frozenset[str] = frozenset()
         for value in source_values(ref, param_dict):
             added = _added_by_rewrites(report, ref, frozenset(value))
-            harm |= strict_harm(value, level) | (added & (_not_plain_chars(level) | {"-"}))
+            harm |= strict_harm(value, level) | (added & (_NOT_PLAIN_AT[level] | {"-"}))
             if "-" in value and any(c.isspace() for c in added):
                 # Added whitespace splits the value into words, one of which can start with its dash.
                 harm |= {"-"}
@@ -789,20 +783,14 @@ def strict_violations(
             yield ref, harm
 
 
-def _not_plain_chars(level: str) -> frozenset[str]:
-    """The characters a plain value lacks at the enforcement ``level``."""
-    chars = NOT_PLAIN
-    if level != CODE:
-        chars = chars | {"/"}
-    if level == ALL:
-        chars = chars | WHITESPACE
-    return chars
+# The characters a plain value lacks at each enforcement level.
+_NOT_PLAIN_AT = {CODE: NOT_PLAIN, DATA: NOT_PLAIN | {"/"}, ALL: NOT_PLAIN | {"/"} | WHITESPACE}
 
 
 def strict_harm(value: str, level: str = CODE) -> frozenset[str]:
     """What keeps a value from being plain at the enforcement ``level``: beyond the code level, a slash or
     a word that starts with ``~``, and at the level of all, whitespace."""
-    harm = not_plain(value) | (frozenset(value) & _not_plain_chars(level))
+    harm = not_plain(value) | (frozenset(value) & _NOT_PLAIN_AT[level])
     if level != CODE and TILDE_WORD in marks(value):
         harm |= {"~"}
     return harm
