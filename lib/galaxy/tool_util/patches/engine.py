@@ -186,7 +186,8 @@ def _parameter_model(tree: ElementTree) -> Any:
         if parent is not None:
             parent.remove(el)
     for el in root.iter("options"):
-        el.attrib.pop("sanitize", None)
+        if "sanitize" in el.attrib:
+            del el.attrib["sanitize"]
     source = XmlToolSource(cast(ElementTree, etree.ElementTree(root)))
     return input_models_for_tool_source(source).model_dump(mode="json")
 
@@ -230,7 +231,7 @@ def evaluate_unit(tree: ElementTree, bodies: Sequence[OpBody], check_parameter_m
         return UnitResult(ALREADY_APPLIED)
     if any(c != PRE for c in classes):
         return UnitResult(MISMATCH, detail=", ".join(f"op {i}: {c}" for i, c in enumerate(classes)))
-    work = cast(ElementTree, copy.deepcopy(tree))
+    work = copy.deepcopy(tree)
     work_root = work.getroot()
     for i, body in enumerate(bodies):
         if classify(work_root, body) != PRE:

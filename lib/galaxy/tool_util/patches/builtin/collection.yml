@@ -1,0 +1,4 @@
+# Compatibility patches for Galaxy's own feature removals; patches/<owner>/<repo>/<tool_id>/<version>.yml
+name: galaxy-builtin
+version: "1"
+format_version: 1

@@ -1,1 +1,39 @@
 """Declarative patches for installed tool versions, applied to the macro-expanded XML."""
+
+from .collection import (
+    CollectionError,
+    PatchCollection,
+)
+from .database import (
+    BUILTIN,
+    load_tool_patch_database,
+    ToolPatchDatabase,
+)
+from .keys import (
+    patch_key,
+    PatchKey,
+)
+from .model import (
+    AdvisoryInfo,
+    PatchFile,
+    PatchPolicy,
+    PatchState,
+    ToolPatchCollectionsSummary,
+    ToolPatchInfo,
+)
+
+__all__ = (
+    "AdvisoryInfo",
+    "BUILTIN",
+    "CollectionError",
+    "load_tool_patch_database",
+    "patch_key",
+    "PatchCollection",
+    "PatchFile",
+    "PatchKey",
+    "PatchPolicy",
+    "PatchState",
+    "ToolPatchCollectionsSummary",
+    "ToolPatchDatabase",
+    "ToolPatchInfo",
+)

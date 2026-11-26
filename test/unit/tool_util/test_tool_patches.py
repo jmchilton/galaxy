@@ -1,7 +1,15 @@
 """Tests for galaxy.tool_util.patches."""
 
+import hashlib
+import json
+import logging
+import os
+import shutil
 import struct
+import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -9,7 +17,14 @@ import yaml
 from pydantic import ValidationError
 
 from galaxy.tool_util.parser import get_tool_source
+from galaxy.tool_util.parser.interface import ToolSource
 from galaxy.tool_util.parser.xml import XmlToolSource
+from galaxy.tool_util.patches import (
+    collection as patch_collection,
+    load_tool_patch_database,
+    PatchState,
+    ToolPatchDatabase,
+)
 from galaxy.tool_util.patches.engine import (
     ALREADY_APPLIED,
     APPLIED,
@@ -28,6 +43,8 @@ from galaxy.tool_util.patches.model import (
     PatchFile,
     PatchOp,
 )
+from galaxy.tool_util.unittest_utils import functional_test_tool_path
+from galaxy.util.template import fill_template
 
 UPSTREAM = {"repo": "galaxyproject/tools-iuc", "pr": 1, "merge_commit": "0123456789abcdef0123456789abcdef01234567"}
 GALAXY_CHANGE = [{"repo": "galaxyproject/galaxy", "pr": 2}]
@@ -102,6 +119,11 @@ def write_tool(path: Path, content: str = PROBE_TOOL) -> XmlToolSource:
     tool_source = get_tool_source(config_file=str(path))
     assert isinstance(tool_source, XmlToolSource)
     return tool_source
+
+
+def command_text(command: str | None) -> str:
+    assert command is not None
+    return command
 
 
 def run(tool_source: XmlToolSource, *ops: dict[str, Any]) -> UnitResult:
@@ -352,8 +374,8 @@ def test_pre_applies(probe: XmlToolSource) -> None:
     result = run(probe, QUOTE_LABEL)
     assert result.state == APPLIED
     assert result.tree is not None
-    assert "echo '$label' >>" in result.tree.getroot().findtext("command")
-    assert "echo $label >>" in probe.xml_tree.getroot().findtext("command")
+    assert "echo '$label' >>" in command_text(result.tree.getroot().findtext("command"))
+    assert "echo $label >>" in command_text(probe.xml_tree.getroot().findtext("command"))
 
 
 def test_post_is_already_applied(tmp_path: Path) -> None:
@@ -581,3 +603,580 @@ def test_unreadable_dirstate(tmp_path: Path, dirstate: bytes, requires: str) -> 
 
 def test_missing_dirstate(tmp_path: Path) -> None:
     assert read_working_parent(str(tmp_path)) is None
+
+
+# --- collections and database ---
+
+LOCAL_PROBE = "_local/patch_probe/1.0+galaxy0.yml"
+LOCAL_KEY = ("_local", "patch_probe", "1.0+galaxy0")
+SHED_GUID = "toolshed.example.org/repos/owner1/repo_a/patch_probe/1.0+galaxy0"
+SHED_PROBE = "owner1/repo_a/patch_probe/1.0+galaxy0"
+SHED_KEY = ("owner1", "repo_a", "patch_probe", "1.0+galaxy0")
+NODE_HEX = NODE.hex()
+OVERRIDE_REL = f"{SHED_PROBE}/@{NODE_HEX[:12]}.yml"
+OVERRIDE_OP = text_op("cat '$input1' >", "cat -- '$input1' >")
+DIRSTATE_V1 = NODE + b"\0" * 20
+DIRSTATE_V2 = struct.pack(">12s32s32s44sLB", b"dirstate-v2\n", NODE, b"", b"\0" * 44, 0, 4) + b"abcd"
+ADVISORY_ONLY = {"ops": None, "reproducibility": None, "reproducibility_doc": None}
+CODES = {"partial_fix": {"level": "must_fix", "actions": ["upgrade"], "message": "Upgrade to {fixed_in} or later."}}
+REQUIREMENT_TOOL = PROBE_TOOL.replace(
+    "<inputs>",
+    '<requirements><requirement type="package" version="1.0">probe</requirement></requirements>\n    <inputs>',
+)
+REQUIREMENT_OP = {
+    "replace_element": {
+        "path": "requirements/requirement",
+        "old": '<requirement type="package" version="1.0">probe</requirement>',
+        "new": '<requirement type="package" version="1.1">probe</requirement>',
+        "occurrences": 1,
+    }
+}
+
+
+def write_collection(
+    root: Path,
+    files: dict[str, Any],
+    *,
+    name: str = "test-patches",
+    format_version: int = 1,
+    codes: dict[str, Any] | None = None,
+    coverage: dict[str, list[str]] | None = None,
+    extra: dict[str, Any] | None = None,
+) -> Path:
+    root.mkdir(parents=True, exist_ok=True)
+    metadata = {"name": name, "version": "2026.11.25", "format_version": format_version, **(extra or {})}
+    (root / "collection.yml").write_text(yaml.safe_dump(metadata))
+    for rel, doc in files.items():
+        path = root / "patches" / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(doc if isinstance(doc, str) else yaml.safe_dump(doc))
+    if codes is not None:
+        (root / "codes.yml").write_text(yaml.safe_dump({"format_version": 1, "codes": codes}))
+    for rel, shas in (coverage or {}).items():
+        path = root / "coverage" / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"checked": [{"expanded_sha256": sha} for sha in shas]}))
+    return root
+
+
+def load_db(*roots: Path, **kwds: Any) -> ToolPatchDatabase:
+    return load_tool_patch_database([str(r) for r in roots], **kwds)
+
+
+def patch_states(tool_source: ToolSource) -> list[PatchState]:
+    assert tool_source.patch_state is not None
+    return tool_source.patch_state.states
+
+
+def states_of(tool_source: ToolSource) -> list[str]:
+    return [s.state for s in patch_states(tool_source)]
+
+
+def sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def shed_repo_tool(tmp_path: Path, dirstate: bytes = DIRSTATE_V1, requires: str = "store\n") -> XmlToolSource:
+    return write_tool(_hg_dir(tmp_path, dirstate, requires) / "tools" / "probe.xml")
+
+
+def test_miss_returns_same_object(tmp_path: Path, probe: XmlToolSource) -> None:
+    db = load_db(write_collection(tmp_path / "c", {"_local/other_tool/1.0.yml": security_doc(QUOTE_LABEL)}))
+    assert db.apply_patches(probe) is probe
+    assert probe.patch_state is None
+    assert db.digest_for(LOCAL_KEY) is None
+
+
+@pytest.mark.parametrize(
+    "rel,guid",
+    [(LOCAL_PROBE, SHED_GUID), (f"{SHED_PROBE}.yml", None), (f"{SHED_PROBE}.yml", "patch_probe")],
+    ids=["shed_guid_vs_local_key", "no_guid_vs_shed_key", "bare_id_vs_shed_key"],
+)
+def test_shed_and_local_keys_never_cross(tmp_path: Path, probe: XmlToolSource, rel: str, guid: str | None) -> None:
+    db = load_db(write_collection(tmp_path / "c", {rel: security_doc(QUOTE_LABEL)}))
+    assert db.apply_patches(probe, guid=guid) is probe
+    assert probe.patch_state is None
+
+
+@pytest.mark.parametrize(
+    "rel,guid,key", [(LOCAL_PROBE, None, LOCAL_KEY), (f"{SHED_PROBE}.yml", SHED_GUID, SHED_KEY)], ids=["local", "shed"]
+)
+def test_applied_patch_rebuilds_tool_source(
+    tmp_path: Path, probe: XmlToolSource, rel: str, guid: str | None, key: tuple[str, ...]
+) -> None:
+    root = write_collection(tmp_path / "c", {rel: security_doc(QUOTE_LABEL)})
+    db = load_db(root)
+    before = probe.to_string()
+
+    patched = db.apply_patches(probe, guid=guid)
+
+    assert patched is not probe
+    assert "echo '$label' >>" in command_text(patched.parse_command())
+    assert "echo '$label'" in patched.to_string()
+    assert probe.to_string() == before
+    assert probe.patch_state is None
+    assert (patched.source_path, patched.macro_paths) == (probe.source_path, probe.macro_paths)
+    info = patched.patch_state
+    assert info is not None and info.digest == db.digest_for(key)
+    (state,) = info.states
+    assert (state.state, state.kind, state.key, state.path) == ("applied", "security", "/".join(key), f"patches/{rel}")
+    assert state.digest == hashlib.sha256((root / "patches" / rel).read_bytes()).hexdigest()
+    assert (state.collection.name, state.collection.version) == ("test-patches", "2026.11.25")
+    assert (state.reproducibility, state.reproducibility_doc, state.upstream[0].pr) == ("special_inputs", DOC, 1)
+    assert state.advisory is None
+
+
+def test_encoded_key_matches(tmp_path: Path) -> None:
+    tool = write_tool(tmp_path / "t.xml", PROBE_TOOL.replace('id="patch_probe"', 'id="Patch_Probe"'))
+    rel = "_local/!patch_!probe/1.0+galaxy0.yml"
+    assert states_of(
+        load_db(write_collection(tmp_path / "c", {rel: security_doc(QUOTE_LABEL)})).apply_patches(tool)
+    ) == ["applied"]
+
+
+def test_patching_twice_equals_once(tmp_path: Path, probe: XmlToolSource) -> None:
+    db = load_db(write_collection(tmp_path / "c", {LOCAL_PROBE: security_doc(QUOTE_LABEL)}))
+    once = db.apply_patches(probe)
+    text = once.to_string()
+    assert db.apply_patches(once) is once
+    assert states_of(once) == ["already_applied"]
+    assert once.to_string() == text
+
+
+def test_stacked_collections_apply_in_order(tmp_path: Path, probe: XmlToolSource) -> None:
+    first = write_collection(tmp_path / "first", {LOCAL_PROBE: security_doc(QUOTE_LABEL)}, name="first")
+    second = write_collection(
+        tmp_path / "second", {LOCAL_PROBE: security_doc(text_op("echo '$label'", "echo -- '$label'"))}, name="second"
+    )
+
+    patched = load_db(first, second).apply_patches(probe)
+    assert "echo -- '$label' >>" in command_text(patched.parse_command())
+    assert [(s.collection.name, s.state) for s in patch_states(patched)] == [
+        ("first", "applied"),
+        ("second", "applied"),
+    ]
+
+    # the second's anchor isn't there yet; its mismatch doesn't block the first
+    patched = load_db(second, first).apply_patches(probe)
+    assert "echo '$label' >>" in command_text(patched.parse_command())
+    assert [(s.collection.name, s.state) for s in patch_states(patched)] == [
+        ("second", "mismatch"),
+        ("first", "applied"),
+    ]
+
+
+@pytest.mark.parametrize(
+    "series,state", [("26.0", "skipped"), ("26.1", "applied"), ("27.0", "applied"), (None, "applied")]
+)
+def test_needed_from_gate(tmp_path: Path, probe: XmlToolSource, series: str | None, state: str) -> None:
+    db = load_db(write_collection(tmp_path / "c", {LOCAL_PROBE: compat_doc(QUOTE_LABEL)}), galaxy_series=series)
+    patched = db.apply_patches(probe)
+    assert states_of(patched) == [state]
+    assert (patched is probe) == (state == "skipped")
+
+
+@pytest.mark.parametrize("series", ["26", "26.1.0", "dev"])
+def test_invalid_galaxy_series(tmp_path: Path, series: str) -> None:
+    with pytest.raises(ValueError):
+        load_db(tmp_path, galaxy_series=series)
+
+
+def test_mixed_file_evaluates_kinds_separately(tmp_path: Path, probe: XmlToolSource) -> None:
+    doc = security_doc(
+        {**QUOTE_LABEL, "kind": "security"},
+        {**text_op("absent anchor", "x"), "kind": "compat"},
+        kind="mixed",
+        needed_from="26.1",
+        galaxy_change=GALAXY_CHANGE,
+        upstream=[{**UPSTREAM, "kind": "security"}],
+    )
+    patched = load_db(write_collection(tmp_path / "c", {LOCAL_PROBE: doc})).apply_patches(probe)
+    assert [(s.kind, s.state) for s in patch_states(patched)] == [("security", "applied"), ("compat", "mismatch")]
+    assert "echo '$label' >>" in command_text(patched.parse_command())
+
+
+def test_reproducibility_cap_demotes_to_advisory(tmp_path: Path, probe: XmlToolSource) -> None:
+    db = load_db(
+        write_collection(tmp_path / "c", {LOCAL_PROBE: security_doc(QUOTE_LABEL)}), reproducibility="rejects_inputs"
+    )
+    assert db.apply_patches(probe) is probe
+    (state,) = patch_states(probe)
+    assert state.state == "advisory" and state.advisory is not None
+    assert (state.advisory.code, state.advisory.action, state.advisory.level) == (
+        "reproducibility_above_cap",
+        "enable_policy",
+        "must_fix",
+    )
+    assert "special_inputs" in (state.advisory.message or "")
+    assert "echo $label >>" in command_text(probe.parse_command())
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_requirement_changes_policy(tmp_path: Path, enabled: bool) -> None:
+    tool = write_tool(tmp_path / "req.xml", REQUIREMENT_TOOL)
+    doc = security_doc(REQUIREMENT_OP, reproducibility="all_inputs", changes_requirements=True)
+    db = load_db(write_collection(tmp_path / "c", {LOCAL_PROBE: doc}), requirement_changes=enabled)
+    result = db.apply_patches(tool)
+    (state,) = patch_states(result)
+    if enabled:
+        assert state.state == "applied" and state.changes_requirements
+        assert 'version="1.1"' in result.to_string()
+    else:
+        assert result is tool
+        assert state.state == "advisory" and state.advisory is not None
+        assert state.advisory.code == "requirement_changes_disabled"
+
+
+def test_policy_and_series_change_the_digest(tmp_path: Path) -> None:
+    root = write_collection(tmp_path / "c", {LOCAL_PROBE: security_doc(QUOTE_LABEL)})
+    configs: list[dict[str, Any]] = [
+        {},
+        {"reproducibility": "rejects_inputs"},
+        {"requirement_changes": True},
+        {"galaxy_series": "26.1"},
+    ]
+    digests = {load_db(root, **config).digest_for(LOCAL_KEY) for config in configs}
+    assert len(digests) == len(configs) and None not in digests
+    tokens = {load_db(root, **config).token() for config in configs}
+    assert len(tokens) == len(configs)
+
+
+def test_digests_follow_file_content(tmp_path: Path) -> None:
+    root = write_collection(tmp_path / "c", {LOCAL_PROBE: security_doc(QUOTE_LABEL)})
+    db = load_db(root)
+    before = (db.digest_for(LOCAL_KEY), db.collections_summary().collections[0].digest, db.token())
+    write_collection(root, {LOCAL_PROBE: security_doc(QUOTE_LABEL, reproducibility_doc="Other doc.")})
+    db = load_db(root)
+    after = (db.digest_for(LOCAL_KEY), db.collections_summary().collections[0].digest, db.token())
+    assert all(b != a for b, a in zip(before, after))
+
+
+def test_collection_digest_is_computed_from_contents(tmp_path: Path) -> None:
+    root = write_collection(tmp_path / "c", {LOCAL_PROBE: security_doc(QUOTE_LABEL)}, extra={"digest": "0" * 64})
+    rel = f"patches/{LOCAL_PROBE}"
+    expected = hashlib.sha256(rel.encode() + b"\0" + hashlib.sha256((root / rel).read_bytes()).digest()).hexdigest()
+    (summary,) = load_db(root).collections_summary().collections
+    assert (summary.name, summary.version, summary.digest) == ("test-patches", "2026.11.25", expected)
+
+
+@pytest.mark.parametrize("covered", [True, False])
+def test_verified_from_coverage(
+    tmp_path: Path, probe: XmlToolSource, covered: bool, caplog: pytest.LogCaptureFixture
+) -> None:
+    sha = sha256_text(probe.to_string()) if covered else "0" * 64
+    root = write_collection(
+        tmp_path / "c",
+        {LOCAL_PROBE: security_doc(QUOTE_LABEL)},
+        coverage={"_local/patch_probe/1.0+galaxy0.json": [sha]},
+    )
+    db = load_db(root)
+    with caplog.at_level(logging.DEBUG, logger="galaxy.tool_util.patches"):
+        patched = db.apply_patches(probe)
+    (state,) = patch_states(patched)
+    assert state.verified is covered
+    levels = {r.levelname for r in caplog.records if "patch_probe" in r.getMessage()}
+    assert levels == ({"INFO"} if covered else {"WARNING"})
+
+
+DRILL_DOWN_OLD = (
+    '<param name="parameter" type="drill_down" '
+    'from_file="../test/functional/tool-data/gx_drill_down_from_file_options.xml"/>'
+)
+DRILL_DOWN_NEW = """<param name="parameter" type="drill_down">
+    <options>
+        <option name="Heading 1" value="heading1">
+            <option name="Option 1" value="option1"/>
+            <option name="Option 2" value="option2"/>
+        </option>
+        <option name="Option 3" value="option3"/>
+    </options>
+</param>"""
+
+
+def test_drill_down_from_file_compat_fixture(tmp_path: Path) -> None:
+    tool = get_tool_source(functional_test_tool_path("parameters/gx_drill_down_from_file.xml"))
+    op = {
+        "replace_element": {
+            "path": "inputs/param[@name='parameter']",
+            "old": DRILL_DOWN_OLD,
+            "new": DRILL_DOWN_NEW,
+            "occurrences": 1,
+        }
+    }
+    doc = compat_doc(op, reproducibility_reason="options inlined verbatim from the options file")
+    root = write_collection(tmp_path / "c", {"_local/gx_drill_down_from_file/1.0.0.yml": doc})
+
+    patched = load_db(root, galaxy_series="26.1").apply_patches(tool)
+
+    assert states_of(patched) == ["applied"]
+    assert "from_file=" not in patched.to_string()
+    # the expanded macro output is kept
+    assert '<data name="output" format="txt"/>' in patched.to_string()
+    assert patched.macro_paths == tool.macro_paths and patched.macro_paths
+    (page,) = patched.parse_input_pages().page_sources
+    (param,) = page.parse_input_sources()
+    options = param.parse_drill_down_static_options()
+    assert options is not None
+    assert [o["value"] for o in options[0]["options"]] == ["option1", "option2"]
+
+
+CLEAN_IDENTIFIER_HELPER = (
+    "#import re\n"
+    "#def clean_identifier($identifier)\n"
+    "#return re.sub('[^A-Za-z0-9._-]', '_', str($identifier))\n"
+    "#end def\n"
+)
+
+
+def test_identifier_helper_fixture(tmp_path: Path) -> None:
+    tool = get_tool_source(functional_test_tool_path("identifier_single.xml"))
+    ops = [
+        text_op("echo 'identifier ", CLEAN_IDENTIFIER_HELPER + "echo 'identifier "),
+        text_op(
+            "'identifier $input1.element_identifier'", "'identifier ${clean_identifier($input1.element_identifier)}'"
+        ),
+    ]
+    db = load_db(write_collection(tmp_path / "c", {"_local/identifier_single/1.0.0.yml": security_doc(*ops)}))
+
+    patched = db.apply_patches(tool)
+
+    assert states_of(patched) == ["applied"]
+    command = patched.parse_command()
+    assert command is not None and command.count("#def clean_identifier") == 1
+    input1 = SimpleNamespace(element_identifier="a b;c", safe_element_identifier="x")
+    rendered = fill_template(command, context={"input1": input1})
+    assert "echo 'identifier a_b_c' > 'output1'" in rendered
+    assert db.apply_patches(patched) is patched
+    assert states_of(patched) == ["already_applied"]
+
+
+@pytest.mark.parametrize(
+    "variant,expected",
+    [
+        ("vulnerable", [("applied", "partial_fix")]),
+        ("fixed", [("already_applied", None)]),
+        ("drifted", [("mismatch", "revision_mismatch"), ("advisory", "partial_fix")]),
+    ],
+)
+def test_ops_with_advisory_display(tmp_path: Path, variant: str, expected: list[tuple[str, str | None]]) -> None:
+    content = {
+        "vulnerable": PROBE_TOOL,
+        "fixed": PROBE_TOOL.replace("echo $label", "echo '$label'"),
+        "drifted": PROBE_TOOL.replace("echo $label", 'echo "$label"'),
+    }[variant]
+    tool = write_tool(tmp_path / "t.xml", content)
+    doc = security_doc(QUOTE_LABEL, advisory={**ADVISORY, "code": "partial_fix"})
+    result = load_db(write_collection(tmp_path / "c", {LOCAL_PROBE: doc})).apply_patches(tool)
+    assert [(s.state, s.advisory.code if s.advisory else None) for s in patch_states(result)] == expected
+
+
+def test_mismatch_suggests_revision_update(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    tool = write_tool(tmp_path / "t.xml", PROBE_TOOL.replace("echo $label", 'echo "$label"'))
+    db = load_db(write_collection(tmp_path / "c", {LOCAL_PROBE: security_doc(QUOTE_LABEL)}))
+    with caplog.at_level(logging.DEBUG, logger="galaxy.tool_util.patches"):
+        assert db.apply_patches(tool) is tool
+    (state,) = patch_states(tool)
+    assert state.state == "mismatch" and state.detail and state.advisory is not None
+    assert (state.advisory.code, state.advisory.action, state.advisory.vulnerable) == (
+        "revision_mismatch",
+        "update_revision",
+        "unknown",
+    )
+    assert "latest installable revision" in (state.advisory.message or "")
+    assert any(r.levelno == logging.WARNING and "mismatch" in r.getMessage() for r in caplog.records)
+
+
+def test_advisory_only_file_uses_codes_table(tmp_path: Path, probe: XmlToolSource) -> None:
+    doc = security_doc(**ADVISORY_ONLY, advisory={**ADVISORY, "code": "partial_fix"})
+    db = load_db(write_collection(tmp_path / "c", {LOCAL_PROBE: doc}, codes=CODES))
+    assert db.apply_patches(probe) is probe
+    (state,) = patch_states(probe)
+    assert state.state == "advisory" and state.advisory is not None
+    assert (state.advisory.level, state.advisory.message, state.advisory.vulnerable) == (
+        "must_fix",
+        "Upgrade to 1.0+galaxy1 or later.",
+        True,
+    )
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        pytest.param("kind: [", id="yaml_syntax"),
+        pytest.param(yaml.safe_dump(security_doc(QUOTE_LABEL, kind="bogus")), id="schema"),
+        pytest.param(
+            yaml.safe_dump(security_doc(**ADVISORY_ONLY, advisory={**ADVISORY, "code": "nope"})), id="unknown_code"
+        ),
+        pytest.param(
+            yaml.safe_dump(
+                security_doc(**ADVISORY_ONLY, advisory={**ADVISORY, "code": "partial_fix", "action": "info"})
+            ),
+            id="action_not_allowed_by_code",
+        ),
+    ],
+)
+def test_invalid_file_loads_tool_unpatched(
+    tmp_path: Path, probe: XmlToolSource, content: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    db = load_db(write_collection(tmp_path / "c", {LOCAL_PROBE: content}, codes=CODES))
+    with caplog.at_level(logging.ERROR, logger="galaxy.tool_util.patches"):
+        assert db.apply_patches(probe) is probe
+    assert probe.patch_state is not None and probe.patch_state.digest is not None
+    assert states_of(probe) == []
+    assert any(LOCAL_PROBE in r.getMessage() for r in caplog.records if r.levelno == logging.ERROR)
+
+
+def test_walk_refuses_non_canonical_and_bundled_keys(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    doc = security_doc(QUOTE_LABEL)
+    files = {
+        "Owner1/repo_a/patch_probe/1.0.yml": doc,
+        "_local/!c!o!n!v!e!r!t!e!r_bed_to_gff/1.0.yml": doc,
+        "_local/__x/1.0.yml": doc,
+        "_local/patch_probe/1.0+galaxy0.yaml": doc,
+        LOCAL_PROBE: doc,
+    }
+    root = write_collection(tmp_path / "c", files)
+    with caplog.at_level(logging.ERROR, logger="galaxy.tool_util.patches"):
+        db = load_db(root)
+    assert db.digest_for(("Owner1", "repo_a", "patch_probe", "1.0")) is None
+    assert db.digest_for(("_local", "CONVERTER_bed_to_gff", "1.0")) is None
+    assert db.digest_for(("_local", "__x", "1.0")) is None
+    assert db.digest_for(LOCAL_KEY) is not None
+    assert len([r for r in caplog.records if r.levelno >= logging.ERROR]) == 3
+
+
+def test_unknown_collection_format_is_skipped(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    bad = write_collection(tmp_path / "bad", {LOCAL_PROBE: security_doc(QUOTE_LABEL)}, format_version=2)
+    good = write_collection(tmp_path / "good", {LOCAL_PROBE: security_doc(QUOTE_LABEL)}, name="good")
+    with caplog.at_level(logging.ERROR, logger="galaxy.tool_util.patches"):
+        db = load_db(bad, tmp_path / "missing", good)
+    assert [c.name for c in db.collections_summary().collections] == ["good"]
+    errors = [r.getMessage() for r in caplog.records if r.levelno >= logging.ERROR]
+    assert len(errors) == 2 and "format_version" in errors[0]
+
+
+def test_builtin_collection_is_empty() -> None:
+    db = load_tool_patch_database(["builtin"])
+    (summary,) = db.collections_summary().collections
+    assert summary.name == "galaxy-builtin"
+    assert summary.digest == hashlib.sha256().hexdigest()
+
+
+@pytest.mark.parametrize(
+    "dirstate,requires", [(DIRSTATE_V1, "store\n"), (DIRSTATE_V2, "dirstate-v2\nstore\n")], ids=["v1", "v2"]
+)
+@pytest.mark.parametrize("changeset", [NODE_HEX[:12], NODE_HEX], ids=["short", "full"])
+def test_override_for_checked_out_changeset(tmp_path: Path, dirstate: bytes, requires: str, changeset: str) -> None:
+    tool = shed_repo_tool(tmp_path, dirstate, requires)
+    override = f"{SHED_PROBE}/@{changeset}.yml"
+    root = write_collection(
+        tmp_path / "c", {f"{SHED_PROBE}.yml": security_doc(QUOTE_LABEL), override: security_doc(OVERRIDE_OP)}
+    )
+    db = load_db(root)
+
+    patched = db.apply_patches(tool, guid=SHED_GUID)
+
+    (state,) = patch_states(patched)
+    assert state.path == f"patches/{override}"
+    command = patched.parse_command()
+    assert command is not None and "cat -- '$input1'" in command and "echo $label >>" in command
+    assert patched.patch_state is not None
+    assert patched.patch_state.digest == db.digest_for(SHED_KEY, NODE_HEX)
+    assert db.digest_for(SHED_KEY, NODE_HEX) != db.digest_for(SHED_KEY)
+
+
+@pytest.mark.parametrize("case", ["other_changeset", "override_mismatch", "unreadable_dirstate", "no_repository"])
+def test_version_file_without_a_usable_override(tmp_path: Path, case: str) -> None:
+    if case == "no_repository":
+        tool = write_tool(tmp_path / "plain" / "probe.xml")
+    else:
+        tool = shed_repo_tool(tmp_path, b"" if case == "unreadable_dirstate" else DIRSTATE_V1)
+    override_name = "ffffffffffff" if case == "other_changeset" else NODE_HEX[:12]
+    override_op = text_op("absent anchor", "x") if case == "override_mismatch" else OVERRIDE_OP
+    root = write_collection(
+        tmp_path / "c",
+        {
+            f"{SHED_PROBE}.yml": security_doc(QUOTE_LABEL),
+            f"{SHED_PROBE}/@{override_name}.yml": security_doc(override_op),
+        },
+    )
+
+    patched = load_db(root).apply_patches(tool, guid=SHED_GUID)
+
+    (state,) = patch_states(patched)
+    assert (state.state, state.path) == ("applied", f"patches/{SHED_PROBE}.yml")
+    assert "echo '$label' >>" in command_text(patched.parse_command())
+
+
+@pytest.mark.parametrize("matches", [True, False])
+def test_advisory_override_checks_expanded_sha256(tmp_path: Path, matches: bool) -> None:
+    tool = shed_repo_tool(tmp_path)
+    sha = sha256_text(tool.to_string()) if matches else "0" * 64
+    override = security_doc(**ADVISORY_ONLY, advisory={**ADVISORY, "expanded_sha256": sha})
+    root = write_collection(tmp_path / "c", {f"{SHED_PROBE}.yml": security_doc(QUOTE_LABEL), OVERRIDE_REL: override})
+    result = load_db(root).apply_patches(tool, guid=SHED_GUID)
+    assert states_of(result) == (["advisory"] if matches else ["applied"])
+
+
+def test_symlinked_override(tmp_path: Path) -> None:
+    tool = shed_repo_tool(tmp_path)
+    target = f"{SHED_PROBE}/@abcdefabcdef.yml"
+    root = write_collection(
+        tmp_path / "c", {f"{SHED_PROBE}.yml": security_doc(QUOTE_LABEL), target: security_doc(OVERRIDE_OP)}
+    )
+    os.symlink("@abcdefabcdef.yml", root / "patches" / OVERRIDE_REL)
+
+    patched = load_db(root).apply_patches(tool, guid=SHED_GUID)
+
+    (state,) = patch_states(patched)
+    assert state.path == f"patches/{OVERRIDE_REL}"
+    assert state.digest == hashlib.sha256((root / "patches" / target).read_bytes()).hexdigest()
+    assert "cat -- '$input1'" in command_text(patched.parse_command())
+
+
+def test_symlink_outside_the_collection_is_refused(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    tool = shed_repo_tool(tmp_path)
+    root = write_collection(tmp_path / "c", {f"{SHED_PROBE}.yml": security_doc(QUOTE_LABEL)})
+    outside = tmp_path / "outside.yml"
+    outside.write_text(yaml.safe_dump(security_doc(OVERRIDE_OP)))
+    link = root / "patches" / OVERRIDE_REL
+    link.parent.mkdir()
+    os.symlink(outside, link)
+    with caplog.at_level(logging.ERROR, logger="galaxy.tool_util.patches"):
+        db = load_db(root)
+    assert any("outside" in r.getMessage() for r in caplog.records if r.levelno >= logging.ERROR)
+    (state,) = patch_states(db.apply_patches(tool, guid=SHED_GUID))
+    assert state.path == f"patches/{SHED_PROBE}.yml"
+
+
+def test_concurrent_apply_parses_each_file_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db = load_db(write_collection(tmp_path / "c", {LOCAL_PROBE: security_doc(QUOTE_LABEL)}))
+    parses = []
+    original = patch_collection.parse_patch_yaml
+
+    def counting(data: bytes) -> Any:
+        parses.append(1)
+        return original(data)
+
+    monkeypatch.setattr(patch_collection, "parse_patch_yaml", counting)
+    sources = [write_tool(tmp_path / f"t{i}" / "probe.xml") for i in range(16)]
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = list(executor.map(db.apply_patches, sources))
+    assert all(states_of(r) == ["applied"] for r in results)
+    assert len(parses) == 1
+
+
+@pytest.mark.skipif(shutil.which("hg") is None, reason="Mercurial is not installed")
+@pytest.mark.parametrize("v2", [False, True])
+def test_dirstate_of_real_repository(tmp_path: Path, v2: bool) -> None:
+    repo = tmp_path / "repo"
+    # pure-Python Mercurial needs the slow path allowed for dirstate-v2
+    config = ["--config", "storage.dirstate-v2.slow-path=allow"]
+    flag = f"format.use-dirstate-v2={'yes' if v2 else 'no'}"
+    subprocess.run(["hg", *config, "--config", flag, "init", str(repo)], check=True)
+    (repo / "a.txt").write_text("a")
+    hg = ["hg", "--cwd", str(repo), *config, "--config", "ui.username=test"]
+    subprocess.run([*hg, "commit", "-A", "-m", "a"], check=True, capture_output=True)
+    node = subprocess.run([*hg, "log", "-r", ".", "-T", "{node}"], check=True, capture_output=True, text=True).stdout
+    assert ("dirstate-v2" in (repo / ".hg" / "requires").read_text()) == v2
+    assert read_working_parent(str(repo)) == node

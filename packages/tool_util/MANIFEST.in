@@ -12,6 +12,7 @@ include src/galaxy/tool_util/ontologies/tool_tag_mappings.yml
 include src/galaxy/tool_util/ontologies/edam_operation_mappings.tsv
 include src/galaxy/tool_util/client/landing_library.catalog.yml
 include src/galaxy/tool_util/upgrade/upgrade_codes.json
+include src/galaxy/tool_util/patches/builtin/collection.yml
 include src/galaxy/tool_util/linters/datatypes_conf.xml.sample
 include src/galaxy/tool_util/security/spec/cases.yml
 include src/galaxy/tool_util/security/spec/tools/app_model.xml
