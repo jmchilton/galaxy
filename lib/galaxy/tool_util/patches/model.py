@@ -13,6 +13,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    field_validator,
     model_validator,
     StrictBool,
     StrictStr,
@@ -269,6 +270,8 @@ class PatchFile(_FileModel):
     needed_from: NeededFrom | None = None
     galaxy_change: list[GalaxyChange] | None = Field(default=None, min_length=1)
     authoring: Literal["hand"] | None = None
+    # security ops the collection authored with no upstream fix
+    collection_fix: Literal[True] | None = None
     reproducibility: ReproducibilityLevel | None = None
     reproducibility_doc: StrictStr | None = None
     reproducibility_reason: StrictStr | None = None
@@ -276,6 +279,13 @@ class PatchFile(_FileModel):
     fixes: Any = None
     ops: list[PatchOp] | None = Field(default=None, min_length=1)
     advisory: Advisory | None = None
+
+    @field_validator("collection_fix", mode="before")
+    @classmethod
+    def _collection_fix_only_true(cls, value: Any) -> Any:
+        if value is not True:
+            raise ValueError("collection_fix is written only when true")
+        return value
 
     def _default_kind(self) -> ChangeKind | None:
         return None if self.kind == "mixed" else self.kind
@@ -342,7 +352,13 @@ class PatchFile(_FileModel):
             carried = sorted(_OPS_ONLY_FIELDS & self.model_fields_set)
             if carried:
                 raise ValueError(f"an advisory-only file can't carry {carried}")
-        needs_security_upstream = bool(self.ops_of_kind(SECURITY)) or self.advisory_kind == SECURITY
+        has_security_ops = bool(self.ops_of_kind(SECURITY))
+        if self.collection_fix:
+            if self.authoring != "hand":
+                raise ValueError("collection_fix needs authoring: hand")
+            if not has_security_ops:
+                raise ValueError("collection_fix needs security ops")
+        needs_security_upstream = (has_security_ops and not self.collection_fix) or self.advisory_kind == SECURITY
         if needs_security_upstream and not any(self.upstream_kind(u) == SECURITY for u in self.upstream):
             raise ValueError("security ops or advisories need a security upstream entry")
         return self

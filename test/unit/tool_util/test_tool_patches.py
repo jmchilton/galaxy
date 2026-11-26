@@ -284,6 +284,64 @@ def test_invalid_patch_files_are_rejected(doc: dict[str, Any]) -> None:
         PatchFile.model_validate(doc)
 
 
+COLLECTION_FIX = {"authoring": "hand", "collection_fix": True}
+NEEDS_SECURITY_UPSTREAM = "security ops or advisories need a security upstream entry"
+
+
+@pytest.mark.parametrize(
+    "doc,match",
+    [
+        pytest.param(security_doc(QUOTE_LABEL, **COLLECTION_FIX, upstream=[]), None, id="without_upstream"),
+        pytest.param(security_doc(QUOTE_LABEL, **COLLECTION_FIX), None, id="stacked_on_upstream"),
+        pytest.param(
+            security_doc(
+                {**QUOTE_LABEL, "kind": "security"},
+                {**text_op("cat", "cat -"), "kind": "compat"},
+                kind="mixed",
+                needed_from="26.1",
+                galaxy_change=GALAXY_CHANGE,
+                upstream=[],
+                **COLLECTION_FIX,
+            ),
+            None,
+            id="mixed_without_upstream",
+        ),
+        *[
+            pytest.param(
+                {**security_doc(QUOTE_LABEL, authoring="hand"), "collection_fix": v},
+                "collection_fix is written only when true",
+                id=f"flag_{v!r}",
+            )
+            for v in (False, None, 1, "true")
+        ],
+        pytest.param(
+            security_doc(QUOTE_LABEL, collection_fix=True, upstream=[]),
+            "collection_fix needs authoring: hand",
+            id="not_hand_authored",
+        ),
+        pytest.param(
+            compat_doc(QUOTE_LABEL, **COLLECTION_FIX), "collection_fix needs security ops", id="compat_ops_only"
+        ),
+        pytest.param(
+            security_doc(ops=None, reproducibility=None, reproducibility_doc=None, advisory=ADVISORY, **COLLECTION_FIX),
+            "collection_fix needs security ops",
+            id="advisory_only",
+        ),
+        pytest.param(
+            security_doc(QUOTE_LABEL, advisory={**ADVISORY, "code": "partial_fix"}, upstream=[], **COLLECTION_FIX),
+            NEEDS_SECURITY_UPSTREAM,
+            id="security_advisory_without_upstream",
+        ),
+    ],
+)
+def test_collection_fix_rules(doc: dict[str, Any], match: str | None) -> None:
+    if match is None:
+        assert PatchFile.model_validate(doc).collection_fix is True
+    else:
+        with pytest.raises(ValidationError, match=match):
+            PatchFile.model_validate(doc)
+
+
 def test_unquoted_needed_from_in_yaml_is_rejected() -> None:
     doc = yaml.safe_load(yaml.safe_dump(compat_doc(QUOTE_LABEL)).replace("'26.1'", "26.1"))
     assert doc["needed_from"] == 26.1
@@ -725,6 +783,16 @@ def test_applied_patch_rebuilds_tool_source(
     assert (state.collection.name, state.collection.version) == ("test-patches", "2026.11.25")
     assert (state.reproducibility, state.reproducibility_doc, state.upstream[0].pr) == ("unusual_inputs", DOC, 1)
     assert state.advisory is None
+
+
+def test_collection_fix_without_upstream_applies(tmp_path: Path, probe: XmlToolSource) -> None:
+    doc = security_doc(QUOTE_LABEL, upstream=[], **COLLECTION_FIX)
+    db = load_db(write_collection(tmp_path / "c", {LOCAL_PROBE: doc}))
+    patched = db.apply_patches(probe)
+    assert "echo '$label' >>" in command_text(patched.parse_command())
+    (state,) = patch_states(patched)
+    assert (state.state, state.kind, state.upstream) == ("applied", "security", [])
+    assert "collection_fix" not in state.model_dump()
 
 
 def test_encoded_key_matches(tmp_path: Path) -> None:
