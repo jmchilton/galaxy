@@ -1018,7 +1018,8 @@ def test_an_interpreter_flag_after_the_script_belongs_to_the_script(tmp_path, co
 def test_a_configfile_any_shell_runs_is_a_script(tmp_path, reader):
     script = CONFIG.format("echo $free")
     report = review(tmp_path, f"{reader} '$script'", script)
-    assert ("configfile-injection", "high") in rules(report) or ("shell-injection", "high") in rules(report)
+    high = {(f.rule, f.location) for f in report.findings if f.kind == "vulnerability" and f.severity == "high"}
+    assert high == {("shell-injection", "configfile:script")}
 
 
 @pytest.mark.parametrize("interpreter", ["lua", "julia"])
