@@ -1,0 +1,20 @@
+<tool id="spec_known_loop" name="Texts read by a loop over select values" version="1.0" profile="24.0">
+    <description>reads the text parameters a select names, as the hmmer3 tools read their outputs</description>
+    <command><![CDATA[
+#for o in str($fields).split(','):
+    echo '${getVar($o).value}' >> '$out' &&
+#end for
+true
+    ]]></command>
+    <inputs>
+        <param name="fields" type="select" multiple="true">
+            <option value="word" selected="true">word</option>
+            <option value="other">other</option>
+        </param>
+        <param name="word" type="text"/>
+        <param name="other" type="text"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

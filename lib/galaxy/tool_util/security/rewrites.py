@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import copy
+from typing import TYPE_CHECKING
 
 from .known_helpers import (
     bound_names,
@@ -11,17 +12,21 @@ from .known_helpers import (
     method_locals,
     object_names,
     specialise_known_helpers,
+    unroll_known_loops,
 )
 from .template import (
     constant,
     NAME_MAPPER,
 )
 
+if TYPE_CHECKING:
+    from .model import Model
 
-def rewrite_template(tree: ast.Module) -> set[int]:
+
+def rewrite_template(tree: ast.Module, model: Model) -> set[int]:
     """Apply each rewrite; returns the getVar calls they made that read the tool namespace."""
     literal_getattr(tree)
-    return specialise_known_helpers(tree)
+    return specialise_known_helpers(tree) | unroll_known_loops(tree, model)
 
 
 # Attributes of a parameter wrapper that hold its value: never a method, which the attribute would leave uncalled.

@@ -339,6 +339,41 @@ inputs:
   word: a;b|c && d
 ```
 
+#### known_loop
+
+The hmmer3 tools write each output a select names with `getVar` of the selected value. Galaxy accepts only the select's options, so the loop reads the parameters they name, whose values are checked as usual.
+
+Tool `known_loop.xml`:
+
+```
+#for o in str($fields).split(','):
+    echo '${getVar($o).value}' >> '$out' &&
+#end for
+true
+```
+
+Refused
+
+```
+inputs:
+  fields:
+  - other
+  - word
+  word: a';touch harm-marker;'
+  other: b
+```
+
+Runs
+
+```
+inputs:
+  fields:
+  - word
+  - other
+  word: a;b|c && d
+  other: b
+```
+
 ### `nested-interpreter`
 
 A value is written into the program of another interpreter (`bash -c`, `sed`, `perl -e`, ...) and can change what that program does.

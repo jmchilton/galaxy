@@ -853,6 +853,28 @@ known_helper:
       harm: true
       expect: {rejected: false}
 
+known_loop:
+  doc: >-
+    The hmmer3 tools write each output a select names with `getVar` of the selected value. Galaxy accepts only the
+    select's options, so the loop reads the parameters they name, whose values are checked as usual.
+  tool: known_loop.xml
+  code: shell-injection
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, accessor: raw, param: word, checkable: true}
+      - {rule: shell-injection, severity: high, accessor: raw, param: other, checkable: true}
+  red:
+    - inputs: {fields: [other, word], word: "a';touch harm-marker;'", other: b}
+      harm: true
+      expect:
+        rejected: true
+        message_contains: ["the value of input 'word' contains the characters [' ;]"]
+  green:
+    - inputs: {fields: [word, other], word: "a;b|c && d", other: b}
+      harm: true
+      expect: {rejected: false}
+
 app_model_read:
   doc: >-
     The application object reaches any data of the server. The review flags the read but follows no value
