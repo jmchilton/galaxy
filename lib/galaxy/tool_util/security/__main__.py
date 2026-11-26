@@ -1,6 +1,8 @@
 """Print the static security review of Galaxy tools: tool files, or directories searched for them.
 
-The exit code is 1 when a tool fails to load or review, or when --fail-on is met; 0 otherwise.
+Only XML tools are reviewed. A tool that fails to load or review, a tool that is not XML, and a directory with no
+tools are each listed with an error. A tool reached through several paths is reviewed once, under the first.
+The exit code is 1 when a path has an error, or when --fail-on is met; 0 otherwise.
 """
 
 from __future__ import annotations
@@ -13,11 +15,12 @@ from collections.abc import Iterator
 from typing import Any
 
 from galaxy.tool_util.loader_directory import (
-    is_tool_load_error,
-    load_tool_sources_from_path,
+    find_possible_tools_from_path,
+    looks_like_a_tool_xml,
 )
 from galaxy.tool_util.parser import get_tool_source
 from galaxy.tool_util.parser.interface import ToolSource
+from galaxy.tool_util.parser.xml import XmlToolSource
 from . import review_tool_source
 from .charsets import SEVERITIES
 from .classify import (
@@ -34,6 +37,8 @@ from .report import (
 )
 
 UNCHECKABLE = "uncheckable"
+NOT_XML = "not reviewed: only XML tools are analysed"
+NO_TOOLS = "no tools found"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -75,9 +80,10 @@ def main(argv: list[str] | None = None) -> int:
                 error = _describe_error(e)
         if tool_source is None or report is None:
             failed = True
+            tool_id, tool_version = _identify(tool_source)
             reports[path] = {
-                "tool_id": None,
-                "tool_version": None,
+                "tool_id": tool_id,
+                "tool_version": tool_version,
                 "error": error,
                 "codes": [Uncheckable.REVIEW_FAILED],
             }
@@ -102,33 +108,45 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _tool_sources(paths: list[str]) -> Iterator[tuple[str, ToolSource | None, str | None]]:
-    """Each tool of the paths, or the error of one that fails to load."""
+    """Each XML tool of the paths once, under the first path that reaches it, or why a path is not reviewed."""
+    seen: set[str] = set()
     for path in paths:
-        if os.path.isdir(path):
-            yield from _directory_tool_sources(path)
-            continue
-        try:
-            yield path, get_tool_source(path), None
-        except Exception as e:
-            yield path, None, _describe_error(e)
+        found = _directory_tool_files(path) if os.path.isdir(path) else [(path, True)]
+        if not found:
+            yield path, None, NO_TOOLS
+        for shown, xml in found:
+            real = os.path.realpath(shown)
+            if real in seen:
+                continue
+            seen.add(real)
+            if not xml:
+                yield shown, None, NOT_XML
+                continue
+            try:
+                tool_source = get_tool_source(shown)
+            except Exception as e:
+                yield shown, None, _describe_error(e)
+                continue
+            if isinstance(tool_source, XmlToolSource):
+                yield shown, tool_source, None
+            else:
+                yield shown, None, NOT_XML
 
 
-def _directory_tool_sources(directory: str) -> Iterator[tuple[str, ToolSource | None, str | None]]:
-    errors: dict[str, str] = {}
-
-    def record(path: str, exc_info: Any) -> None:
-        errors[path] = _describe_error(exc_info[1])
-
-    found = load_tool_sources_from_path(
-        directory, load_exception_handler=record, recursive=True, register_load_errors=True
-    )
+def _directory_tool_files(directory: str) -> list[tuple[str, bool]]:
+    """The tool files under the directory, shown under it, and whether each is XML; others are not loaded."""
     root = os.path.abspath(directory)
-    for path, tool_source in sorted(found, key=lambda item: item[0]):
-        shown = os.path.join(directory, os.path.relpath(path, root))
-        if is_tool_load_error(tool_source):
-            yield shown, None, errors.get(path, "failed to load")
-        else:
-            yield shown, tool_source, None
+    found = find_possible_tools_from_path(directory, recursive=True, enable_beta_formats=True)
+    return sorted((os.path.join(directory, os.path.relpath(path, root)), looks_like_a_tool_xml(path)) for path in found)
+
+
+def _identify(tool_source: ToolSource | None) -> tuple[str | None, str | None]:
+    if tool_source is None:
+        return None, None
+    try:
+        return tool_source.parse_id(), tool_source.parse_version()
+    except Exception:
+        return None, None
 
 
 def _describe_error(e: BaseException) -> str:

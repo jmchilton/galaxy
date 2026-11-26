@@ -13,13 +13,16 @@ $ galaxy-tool-security-review path/to/tool.xml [more/tools.xml ...] [path/to/too
 ```
 
 (or `python -m galaxy.tool_util.security` from a Galaxy checkout). A directory is searched recursively for
-tools. Each tool is listed with its id and version; a tool that fails to load or review is listed with its
-error, and the others are still reviewed.
+tools. Only XML tools are reviewed. Each tool is listed with its id and version. These are listed with an error,
+and the others are still reviewed: a tool that fails to load or review, a YAML or CWL tool (`not reviewed: only
+XML tools are analysed`), and a directory with no tools (`no tools found`). A tool reached through several
+paths, such as a file and its directory, is reviewed once, under the first.
 
 `--min-severity` hides findings below a severity in the text output. `--json` prints one JSON document with
 every finding: by path, the report of the tool with its `tool_version` and its
-[uncheckable codes](#uncheckable-codes) (`codes`); a tool that failed has its `error` instead, and the code
-`uncheckable-review-failed`. The exit code is 1 when a tool fails, or when `--fail-on` is met: `--fail-on high`
+[uncheckable codes](#uncheckable-codes) (`codes`); a path with an error has its `error` instead (and `tool_id` and `tool_version` when the tool
+loaded), and the code
+`uncheckable-review-failed`. The exit code is 1 when a path has an error, or when `--fail-on` is met: `--fail-on high`
 fails on a finding of high severity or above, `--fail-on uncheckable` on a tool with an uncheckable code, and
 both can be given. `--judge` asks Claude whether each vulnerability finding of medium severity or above is real
 (it needs the `anthropic` package and credentials). `pip install galaxy-tool-util` installs the review, its CLI and the spec

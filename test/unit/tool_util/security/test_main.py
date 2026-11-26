@@ -7,12 +7,20 @@ import shutil
 import pytest
 
 from galaxy.tool_util.parser import get_tool_source
-from galaxy.tool_util.security import review_tool_source
-from galaxy.tool_util.security.__main__ import main
+from galaxy.tool_util.security import (
+    __main__ as cli,
+    review_tool_source,
+)
+from galaxy.tool_util.security.__main__ import (
+    main,
+    NOT_XML,
+)
 from galaxy.tool_util.security.spec import tool_path
+from galaxy.util import galaxy_directory
 
 STRAY_QUOTE = tool_path("stray_quote.xml")
 SANITIZED = tool_path("sanitized_text_single_quoted.xml")
+FUNCTIONAL_TOOLS = os.path.join(galaxy_directory(), "test", "functional", "tools")
 
 
 def test_text_lists_findings_by_tool(capsys):
@@ -100,3 +108,53 @@ def test_fail_on_uncheckable(capsys):
     assert "  UNCHECKABLE uncheckable-letters-are-code: letters alone" in capsys.readouterr().out
     assert main(["--fail-on", "critical", "--fail-on", "uncheckable", pipe]) == 1
     assert main(["--fail-on", "critical", pipe]) == 0
+
+
+def test_directory_lists_yaml_tools_as_not_reviewed(tmp_path, capsys):
+    shutil.copy(STRAY_QUOTE, tmp_path / "good.xml")
+    shutil.copy(os.path.join(FUNCTIONAL_TOOLS, "simple_constructs.yml"), tmp_path / "tool.yml")
+    assert main(["--json", str(tmp_path)]) == 1
+    reports = json.loads(capsys.readouterr().out)
+    yml = os.path.join(str(tmp_path), "tool.yml")
+    assert sorted(reports) == sorted([os.path.join(str(tmp_path), "good.xml"), yml])
+    assert reports[yml] == {
+        "tool_id": None,
+        "tool_version": None,
+        "error": NOT_XML,
+        "codes": ["uncheckable-review-failed"],
+    }
+
+
+def test_yaml_tool_file_is_not_reviewed(capsys):
+    yml = os.path.join(FUNCTIONAL_TOOLS, "simple_constructs.yml")
+    assert main([yml]) == 1
+    assert capsys.readouterr().out == f"{yml}\n  ERROR    {NOT_XML}\n"
+
+
+def test_review_error_keeps_tool_id_and_version(monkeypatch, capsys):
+    def fail(tool_source):
+        raise ValueError("boom")
+
+    monkeypatch.setattr(cli, "review_tool_source", fail)
+    assert main(["--json", STRAY_QUOTE]) == 1
+    report = json.loads(capsys.readouterr().out)[STRAY_QUOTE]
+    assert report == {
+        "tool_id": "spec_stray_quote",
+        "tool_version": "1.0",
+        "error": "ValueError: boom",
+        "codes": ["uncheckable-review-failed"],
+    }
+
+
+def test_tool_reached_twice_is_reviewed_once_under_its_first_path(tmp_path, capsys):
+    shutil.copy(STRAY_QUOTE, tmp_path / "good.xml")
+    first = str(tmp_path / "good.xml")
+    assert main([first, str(tmp_path), first]) == 0
+    headers = [line for line in capsys.readouterr().out.splitlines() if not line.startswith(" ")]
+    assert headers == [f"{first} (spec_stray_quote 1.0)"]
+
+
+def test_directory_without_tools_is_an_error(tmp_path, capsys):
+    (tmp_path / "macros.xml").write_text("<macros/>")
+    assert main([str(tmp_path)]) == 1
+    assert capsys.readouterr().out == f"{tmp_path}\n  ERROR    no tools found\n"
