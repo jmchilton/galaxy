@@ -186,6 +186,7 @@ from galaxy.tools.data import ToolDataTableManager
 from galaxy.tools.data_manager.manager import DataManagers
 from galaxy.tools.error_reports import ErrorReports
 from galaxy.tools.evaluation import ToolTemplatingException
+from galaxy.tools.patches import tool_patch_database_from_config
 from galaxy.tools.search import (
     CachedToolboxSearch,
     ToolBoxSearch,
@@ -445,6 +446,9 @@ class MinimalGalaxyApplication(BasicSharedApp, HaltableContainer, SentryClientMi
         # before any Tool is constructed, so the first tool load sees the
         # right TOOL_TAG_MAPPING.
         configure_tool_tag_mapping(self.config.tool_tag_mappings_file)
+
+        # Loaded once: tool patch collection changes need a restart.
+        self.tool_patches = tool_patch_database_from_config(self.config)
 
         # Initialize tool source store if configured
         self._init_tool_source_store()

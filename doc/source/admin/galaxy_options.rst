@@ -1442,6 +1442,52 @@
 
 
 ~~~~~~~~~~~~~~~~~~~~
+``tool_patch_paths``
+~~~~~~~~~~~~~~~~~~~~
+
+:Description:
+    Tool patch collections, applied in order to the macro-expanded XML
+    of the matching tool versions when tools load. Each entry is a
+    collection directory or `builtin` (the collection shipped with
+    Galaxy). Patches are keyed by Tool Shed owner, repository, tool id
+    and version (or tool id and version for tools not installed from a
+    Tool Shed). Tool versions are unchanged; patch state is reported
+    in the tool API. Collections are read at startup, so changes need
+    a restart. Read-only tool source stores are trusted as published
+    and never re-patched.
+:Default: ``[]``
+:Type: seq
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+``tool_patch_reproducibility``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+:Description:
+    The highest reproducibility impact of a tool patch that is
+    applied. Levels, lowest first: `identical` (no previously
+    successful job behaves differently), `rejects_inputs` (some
+    previously accepted inputs are rejected), `special_inputs` (jobs
+    with special-character or edge-case inputs run differently) and
+    `all_inputs` (any job may differ). Patches above this level are
+    reported as advisories and not applied.
+:Default: ``all_inputs``
+:Type: str
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+``tool_patch_requirement_changes``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+:Description:
+    Apply tool patches that change a tool's requirements (packages or
+    containers). When false, such patches are reported as advisories
+    and not applied.
+:Default: ``false``
+:Type: bool
+
+
+~~~~~~~~~~~~~~~~~~~~
 ``biotools_use_api``
 ~~~~~~~~~~~~~~~~~~~~
 

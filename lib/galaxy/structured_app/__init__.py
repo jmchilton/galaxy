@@ -61,6 +61,7 @@ if TYPE_CHECKING:
         InstalledRepositoryManager,
     )
     from galaxy.tool_util.data import ToolDataTableManager
+    from galaxy.tool_util.patches import ToolPatchDatabase
     from galaxy.tools import ToolBox
     from galaxy.tools.cache import ToolCache
     from galaxy.tools.error_reports import ErrorReports
@@ -152,6 +153,7 @@ class MinimalManagerApp(MinimalApp):
     dynamic_tool_manager: "DynamicToolManager"
     genomes: "Genomes"
     tool_cache: "ToolCache"
+    tool_patches: "ToolPatchDatabase | None"
     notification_manager: Any  # 'galaxy.managers.notification.NotificationManager'
     object_store: BaseObjectStore
     tool_shed_registry: ToolShedRegistry
