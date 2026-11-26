@@ -10,7 +10,10 @@ from galaxy.tool_util.patches import (
     ToolPatchDatabase,
     ToolPatchInfo,
 )
-from galaxy.tool_util.patches.engine import MISMATCH
+from galaxy.tool_util.patches.engine import (
+    APPLIED,
+    MISMATCH,
+)
 from galaxy.tool_util.patches.model import SECURITY
 from . import review_tool_source
 from .charsets import SEVERITIES
@@ -93,6 +96,11 @@ class PatchReview:
     def mismatched(self) -> list[PatchState]:
         """The security patch units whose ops no longer match the tool."""
         return [s for s in self.states if s.state == MISMATCH and s.kind == SECURITY]
+
+    @property
+    def uncleared(self) -> bool:
+        """A security patch unit applied but the review clears no finding."""
+        return any(s.state == APPLIED and s.kind == SECURITY for s in self.states) and not self.cleared
 
     @property
     def regressed(self) -> bool:

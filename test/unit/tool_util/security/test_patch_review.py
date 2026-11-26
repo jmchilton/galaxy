@@ -342,3 +342,15 @@ def test_cli_lists_a_patch_review_that_raises_as_an_error(
     assert exit_code == 1
     assert report["error"] == "ValueError: boom"
     assert report["tool_id"] == "identifier_single"
+
+
+@pytest.mark.parametrize(
+    "patch,exit_code", [(CLEANING, 0), (COSMETIC, 1)], ids=["clears_its_finding", "clears_nothing"]
+)
+def test_cli_fails_on_an_applied_security_patch_that_clears_nothing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], patch: dict, exit_code: int
+) -> None:
+    collection = write_collection(tmp_path / "c", {KEY_FILE: patch})
+    got, report = _cli_json([TOOL, "--tool-patch-path", str(collection), "--fail-on", "uncleared"], capsys)
+    assert [s["state"] for s in report["patches"]] == ["applied"]
+    assert got == exit_code

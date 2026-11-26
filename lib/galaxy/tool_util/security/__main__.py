@@ -51,6 +51,7 @@ from .report import (
 UNCHECKABLE = "uncheckable"
 UNCHECKED = "unchecked"
 MISMATCH = "mismatch"
+UNCLEARED = "uncleared"
 NOT_XML = "not reviewed: only XML tools are analysed"
 NO_TOOLS = "no tools found"
 
@@ -63,14 +64,15 @@ class FailOn:
     uncheckable: bool = False
     unchecked: bool = False
     mismatch: bool = False
+    uncleared: bool = False
 
     @classmethod
     def parse(cls, values: list[str]) -> FailOn:
         severity = min((SEVERITIES.index(v) for v in values if v in SEVERITIES), default=None)
-        return cls(severity, UNCHECKABLE in values, UNCHECKED in values, MISMATCH in values)
+        return cls(severity, UNCHECKABLE in values, UNCHECKED in values, MISMATCH in values, UNCLEARED in values)
 
     def met(self, report: Report, classification: Classification, review: PatchReview | None = None) -> bool:
-        if self.mismatch and review is not None and review.mismatched:
+        if review is not None and ((self.mismatch and review.mismatched) or (self.uncleared and review.uncleared)):
             return True
         if self.severity is not None and any(SEVERITIES.index(f.severity) >= self.severity for f in report.findings):
             return True
@@ -148,12 +150,13 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--fail-on",
         action="append",
-        choices=(*SEVERITIES, UNCHECKABLE, UNCHECKED, MISMATCH),
+        choices=(*SEVERITIES, UNCHECKABLE, UNCHECKED, MISMATCH, UNCLEARED),
         default=[],
         help="exit 1 when any finding, vulnerability or capability, is at or above this severity; with"
         f" '{UNCHECKABLE}' when a tool has an uncheckable code; with '{UNCHECKED}' when a tool has an unchecked"
         " location (uncheckable_locations), templates the review did not analyse included; with"
-        f" '{MISMATCH}' when a security tool patch of a tool does not match it (needs --tool-patch-path); repeatable",
+        f" '{MISMATCH}' when a security tool patch of a tool does not match it, and with '{UNCLEARED}' when"
+        " one applies but clears no finding (both need --tool-patch-path); repeatable",
     )
     parser.add_argument(
         "--tool-patch-path",
@@ -172,7 +175,8 @@ def _patch_database(parser: argparse.ArgumentParser, args: argparse.Namespace) -
     """The --tool-patch-path database, after checking the options that need it."""
     paths = args.tool_patch_paths
     if not paths:
-        for option, given in (("--guid", args.guid), (f"--fail-on {MISMATCH}", MISMATCH in args.fail_on)):
+        needs = [("--guid", args.guid)] + [(f"--fail-on {c}", c in args.fail_on) for c in (MISMATCH, UNCLEARED)]
+        for option, given in needs:
             if given:
                 parser.error(f"{option} needs --tool-patch-path")
         return None
