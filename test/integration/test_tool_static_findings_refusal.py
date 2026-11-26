@@ -84,6 +84,11 @@ class TestStaticFindingsRefusal(integration_util.IntegrationTestCase):
         super().setUp()
         self.dataset_populator = DatasetPopulator(self.galaxy_interactor)
 
+    def _show_tool(self, tool_id: str) -> dict:
+        response = self._get(f"tools/{tool_id}")
+        self._assert_status_code_is(response, 200)
+        return response.json()
+
     def _run(self, tool_id: str, inputs: dict, history_id: str) -> tuple[str, dict]:
         run = self.dataset_populator.run_tool(tool_id, inputs, history_id)
         job_id = run["jobs"][0]["id"]
@@ -100,7 +105,7 @@ class TestStaticFindingsRefusal(integration_util.IntegrationTestCase):
             return self._run(tool_id, {"input1": {"src": "hda", "id": hda["id"]}}, history_id)
 
     def test_tool_with_findings_loads_but_its_jobs_are_refused(self):
-        self._assert_status_code_is(self._get("tools/static_refused"), 200)
+        assert self._show_tool("static_refused")["id"] == "static_refused"
         state, output = self._run_identifier_tool("static_refused")
         assert state == "error"
         assert output["misc_info"].startswith(f"{REFUSED} shell-injection, and this Galaxy server does not run")
@@ -111,7 +116,7 @@ class TestStaticFindingsRefusal(integration_util.IntegrationTestCase):
         assert state == "ok", output
 
     def test_finding_a_patch_only_lowered_still_refuses(self):
-        (patch,) = self._get("tools/static_lowered").json()["patches"]
+        (patch,) = self._show_tool("static_lowered")["patches"]
         assert patch["state"] == "applied"
         with self.dataset_populator.test_history() as history_id:
             state, output = self._run("static_lowered", {"x": "a"}, history_id)

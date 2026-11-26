@@ -1688,6 +1688,6 @@ def test_materializing_keeps_a_current_review_and_reviews_an_entry_without_one(t
 
     assert box._create_tool_from_stored_source(stored, entry=_entry(static_review=kept)).static_review == kept
     reviewed = box._create_tool_from_stored_source(stored, entry=_entry()).static_review
-    assert reviewed is not None and reviewed.version == REVIEW_VERSION and reviewed != kept
+    assert reviewed == StaticReview(version=REVIEW_VERSION)
     stale = kept.model_copy(update={"version": "0.0"})
     assert box._create_tool_from_stored_source(stored, entry=_entry(static_review=stale)).static_review == reviewed

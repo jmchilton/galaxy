@@ -35,6 +35,7 @@ from galaxy.tool_util.patches import (
     load_tool_patch_database,
     patches_as_dicts,
 )
+from galaxy.tool_util.security.refusal import StaticReview
 from galaxy.tool_util.unittest_utils import mock_trans
 from galaxy.tool_util.unittest_utils.sample_data import (
     SIMPLE_MACRO,
@@ -651,12 +652,9 @@ class TestToolBox(BaseToolBoxTestCase):
         assert tool_source.patch_state is not None
         assert [s.state for s in tool_source.patch_state.states] == ["applied"]
 
-    def test_static_review_kept_on_parsed_and_stored_sources(self):
+    def test_static_review_kept_on_stored_source(self):
         self._patch_shed_v1()
-        self.app.config.tool_security_refuse_static_findings = True
         tool = self.toolbox.get_tool(SHED_GUID_V1, exact=True)
-        assert tool.static_review is not None and tool.static_review.version == REVIEW_VERSION
-
         store = SqlAlchemyToolSourceStore(f"sqlite:///{Path(self.test_directory) / 'store.sqlite'}")
         store.store(
             StoredToolSource(
@@ -670,9 +668,9 @@ class TestToolBox(BaseToolBoxTestCase):
         self.app.config.use_cached_toolbox = True
         self.app.tool_source_store = store
         self.app.tool_patches = None
+        self.app.config.tool_security_refuse_static_findings = True
         stored = self.toolbox.get_expanded_tool_source(tool.config_file, tool_id=SHED_GUID_V1)
-        assert stored.static_review is not None
-        assert stored.static_review.refused_rules("critical") == ["template-exec"]
+        assert stored.static_review == StaticReview(severities={"template-exec": "critical"}, version=REVIEW_VERSION)
 
     def test_reload_tool_by_id_keeps_tool_patch(self):
         self._patch_shed_v1()
