@@ -1,0 +1,14 @@
+format_version: 1
+kind: security
+upstream:
+  - repo: galaxyproject/galaxy
+    pr: 1
+    merge_commit: 0123456789abcdef0123456789abcdef01234567
+reproducibility: rejects_inputs
+reproducibility_doc: Jobs on an empty input dataset are now rejected. Other jobs are unchanged.
+ops:
+  - add_element:
+      parent: "inputs/param[@name='input1']"
+      new: '<validator type="empty_dataset" message="The input dataset is empty."/>'
+      position: last
+      occurrences: 1

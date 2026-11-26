@@ -1,0 +1,15 @@
+<tool id="identifier_single" name="identifier_single" version="1.0.0">
+    <command><![CDATA[
+#set $clean_identifier = $input1.element_identifier.replace(".", "_")
+echo 'identifier $clean_identifier' > 'output1';
+echo 'safe_identifier $input1.safe_element_identifier' >> 'output1'
+    ]]></command>
+    <inputs>
+        <param name="input1" type="data" label="Input 1" />
+    </inputs>
+    <outputs>
+        <data name="output1" format="tabular" from_work_dir="output1" />
+    </outputs>
+    <tests>
+    </tests>
+</tool>
