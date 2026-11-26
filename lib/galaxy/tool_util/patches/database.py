@@ -180,8 +180,8 @@ class ToolPatchDatabase:
         )
 
     def token(self) -> str:
-        """Changes whenever any collection's content, the policy or the series changes."""
-        return _sha256(self.collections_summary().model_dump_json())
+        """Changes whenever any collection's content, the policy, the series or the engine version changes."""
+        return _sha256(f"{ENGINE_VERSION}\0" + self.collections_summary().model_dump_json())
 
     # --- applying ---
 
@@ -228,12 +228,18 @@ class ToolPatchDatabase:
             _log_state(state)
         return patched
 
-    def summary(self) -> str:
-        """One line naming the collections and counting the patch states applied so far."""
-        collections = ", ".join(f"{c.name} {c.version} digest {c.digest[:12]}" for c in self.collections) or "none"
+    def state_counts(self) -> Counter[str]:
+        """Patch states this database has reported so far in this process."""
         with self._counts_lock:
-            counts = ", ".join(f"{name} {self._state_counts[name]}" for name in get_args(PatchStateName))
-        return f"tool patches: {collections}; {counts}"
+            return Counter(self._state_counts)
+
+    def summary(self, since: Counter[str] | None = None) -> str:
+        """One line naming the collections and counting the patch states reported (after ``since``)."""
+        collections = ", ".join(f"{c.name} {c.version} digest {c.digest[:12]}" for c in self.collections) or "none"
+        counts = self.state_counts()
+        counts.subtract(since or Counter())
+        tally = ", ".join(f"{name} {counts[name]}" for name in get_args(PatchStateName))
+        return f"tool patches: {collections}; {tally}"
 
     def _checked_out_changeset(self, start: str | None) -> str | None:
         if not start:

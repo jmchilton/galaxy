@@ -2,6 +2,7 @@
 
 import os
 import threading
+import weakref
 from typing import (
     Any,
     cast,
@@ -31,14 +32,16 @@ if TYPE_CHECKING:
 JOB_CACHE_SAFE_LEVEL: ReproducibilityLevel = "rejects_inputs"
 
 
-_DATABASES_ATTR = "_tool_patch_databases"
+# Keyed by config object, then settings; weak so configs stay picklable and collectable.
+_databases: "weakref.WeakKeyDictionary[Any, dict[tuple[Any, ...], ToolPatchDatabase]]" = weakref.WeakKeyDictionary()
 _databases_lock = threading.Lock()
 
 
 def tool_patch_database_from_config(config: "GalaxyAppConfiguration") -> ToolPatchDatabase | None:
     """The configured patch database, or None when ``tool_patch_paths`` is empty.
 
-    Loaded once per config object and settings, so a process applies one database until it restarts.
+    Loaded once per config object and settings, so a process applies one database until it restarts;
+    changed settings on the same config load another one.
     """
     paths = tuple(config.tool_patch_paths or ())
     if not paths:
@@ -46,7 +49,7 @@ def tool_patch_database_from_config(config: "GalaxyAppConfiguration") -> ToolPat
     reproducibility = cast(ReproducibilityLevel, config.tool_patch_reproducibility)
     settings = (paths, reproducibility, bool(config.tool_patch_requirement_changes))
     with _databases_lock:
-        databases: dict[tuple[Any, ...], ToolPatchDatabase] = vars(config).setdefault(_DATABASES_ATTR, {})
+        databases = _databases.setdefault(config, {})
         if settings not in databases:
             databases[settings] = load_tool_patch_database(
                 list(paths),
