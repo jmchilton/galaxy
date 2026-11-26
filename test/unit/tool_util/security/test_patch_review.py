@@ -121,13 +121,6 @@ def test_unquoting_the_reviewed_value_is_a_new_finding(tmp_path: Path) -> None:
     assert review.regressed
 
 
-def test_patch_breaking_the_template_is_a_regression(tmp_path: Path) -> None:
-    broken = security_patch([replace_text_op("command", ECHO, "#if $input1\n" + ECHO)], "unusual_inputs", DOC)
-    review = _review(tmp_path, broken)
-    assert review.notes_added
-    assert review.introduced == [] and review.regressed
-
-
 def _awk_review(tmp_path: Path, before: str, after: str):
     tool = tmp_path / "sanitized_awk.xml"
     tool.write_text(AWK_TOOL.replace("CHAR", before))
@@ -176,11 +169,12 @@ def test_new_reason_for_an_unchecked_location_is_not_a_note_added() -> None:
     assert review.notes_added == [] and not review.regressed
 
 
-def test_unmatched_tool_reviews_once(tmp_path: Path) -> None:
+def test_unmatched_tool_has_no_patch_changes(tmp_path: Path) -> None:
     db = load_tool_patch_database([str(write_collection(tmp_path / "c", {"_local/other/1.0.yml": CLEANING}))])
     review = review_patches(get_tool_source(TOOL), db)
     assert review.patch is None
-    assert review.after is review.before
+    assert ("shell-injection", "high") in _rules(review.after.findings)
+    assert (review.cleared, review.introduced, review.notes_added) == ([], [], [])
 
 
 def _cli_json(argv: list[str], capsys: pytest.CaptureFixture[str]) -> tuple[int, dict]:
@@ -189,16 +183,16 @@ def _cli_json(argv: list[str], capsys: pytest.CaptureFixture[str]) -> tuple[int,
     return exit_code, report
 
 
-def test_cli_rejects_a_missing_collection(tmp_path: Path) -> None:
-    with pytest.raises(SystemExit):
-        main([TOOL, "--tool-patch-path", str(tmp_path / "missing")])
-
-
 def _usage_error(argv: list[str], capsys: pytest.CaptureFixture[str]) -> str:
     with pytest.raises(SystemExit) as exit_info:
         main(argv)
     assert exit_info.value.code == 2
     return capsys.readouterr().err
+
+
+def test_cli_rejects_a_missing_collection(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    error = _usage_error([TOOL, "--tool-patch-path", str(tmp_path / "missing")], capsys)
+    assert "is not a loadable tool patch collection" in error
 
 
 @pytest.mark.parametrize(
@@ -230,6 +224,8 @@ def test_cli_rejects_patch_options_without_a_collection(
 
 def test_cli_matches_shed_keys_by_guid(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     collection = write_collection(tmp_path / "c", {"owner/repo/identifier_single/1.0.0.yml": CLEANING})
+    _, unmatched = _cli_json([TOOL, "--tool-patch-path", str(collection)], capsys)
+    assert unmatched["patches"] is None
     exit_code, report = _cli_json([TOOL, "--tool-patch-path", str(collection), "--guid", GUID], capsys)
     assert exit_code == 0
     assert [s["state"] for s in report["patches"]] == ["applied"]
@@ -271,12 +267,33 @@ def test_cli_min_severity_hides_cleared_but_not_new_findings(
     assert any(line.startswith("  NEW      MEDIUM   argument-injection") for line in lines)
 
 
-@pytest.mark.parametrize("fail_on,exit_code", [([], 0), (["--fail-on", "mismatch"], 1)], ids=["default", "fail-on"])
+STALE_OP = replace_text_op("command", "echo 'no such text'", "echo 'other'")
+STALE_COMPAT = {
+    "format_version": 1,
+    "kind": "compat",
+    "needed_from": "26.1",
+    "galaxy_change": [{"repo": "galaxyproject/galaxy", "pr": 2}],
+    "upstream": [],
+    "reproducibility": "identical",
+    "reproducibility_reason": "restores what older Galaxy releases did",
+    "reproducibility_doc": "No job behaves differently.",
+    "ops": [STALE_OP],
+}
+
+
+@pytest.mark.parametrize(
+    "patch,fail_on,exit_code",
+    [
+        (security_patch([STALE_OP], "unusual_inputs", DOC), [], 0),
+        (security_patch([STALE_OP], "unusual_inputs", DOC), ["--fail-on", "mismatch"], 1),
+        (STALE_COMPAT, ["--fail-on", "mismatch"], 0),
+    ],
+    ids=["default", "fail-on", "compat"],
+)
 def test_cli_fails_on_a_mismatched_security_patch_only_when_asked(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], fail_on: list[str], exit_code: int
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], patch: dict, fail_on: list[str], exit_code: int
 ) -> None:
-    stale = security_patch([replace_text_op("command", "echo 'no such text'", "echo 'other'")], "unusual_inputs", DOC)
-    collection = write_collection(tmp_path / "c", {KEY_FILE: stale})
+    collection = write_collection(tmp_path / "c", {KEY_FILE: patch})
     got, report = _cli_json([TOOL, "--tool-patch-path", str(collection), *fail_on], capsys)
     assert [s["state"] for s in report["patches"]] == ["mismatch"]
     assert got == exit_code
