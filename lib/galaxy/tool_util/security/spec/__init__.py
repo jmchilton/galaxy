@@ -12,6 +12,7 @@ import yaml
 from pydantic import (
     BaseModel,
     ConfigDict,
+    field_validator,
 )
 
 from galaxy.tool_util.parser import get_tool_source
@@ -62,6 +63,13 @@ class ReviewExpectation(_Model):
     patterns: list[PatternCode] = []
     # Exactly the uncheckable codes of classify(), when given.
     codes: list[Uncheckable] | None = None
+
+    @field_validator("codes")
+    @classmethod
+    def _classify_returns(cls, codes: list[Uncheckable] | None) -> list[Uncheckable] | None:
+        if codes and Uncheckable.REVIEW_FAILED in codes:
+            raise ValueError(f"classify() never returns {Uncheckable.REVIEW_FAILED}")
+        return codes
 
 
 class SpecCase(_Model):

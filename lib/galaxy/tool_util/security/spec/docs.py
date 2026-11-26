@@ -14,9 +14,12 @@ import yaml
 
 from galaxy.tool_util.parser import get_tool_source
 from galaxy.tool_util.security import (
-    classify,
     patterns,
     rules,
+)
+from galaxy.tool_util.security.classify import (
+    DESCRIPTIONS as UNCHECKABLE_DESCRIPTIONS,
+    Uncheckable,
 )
 from galaxy.tool_util.security.spec import (
     load_cases,
@@ -76,8 +79,8 @@ def _uncheckable(cases: dict[str, SpecCase]) -> list[str]:
         "`--fail-on uncheckable` lets it through and `--fail-on unchecked` does not.",
         "",
     ]
-    groups = (("Codes", list(classify.Uncheckable)),)
-    return lines + _described(groups, classify.DESCRIPTIONS, cases, lambda case: case.review.codes or [])
+    groups = (("Codes", list(Uncheckable)),)
+    return lines + _described(groups, UNCHECKABLE_DESCRIPTIONS, cases, lambda case: case.review.codes or [])
 
 
 def _case_rules(case: SpecCase) -> list[str]:

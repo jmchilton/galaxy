@@ -46,9 +46,9 @@ def test_report_rule_sets_are_catalogued():
     assert {*CODE_CAPABILITIES, *RUNS_TEXT_RULES, SANITIZE_OFF} <= set(Rule)
 
 
-@pytest.mark.parametrize("rule", list(Rule))
-def test_every_rule_has_a_description(rule):
-    assert DESCRIPTIONS[rule]
+def test_rules_and_descriptions_match():
+    assert set(DESCRIPTIONS) == set(Rule)
+    assert all(DESCRIPTIONS.values())
 
 
 @pytest.mark.parametrize("rule", sorted(VULNERABILITY_RULES))

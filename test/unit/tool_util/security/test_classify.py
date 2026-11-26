@@ -1,6 +1,7 @@
 """What the review cannot decide from a tool's templates alone."""
 
 import pytest
+from pydantic import ValidationError
 
 from galaxy.tool_util.security.classify import (
     classify,
@@ -10,6 +11,7 @@ from galaxy.tool_util.security.classify import (
     Uncheckable,
 )
 from galaxy.tool_util.security.report import RUNS_TEXT
+from galaxy.tool_util.security.spec import ReviewExpectation
 from ._util import review
 
 
@@ -57,6 +59,11 @@ def test_undecidable_finding_is_an_unchecked_location(tmp_path):
     assert result.codes == [Uncheckable.LETTERS_ARE_CODE]
 
 
-@pytest.mark.parametrize("code", list(Uncheckable))
-def test_every_code_has_a_description(code):
-    assert DESCRIPTIONS[code]
+def test_codes_and_descriptions_match():
+    assert set(DESCRIPTIONS) == set(Uncheckable)
+    assert all(DESCRIPTIONS.values())
+
+
+def test_spec_rejects_review_failed_as_a_classify_code():
+    with pytest.raises(ValidationError):
+        ReviewExpectation(codes=[Uncheckable.REVIEW_FAILED])
