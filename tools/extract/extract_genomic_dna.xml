@@ -11,7 +11,7 @@
       #end if
 
       ## Columns to use in input file.
-      #if isinstance( $input.datatype, $__app__.datatypes_registry.get_datatype_by_extension('gff').__class__):
+      #if $input.is_of_type('gff'):
         -1 "1,4,5,7" --gff
       #else:
         -1 "${input.metadata.chromCol},${input.metadata.startCol},${input.metadata.endCol},${input.metadata.strandCol},${input.metadata.nameCol}"
