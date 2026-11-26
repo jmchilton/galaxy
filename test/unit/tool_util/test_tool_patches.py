@@ -7,8 +7,8 @@ import shutil
 import struct
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -828,14 +828,13 @@ def test_digests_follow_file_content(tmp_path: Path) -> None:
     assert all(b != a for b, a in zip(before, after))
 
 
-def test_collection_digest_is_computed_from_contents(tmp_path: Path) -> None:
-    root = write_collection(tmp_path / "c", {LOCAL_PROBE: security_doc(QUOTE_LABEL)}, extra={"digest": "0" * 64})
-    rel = f"patches/{LOCAL_PROBE}"
-    expected = hashlib.sha256(
-        rel.encode() + b"\0" + hashlib.sha256((root / rel).read_bytes()).digest() + b"\0codes.yml\0"
-    ).hexdigest()
-    (summary,) = load_db(root).collections_summary().collections
-    assert (summary.name, summary.version, summary.digest) == ("test-patches", "2026.11.25", expected)
+def test_collection_digest_ignores_declared_digest(tmp_path: Path) -> None:
+    declared = write_collection(tmp_path / "a", {LOCAL_PROBE: security_doc(QUOTE_LABEL)}, extra={"digest": "0" * 64})
+    plain = write_collection(tmp_path / "b", {LOCAL_PROBE: security_doc(QUOTE_LABEL)})
+    (summary,) = load_db(declared).collections_summary().collections
+    assert (summary.name, summary.version) == ("test-patches", "2026.11.25")
+    assert summary.digest != "0" * 64
+    assert summary.digest == load_db(plain).collections_summary().collections[0].digest
 
 
 @pytest.mark.parametrize("covered", [True, False])
@@ -899,6 +898,12 @@ def test_drill_down_from_file_compat_fixture(tmp_path: Path) -> None:
     assert [o["value"] for o in options[0]["options"]] == ["option1", "option2"]
 
 
+@dataclass
+class IdentifierInput:
+    element_identifier: str
+    safe_element_identifier: str
+
+
 CLEAN_IDENTIFIER_HELPER = (
     "#import re\n"
     "#def clean_identifier($identifier)\n"
@@ -922,7 +927,7 @@ def test_identifier_helper_fixture(tmp_path: Path) -> None:
     assert states_of(patched) == ["applied"]
     command = patched.parse_command()
     assert command is not None and command.count("#def clean_identifier") == 1
-    input1 = SimpleNamespace(element_identifier="a b;c", safe_element_identifier="x")
+    input1 = IdentifierInput(element_identifier="a b;c", safe_element_identifier="x")
     rendered = fill_template(command, context={"input1": input1})
     assert "echo 'identifier a_b_c' > 'output1'" in rendered
     assert db.apply_patches(patched) is patched
@@ -1040,11 +1045,11 @@ def test_unknown_collection_format_is_skipped(tmp_path: Path, caplog: pytest.Log
     assert len(errors) == 2 and "format_version" in errors[0]
 
 
-def test_builtin_collection_is_empty() -> None:
-    db = load_tool_patch_database(["builtin"])
-    (summary,) = db.collections_summary().collections
+def test_builtin_collection_is_empty(tmp_path: Path) -> None:
+    (summary,) = load_tool_patch_database(["builtin"]).collections_summary().collections
+    (empty,) = load_db(write_collection(tmp_path / "empty", {})).collections_summary().collections
     assert summary.name == "galaxy-builtin"
-    assert summary.digest == hashlib.sha256(b"\0codes.yml\0").hexdigest()
+    assert summary.digest == empty.digest
 
 
 @pytest.mark.parametrize(
