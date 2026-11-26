@@ -20,6 +20,7 @@ def _inputs(hda_id: str) -> dict[str, Any]:
 class BaseToolPatchesIntegrationTestCase(integration_util.IntegrationTestCase):
     framework_tool_and_types = True
     collection: str = "identifier_single"
+    dataset_populator: DatasetPopulator
 
     def setUp(self) -> None:
         super().setUp()
@@ -34,6 +35,11 @@ class BaseToolPatchesIntegrationTestCase(integration_util.IntegrationTestCase):
         response = self._get(f"tools/{TOOL_ID}")
         self._assert_status_code_is(response, 200)
         return response.json()["patches"]
+
+    def _raw_tool_source(self) -> str:
+        response = self._get(f"tools/{TOOL_ID}/raw_tool_source", admin=True)
+        self._assert_status_code_is(response, 200)
+        return response.text
 
     def _run_identifier_single(self, history_id: str, hda_id: str, use_cached_job: bool = False) -> dict:
         run = self.dataset_populator.run_tool(TOOL_ID, _inputs(hda_id), history_id, use_cached_job=use_cached_job)
@@ -82,6 +88,7 @@ class TestToolPatchApplied(BaseToolPatchesIntegrationTestCase):
         assert state["key"] == "_local/identifier_single/1.0.0"
         assert state["reproducibility"] == "unusual_inputs"
         assert "contained a dot" in state["reproducibility_doc"]
+        assert "#set $clean_identifier" in self._raw_tool_source()
 
     def test_job_runs_patched_command(self):
         with self.dataset_populator.test_history() as history_id:
@@ -90,13 +97,13 @@ class TestToolPatchApplied(BaseToolPatchesIntegrationTestCase):
             content = self.dataset_populator.get_history_dataset_content(history_id, dataset=run["outputs"][0])
             assert content.splitlines()[0] == "identifier a_b"
 
-    def test_special_inputs_patch_skips_job_cache(self):
+    def test_unusual_inputs_patch_skips_job_cache(self):
         self._assert_job_cache_reuse(False)
 
-    def test_special_inputs_patch_skips_job_cache_for_tool_requests(self):
+    def test_unusual_inputs_patch_skips_job_cache_for_tool_requests(self):
         self._assert_job_cache_reuse(False, via_tool_request=True)
 
-    def test_special_inputs_patch_hides_jobs_from_search(self):
+    def test_unusual_inputs_patch_hides_jobs_from_search(self):
         self._assert_job_search_finds_job(False)
 
 
@@ -136,6 +143,5 @@ class TestToolPatchAlreadyApplied(BaseToolPatchesIntegrationTestCase):
     def test_already_applied_leaves_source_unchanged(self):
         (state,) = self._patch_states()
         assert state["state"] == "already_applied"
-        tool = self._app.toolbox.get_tool(TOOL_ID)
         unpatched = get_tool_source(os.path.join(FUNCTIONAL_TOOLS, "identifier_single_fixed.xml"))
-        assert tool.tool_source.to_string() == unpatched.to_string()
+        assert self._raw_tool_source() == unpatched.to_string()

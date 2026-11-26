@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 import yaml
+from lxml import etree
 from pydantic import ValidationError
 
 from galaxy.tool_util.parser import get_tool_source
@@ -1286,7 +1287,7 @@ def test_add_element_keeps_mixed_text_once(tmp_path: Path, position: str) -> Non
     assert result.tree is not None
     help_el = result.tree.getroot().find("help")
     assert help_el is not None
-    assert "".join(help_el.itertext()).count("Real text") == 1
+    assert etree.tostring(help_el, method="text", encoding="unicode").count("Real text") == 1
 
 
 def test_summary_counts_applied_states(tmp_path: Path, probe: XmlToolSource) -> None:
