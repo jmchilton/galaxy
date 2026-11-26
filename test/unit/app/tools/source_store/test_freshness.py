@@ -16,6 +16,7 @@ def _config(tmp_path, confs):
         tool_path = str(tmp_path)
         data_manager_config_file = None
         shed_data_manager_config_file = None
+        tool_patch_paths: list[str] = []
 
         def all_tool_config_files(self):
             return [str(c) for c in confs]
