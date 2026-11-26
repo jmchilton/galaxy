@@ -9,7 +9,10 @@ from dataclasses import (
 )
 from typing import (
     Any,
+    assert_never,
     cast,
+    Final,
+    Literal,
 )
 
 from lxml import etree
@@ -21,7 +24,6 @@ from .model import (
     AddElement,
     CHANGE_KINDS,
     ChangeKind,
-    op_selector,
     OpBody,
     PatchFile,
     PatchOp,
@@ -41,8 +43,16 @@ from .xmlutil import (
 
 log = logging.getLogger(__name__)
 
-PRE, POST, NEITHER = "pre", "post", "neither"
-APPLIED, ALREADY_APPLIED, MISMATCH, SKIPPED = "applied", "already_applied", "mismatch", "skipped"
+Classification = Literal["pre", "post", "neither"]
+UnitStateName = Literal["applied", "already_applied", "mismatch"]
+
+PRE: Final = "pre"
+POST: Final = "post"
+NEITHER: Final = "neither"
+APPLIED: Final = "applied"
+ALREADY_APPLIED: Final = "already_applied"
+MISMATCH: Final = "mismatch"
+SKIPPED: Final = "skipped"
 PARAMETER_MODEL_CHANGED = "parameter model changed"
 
 
@@ -76,92 +86,129 @@ def _position_index(parent: etree._Element, position: str) -> int | None:
     return i if side == "before" else i + 1
 
 
-def classify(root: etree._Element, body: OpBody) -> str:
-    """PRE, POST or NEITHER for one op; the post-image is checked first."""
+def _canon_matches(root: etree._Element, path: str, fragment: str) -> list[etree._Element]:
+    c_fragment = canon_fragment(fragment)
+    return [c for c in find(root, path) if canon(c) == c_fragment]
+
+
+def _classify_replace_text(root: etree._Element, body: ReplaceText) -> Classification:
+    texts = [e.text or "" for e in find(root, body.path)]
+    if not texts:
+        return NEITHER
     n = body.occurrences
-    if isinstance(body, ReplaceText):
-        texts = [e.text or "" for e in find(root, body.path)]
-        if not texts:
-            return NEITHER
-        if sum(t.count(body.new) for t in texts) == n and not any(_outside(t, body.old, body.new) for t in texts):
-            return POST
-        if sum(t.count(body.old) for t in texts) == n:
-            return PRE
-        return NEITHER
-    if isinstance(body, ReplaceElement):
-        candidates = find(root, body.path)
-        if any(c is root for c in candidates):
-            return NEITHER
-        c_old, c_new = canon_fragment(body.old), canon_fragment(body.new)
-        keyed = [(c, canon(c)) for c in candidates]
-        news = [c for c, k in keyed if k == c_new]
-        olds = [c for c, k in keyed if k == c_old]
-        olds_outside = [c for c in olds if not any(a in news for a in c.iterancestors())]
-        if len(news) == n and not olds_outside:
-            return POST
-        if len(olds) == n:
-            return PRE
-        return NEITHER
-    if isinstance(body, AddElement):
-        parents = find(root, body.parent)
-        if len(parents) != n:
-            return NEITHER
-        c_new = canon_fragment(body.new)
-        has = [any(canon(ch) == c_new for ch in element_children(p)) for p in parents]
-        if all(has):
-            return POST
-        if any(has):
-            return NEITHER
-        tag = parse_fragment(body.new).tag
-        for p in parents:
-            if tag in SINGLETON_TAGS and any(ch.tag == tag for ch in element_children(p)):
-                return NEITHER
-            if _position_index(p, body.position) is None:
-                return NEITHER
+    if sum(t.count(body.new) for t in texts) == n and not any(_outside(t, body.old, body.new) for t in texts):
+        return POST
+    if sum(t.count(body.old) for t in texts) == n:
         return PRE
+    return NEITHER
+
+
+def _classify_replace_element(root: etree._Element, body: ReplaceElement) -> Classification:
     candidates = find(root, body.path)
     if any(c is root for c in candidates):
         return NEITHER
-    c_old = canon_fragment(body.old)
-    olds = [c for c in candidates if canon(c) == c_old]
+    c_old, c_new = canon_fragment(body.old), canon_fragment(body.new)
+    keyed = [(c, canon(c)) for c in candidates]
+    news = [c for c, k in keyed if k == c_new]
+    olds = [c for c, k in keyed if k == c_old]
+    olds_outside = [c for c in olds if not any(a in news for a in c.iterancestors())]
+    if len(news) == body.occurrences and not olds_outside:
+        return POST
+    if len(olds) == body.occurrences:
+        return PRE
+    return NEITHER
+
+
+def _classify_add_element(root: etree._Element, body: AddElement) -> Classification:
+    parents = find(root, body.parent)
+    if len(parents) != body.occurrences:
+        return NEITHER
+    c_new = canon_fragment(body.new)
+    has = [any(canon(ch) == c_new for ch in element_children(p)) for p in parents]
+    if all(has):
+        return POST
+    if any(has):
+        return NEITHER
+    tag = parse_fragment(body.new).tag
+    for p in parents:
+        if tag in SINGLETON_TAGS and any(ch.tag == tag for ch in element_children(p)):
+            return NEITHER
+        if _position_index(p, body.position) is None:
+            return NEITHER
+    return PRE
+
+
+def _classify_remove_element(root: etree._Element, body: RemoveElement) -> Classification:
+    if any(c is root for c in find(root, body.path)):
+        return NEITHER
+    olds = _canon_matches(root, body.path, body.old)
     if not olds:
         return POST
-    return PRE if len(olds) == n else NEITHER
+    return PRE if len(olds) == body.occurrences else NEITHER
+
+
+def classify(root: etree._Element, body: OpBody) -> Classification:
+    """PRE, POST or NEITHER for one op; the post-image is checked first."""
+    if isinstance(body, ReplaceText):
+        return _classify_replace_text(root, body)
+    if isinstance(body, ReplaceElement):
+        return _classify_replace_element(root, body)
+    if isinstance(body, AddElement):
+        return _classify_add_element(root, body)
+    if isinstance(body, RemoveElement):
+        return _classify_remove_element(root, body)
+    assert_never(body)
+
+
+def _apply_replace_text(root: etree._Element, body: ReplaceText) -> None:
+    for e in find(root, body.path):
+        if e.text:
+            e.text = e.text.replace(body.old, body.new)
+
+
+def _apply_replace_element(root: etree._Element, body: ReplaceElement) -> None:
+    for e in _canon_matches(root, body.path, body.old):
+        new = parse_fragment(body.new)
+        new.tail = e.tail
+        parent = e.getparent()
+        assert parent is not None
+        parent.replace(e, new)
+
+
+def _apply_add_element(root: etree._Element, body: AddElement) -> None:
+    for p in find(root, body.parent):
+        new = parse_fragment(body.new)
+        i = _position_index(p, body.position)
+        assert i is not None
+        children = list(p)
+        ref = children[i - 1] if i > 0 else None
+        indent = (ref.tail if ref is not None else p.text) if children else None
+        # Reuse the sibling indentation only; never duplicate real text.
+        new.tail = indent if indent and not indent.strip() else None
+        p.insert(i, new)
+
+
+def _apply_remove_element(root: etree._Element, body: RemoveElement) -> None:
+    for e in _canon_matches(root, body.path, body.old):
+        remove_keeping_tail(e)
 
 
 def apply_op(root: etree._Element, body: OpBody) -> None:
     """Apply one op in place; callers classify it as PRE first."""
     if isinstance(body, ReplaceText):
-        for e in find(root, body.path):
-            if e.text:
-                e.text = e.text.replace(body.old, body.new)
+        _apply_replace_text(root, body)
     elif isinstance(body, ReplaceElement):
-        c_old = canon_fragment(body.old)
-        for e in [c for c in find(root, body.path) if canon(c) == c_old]:
-            new = parse_fragment(body.new)
-            new.tail = e.tail
-            parent = e.getparent()
-            assert parent is not None
-            parent.replace(e, new)
+        _apply_replace_element(root, body)
     elif isinstance(body, AddElement):
-        for p in find(root, body.parent):
-            new = parse_fragment(body.new)
-            i = _position_index(p, body.position)
-            assert i is not None
-            children = list(p)
-            ref = children[i - 1] if i > 0 else None
-            indent = (ref.tail if ref is not None else p.text) if children else None
-            # Reuse the sibling indentation only; never duplicate real text.
-            new.tail = indent if indent and not indent.strip() else None
-            p.insert(i, new)
+        _apply_add_element(root, body)
+    elif isinstance(body, RemoveElement):
+        _apply_remove_element(root, body)
     else:
-        c_old = canon_fragment(body.old)
-        for e in [c for c in find(root, body.path) if canon(c) == c_old]:
-            remove_keeping_tail(e)
+        assert_never(body)
 
 
 def selector_counts(root: etree._Element, bodies: Sequence[OpBody]) -> list[int]:
-    return [len(find(root, op_selector(body))) for body in bodies]
+    return [len(find(root, body.selector)) for body in bodies]
 
 
 def _parameter_model(tree: ElementTree) -> Any:
@@ -204,12 +251,12 @@ def parameter_model_changed(before: ElementTree, after: ElementTree) -> bool:
 
 @dataclass
 class UnitResult:
-    state: str
+    state: UnitStateName
     tree: ElementTree | None = None
     detail: str | None = None
 
 
-def evaluate_unit(tree: ElementTree, bodies: Sequence[OpBody], check_parameter_model: bool = True) -> UnitResult:
+def evaluate_unit(tree: ElementTree, bodies: Sequence[OpBody]) -> UnitResult:
     """Evaluate one atomic unit of ops; the input tree is never mutated."""
     root = tree.getroot()
     classes = [classify(root, body) for body in bodies]
@@ -234,7 +281,7 @@ def evaluate_unit(tree: ElementTree, bodies: Sequence[OpBody], check_parameter_m
             return UnitResult(
                 MISMATCH, detail=f"op {i} selector matched {before[i]} elements before and {after[i]} after"
             )
-    if check_parameter_model and parameter_model_changed(tree, work):
+    if parameter_model_changed(tree, work):
         return UnitResult(MISMATCH, detail=PARAMETER_MODEL_CHANGED)
     return UnitResult(APPLIED, tree=work)
 
@@ -253,7 +300,11 @@ def series_satisfied(needed_from: str | None, galaxy_series: str | None) -> bool
 class PatchUnit:
     kind: ChangeKind
     ops: list[PatchOp] = field(default_factory=list)
-    skipped: bool = False
+
+    @property
+    def skipped(self) -> bool:
+        """Every op of this kind was gated out by needed_from."""
+        return not self.ops
 
 
 def plan_units(patch_file: PatchFile, galaxy_series: str | None) -> list[PatchUnit]:
@@ -264,5 +315,5 @@ def plan_units(patch_file: PatchFile, galaxy_series: str | None) -> list[PatchUn
         if not ops:
             continue
         active = [op for op in ops if series_satisfied(patch_file.op_needed_from(op), galaxy_series)]
-        units.append(PatchUnit(kind=kind, ops=active, skipped=not active))
+        units.append(PatchUnit(kind=kind, ops=active))
     return units
