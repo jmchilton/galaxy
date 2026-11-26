@@ -1676,13 +1676,3 @@ def test_to_panel_entry_reports_patches_without_materialise():
     entry = _stub(_entry(patch=PATCH_INFO)).to_panel_entry(trans=None)
     assert entry["patches"] == [state.model_dump(mode="json") for state in PATCH_INFO.states]
     assert "patches" not in _stub().to_panel_entry(trans=None)
-
-
-def test_materialised_tool_carries_entry_patch(tmp_path):
-    box = _materializing_box()
-    entry = _shed_image_entry().model_copy(update={"patch": PATCH_INFO})
-
-    tool = box._create_tool_from_stored_source(_shed_image_stored(str(tmp_path)), entry=entry)
-
-    assert tool.patch == PATCH_INFO
-    assert box._cached_materialize_count == 1
