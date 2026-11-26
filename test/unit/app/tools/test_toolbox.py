@@ -1,4 +1,5 @@
 import logging
+import os
 import string
 import time
 from pathlib import Path
@@ -46,6 +47,8 @@ from galaxy.tool_util.unittest_utils.tool_patches import (
 )
 from galaxy.tool_util_models.dynamic_tool_models import DynamicToolCreatePayload
 from galaxy.tools import ToolBox
+from galaxy.tools.source_store import StoredToolSource
+from galaxy.tools.source_store.sqlalchemy import SqlAlchemyToolSourceStore
 from galaxy.webapps.galaxy.services.tools import ToolsService
 from galaxy.workflow import modules
 
@@ -622,15 +625,30 @@ class TestToolBox(BaseToolBoxTestCase):
 
     def test_tool_patches_parse_from_disk_instead_of_unpatched_store_rows(self):
         self._patch_shed_v1()
-        patched = self.toolbox.get_tool(SHED_GUID_V1, exact=True)
+        config_file = self.toolbox.get_tool(SHED_GUID_V1, exact=True).config_file
+        store = SqlAlchemyToolSourceStore(f"sqlite:///{Path(self.test_directory) / 'store.sqlite'}")
+        store.store(
+            StoredToolSource(
+                hash="unpatched",
+                tool_source_class="XmlToolSource",
+                raw_source=Path(config_file).read_text().replace("Test Tool", "Stored Row"),
+                tool_id=SHED_GUID_V1,
+                source_path=os.path.abspath(config_file),
+            )
+        )
         self.app.config.use_cached_toolbox = True
-        self.app.tool_source_store = MagicMock()
+        self.app.tool_source_store = store
+        tool_patches, self.app.tool_patches = self.app.tool_patches, None
+        # without patches configured the stored row is served
+        assert self.toolbox.get_expanded_tool_source(config_file, tool_id=SHED_GUID_V1).parse_name() == "Stored Row"
+        self.app.tool_patches = tool_patches
 
-        tool_source = self.toolbox.get_expanded_tool_source(patched.config_file, tool_id=SHED_GUID_V1)
+        tool_source = self.toolbox.get_expanded_tool_source(config_file, tool_id=SHED_GUID_V1)
 
-        self.app.tool_source_store.get_by_source_path.assert_not_called()
+        assert tool_source.parse_name() == "Test Tool"
+        assert 'echo -- "$param1"' in tool_source.to_string()
         assert tool_source.patch_state is not None
-        assert tool_source.patch_state.states[0].state == "applied"
+        assert [s.state for s in tool_source.patch_state.states] == ["applied"]
 
     def test_reload_tool_by_id_keeps_tool_patch(self):
         self._patch_shed_v1()
