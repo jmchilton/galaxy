@@ -19,7 +19,7 @@
       --minMappingQuality=$params.minMappingQuality
       --minAlleleProbability=$params.minAlleleProbability
       --minAlleleCoverage=$params.minAlleleCoverage
-      --range=$params.range
+      --range='$params.range'
       --correctBases=$params.correctBases
       --useSequenceQualities=$params.useSequenceQualities
       --maxHeapSize=$params.maxHeapSize
