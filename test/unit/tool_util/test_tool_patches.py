@@ -37,6 +37,7 @@ from galaxy.tool_util.patches.keys import (
     decode_segment,
     encode_segment,
     is_canonical_segment,
+    key_from_ids,
     patch_key,
 )
 from galaxy.tool_util.patches.model import (
@@ -1013,6 +1014,12 @@ def test_advisory_only_file_uses_codes_table(tmp_path: Path, probe: XmlToolSourc
             ),
             id="action_not_allowed_by_code",
         ),
+        pytest.param(
+            yaml.safe_dump(
+                security_doc(**ADVISORY_ONLY, advisory={**ADVISORY, "code": "partial_fix", "expanded_sha256": "0" * 64})
+            ),
+            id="expanded_sha256_outside_override",
+        ),
     ],
 )
 def test_invalid_file_loads_tool_unpatched(
@@ -1083,6 +1090,51 @@ def test_override_for_checked_out_changeset(tmp_path: Path, dirstate: bytes, req
     assert patched.patch_state is not None
     assert patched.patch_state.digest == db.digest_for(SHED_KEY, NODE_HEX)
     assert db.digest_for(SHED_KEY, NODE_HEX) != db.digest_for(SHED_KEY)
+
+
+def test_tool_digest_matches_applied_digest(tmp_path: Path) -> None:
+    tool = shed_repo_tool(tmp_path)
+    root = write_collection(
+        tmp_path / "c", {f"{SHED_PROBE}.yml": security_doc(QUOTE_LABEL), OVERRIDE_REL: security_doc(OVERRIDE_OP)}
+    )
+    db = load_db(root)
+    patched = db.apply_patches(tool, guid=SHED_GUID)
+    assert patched.patch_state is not None
+    assert db.tool_digest(SHED_KEY, str(tool.source_path)) == patched.patch_state.digest
+    assert db.tool_digest(SHED_KEY, str(tmp_path / "elsewhere")) == db.digest_for(SHED_KEY)
+
+
+def test_changeset_follows_dirstate_rewrites(tmp_path: Path) -> None:
+    tool = shed_repo_tool(tmp_path)
+    root = write_collection(
+        tmp_path / "c", {f"{SHED_PROBE}.yml": security_doc(QUOTE_LABEL), OVERRIDE_REL: security_doc(OVERRIDE_OP)}
+    )
+    db = load_db(root)
+    (state,) = patch_states(db.apply_patches(tool, guid=SHED_GUID))
+    assert state.path == f"patches/{OVERRIDE_REL}"
+
+    # an in-place repository update checks out another changeset
+    dirstate = tmp_path / "repo" / ".hg" / "dirstate"
+    dirstate.write_bytes(bytes(range(100, 120)) + b"\0" * 20)
+    stat = dirstate.stat()
+    os.utime(dirstate, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+    updated = get_tool_source(config_file=str(tool.source_path))
+
+    (state,) = patch_states(db.apply_patches(updated, guid=SHED_GUID))
+    assert state.path == f"patches/{SHED_PROBE}.yml"
+
+
+@pytest.mark.parametrize(
+    "guid,tool_id,version,key",
+    [
+        (SHED_GUID, "ignored", "ignored", SHED_KEY),
+        (None, "patch_probe", "1.0+galaxy0", LOCAL_KEY),
+        ("patch_probe", "patch_probe", "1.0+galaxy0", LOCAL_KEY),
+        (None, "patch_probe", None, None),
+    ],
+)
+def test_key_from_ids(guid: str | None, tool_id: str | None, version: str | None, key: tuple[str, ...] | None) -> None:
+    assert key_from_ids(guid, tool_id, version) == key
 
 
 @pytest.mark.parametrize("case", ["other_changeset", "override_mismatch", "unreadable_dirstate", "no_repository"])

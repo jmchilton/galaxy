@@ -85,6 +85,15 @@ def _tree_text(tree: ElementTree) -> str:
     return xml_to_string(tree.getroot())
 
 
+def _dirstate_signature(repo_dir: str) -> tuple[int, int, int] | None:
+    """Changes when hg rewrites the dirstate (e.g. ``hg update`` after a shed update)."""
+    try:
+        st = os.stat(os.path.join(repo_dir, ".hg", "dirstate"))
+    except OSError:
+        return None
+    return (st.st_mtime_ns, st.st_size, st.st_ino)
+
+
 @dataclass
 class _Input:
     """The tree one collection file sees, with its expanded sha256 computed on demand."""
@@ -120,7 +129,7 @@ class ToolPatchDatabase:
         self.policy = policy or PatchPolicy()
         self.galaxy_series = galaxy_series
         self._active = [c for c in self.collections if c.has_patches]
-        self._changesets: dict[str, str | None] = {}
+        self._changesets: dict[str, tuple[tuple[int, int, int] | None, str | None]] = {}
         self._changeset_lock = threading.Lock()
 
     # --- digests and summaries ---
@@ -164,6 +173,16 @@ class ToolPatchDatabase:
     def key_for(self, tool_source: ToolSource, guid: str | None = None) -> PatchKey | None:
         return patch_key(tool_source, guid)
 
+    def changeset_for(self, key: PatchKey, repository_dir_hint: str | None) -> str | None:
+        """Checked-out changeset when an override could apply to key, else None."""
+        if not is_shed_key(key) or not any(c.has_overrides(key) for c in self._active):
+            return None
+        return self._checked_out_changeset(repository_dir_hint)
+
+    def tool_digest(self, key: PatchKey, repository_dir_hint: str | None = None) -> str | None:
+        """The digest :meth:`apply_patches` records for key, computed without parsing the tool."""
+        return self.digest_for(key, self.changeset_for(key, repository_dir_hint))
+
     def apply_patches(
         self, tool_source: ToolSource, guid: str | None = None, repository_dir_hint: str | None = None
     ) -> ToolSource:
@@ -180,9 +199,7 @@ class ToolPatchDatabase:
         matching = [c for c in self._active if c.has_key(key)]
         if not matching:
             return tool_source
-        changeset = None
-        if is_shed_key(key) and any(c.has_overrides(key) for c in matching):
-            changeset = self._checked_out_changeset(repository_dir_hint or tool_source.source_path)
+        changeset = self.changeset_for(key, repository_dir_hint or tool_source.source_path)
         current = _Input(tree=tool_source.xml_tree, text=tool_source.to_string)
         states: list[PatchState] = []
         for c in matching:
@@ -208,10 +225,13 @@ class ToolPatchDatabase:
         if repo_dir is None:
             log.debug("tool patches: no Mercurial repository above %s, using version files", start)
             return None
+        signature = _dirstate_signature(repo_dir)
         with self._changeset_lock:
-            if repo_dir not in self._changesets:
-                self._changesets[repo_dir] = read_working_parent(repo_dir)
-            return self._changesets[repo_dir]
+            cached = self._changesets.get(repo_dir)
+            if cached is None or cached[0] != signature:
+                cached = (signature, read_working_parent(repo_dir))
+                self._changesets[repo_dir] = cached
+            return cached[1]
 
     def _apply_collection(
         self, c: PatchCollection, key: PatchKey, changeset: str | None, current: _Input

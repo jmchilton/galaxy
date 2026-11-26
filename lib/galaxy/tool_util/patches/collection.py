@@ -275,6 +275,8 @@ class PatchCollection:
         try:
             patch = PatchFile.model_validate(parse_patch_yaml(data))
             self._check_codes(patch)
+            if patch.advisory and patch.advisory.expanded_sha256 and not os.path.basename(rel).startswith("@"):
+                raise ValueError("expanded_sha256 is only for per-changeset overrides")
         except (yaml.YAMLError, ValidationError, ValueError) as e:
             log.error("tool patches: %s: %s is invalid, skipped: %s", self.name, rel, e)
             return None

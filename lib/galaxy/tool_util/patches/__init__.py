@@ -10,6 +10,7 @@ from .database import (
     ToolPatchDatabase,
 )
 from .keys import (
+    key_from_ids,
     patch_key,
     PatchKey,
 )
@@ -26,6 +27,7 @@ __all__ = (
     "AdvisoryInfo",
     "BUILTIN",
     "CollectionError",
+    "key_from_ids",
     "load_tool_patch_database",
     "patch_key",
     "PatchCollection",
