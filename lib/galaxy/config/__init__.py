@@ -254,6 +254,8 @@ def configure_logging(config, facts=None):
 
 
 CURATED_WORKFLOWS_SOURCES = ("iwc", "local", "off")
+# The severities of galaxy.tool_util.security findings, without info.
+STATIC_FINDINGS_SEVERITIES = ("critical", "high", "medium", "low")
 
 
 def resolve_curated_workflows_source(source: str | None, owners: list[str]) -> str:
@@ -1019,6 +1021,12 @@ class GalaxyAppConfiguration(GalaxyAppConfigurationAttributes, BaseAppConfigurat
         if self.calculate_dataset_hash not in ("always", "upload", "never"):
             raise ConfigurationError(
                 f"Unrecognized value for calculate_dataset_hash option: {self.calculate_dataset_hash}"
+            )
+        severity = self.tool_security_refuse_static_findings_severity
+        if self.tool_security_refuse_static_findings and severity not in STATIC_FINDINGS_SEVERITIES:
+            raise ConfigurationError(
+                f"tool_security_refuse_static_findings_severity must be one of {', '.join(STATIC_FINDINGS_SEVERITIES)},"
+                f" not '{severity}'"
             )
         if self.hash_function not in HashFunctionNameEnum.__members__:
             raise ConfigurationError(f"Unrecognized value for hash_function option: {self.hash_function}")

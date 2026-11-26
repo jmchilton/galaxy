@@ -8,9 +8,17 @@ from typing import (
 
 import pytest
 
+from galaxy.config import (
+    GalaxyAppConfiguration,
+    STATIC_FINDINGS_SEVERITIES,
+)
 from galaxy.exceptions import ConfigurationError
 from galaxy.tool_util.parser import get_tool_source
 from galaxy.tool_util.patches import load_tool_patch_database
+from galaxy.tool_util.security.charsets import (
+    INFO,
+    SEVERITIES,
+)
 from galaxy.tool_util.security.refusal import StaticReview
 from galaxy.tool_util.unittest_utils import functional_test_tool_path
 from galaxy.tool_util.unittest_utils.tool_patches import (
@@ -25,12 +33,10 @@ from galaxy.tools.static_findings import (
     patch_and_review_tool_source,
     REVIEW_VERSION,
     static_review_is_current,
-    validate_static_findings_config,
     with_static_review,
 )
 
 if TYPE_CHECKING:
-    from galaxy.config import GalaxyAppConfiguration
     from galaxy.tools import Tool
 
 TOOL = functional_test_tool_path("identifier_single.xml")
@@ -127,7 +133,21 @@ def test_failed_review_is_kept_and_refuses_nothing(monkeypatch: pytest.MonkeyPat
     assert review.refused_rules("low") == []
 
 
-def test_unknown_severity_is_a_configuration_error() -> None:
-    validate_static_findings_config(_config(refuse=False, severity="High"))
-    with pytest.raises(ConfigurationError, match="not 'High'"):
-        validate_static_findings_config(_config(severity="High"))
+def _app_config(refuse: bool, severity: str) -> GalaxyAppConfiguration:
+    return GalaxyAppConfiguration(
+        override_tempdir=False,
+        tool_security_refuse_static_findings=refuse,
+        tool_security_refuse_static_findings_severity=severity,
+    )
+
+
+@pytest.mark.parametrize("severity", ["High", "info"])
+def test_unknown_severity_is_a_configuration_error(severity: str) -> None:
+    _app_config(False, severity)
+    with pytest.raises(ConfigurationError, match=f"not '{severity}'"):
+        _app_config(True, severity)
+
+
+def test_configurable_severities_are_the_findings_severities_but_info() -> None:
+    assert STATIC_FINDINGS_SEVERITIES == tuple(reversed(SEVERITIES[1:]))
+    assert SEVERITIES[0] == INFO

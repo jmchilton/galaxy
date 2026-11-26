@@ -32,7 +32,7 @@ from collections.abc import (
 from typing import TYPE_CHECKING
 
 from galaxy.tools.patches import tool_patch_database_from_config
-from galaxy.tools.static_findings import expected_review_version
+from galaxy.tools.static_findings import REVIEW_VERSION
 from .discover import conf_tool_directories
 
 if TYPE_CHECKING:
@@ -98,8 +98,8 @@ def tool_confs_token(config: "GalaxyAppConfiguration") -> str:
     if (tool_patches := tool_patch_database_from_config(config)) is not None:
         digest.update(b"\0tool_patches\0" + tool_patches.token().encode())
     # Stored entries keep the static review of their source; turning refusals on or upgrading re-populates.
-    if (review_version := expected_review_version(config, None)) is not None:
-        digest.update(b"\0static_review\0" + review_version.encode())
+    if config.tool_security_refuse_static_findings:
+        digest.update(b"\0static_review\0" + REVIEW_VERSION.encode())
     return f"confs:{digest.hexdigest()}"
 
 
