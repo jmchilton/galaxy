@@ -1024,7 +1024,8 @@ Read by name through `getattr`, the dataset model is out of the review's sight: 
 Tool `reflection_getattr.xml`:
 
 ```
-#set $name = getattr($input, 'unsanitized').name
+#set $attribute = 'unsanitized'
+#set $name = getattr($input, $attribute).name
 echo '${name}' > '$out'
 ```
 
