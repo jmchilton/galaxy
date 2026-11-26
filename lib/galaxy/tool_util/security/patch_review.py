@@ -6,6 +6,7 @@ from typing import Any
 from galaxy.tool_util.parser.interface import ToolSource
 from galaxy.tool_util.patches import (
     patches_as_dicts,
+    PatchState,
     ToolPatchDatabase,
     ToolPatchInfo,
 )
@@ -17,9 +18,10 @@ from .report import (
     finding_to_dict,
     Report,
     sorted_refs,
+    SourceRef,
 )
 
-FindingMatch = tuple[Any, ...]
+FindingMatch = tuple[str, str, str, str | None, tuple[SourceRef, ...] | str | None]
 
 
 def finding_match(finding: Finding) -> FindingMatch:
@@ -36,6 +38,15 @@ def _notes(report: Report) -> dict[tuple[str, str], str]:
     for code, why in classification.reasons.items():
         notes[("code", code)] = f"{code}: {why}"
     return notes
+
+
+def _report_dict(report: Report) -> dict[str, Any]:
+    classification = classify(report)
+    return {
+        **report.to_dict(),
+        "codes": classification.codes,
+        "uncheckable_locations": classification.unchecked_locations,
+    }
 
 
 @dataclass
@@ -67,6 +78,12 @@ class PatchReview:
         return [note for key, note in _notes(self.after).items() if key not in before]
 
     @property
+    def mismatched(self) -> list[PatchState]:
+        """The security patch units whose ops no longer match the tool."""
+        states = self.patch.states if self.patch else []
+        return [s for s in states if s.state == "mismatch" and s.kind == "security"]
+
+    @property
     def regressed(self) -> bool:
         """The patch introduced a finding or left part of the tool unreviewable."""
         return bool(self.introduced or self.notes_added)
@@ -74,8 +91,7 @@ class PatchReview:
     def to_dict(self) -> dict[str, Any]:
         return {
             "patches": patches_as_dicts(self.patch),
-            "before": self.before.to_dict(),
-            "after": self.after.to_dict(),
+            "before": _report_dict(self.before),
             "cleared": [finding_to_dict(f) for f in self.cleared],
             "introduced": [finding_to_dict(f) for f in self.introduced],
             "notes_added": self.notes_added,

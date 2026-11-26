@@ -25,6 +25,7 @@ from galaxy.tool_util.parser import get_tool_source
 from galaxy.tool_util.parser.interface import ToolSource
 from galaxy.tool_util.parser.xml import XmlToolSource
 from galaxy.tool_util.patches import (
+    key_from_ids,
     load_tool_patch_database,
     ToolPatchDatabase,
 )
@@ -50,22 +51,25 @@ from .report import (
 
 UNCHECKABLE = "uncheckable"
 UNCHECKED = "unchecked"
+MISMATCH = "mismatch"
 NOT_XML = "not reviewed: only XML tools are analysed"
 NO_TOOLS = "no tools found"
 
 
 @dataclass(frozen=True)
 class FailOn:
-    """The --fail-on conditions: a severity index, and whether codes or unchecked locations fail."""
+    """The --fail-on conditions: a severity index, and whether codes, unchecked locations or mismatches fail."""
 
     severity: int | None = None
     uncheckable: bool = False
     unchecked: bool = False
+    # Checked by the caller on a PatchReview.
+    mismatch: bool = False
 
     @classmethod
     def parse(cls, values: list[str]) -> FailOn:
         severity = min((SEVERITIES.index(v) for v in values if v in SEVERITIES), default=None)
-        return cls(severity, UNCHECKABLE in values, UNCHECKED in values)
+        return cls(severity, UNCHECKABLE in values, UNCHECKED in values, MISMATCH in values)
 
     def met(self, report: Report, classification: Classification) -> bool:
         if self.severity is not None and any(SEVERITIES.index(f.severity) >= self.severity for f in report.findings):
@@ -102,8 +106,14 @@ class NotReviewed:
 def main(argv: list[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
+    if not args.tool_patch_paths:
+        for option, given in (("--guid", args.guid), (f"--fail-on {MISMATCH}", MISMATCH in args.fail_on)):
+            if given:
+                parser.error(f"{option} needs --tool-patch-path")
     if args.guid and (len(args.tools) != 1 or os.path.isdir(args.tools[0])):
         parser.error("--guid needs exactly one tool file")
+    if args.guid and key_from_ids(args.guid, None, None) is None:
+        parser.error("--guid is not a Tool Shed guid (<tool shed>/repos/<owner>/<repo>/<tool id>/<version>)")
     patch_db = _patch_database(args.tool_patch_paths)
     if patch_db is not None and len(patch_db.collections) != len(args.tool_patch_paths):
         parser.error("a --tool-patch-path is not a loadable tool patch collection (see the log)")
@@ -134,7 +144,8 @@ def main(argv: list[str] | None = None) -> int:
         review = result.patch_review
         if review is not None:
             reports[path].update(review.to_dict())
-        if fail_on.met(report, classification) or (review is not None and review.regressed):
+        patch_failed = review is not None and (review.regressed or (fail_on.mismatch and bool(review.mismatched)))
+        if fail_on.met(report, classification) or patch_failed:
             failed = True
         if not args.json:
             _print_report(path, tool_version, report, threshold, classification, review)
@@ -151,16 +162,18 @@ def _parser() -> argparse.ArgumentParser:
         "--min-severity",
         choices=SEVERITIES,
         default="info",
-        help="hide findings below this severity in the text output (--json and --fail-on see every finding)",
+        help="hide findings below this severity in the text output, CLEARED lines included; NEW lines are always"
+        " shown (--json and --fail-on see every finding)",
     )
     parser.add_argument(
         "--fail-on",
         action="append",
-        choices=(*SEVERITIES, UNCHECKABLE, UNCHECKED),
+        choices=(*SEVERITIES, UNCHECKABLE, UNCHECKED, MISMATCH),
         default=[],
         help="exit 1 when any finding, vulnerability or capability, is at or above this severity (--judge verdicts"
         f" do not change this); with '{UNCHECKABLE}' when a tool has an uncheckable code; with '{UNCHECKED}' when a"
         " tool has an unchecked location (uncheckable_locations), templates the review did not analyse included;"
+        f" with '{MISMATCH}' when a security tool patch of a tool does not match it (needs --tool-patch-path);"
         " repeatable",
     )
     parser.add_argument(
@@ -174,7 +187,10 @@ def _parser() -> argparse.ArgumentParser:
         dest="tool_patch_paths",
         help="tool patch collection to review each tool before and after (repeatable, in order); every op is applied",
     )
-    parser.add_argument("--guid", help="Tool Shed guid of the one tool file reviewed, to match its shed patch key")
+    parser.add_argument(
+        "--guid",
+        help="Tool Shed guid of the one tool file reviewed, to match its shed patch key (needs --tool-patch-path)",
+    )
     return parser
 
 
@@ -257,7 +273,7 @@ def _print_report(
 ) -> None:
     print(f"{path} ({' '.join(part for part in (report.tool_id, tool_version) if part)})")
     if review is not None:
-        _print_patch_review(review)
+        _print_patch_review(review, threshold)
     for finding in report.sorted():
         if SEVERITIES.index(finding.severity) < threshold:
             continue
@@ -274,10 +290,12 @@ def _print_report(
         print(f"  NOTE     {code}: {why}")
 
 
-def _print_patch_review(review: PatchReview) -> None:
+def _print_patch_review(review: PatchReview, threshold: int) -> None:
     for state in review.patch.states if review.patch else []:
         print(f"  PATCH    {state.state:22} {state.kind:18} {state.key}")
-    for label, findings in (("CLEARED", review.cleared), ("NEW", review.introduced)):
+    cleared = [f for f in review.cleared if SEVERITIES.index(f.severity) >= threshold]
+    # NEW is not filtered: any of it fails the run.
+    for label, findings in (("CLEARED", cleared), ("NEW", review.introduced)):
         for finding in findings:
             where = _where(finding)
             print(f"  {label:8} {finding.severity.upper():8} {finding.rule:22} {where:18} {finding.message}")
