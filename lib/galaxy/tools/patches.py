@@ -9,6 +9,7 @@ from typing import (
 
 from galaxy.tool_util.parser.interface import ToolSource
 from galaxy.tool_util.patches import (
+    key_from_ids,
     load_tool_patch_database,
     ToolPatchDatabase,
     ToolPatchInfo,
@@ -17,10 +18,12 @@ from galaxy.tool_util.patches.model import (
     level_index,
     ReproducibilityLevel,
 )
+from galaxy.util.path import StrPath
 from galaxy.version import VERSION_MAJOR
 
 if TYPE_CHECKING:
     from galaxy.config import GalaxyAppConfiguration
+    from galaxy.tools.source_store.index import ToolIndexEntry
 
 # Job-cache reuse across the patched/unpatched boundary is safe only up to this level.
 JOB_CACHE_SAFE_LEVEL: ReproducibilityLevel = "rejects_inputs"
@@ -28,7 +31,7 @@ JOB_CACHE_SAFE_LEVEL: ReproducibilityLevel = "rejects_inputs"
 
 def tool_patch_database_from_config(config: "GalaxyAppConfiguration") -> ToolPatchDatabase | None:
     """The configured patch database, or None when ``tool_patch_paths`` is empty."""
-    paths = list(getattr(config, "tool_patch_paths", None) or [])
+    paths = list(config.tool_patch_paths or [])
     if not paths:
         return None
     return load_tool_patch_database(
@@ -39,14 +42,25 @@ def tool_patch_database_from_config(config: "GalaxyAppConfiguration") -> ToolPat
     )
 
 
+def _repository_dir_hint(config_file: StrPath | None) -> str | None:
+    return os.path.dirname(os.path.abspath(config_file)) if config_file else None
+
+
 def apply_tool_patches(
-    db: ToolPatchDatabase | None, tool_source: ToolSource, guid: str | None, config_file: Any
+    db: ToolPatchDatabase | None, tool_source: ToolSource, guid: str | None, config_file: StrPath | None
 ) -> ToolSource:
     """Patch a freshly parsed tool source; returns ``tool_source`` itself without a database."""
     if db is None:
         return tool_source
-    hint = os.path.dirname(os.path.abspath(str(config_file))) if config_file else None
-    return db.apply_patches(tool_source, guid=guid, repository_dir_hint=hint)
+    return db.apply_patches(tool_source, guid=guid, repository_dir_hint=_repository_dir_hint(config_file))
+
+
+def indexed_patch_digest(db: ToolPatchDatabase | None, entry: "ToolIndexEntry", config_file: StrPath) -> str | None:
+    """The patch digest :func:`apply_tool_patches` would record for an indexed tool, without parsing it."""
+    if db is None or entry.source_class != "XmlToolSource":
+        return None
+    key = key_from_ids(entry.id, entry.id, entry.version)
+    return db.tool_digest(key, _repository_dir_hint(config_file)) if key is not None else None
 
 
 def patches_as_dicts(patch: ToolPatchInfo | None) -> list[dict[str, Any]] | None:

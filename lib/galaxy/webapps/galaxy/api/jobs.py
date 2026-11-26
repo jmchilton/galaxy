@@ -56,6 +56,7 @@ from galaxy.schema.schema import (
 )
 from galaxy.schema.types import OffsetNaiveDatetime
 from galaxy.tool_util.output_checker import AnyJobMessage
+from galaxy.tools.patches import patch_blocks_job_cache
 from galaxy.web import expose_api_anonymous
 from galaxy.webapps.base.controller import UsesVisualizationMixin
 from galaxy.webapps.base.webapp import GalaxyWebTransaction
@@ -581,7 +582,7 @@ class FastAPIJobs:
                 inputs[k] = v
         request_context = proxy_work_context_for_history(trans)
         all_params, all_errors, _, _ = tool.expand_incoming(request_context, incoming=inputs)
-        if any(all_errors):
+        if any(all_errors) or patch_blocks_job_cache(tool.patch):
             return []
         params_dump = [tool.params_to_strings(param, trans.app, nested=True) for param in all_params]
         jobs = []

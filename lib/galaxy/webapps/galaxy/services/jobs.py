@@ -60,6 +60,7 @@ from galaxy.tool_util.parameters import (
     ToolParameterBundleModel,
 )
 from galaxy.tools.parameters.meta import validate_matched_batch_lengths
+from galaxy.tools.patches import patch_blocks_job_cache
 from galaxy.webapps.galaxy.services.base import (
     ServiceBase,
 )
@@ -301,7 +302,8 @@ class JobsService(ServiceBase):
             user=trans.async_request_user,
             tool_source=tool_source,
             tool_request_id=tool_request_id,
-            use_cached_jobs=job_request.use_cached_jobs or False,
+            # The worker rebuilds the tool from source without its patch state, so decide here.
+            use_cached_jobs=bool(job_request.use_cached_jobs) and not patch_blocks_job_cache(tool.patch),
             rerun_remap_job_id=job_request.rerun_remap_job_id,
             preferred_object_store_id=job_request.preferred_object_store_id,
             tags=job_request.tags,
