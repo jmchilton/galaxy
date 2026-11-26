@@ -59,8 +59,8 @@ def worst(a: str, b: str) -> str:
     return a if SEVERITIES.index(a) >= SEVERITIES.index(b) else b
 
 
-# What a value that leaves its place can do, which decides the level of tool_security_review that
-# refuses it: become code, stop being the data it is meant to be, or split into more words.
+# What a value that leaves its place can do, the level of a finding: become code, stop being the data
+# it is meant to be, or split into more words.
 CODE = "code"
 DATA = "data"
 ALL = "all"
@@ -71,11 +71,6 @@ _SEVERITY_LEVELS = {CRITICAL: CODE, HIGH: CODE, MEDIUM: DATA, LOW: ALL}
 def level_of(severity: str) -> str | None:
     """The level of a finding of this severity, unless its verdict says otherwise."""
     return _SEVERITY_LEVELS.get(severity)
-
-
-def enforced(level: str | None, at: str) -> bool:
-    """Whether a finding of ``level`` is refused at the enforcement level ``at``."""
-    return level is not None and LEVELS.index(level) <= LEVELS.index(at)
 
 
 def stricter(a: str | None, b: str | None) -> str | None:
@@ -143,10 +138,10 @@ class Verdict(NamedTuple):
     # When not empty, the value must also contain one of these: closing single quotes starts a
     # command only with a command character after the quote.
     requires: Chars = frozenset()
-    # The level that refuses the finding, when it is not the one of its severity (level_of).
+    # The level of the finding, when it is not the one of its severity (level_of).
     level: Optional[str] = None
     # At the data level, the value must also contain one of these (DATA_HARM): splitting into
-    # plain words is refused only at the level of all.
+    # plain words counts only at the level of all.
     data_requires: Chars = frozenset()
 
 

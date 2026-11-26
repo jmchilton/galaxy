@@ -1,6 +1,6 @@
 """#def helpers of widely installed tools that look a variable up with ``getVar`` by the name their caller passes.
 
-``getVar`` of a computed name can reach any variable, so every job of a template with one is refused. A known
+``getVar`` of a computed name can reach any variable, which the review reports as reflection. A known
 helper that is only ever called with literal text renders the same as one copy of it per call, the text in place
 of its arguments, and in a copy ``getVar`` looks up a literal name, which the review follows.
 

@@ -1,9 +1,8 @@
-"""Access patterns: the ways a template reads data that the job check cannot see.
+"""Access patterns: the ways a template reads data that is no value of a tool input.
 
 Each capability finding of the review that reads data (``CODE_CAPABILITIES``) gets one pattern code. Most
-codes bypass the job check: it compares the job's values with the review's findings, and a value read
-this way is no value of the job. A job of such a tool is refused only when the review also sees the read
-value written where it can do harm. The other codes read values the server sets.
+codes read values the review cannot follow to an input, so no finding about such a value says where it is
+written. The other codes read values the server sets.
 """
 
 import re
@@ -23,7 +22,7 @@ from galaxy.tool_util.security.report import (
 
 
 class PatternCode(str, Enum):
-    # The job check cannot see the value read.
+    # The review cannot follow the value read.
     REFLECTION = "reflection"
     MODEL_ACCESS = "model-access"
     APP_ACCESS = "app-access"
@@ -45,9 +44,9 @@ DESCRIPTIONS = {
     PatternCode.APP_ACCESS: "Reads Galaxy's application object beyond its configuration (`$__app__.model`, ...),"
     " which reaches any data of the server.",
     PatternCode.USER_OBJECT: "Reads the user object with the sanitizer off. A preference read by its name is"
-    " checked; anything else read from the user object is not.",
+    " traced; anything else read from the user object is not.",
     PatternCode.FILE_ACCESS: "Reads or inspects files on the server (`open()`, `os.path`, ...). The review traces"
-    " `open()` of an input dataset as its content; any other file is not a value of the job.",
+    " `open()` of an input dataset as its content; any other file is no value of a tool input.",
     PatternCode.TEMPLATE_CODE: "Runs Python the review cannot follow (`exec`, `compile`, imports of modules that"
     " start processes or open connections).",
     PatternCode.JOB_METADATA: "Checks for the job that made a dataset, or reads its tool id or version, which the"

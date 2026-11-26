@@ -15,7 +15,6 @@ from typing import (
 
 from .charsets import (
     CRITICAL,
-    enforced,
     HIGH,
     SEVERITIES,
     stricter,
@@ -74,7 +73,7 @@ CODE_CAPABILITIES = frozenset(
 
 # The severities of serious findings, the ones of the code level (charsets.level_of) unless a verdict
 # says otherwise. The characters of medium findings, a space, a slash or a quote, are common in element
-# identifiers and dataset names: their jobs are refused only from tool_security_review: enforce_data on.
+# identifiers and dataset names.
 CHECKED_SEVERITIES = frozenset((HIGH, CRITICAL))
 
 
@@ -155,8 +154,8 @@ class Finding:
     # Sources whose value the template rewrites in a way that can bring in a breakout character
     # (str.replace, re.sub, a decoder, an unknown function): their characters decide nothing.
     unchecked: tuple[SourceRef, ...] = ()
-    # The level of tool_security_review that refuses a vulnerability (charsets.LEVELS), and what a
-    # value must also hold at the data level (charsets.DATA_HARM).
+    # The level of a vulnerability (charsets.LEVELS), and what a value must also hold at the data
+    # level (charsets.DATA_HARM).
     level: str | None = None
     data_requires: frozenset[str] = frozenset()
 
@@ -295,11 +294,6 @@ def _finding_to_dict(finding: Finding) -> dict[str, Any]:
     as_dict["closes"] = sorted(finding.closes)
     as_dict["data_requires"] = sorted(finding.data_requires)
     return as_dict
-
-
-def enforced_findings(report: Report, level: str) -> list[Finding]:
-    """The vulnerability findings the enforcement ``level`` refuses jobs for, most severe first."""
-    return [f for f in report.sorted() if f.kind == VULNERABILITY and enforced(f.level, level)]
 
 
 def serious_findings(report: Report) -> list[Finding]:

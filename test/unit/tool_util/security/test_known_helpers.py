@@ -55,7 +55,7 @@ SECTIONS = """
 
 
 def code(report: Report) -> set[str]:
-    """The rules of the findings that refuse every job: template code that reaches what the job does not carry."""
+    """The rules of the findings for template code that reaches what no input carries."""
     return {f.rule for f in report.findings if f.rule in CODE_CAPABILITIES and rendered(f.location)}
 
 

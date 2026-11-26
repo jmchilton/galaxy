@@ -1,909 +1,347 @@
 # Cases of the tool security review. See __init__.py for the format.
 #
-# Red jobs carry a value that leaves its place in the template; with `harm: true` the runner also
-# builds their command with the review off and checks that it creates `harm-marker`. Green jobs are
-# the nearest values the review must let through.
+# Each case is a synthetic tool and what the review of its templates must report.
 
 raw_text_shell_injection:
   doc: A text value written past its sanitizer can close its single quotes and start a command.
   tool: raw_text_single_quoted.xml
-  code: shell-injection
   review:
     serious_rules: [shell-injection]
     findings:
       - {rule: shell-injection, severity: high, accessor: raw, param: word, checkable: true}
-  red:
-    - inputs: {word: "a';touch harm-marker;'"}
-      harm: true
-      expect:
-        rejected: true
-        message_contains: ["the value of input 'word' contains the characters [' ;]"]
-  green:
-    - doc: Command characters stay inside the quotes when no quote closes them.
-      inputs: {word: "a;b|c && d"}
-      harm: true
-      expect: {rejected: false}
 
 sanitized_text_stays_quoted:
   doc: The default sanitizer turns quotes into tokens, so a sanitized text value cannot leave its quotes.
   tool: sanitized_text_single_quoted.xml
   review:
     serious_rules: []
-  green:
-    - inputs: {word: "a';touch harm-marker;'"}
-      harm: true
-      expect: {rejected: false}
 
 element_identifier_shell_injection:
   doc: Element identifiers are not sanitized; one in single quotes can start a command.
   tool: element_identifier_single_quoted.xml
-  code: shell-injection
   review:
     serious_rules: [shell-injection]
     findings:
       - {rule: shell-injection, accessor: element_identifier, param: input, checkable: true}
-  red:
-    - collections:
-        input:
-          elements: [{identifier: "a';touch harm-marker;'"}]
-      harm: true
-      expect:
-        rejected: true
-        message_contains: ["an element identifier or the name of input 'input' contains the characters [' ;]"]
-  green:
-    - doc: Spaces, slashes and dots are common in identifiers and stay in place.
-      collections:
-        input:
-          elements: [{identifier: "sample 1/reads.fq"}]
-      harm: true
-      expect: {rejected: false}
-    - doc: >-
-        A lone quote only splits arguments, a medium finding the check lets through; the command it
-        builds does not parse, which is the tool's bug rather than a way out.
-      collections:
-        input:
-          elements: [{identifier: "Bob's reads"}]
-      expect: {rejected: false}
 
 dataset_name_stays_quoted:
   doc: >-
     Outside a collection, the element identifier of a dataset input is its name, which Galaxy sanitizes.
-    The review counts it as written as the user set it; the job check reads it as the template does.
+    The review still reports it as written as the user set it.
   tool: dataset_name_identifier.xml
   review:
     serious_rules: [shell-injection]
     findings:
       - {rule: shell-injection, accessor: element_identifier, param: input, checkable: true}
-  green:
-    - datasets:
-        input: {name: "a';touch harm-marker;'"}
-      harm: true
-      expect: {rejected: false}
 
 wrapped_names_stay_quoted:
   doc: >-
     Galaxy sanitizes dataset names and metadata read through the dataset wrapper even in a tool that turns
-    the sanitizer off. The review counts them as written as users set them; the job check reads them as
-    the template does, so these jobs run.
+    the sanitizer off. The review still reports them as written as users set them.
   tool: dataset_name_unsanitized.xml
   review:
     serious_rules: [shell-injection]
     findings:
       - {rule: shell-injection, accessor: dataset_attribute, param: input, key: name, checkable: true}
       - {rule: shell-injection, accessor: metadata, param: input, key: column_names, checkable: true}
-  green:
-    - datasets:
-        input: {name: "a';touch harm-marker;'", ext: tabular, content: "1\t2\n", metadata: {column_names: ["a';touch harm-marker;'"]}}
-      harm: true
-      expect: {rejected: false}
 
 group_tags_shell_injection:
   doc: Group tags are not sanitized.
   tool: group_tags.xml
-  code: shell-injection
   review:
     serious_rules: [shell-injection]
     findings:
       - {rule: shell-injection, accessor: group_tags, param: input, checkable: true}
-  red:
-    - datasets:
-        input: {tags: ["group:a';touch harm-marker;'"]}
-      harm: true
-      expect:
-        rejected: true
-        message_contains: ["a group tag of a dataset of input 'input' contains the characters [' ;]"]
-  green:
-    - doc: Command characters stay inside the quotes when no quote closes them.
-      datasets:
-        input: {tags: ["group:a;b", "name:sample1"]}
-      harm: true
-      expect: {rejected: false}
 
 dataset_content_shell_injection:
-  doc: A template that reads a dataset with open() writes its content; the check reads the file Galaxy keeps.
+  doc: A template that reads a dataset with open() writes its content, which the review follows.
   tool: dataset_content_first_line.xml
-  code: shell-injection
   review:
     patterns: [file-access]
     serious_rules: [shell-injection]
     findings:
       - {rule: shell-injection, accessor: dataset_content, param: input, checkable: true}
       - {rule: template-file-io}
-  red:
-    - datasets:
-        input: {content: "a';touch harm-marker;'\n"}
-      harm: true
-      expect:
-        rejected: true
-        message_contains: ["the content of a dataset of input 'input' contains the characters [' ;]"]
-  green:
-    - doc: Command characters stay inside the quotes when no quote closes them.
-      datasets:
-        input: {content: "chr1;100|200\n"}
-      harm: true
-      expect: {rejected: false}
 
 user_preference_stays_quoted:
   doc: >-
     Unless the tool turns the sanitizer off, Galaxy sanitizes what a template reads from the user object,
-    preferences included. The review counts a preference as written as the user set it; the job check reads
-    it as the template does, so this job runs.
+    preferences included. The review still reports a preference as written as the user set it.
   tool: user_preference.xml
   review:
     serious_rules: [shell-injection]
     findings:
       - {rule: shell-injection, accessor: user_preference, key: "spec|label", checkable: true}
-  green:
-    - user: {preferences: {"spec|label": "a';touch harm-marker;'"}}
-      harm: true
-      expect: {rejected: false}
 
 user_preference_shell_injection:
   doc: >-
     With the sanitizer off, a preference is written as the user set it. Read by name, with a subscript or a
     Cheetah name, it can close its single quotes and start a command.
   tool: user_preference_unsanitized.xml
-  code: shell-injection
   review:
     patterns: [user-object]
     serious_rules: [shell-injection]
     findings:
       - {rule: shell-injection, accessor: user_preference, key: "spec|label", checkable: true}
       - {rule: shell-injection, accessor: user_preference, key: label, checkable: true}
-  red:
-    - user: {preferences: {"spec|label": "a';touch harm-marker;'", label: x}}
-      harm: true
-      expect:
-        rejected: true
-        message_contains: ["your preference 'spec|label' contains the characters [' ;]"]
-    - user: {preferences: {"spec|label": x, label: "a';touch harm-marker;'"}}
-      harm: true
-      expect:
-        rejected: true
-        message_contains: ["your preference 'label' contains the characters [' ;]"]
-  green:
-    - doc: Command characters stay inside the quotes when no quote closes them.
-      user: {preferences: {"spec|label": "a;b|c && d", label: "a;b|c && d"}}
-      harm: true
-      expect: {rejected: false}
 
 stray_quote:
   doc: >-
     A lone quote in one value is harmless by itself, but it flips the quoting of the rest of the line,
     which leaves the command characters of the next value unquoted.
   tool: stray_quote.xml
-  code: stray-quote
   review:
     serious_rules: [shell-injection]
-  red:
-    - collections:
-        input:
-          elements: [{identifier: "Bob's reads"}]
-      inputs: {word: "x;touch harm-marker;#"}
-      harm: true
-      expect:
-        rejected: true
-        message_contains:
-          - "the value of input 'word' contains the characters [;]"
-          - "an element identifier or the name of input 'input' contains the characters [']"
-  green:
-    - doc: The same value with no quote before it stays inside its quotes.
-      collections:
-        input:
-          elements: [{identifier: "Bobs reads"}]
-      inputs: {word: "x;touch harm-marker;#"}
-      harm: true
-      expect: {rejected: false}
-    - doc: The same lone quote next to a value without command characters.
-      collections:
-        input:
-          elements: [{identifier: "Bob's reads"}]
-      inputs: {word: "it's fine"}
-      harm: true
-      expect: {rejected: false}
 
 nested_shell:
   doc: A value in the program of `bash -c` is shell code again, inside the outer quotes.
   tool: nested_shell.xml
-  code: nested-interpreter
   review:
     serious_rules: [nested-interpreter]
     findings:
       - {rule: nested-interpreter, accessor: raw, param: word, checkable: true}
-  red:
-    - inputs: {word: "a;touch harm-marker"}
-      harm: true
-      expect:
-        rejected: true
-        message_contains: ["the value of input 'word' contains the characters [;]"]
-  green:
-    - inputs: {word: "hello world"}
-      harm: true
-      expect: {rejected: false}
 
 sed_program:
   doc: A value in a sed program can end the s command and add one that runs a shell command (`e`, GNU sed).
   tool: sed_program.xml
-  code: nested-interpreter
   review:
     serious_rules: [nested-interpreter]
-  red:
-    - inputs: {word: "y/;e touch harm-marker\ns/x/"}
-      expect:
-        rejected: true
-        message_contains: ["the value of input 'word' contains the characters [newline /]"]
-  green:
-    - inputs: {word: "hello world"}
-      harm: true
-      expect: {rejected: false}
 
 configfile_python:
   doc: A value in a string of a Python configfile can end the string and add Python code.
   tool: configfile_python.xml
-  code: configfile-injection
   review:
     serious_rules: [configfile-injection]
     findings:
       - {rule: configfile-injection, location: "configfile:script", accessor: raw, param: word, checkable: true}
-  red:
-    - inputs: {word: "';open('harm-marker','w');'"}
-      harm: true
-      expect:
-        rejected: true
-        message_contains: ["the value of input 'word' contains the characters [']"]
-  green:
-    - inputs: {word: "a;b \"c\" $d"}
-      harm: true
-      expect: {rejected: false}
 
 path_traversal:
   doc: >-
-    A file name the user gives is written as a path `cp` writes to. With `enforce_data`, a slash in it is refused,
-    since it can name a file outside the job's directory.
+    A file name the user gives is written as a path `cp` writes to. A slash in it can name a file outside the
+    job's directory.
   tool: copy_to_named_file.xml
-  code: path-traversal
   review:
     findings:
       - {rule: path-traversal, severity: medium, accessor: text, param: name, checkable: true}
-  red:
-    - config: {mode: enforce_data}
-      datasets: {input: {name: reads.txt}}
-      inputs: {name: "../harm-marker"}
-      harm: true
-      expect:
-        rejected: true
-        message_contains: ["the value of input 'name' contains the characters [/]"]
-  green:
-    - config: {mode: enforce_data}
-      datasets: {input: {name: reads.txt}}
-      inputs: {name: reads.txt}
-      harm: true
-      expect: {rejected: false}
-    - doc: With `enforce_code`, the default, a path is not refused.
-      datasets: {input: {name: reads.txt}}
-      inputs: {name: "../reads.txt"}
-      expect: {rejected: false}
 
 option_injection:
   doc: >-
-    A quoted value that starts an argument can begin with a dash, and `sort` reads it as an option. With
-    `enforce_data`, a leading dash is refused.
+    A quoted value that starts an argument can begin with a dash, and `sort` reads it as an option.
   tool: sort_quoted_operand.xml
-  code: option-injection
   review:
     findings:
       - {rule: option-injection, severity: low, accessor: text, param: file, checkable: true}
-  red:
-    - config: {mode: enforce_data}
-      datasets: {input: {name: reads.txt}}
-      inputs: {file: "-oharm-marker"}
-      harm: true
-      expect:
-        rejected: true
-        message_contains: ["the value of input 'file' contains the characters [a leading -]"]
-  green:
-    - doc: A dash inside the value is not an option.
-      config: {mode: enforce_data}
-      datasets: {input: {name: reads.txt}}
-      inputs: {file: "reads-1.txt"}
-      expect: {rejected: false}
-    - doc: With `enforce_code`, the default, a leading dash is not refused.
-      datasets: {input: {name: reads.txt}}
-      inputs: {file: "-r"}
-      expect: {rejected: false}
 
 argument_injection:
   doc: >-
-    An unquoted value splits into words. With `enforce_data`, a job is refused when a word can be an option, a home
-    directory, a path or a glob; with `enforce_all`, also when the words are plain.
+    An unquoted value splits into words, and a word can be an option, a home directory, a path or a glob.
   tool: sort_unquoted_operands.xml
-  code: argument-injection
   review:
     findings:
       - {rule: argument-injection, severity: medium, accessor: text, param: files, checkable: true}
-  red:
-    - config: {mode: enforce_data}
-      datasets: {input: {name: reads.txt}}
-      inputs: {files: "reads.txt -o harm-marker"}
-      harm: true
-      expect:
-        rejected: true
-        message_contains: ["the value of input 'files' contains the characters [space a word starting with -]"]
-    - doc: Plain words are refused only with `enforce_all`.
-      config: {mode: enforce_all}
-      datasets: {input: {name: reads.txt}}
-      inputs: {files: "reads.txt reads.txt"}
-      expect: {rejected: true}
-  green:
-    - config: {mode: enforce_data}
-      datasets: {input: {name: reads.txt}}
-      inputs: {files: "reads.txt reads.txt"}
-      harm: true
-      expect: {rejected: false}
-    - config: {mode: enforce_all}
-      datasets: {input: {name: reads.txt}}
-      inputs: {files: "reads.txt"}
-      harm: true
-      expect: {rejected: false}
 
 path_like_name:
   doc: >-
-    `sort -o` writes to a file named after the element identifier, which the review does not take for a path
-    of its own. With `enforce_data`, an identifier or dataset name that a template writes may not contain a
-    slash or start with a dash or a tilde.
+    `sort -o` writes to a file named after the element identifier. The review reports that the identifier can
+    close its quotes, but does not take it for a path of its own: a slash or a leading dash in it gets no
+    finding.
   tool: sort_to_named_file.xml
-  code: path-like-name
-  red:
-    - config: {mode: enforce_data}
-      datasets:
-        input: {name: "../harm-marker"}
-      harm: true
-      expect:
-        rejected: true
-        message_contains: ["an element identifier or the name of input 'input' contains the characters [/]"]
-    - config: {mode: enforce_data}
-      datasets:
-        input: {name: "-reads.txt"}
-      expect:
-        rejected: true
-        message_contains: ["an element identifier or the name of input 'input' contains the characters [a leading -]"]
-  green:
-    - config: {mode: enforce_data}
-      datasets:
-        input: {name: "reads 1.txt"}
-      harm: true
-      expect: {rejected: false}
-    - doc: With `enforce_code`, the default, a path is not refused.
-      datasets:
-        input: {name: "../reads.txt"}
-      expect: {rejected: false}
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, accessor: element_identifier, param: input, checkable: true}
 
 env_assignment:
   doc: >-
     `env` takes every word before the command as an assignment or the command: an unquoted value that splits
     runs a command of its own.
   tool: env_assignment.xml
-  code: argument-injection
   review:
     findings:
       - {rule: argument-injection, severity: high, accessor: text, param: label, checkable: true}
-  red:
-    - datasets: {input: {name: reads.txt}}
-      inputs: {label: "x touch harm-marker"}
-      harm: true
-      expect:
-        rejected: true
-        message_contains: ["the value of input 'label' contains the characters [space]"]
-  green:
-    - datasets: {input: {name: reads.txt}}
-      inputs: {label: x}
-      harm: true
-      expect: {rejected: false}
 
 export_name:
   doc: >-
     A value that names the variable `export` sets can set BASH_ENV, PATH or LD_PRELOAD with letters alone.
   tool: export_name.xml
-  code: uncheckable-letters-are-code
   review:
     serious_rules: [variable-name]
-  red:
-    - datasets: {input: {name: reads.txt}}
-      inputs: {name: LABEL}
-      expect: {rejected: true, message_contains: ["letters alone can be code"]}
-  green:
-    - config: {when_unsure: log}
-      datasets: {input: {name: reads.txt}}
-      inputs: {name: LABEL}
-      harm: true
-      expect: {rejected: false, warns: [uncheckable-letters-are-code]}
 
 export_value:
   doc: >-
-    bash and dash from 0.5.11 take an operand of `export` whole, older dash splits it into more assignments.
-    With `enforce_data`, an unquoted value of one that holds a space and a `=` is refused.
+    bash and dash from 0.5.11 take an operand of `export` whole, older dash splits it into more assignments:
+    an unquoted value of one that holds a space and a `=` can set another variable.
   tool: export_value.xml
-  code: argument-injection
   review:
     findings:
       - {rule: argument-injection, severity: medium, accessor: text, param: label, checkable: true}
-  red:
-    - config: {mode: enforce_data}
-      datasets: {input: {name: reads.txt}}
-      inputs: {label: "x OTHER=1"}
-      expect:
-        rejected: true
-        message_contains: ["the value of input 'label' contains the characters [space =]"]
-  green:
-    - config: {mode: enforce_data}
-      datasets: {input: {name: reads.txt}}
-      inputs: {label: "x y"}
-      harm: true
-      expect: {rejected: false}
 
 not_analysed_strict:
   doc: >-
-    Where the review does not follow parts of a template, it cannot tell which characters do harm,
-    so every value the template reads must be plain.
+    Where the review does not follow parts of a template, it cannot tell which characters do harm there,
+    and it lists the template as unchecked.
   tool: search_list.xml
-  code: not-plain-unchecked-place
   review:
     unchecked_locations: {command: parts of it were not analysed}
-  red:
-    - collections:
-        input:
-          elements: [{identifier: "a';touch harm-marker;'"}]
-      harm: true
-      expect:
-        rejected: true
-        message_contains:
-          - "an element identifier or the name of input 'input' contains [' ;]"
-          - "allows only plain names and values for tool"
-          - "because this tool writes values in places that no check of their characters can judge (command)"
-    - doc: Even a character that is harmless where the value is written.
-      collections:
-        input:
-          elements: [{identifier: "a;b"}]
-      expect: {rejected: true}
-  green:
-    - collections:
-        input:
-          elements: [{identifier: "sample 1/reads.fq"}]
-      harm: true
-      expect: {rejected: false}
-    - doc: An administrator can run such jobs and only log what the strict check refuses.
-      config: {when_unsure: log}
-      collections:
-        input:
-          elements: [{identifier: "a;b"}]
-      harm: true
-      expect: {rejected: false, warns: [not-plain-unchecked-place]}
 
 raw_dataset_model:
   doc: >-
-    `$input.unsanitized.name` is the dataset's name as the user set it, without the sanitizer: the check reads
-    it from the model too.
+    `$input.unsanitized.name` is the dataset's name as the user set it, without the sanitizer.
   tool: raw_dataset_model.xml
-  code: shell-injection
   review:
     patterns: [model-access]
     serious_rules: [shell-injection]
     findings:
       - {rule: shell-injection, accessor: raw_dataset_attribute, param: input, key: name, checkable: true}
       - {rule: template-model-access}
-  red:
-    - datasets:
-        input: {name: "a';touch harm-marker;'"}
-      harm: true
-      expect:
-        rejected: true
-        message_contains: ["the name of a dataset of input 'input' contains the characters [' ;]"]
-  green:
-    - doc: Command characters stay inside the quotes when no quote closes them.
-      datasets:
-        input: {name: "a;b|c"}
-      harm: true
-      expect: {rejected: false}
 
 raw_dataset_history:
   doc: >-
     Beyond the dataset's own strings and metadata, the model reaches its history, its tags and the job that
-    made it, which no check of the job's values sees: every job is refused.
+    made it, which the review cannot trace to one value: its finding is not checkable.
   tool: raw_dataset_history.xml
-  code: uncheckable-template-code
   review:
     patterns: [model-access]
     findings:
       - {rule: shell-injection, accessor: opaque, param: input, checkable: false}
-  red:
-    - datasets:
-        input: {name: reads}
-      expect: {rejected: true, message_contains: ["$unsanitized.history"]}
-  green:
-    - config: {when_unsure: log}
-      datasets:
-        input: {name: reads}
-      harm: true
-      expect: {rejected: false, warns: [uncheckable-template-code]}
 
 pipe_to_shell:
-  doc: A value in text piped to a shell is code whatever its characters, so every job is refused.
+  doc: A value in text piped to a shell is code whatever its characters, so the review lists the command as unchecked.
   tool: pipe_to_shell.xml
-  code: uncheckable-letters-are-code
   review:
     unchecked_locations: {command: it sends text to a shell to run}
-  red:
-    - inputs: {word: "a;touch harm-marker"}
-      harm: true
-      expect: {rejected: true, message_contains: ["cannot check any value"]}
-    - doc: Even a plain value.
-      inputs: {word: hello}
-      expect: {rejected: true}
-  green:
-    - config: {when_unsure: log}
-      inputs: {word: hello}
-      harm: true
-      expect: {rejected: false, warns: [uncheckable-letters-are-code]}
 
 shell_runs_script_file:
   doc: >-
-    A shell given a script file reads the data piped into it as input, not as code, so the value is checked where
+    A shell given a script file reads the data piped into it as input, not as code, so the value is reviewed where
     it is written.
   tool: pipe_to_shell_script.xml
-  code: shell-injection
   review:
     serious_rules: [shell-injection]
     unchecked_locations: {}
     findings:
       - {rule: shell-injection, severity: high, accessor: raw, param: word, checkable: true}
-  red:
-    - inputs: {word: "a';touch harm-marker;'"}
-      harm: true
-      expect: {rejected: true, codes: [shell-injection]}
-  green:
-    - doc: Command characters stay inside the quotes, and the script reads them as data.
-      inputs: {word: "a;b|c $(touch harm-marker)"}
-      harm: true
-      expect: {rejected: false}
 
 command_position:
   doc: A value that names the program to run is code with letters alone.
   tool: command_position.xml
-  code: uncheckable-letters-are-code
   review:
     serious_rules: [command-position]
     findings:
       - {rule: command-position, accessor: text, param: program, checkable: false}
-  red:
-    - inputs: {program: "touch harm-marker"}
-      harm: true
-      expect: {rejected: true, message_contains: ["letters alone can be code"]}
-  green:
-    - config: {when_unsure: log}
-      inputs: {program: echo}
-      harm: true
-      expect: {rejected: false, warns: [uncheckable-letters-are-code]}
 
 rewrites_restore_tokens:
   doc: A template that turns the sanitizer's tokens back into quotes and redirects undoes the sanitizer.
   tool: rewrites_restore_tokens.xml
-  code: uncheckable-rewrites
   review:
     rewrites: true
     serious_rules: [shell-injection]
-  red:
-    - inputs: {word: "x' >harm-marker '"}
-      harm: true
-      expect: {rejected: true, message_contains: ["its templates change values with .replace"]}
-    - doc: Even a plain value.
-      inputs: {word: hello}
-      expect: {rejected: true}
-  green:
-    - config: {when_unsure: log}
-      inputs: {word: hello}
-      harm: true
-      expect: {rejected: false, warns: [uncheckable-rewrites]}
 
 literal_rewrite:
   doc: >-
-    A rewrite with literal text of a value as the job carries it adds what it writes only to a value that holds
-    what it replaces, so the job check judges each job with it. Escaping the double quote of a value that a string
-    method reads past its sanitizer leaves `$` and backticks live.
+    A rewrite with literal text of a value adds what it writes only to a value that holds what it replaces, so
+    the review does not count it among the rewrites it cannot follow. Escaping the double quote of a value that a
+    string method reads past its sanitizer leaves `$` and backticks live.
   tool: raw_text_escaped_double_quoted.xml
-  code: shell-injection
   review:
     rewrites: false
     serious_rules: [shell-injection]
     findings:
       - {rule: shell-injection, severity: high, accessor: raw, param: word, checkable: true}
-  red:
-    - inputs: {word: "$(touch harm-marker)"}
-      harm: true
-      expect: {rejected: true, codes: [shell-injection]}
-    - doc: The job check does not follow the escaping, so a double quote with a command character is refused too.
-      inputs: {word: 'x" ; touch harm-marker ; "'}
-      expect: {rejected: true, codes: [shell-injection]}
-  green:
-    - inputs: {word: "a;b|c && d's"}
-      harm: true
-      expect: {rejected: false}
-    - doc: A double quote alone cannot start a command.
-      inputs: {word: 'say "hi"'}
-      harm: true
-      expect: {rejected: false}
 
 rewrites_and_template_code:
-  doc: A refusal names every reason no value of the tool can be checked.
+  doc: The review reports both the rewrite of a value and the template code.
   tool: rewrites_and_template_code.xml
-  code: uncheckable-rewrites
   review:
     patterns: [template-code]
     rewrites: true
     serious_rules: [shell-injection]
     findings:
       - {rule: template-exec, severity: critical}
-  red:
-    - inputs: {word: "x' >harm-marker '"}
-      harm: true
-      expect: {rejected: true, codes: [uncheckable-rewrites, uncheckable-template-code]}
-  green:
-    - config: {when_unsure: log}
-      inputs: {word: hello}
-      harm: true
-      expect: {rejected: false, warns: [uncheckable-rewrites, uncheckable-template-code]}
 
 template_code:
-  doc: A template that imports code can read text the job does not carry, so no value counts as plain.
+  doc: A template that imports code can read text no input carries, and the review does not follow it.
   tool: template_code.xml
-  code: uncheckable-template-code
   review:
     patterns: [template-code]
     unchecked_locations: {command: parts of it were not analysed}
     findings:
       - {rule: template-exec, severity: critical}
-  red:
-    - inputs: {word: hello}
-      expect: {rejected: true, message_contains: ["run code or read data the job does not carry"]}
-  green:
-    - config: {when_unsure: log}
-      inputs: {word: hello}
-      harm: true
-      expect: {rejected: false, warns: [uncheckable-template-code]}
 
 user_object_unsanitized:
   doc: >-
     With the sanitizer off, the user object is read as it is stored. A template that reads it other than by
-    the name of one preference, here every preference in a loop, writes values the job check cannot trace.
+    the name of one preference, here every preference in a loop, writes values the review cannot trace.
   tool: user_preferences_unsanitized_loop.xml
-  code: uncheckable-template-code
   review:
     patterns: [user-object]
     findings:
       - {rule: template-app-access, severity: medium}
       - {rule: shell-injection, accessor: opaque, checkable: false}
-  red:
-    - user: {preferences: {"spec|label": "a';touch harm-marker;'"}}
-      harm: true
-      expect:
-        rejected: true
-        codes: [uncheckable-template-code, uncheckable-untraced-value]
-        message_contains:
-          - "run code or read data the job does not carry"
-          - "it writes values it cannot trace to an input (command)"
-  green:
-    - config: {when_unsure: log}
-      user: {preferences: {"spec|label": "Bob"}}
-      harm: true
-      expect: {rejected: false, warns: [uncheckable-template-code, uncheckable-untraced-value]}
 
 untraced_value:
   doc: >-
-    A preference read in a loop, by a name the template computes, cannot be traced to one preference, so no
-    check sees its value. Galaxy sanitizes it here, but the job is refused whatever its values.
+    A preference read in a loop, by a name the template computes, cannot be traced to one preference. Galaxy
+    sanitizes it here, but the review reports a value it cannot check.
   tool: user_preferences_loop.xml
-  code: uncheckable-untraced-value
   review:
     findings:
       - {rule: shell-injection, accessor: opaque, checkable: false}
-  red:
-    - user: {preferences: {"spec|label": "hello"}}
-      expect: {rejected: true, message_contains: ["it writes values it cannot trace to an input (command)"]}
-  green:
-    - config: {when_unsure: log}
-      user: {preferences: {"spec|label": "a';touch harm-marker;'"}}
-      harm: true
-      expect: {rejected: false, warns: [uncheckable-untraced-value]}
-
-review_failed:
-  doc: A tool whose review fails cannot have any job checked.
-  tool: raw_text_single_quoted.xml
-  code: uncheckable-review-failed
-  red:
-    - fault: review
-      inputs: {word: hello}
-      expect: {rejected: true, message_contains: ["the security review of this tool failed"]}
-  green:
-    - fault: review
-      config: {when_unsure: log}
-      inputs: {word: hello}
-      expect: {rejected: false, warns: [uncheckable-review-failed]}
-
-check_failed:
-  doc: When comparing a job's values with the review fails, every value must be plain.
-  tool: raw_text_single_quoted.xml
-  code: not-plain-check-error
-  red:
-    - fault: check
-      inputs: {word: "a;b"}
-      expect: {rejected: true, message_contains: ["checking the job's values against the security review failed"]}
-  green:
-    - fault: check
-      inputs: {word: hello}
-      expect: {rejected: false}
-
-strict_check_failed:
-  doc: When the strict check itself fails, the job is refused.
-  tool: search_list.xml
-  code: uncheckable-strict-check-error
-  red:
-    - fault: strict_check
-      collections:
-        input:
-          elements: [{identifier: sample1}]
-      expect: {rejected: true, message_contains: ["checking its values strictly failed"]}
-  green:
-    - fault: strict_check
-      config: {when_unsure: log}
-      collections:
-        input:
-          elements: [{identifier: sample1}]
-      expect: {rejected: false, warns: [uncheckable-strict-check-error]}
 
 reflection_bypass:
   doc: >-
     Read by name through `getattr`, the dataset model is out of the review's sight: it can write any value
-    without a finding about it, its history's name as well as its own, so every job is refused.
+    without a finding about it, its history's name as well as its own. The review reports the reflection.
   tool: reflection_getattr.xml
-  code: uncheckable-template-code
   review:
     patterns: [reflection]
     serious_rules: []
-  red:
-    - datasets:
-        input: {name: "x'; touch harm-marker; echo '"}
-      harm: true
-      expect: {rejected: true, message_contains: ["run code or read data the job does not carry (getattr)"]}
-    - doc: Even a plain name.
-      datasets:
-        input: {name: reads.fq}
-      expect: {rejected: true}
-  green:
-    - config: {when_unsure: log}
-      datasets:
-        input: {name: reads.fq}
-      harm: true
-      expect: {rejected: false, warns: [uncheckable-template-code]}
 
 output_filter_vars:
   doc: >-
     `vars()` in an output filter reaches Python objects, but Galaxy evaluates filters when it creates the outputs:
-    nothing it reads is written into the command, which is checked as usual.
+    nothing it reads is written into the command, which is reviewed as usual.
   tool: output_filter_vars.xml
   review:
     patterns: [reflection]
-  green:
-    - inputs: {label: "a;b|c"}
-      harm: true
-      expect: {rejected: false}
 
 getvar_user_name:
   doc: >-
-    A name the user gives (`$getVar(str($which))`) can be any variable, which no check of the job's values sees:
-    every job is refused.
+    A name the user gives (`$getVar(str($which))`) can be any variable, which the review cannot follow: it
+    reports the reflection.
   tool: getvar_user_name.xml
-  code: uncheckable-template-code
   review:
     patterns: [reflection]
-  red:
-    - inputs: {which: label, label: hello}
-      expect: {rejected: true, message_contains: ["run code or read data the job does not carry (getVar)"]}
-  green:
-    - config: {when_unsure: log}
-      inputs: {which: label, label: hello}
-      expect: {rejected: false, warns: [uncheckable-template-code]}
 
 known_helper:
   doc: >-
     The read group helper of bwa and bowtie2 looks a parameter up with `getVar` by the name it is called with. Called
-    with literal names only, it reads the parameters it names, whose values are checked as usual.
+    with literal names only, it reads the parameters it names, whose values are reviewed as usual.
   tool: known_helper.xml
-  code: shell-injection
   review:
     serious_rules: [shell-injection]
     findings:
       - {rule: shell-injection, severity: high, accessor: raw, param: word, checkable: true}
-  red:
-    - inputs: {word: "a';touch harm-marker;'"}
-      harm: true
-      expect:
-        rejected: true
-        message_contains: ["the value of input 'word' contains the characters [' ;]"]
-  green:
-    - inputs: {word: "a;b|c && d"}
-      harm: true
-      expect: {rejected: false}
 
 app_model_read:
   doc: >-
     The application object reaches any data of the server. The review flags the read but follows no value
-    of it; this job runs because it writes a count.
+    of it, and this tool writes only a count.
   tool: app_model.xml
   review:
     patterns: [app-access]
     serious_rules: []
-  green:
-    - harm: true
-      expect: {rejected: false}
 
 job_metadata_read:
-  doc: The tool version of the job that made a dataset is set by the server, so the job runs.
+  doc: The tool version of the job that made a dataset is set by the server, not by a user.
   tool: job_metadata.xml
   review:
     patterns: [job-metadata]
     serious_rules: []
-  green:
-    - datasets:
-        input: {name: reads.fq}
-      harm: true
-      expect: {rejected: false}
 
 server_config_read:
-  doc: An id the server encodes is the server's value, so the job runs.
+  doc: An id the server encodes is the server's value, not a user's.
   tool: server_config.xml
   review:
     patterns: [server-config]
     serious_rules: []
-  green:
-    - harm: true
-      expect: {rejected: false}
-
-refused_when_unsure:
-  doc: >-
-    An administrator can refuse every job the review cannot check instead of checking its values strictly.
-  tool: search_list.xml
-  code: uncheckable-when-unsure
-  review:
-    unchecked_locations: {command: parts of it were not analysed}
-  red:
-    - config: {when_unsure: refuse}
-      collections:
-        input:
-          elements: [{identifier: sample1}]
-      expect: {rejected: true, message_contains: ["this server refuses every job it cannot check"]}
-  green:
-    - doc: With the default `strict`, the same job runs, since its values are plain.
-      collections:
-        input:
-          elements: [{identifier: sample1}]
-      harm: true
-      expect: {rejected: false}
