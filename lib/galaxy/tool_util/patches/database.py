@@ -1,0 +1,391 @@
+"""Stack patch collections and apply them to tool sources under a site policy."""
+
+import hashlib
+import logging
+import os
+import re
+import threading
+from collections.abc import (
+    Callable,
+    Sequence,
+)
+from dataclasses import (
+    dataclass,
+    field,
+)
+from functools import partial
+from typing import Any
+
+from galaxy.tool_util.parser.factory import get_tool_source
+from galaxy.tool_util.parser.interface import ToolSource
+from galaxy.tool_util.parser.xml import XmlToolSource
+from galaxy.util import (
+    ElementTree,
+    xml_to_string,
+)
+from .codes import (
+    GENERATED_CODES,
+    render_message,
+    REPRODUCIBILITY_ABOVE_CAP,
+    REQUIREMENT_CHANGES_DISABLED,
+    REVISION_MISMATCH,
+)
+from .collection import (
+    CollectionError,
+    PatchCollection,
+)
+from .engine import (
+    ALREADY_APPLIED,
+    APPLIED,
+    evaluate_unit,
+    MISMATCH,
+    PatchUnit,
+    plan_units,
+    SKIPPED,
+)
+from .hg import (
+    find_repository_dir,
+    read_working_parent,
+)
+from .keys import (
+    is_shed_key,
+    key_string,
+    patch_key,
+    PatchKey,
+)
+from .model import (
+    AdvisoryInfo,
+    ChangeKind,
+    CollectionRef,
+    CollectionSummary,
+    COMPAT,
+    level_index,
+    NEEDED_FROM_PATTERN,
+    op_touches_requirements,
+    PatchFile,
+    PatchPolicy,
+    PatchState,
+    SECURITY,
+    ToolPatchCollectionsSummary,
+    ToolPatchInfo,
+)
+
+log = logging.getLogger(__name__)
+
+BUILTIN = "builtin"
+BUILTIN_COLLECTION_DIR = os.path.join(os.path.dirname(__file__), "builtin")
+ADVISORY = "advisory"
+
+
+def _sha256(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _tree_text(tree: ElementTree) -> str:
+    return xml_to_string(tree.getroot())
+
+
+@dataclass
+class _Input:
+    """The tree one collection file sees, with its expanded sha256 computed on demand."""
+
+    tree: ElementTree
+    text: Callable[[], str]
+    _sha256: str | None = field(default=None, init=False)
+
+    def sha256(self) -> str:
+        if self._sha256 is None:
+            self._sha256 = _sha256(self.text())
+        return self._sha256
+
+
+@dataclass
+class _FileResult:
+    states: list[PatchState]
+    tree: ElementTree | None
+
+
+class ToolPatchDatabase:
+    """Ordered patch collections plus the site policy and the running Galaxy release series."""
+
+    def __init__(
+        self,
+        collections: Sequence[PatchCollection],
+        policy: PatchPolicy | None = None,
+        galaxy_series: str | None = None,
+    ) -> None:
+        if galaxy_series is not None and not re.match(NEEDED_FROM_PATTERN, galaxy_series):
+            raise ValueError(f"galaxy_series must be a release series like '26.1', not {galaxy_series!r}")
+        self.collections = list(collections)
+        self.policy = policy or PatchPolicy()
+        self.galaxy_series = galaxy_series
+        self._active = [c for c in self.collections if c.has_patches]
+        self._changesets: dict[str, str | None] = {}
+        self._changeset_lock = threading.Lock()
+
+    # --- digests and summaries ---
+
+    def _policy_bytes(self) -> bytes:
+        policy = f"{self.policy.reproducibility}\0{self.policy.requirement_changes}\0{self.galaxy_series or ''}"
+        return policy.encode("utf-8")
+
+    def digest_for(self, key: PatchKey, changeset: str | None = None) -> str | None:
+        """sha256 over every file matched for key, the policy and series; None when nothing matches."""
+        h = hashlib.sha256()
+        matched = override_used = False
+        for c in self._active:
+            override = c.override_for(key, changeset)
+            for rel in (override, c.version_file(key)):
+                if rel is None:
+                    continue
+                matched = True
+                h.update(f"{c.name}\0{rel}\0{c.file_sha256(rel) or ''}\0".encode())
+            override_used = override_used or override is not None
+        if not matched:
+            return None
+        h.update(self._policy_bytes())
+        if override_used and changeset:
+            h.update(b"\0" + changeset.encode("ascii"))
+        return h.hexdigest()
+
+    def collections_summary(self) -> ToolPatchCollectionsSummary:
+        return ToolPatchCollectionsSummary(
+            collections=[CollectionSummary(name=c.name, version=c.version, digest=c.digest) for c in self.collections],
+            policy=self.policy,
+            galaxy_series=self.galaxy_series,
+        )
+
+    def token(self) -> str:
+        """Changes whenever any collection's content, the policy or the series changes."""
+        return _sha256(self.collections_summary().model_dump_json())
+
+    # --- applying ---
+
+    def key_for(self, tool_source: ToolSource, guid: str | None = None) -> PatchKey | None:
+        return patch_key(tool_source, guid)
+
+    def apply_patches(
+        self, tool_source: ToolSource, guid: str | None = None, repository_dir_hint: str | None = None
+    ) -> ToolSource:
+        """Return the patched source, or ``tool_source`` itself when no op applied.
+
+        ``patch_state`` is set on the returned source whenever a patch file matched the key.
+        ``repository_dir_hint`` is where to start looking for the shed repository's ``.hg``.
+        """
+        if not self._active or not isinstance(tool_source, XmlToolSource):
+            return tool_source
+        key = patch_key(tool_source, guid)
+        if key is None:
+            return tool_source
+        matching = [c for c in self._active if c.has_key(key)]
+        if not matching:
+            return tool_source
+        changeset = None
+        if is_shed_key(key) and any(c.has_overrides(key) for c in matching):
+            changeset = self._checked_out_changeset(repository_dir_hint or tool_source.source_path)
+        current = _Input(tree=tool_source.xml_tree, text=tool_source.to_string)
+        states: list[PatchState] = []
+        for c in matching:
+            result = self._apply_collection(c, key, changeset, current)
+            states.extend(result.states)
+            if result.tree is not None:
+                current = _Input(tree=result.tree, text=partial(_tree_text, result.tree))
+        info = ToolPatchInfo(digest=self.digest_for(key, changeset), states=states)
+        patched: ToolSource = tool_source
+        if current.tree is not tool_source.xml_tree:
+            patched = get_tool_source(
+                xml_tree=current.tree, config_file=tool_source.source_path, macro_paths=tool_source.macro_paths
+            )
+        patched.patch_state = info
+        for state in states:
+            _log_state(state)
+        return patched
+
+    def _checked_out_changeset(self, start: str | None) -> str | None:
+        if not start:
+            return None
+        repo_dir = find_repository_dir(start if os.path.isdir(start) else os.path.dirname(start))
+        if repo_dir is None:
+            log.debug("tool patches: no Mercurial repository above %s, using version files", start)
+            return None
+        with self._changeset_lock:
+            if repo_dir not in self._changesets:
+                self._changesets[repo_dir] = read_working_parent(repo_dir)
+            return self._changesets[repo_dir]
+
+    def _apply_collection(
+        self, c: PatchCollection, key: PatchKey, changeset: str | None, current: _Input
+    ) -> _FileResult:
+        version_rel = c.version_file(key)
+        override_rel = c.override_for(key, changeset)
+        if override_rel is not None:
+            result = self._apply_file(c, key, override_rel, current, override=True)
+            if result is not None and not any(s.state == MISMATCH for s in result.states):
+                return result
+            if version_rel is None:
+                return result or _FileResult([], None)
+            log.info(
+                "tool patches: %s override %s not used, falling back to %s", key_string(key), override_rel, version_rel
+            )
+        if version_rel is None:
+            return _FileResult([], None)
+        return self._apply_file(c, key, version_rel, current) or _FileResult([], None)
+
+    def _apply_file(
+        self, c: PatchCollection, key: PatchKey, rel: str, current: _Input, override: bool = False
+    ) -> _FileResult | None:
+        loaded = c.load(rel)
+        if loaded is None:
+            return None
+        patch = loaded.patch
+        expected_sha256 = patch.advisory.expanded_sha256 if patch.advisory else None
+        if override and expected_sha256 and expected_sha256 != current.sha256():
+            log.info("tool patches: %s override %s is for other content, ignored", key_string(key), rel)
+            return None
+
+        def state(kind: ChangeKind, name: str, **fields: Any) -> PatchState:
+            return PatchState(
+                state=name,
+                kind=kind,
+                key=key_string(key),
+                collection=CollectionRef(name=c.name, version=c.version),
+                path=rel,
+                digest=loaded.sha256,
+                **{**self._unit_fields(patch, kind), **fields},
+            )
+
+        file_advisory = self._file_advisory(c, patch, key)
+        states: list[PatchState] = []
+        tree = current.tree
+        units = plan_units(patch, self.galaxy_series)
+        for unit in units:
+            if unit.skipped:
+                states.append(state(unit.kind, SKIPPED))
+                continue
+            result = evaluate_unit(tree, [op.body for op in unit.ops])
+            advisory = file_advisory if patch.advisory_kind == unit.kind else None
+            if result.state == APPLIED:
+                assert result.tree is not None
+                demotion = self._demotion(patch, unit)
+                if demotion is not None:
+                    states.append(state(unit.kind, ADVISORY, advisory=self._generated(demotion, unit.kind, patch, key)))
+                else:
+                    tree = result.tree
+                    verified = current.sha256() in c.coverage(key)
+                    states.append(state(unit.kind, APPLIED, verified=verified, advisory=advisory))
+                    advisory = None
+            elif result.state == MISMATCH:
+                generated = self._generated(REVISION_MISMATCH, unit.kind, patch, key)
+                states.append(state(unit.kind, MISMATCH, advisory=generated, detail=result.detail))
+            else:
+                states.append(state(unit.kind, ALREADY_APPLIED))
+                advisory = None
+            if advisory is not None:
+                states.append(state(unit.kind, ADVISORY, advisory=advisory))
+        advisory_kind = patch.advisory_kind
+        if file_advisory is not None and advisory_kind is not None and advisory_kind not in {u.kind for u in units}:
+            states.append(state(advisory_kind, ADVISORY, advisory=file_advisory))
+        return _FileResult(states, tree if tree is not current.tree else None)
+
+    def _unit_fields(self, patch: PatchFile, kind: ChangeKind) -> dict[str, Any]:
+        upstream = [u for u in patch.upstream if patch.upstream_kind(u) == kind]
+        if not patch.ops_of_kind(kind):
+            return {"upstream": upstream}
+        if patch.kind == "mixed" and kind == COMPAT:
+            return {"upstream": upstream, "reproducibility": "identical"}
+        return {
+            "upstream": upstream,
+            "reproducibility": patch.reproducibility,
+            "reproducibility_doc": patch.reproducibility_doc,
+            "changes_requirements": patch.changes_requirements,
+        }
+
+    def _demotion(self, patch: PatchFile, unit: PatchUnit) -> str | None:
+        """Generated code when site policy blocks an applicable unit."""
+        if patch.kind == "mixed" and unit.kind != SECURITY:
+            return None
+        level = patch.reproducibility
+        if level is not None and level_index(level) > level_index(self.policy.reproducibility):
+            return REPRODUCIBILITY_ABOVE_CAP
+        touches = any(op_touches_requirements(op.body) for op in unit.ops)
+        if patch.changes_requirements and touches and not self.policy.requirement_changes:
+            return REQUIREMENT_CHANGES_DISABLED
+        return None
+
+    def _generated(self, code: str, kind: ChangeKind, patch: PatchFile, key: PatchKey) -> AdvisoryInfo:
+        entry = GENERATED_CODES[code]
+        level = entry.level if kind == SECURITY or entry.level == "info" else "consider"
+        fixed_in = patch.advisory.fixed_in if patch.advisory else None
+        vulnerable: Any = None
+        if kind == SECURITY:
+            vulnerable = "unknown" if code == REVISION_MISMATCH else True
+        message = render_message(
+            entry.message, fixed_in=fixed_in, version=key[-1], reproducibility=patch.reproducibility
+        )
+        return AdvisoryInfo(
+            code=code,
+            level=level,
+            action=entry.actions[0],
+            fixed_in=fixed_in,
+            vulnerable=vulnerable,
+            message=message,
+        )
+
+    def _file_advisory(self, c: PatchCollection, patch: PatchFile, key: PatchKey) -> AdvisoryInfo | None:
+        advisory = patch.advisory
+        if advisory is None:
+            return None
+        entry = c.code(advisory.code)
+        message = None
+        if entry is not None:
+            message = render_message(
+                entry.message, fixed_in=advisory.fixed_in, version=key[-1], reproducibility=patch.reproducibility
+            )
+        return AdvisoryInfo(
+            code=advisory.code,
+            level=entry.level if entry else None,
+            action=advisory.action,
+            fixed_in=advisory.fixed_in,
+            vulnerable=advisory.vulnerable,
+            reason=advisory.reason,
+            message=message,
+        )
+
+
+def _log_state(state: PatchState) -> None:
+    where = f"{state.collection.name}:{state.path}"
+    if state.state == APPLIED:
+        if state.verified:
+            log.info("tool patches: %s %s patch applied from %s", state.key, state.kind, where)
+        else:
+            log.warning("tool patches: %s %s patch applied (unverified) from %s", state.key, state.kind, where)
+    elif state.state == MISMATCH:
+        log.warning("tool patches: %s %s patch mismatch from %s: %s", state.key, state.kind, where, state.detail)
+    elif state.state == ADVISORY:
+        code = state.advisory.code if state.advisory else None
+        log.warning("tool patches: %s %s advisory %s from %s", state.key, state.kind, code, where)
+    else:
+        log.debug("tool patches: %s %s %s from %s", state.key, state.kind, state.state, where)
+
+
+def load_tool_patch_database(
+    paths: Sequence[str],
+    reproducibility: str = "all_inputs",
+    requirement_changes: bool = False,
+    galaxy_series: str | None = None,
+) -> ToolPatchDatabase:
+    """Load collections in order; ``builtin`` names the collection shipped with this package."""
+    policy = PatchPolicy.model_validate(
+        {"reproducibility": reproducibility, "requirement_changes": requirement_changes}
+    )
+    collections = []
+    for path in paths:
+        directory = BUILTIN_COLLECTION_DIR if path == BUILTIN else path
+        try:
+            collection = PatchCollection(directory)
+        except CollectionError as e:
+            log.error("tool patches: skipping collection %s: %s", path, e)
+            continue
+        log.info("tool patches: loaded collection %s %s from %s", collection.name, collection.version, directory)
+        collections.append(collection)
+    return ToolPatchDatabase(collections, policy=policy, galaxy_series=galaxy_series)
