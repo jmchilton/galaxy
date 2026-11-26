@@ -1223,7 +1223,7 @@ from its templates. A template the review did not analyse is unchecked but gets 
 
 #### `uncheckable-review-failed`
 
-The tool could not be loaded or reviewed, so nothing is known about what its templates do.
+The review did not run: the tool could not be loaded or reviewed, it is not an XML tool, or a directory held no tools. Nothing is known about what the templates do.
 
 #### `uncheckable-rewrites`
 

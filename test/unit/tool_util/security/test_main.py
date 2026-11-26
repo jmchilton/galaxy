@@ -128,6 +128,11 @@ def test_fail_on_unchecked_trips_on_templates_not_analysed(capsys):
     assert main(["--fail-on", "high", "--fail-on", "unchecked", NOT_COMPILED]) == 1
 
 
+def test_fail_on_unchecked_sees_locations_only_classify_adds(capsys):
+    assert review_tool_source(get_tool_source(REFLECTION)).unchecked_locations == {}
+    assert main(["--fail-on", "unchecked", REFLECTION]) == 1
+
+
 def test_fail_on_counts_capability_findings(capsys):
     template_code = tool_path("template_code.xml")
     critical = [f for f in review_tool_source(get_tool_source(template_code)).findings if f.severity == "critical"]

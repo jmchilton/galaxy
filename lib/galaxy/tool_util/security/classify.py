@@ -28,7 +28,7 @@ from .rules import Rule
 
 
 class Uncheckable(StrEnum):
-    # Set by callers for a tool that fails to load or review; classify() never returns it.
+    # Set by callers for a path the review did not run on; classify() never returns it.
     REVIEW_FAILED = "uncheckable-review-failed"
     REWRITES = "uncheckable-rewrites"
     TEMPLATE_CODE = "uncheckable-template-code"
@@ -37,8 +37,8 @@ class Uncheckable(StrEnum):
 
 
 DESCRIPTIONS = {
-    Uncheckable.REVIEW_FAILED: "The tool could not be loaded or reviewed, so nothing is known about what its"
-    " templates do.",
+    Uncheckable.REVIEW_FAILED: "The review did not run: the tool could not be loaded or reviewed, it is not an XML"
+    " tool, or a directory held no tools. Nothing is known about what the templates do.",
     Uncheckable.REWRITES: "The templates change values in ways that can bring back characters the sanitizer took"
     " out (`chr()`, a decoder, a `.replace` or `re.sub` of the sanitizer's tokens, of text that is not literal, or"
     " of a value template code changed before).",
