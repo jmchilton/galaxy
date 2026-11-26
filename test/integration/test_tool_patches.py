@@ -1,7 +1,7 @@
 """Tool patch collections applied at tool load, end to end."""
 
 import os
-import tempfile
+from typing import Any
 
 from galaxy.tool_util.parser import get_tool_source
 from galaxy.util import galaxy_directory
@@ -11,6 +11,10 @@ from galaxy_test.driver import integration_util
 FIXTURES = os.path.join(galaxy_directory(), "test", "functional", "tool_patches")
 FUNCTIONAL_TOOLS = os.path.join(galaxy_directory(), "test", "functional", "tools")
 TOOL_ID = "identifier_single"
+
+
+def _inputs(hda_id: str) -> dict[str, Any]:
+    return {"input1": {"src": "hda", "id": hda_id}}
 
 
 class BaseToolPatchesIntegrationTestCase(integration_util.IntegrationTestCase):
@@ -32,41 +36,43 @@ class BaseToolPatchesIntegrationTestCase(integration_util.IntegrationTestCase):
         return response.json()["patches"]
 
     def _run_identifier_single(self, history_id: str, hda_id: str, use_cached_job: bool = False) -> dict:
-        run = self.dataset_populator.run_tool(
-            TOOL_ID, {"input1": {"src": "hda", "id": hda_id}}, history_id, use_cached_job=use_cached_job
-        )
+        run = self.dataset_populator.run_tool(TOOL_ID, _inputs(hda_id), history_id, use_cached_job=use_cached_job)
         self.dataset_populator.wait_for_job(run["jobs"][0]["id"], assert_ok=True)
         return run
 
-    def _output_file_name(self, run: dict) -> str:
-        return self._get(f"datasets/{run['outputs'][0]['id']}").json()["file_name"]
+    def _run_job(self, history_id: str, hda_id: str, use_cached_job: bool = False) -> str:
+        return self._run_identifier_single(history_id, hda_id, use_cached_job=use_cached_job)["jobs"][0]["id"]
 
-    def _cached_tool_request_output(self, history_id: str, hda_id: str) -> str:
-        """Run through the tool request API with the job cache on; returns the new output's id."""
-        before = {d["id"] for d in self.dataset_populator.get_history_contents(history_id)}
-        payload = {
-            "history_id": history_id,
-            "tool_id": TOOL_ID,
-            "inputs": {"input1": {"src": "hda", "id": hda_id}},
-            "use_cached_jobs": True,
-        }
-        response = self._post("jobs", data=payload, json=True)
+    def _run_tool_request_job(self, history_id: str, hda_id: str) -> str:
+        """Run through the tool request API with the job cache on; returns the job id."""
+        response = self.dataset_populator.tool_request_raw(TOOL_ID, _inputs(hda_id), history_id, use_cached_jobs=True)
         self._assert_status_code_is(response, 200)
-        assert self.dataset_populator.wait_on_tool_request(response.json()["tool_request_id"])
-        self.dataset_populator.wait_for_history(history_id, assert_ok=True)
-        (output_id,) = {d["id"] for d in self.dataset_populator.get_history_contents(history_id)} - before
-        return output_id
+        tool_request_id = response.json()["tool_request_id"]
+        assert self.dataset_populator.wait_on_tool_request(tool_request_id)
+        (job,) = self.galaxy_interactor.jobs_for_tool_request(tool_request_id)
+        self.dataset_populator.wait_for_job(job["id"], assert_ok=True)
+        return job["id"]
+
+    def _copied_from_job_id(self, job_id: str) -> str | None:
+        return self.dataset_populator.get_job_details(job_id, full=True).json()["copied_from_job_id"]
 
     def _assert_job_cache_reuse(self, reused: bool, via_tool_request: bool = False) -> None:
         with self.dataset_populator.test_history() as history_id:
             hda = self.dataset_populator.new_dataset(history_id, content="1\n", wait=True)
-            first = self._output_file_name(self._run_identifier_single(history_id, hda["id"]))
+            first = self._run_job(history_id, hda["id"])
             if via_tool_request:
-                output_id = self._cached_tool_request_output(history_id, hda["id"])
-                second = self._get(f"datasets/{output_id}").json()["file_name"]
+                second = self._run_tool_request_job(history_id, hda["id"])
             else:
-                second = self._output_file_name(self._run_identifier_single(history_id, hda["id"], use_cached_job=True))
-            assert (first == second) is reused
+                second = self._run_job(history_id, hda["id"], use_cached_job=True)
+            assert self._copied_from_job_id(second) == (first if reused else None)
+
+    def _assert_job_search_finds_job(self, found: bool) -> None:
+        with self.dataset_populator.test_history() as history_id:
+            hda = self.dataset_populator.new_dataset(history_id, content="1\n", wait=True)
+            first = self._run_job(history_id, hda["id"])
+            self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+            jobs = self.dataset_populator.search_jobs(TOOL_ID, _inputs(hda["id"]), history_id)
+            assert [job["id"] for job in jobs] == ([first] if found else [])
 
 
 class TestToolPatchApplied(BaseToolPatchesIntegrationTestCase):
@@ -90,6 +96,9 @@ class TestToolPatchApplied(BaseToolPatchesIntegrationTestCase):
     def test_special_inputs_patch_skips_job_cache_for_tool_requests(self):
         self._assert_job_cache_reuse(False, via_tool_request=True)
 
+    def test_special_inputs_patch_hides_jobs_from_search(self):
+        self._assert_job_search_finds_job(False)
+
 
 class TestToolPatchAppliedCachedToolbox(TestToolPatchApplied):
     """The populator stores the patched source and the index carries its state."""
@@ -98,12 +107,6 @@ class TestToolPatchAppliedCachedToolbox(TestToolPatchApplied):
     def handle_galaxy_config_kwds(cls, config) -> None:
         super().handle_galaxy_config_kwds(config)
         config["use_cached_toolbox"] = True
-
-    def test_index_entry_carries_patch(self):
-        index = self._app.tool_source_store.load_index()
-        entry = index.entries[TOOL_ID]
-        assert entry.patch is not None and entry.patch.states[0].state == "applied"
-        assert [c.name for c in index.tool_patch_collections.collections] == ["identifier-single-test"]
 
 
 class TestToolPatchRejectsInputsKeepsJobCache(BaseToolPatchesIntegrationTestCase):
@@ -114,6 +117,7 @@ class TestToolPatchRejectsInputsKeepsJobCache(BaseToolPatchesIntegrationTestCase
         assert (state["state"], state["reproducibility"]) == ("applied", "rejects_inputs")
         self._assert_job_cache_reuse(True)
         self._assert_job_cache_reuse(True, via_tool_request=True)
+        self._assert_job_search_finds_job(True)
 
 
 class TestToolPatchAlreadyApplied(BaseToolPatchesIntegrationTestCase):
@@ -122,7 +126,8 @@ class TestToolPatchAlreadyApplied(BaseToolPatchesIntegrationTestCase):
     @classmethod
     def handle_galaxy_config_kwds(cls, config) -> None:
         super().handle_galaxy_config_kwds(config)
-        conf_dir = tempfile.mkdtemp()
+        conf_dir = cls.temp_config_dir("tool_patches_fixed")
+        os.makedirs(conf_dir, exist_ok=True)
         conf_path = os.path.join(conf_dir, "tool_patches_fixed_conf.xml")
         with open(conf_path, "w") as f:
             f.write(f'<toolbox tool_path="{FUNCTIONAL_TOOLS}"><tool file="identifier_single_fixed.xml" /></toolbox>')

@@ -1353,6 +1353,7 @@ class BaseDatasetPopulator(BasePopulator):
         preferred_object_store_id: str | None = None,
         tool_uuid: str | None = None,
         send_notification: bool = False,
+        use_cached_jobs: bool = False,
     ) -> Response:
         payload: dict[str, Any] = {
             "history_id": history_id,
@@ -1365,10 +1366,21 @@ class BaseDatasetPopulator(BasePopulator):
             payload["tool_uuid"] = tool_uuid
         if send_notification:
             payload["send_notification"] = True
+        if use_cached_jobs:
+            payload["use_cached_jobs"] = True
         if preferred_object_store_id is not None:
             payload["preferred_object_store_id"] = preferred_object_store_id
         response = self._post("jobs", data=payload, json=True)
         return response
+
+    def search_jobs(
+        self, tool_id: str, inputs: dict[str, Any], history_id: str, state: str = "ok"
+    ) -> list[dict[str, Any]]:
+        """Jobs a ``use_cached_job`` run of these inputs could reuse."""
+        payload = {"tool_id": tool_id, "inputs": inputs, "history_id": history_id, "state": state}
+        response = self._post("jobs/search", data=payload, json=True)
+        api_asserts.assert_status_code_is_ok(response)
+        return response.json()
 
     def run_tool(self, tool_id: str, inputs: dict, history_id: str, **kwds):
         tool_response = self.run_tool_raw(tool_id, inputs, history_id, **kwds)
