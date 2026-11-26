@@ -1,10 +1,16 @@
+import os
 from unittest.mock import Mock
 
 import pytest
+from lxml import etree
 
 from galaxy import model
 from galaxy.tools.parameters.options import ParameterOption
 from galaxy.tools.parameters.workflow_utils import RuntimeValue
+from galaxy.util import (
+    galaxy_directory,
+    parse_xml,
+)
 from .util import BaseParameterTestCase
 
 
@@ -75,6 +81,18 @@ class TestSelectToolParameter(BaseParameterTestCase):
             self.trans, {"input_bam": "testpath2"}
         )
         assert len(self.param.get_options(self.trans, {"input_bam": "testpath3"})) == 0
+
+    def test_upload_file_type_options(self):
+        upload_xml = parse_xml(os.path.join(galaxy_directory(), "tools", "data_source", "upload.xml"))
+        file_type = upload_xml.getroot().find("inputs/param[@name='file_type']")
+        self.app.datatypes_registry.upload_file_formats = ["tabular", "bed", "fasta"]
+        param = self._parameter_for(xml=etree.tostring(file_type, encoding="unicode"))
+        assert param.get_options(self.trans, {}) == [
+            ParameterOption("Auto-detect", "auto", False),
+            ParameterOption("bed", "bed", False),
+            ParameterOption("fasta", "fasta", False),
+            ParameterOption("tabular", "tabular", False),
+        ]
 
     # TODO: Good deal of overlap here with TestDataToolParameter, refactor.
     def setUp(self):
