@@ -844,11 +844,8 @@ class ToolBox(AbstractToolBox):
         return self._create_tool_from_source(tool_source, config_file=config_file, **kwds)
 
     def get_expanded_tool_source(self, config_file: StrPath, tool_id: str | None = None) -> ToolSource:
-        # Try to load from tool source store first (pre-parsed, macro-expanded). Stored rows carry no
-        # patch state, so with tool patches configured the file is parsed and patched here instead.
-        tool_source = (
-            self._get_tool_source_from_store(config_file, tool_id=tool_id) if self.app.tool_patches is None else None
-        )
+        # Try to load from tool source store first (pre-parsed, macro-expanded)
+        tool_source = self._get_tool_source_from_store(config_file, tool_id=tool_id)
         if tool_source is not None:
             self._tools_loaded_from_store += 1
             return tool_source
@@ -883,6 +880,10 @@ class ToolBox(AbstractToolBox):
         # defect that used to live on this path only manifested under the cached
         # toolbox, so default deployments stay on the eager parse path.
         if not self.app.config.use_cached_toolbox:
+            return None
+
+        # Stored rows carry no patch state, so with tool patches configured the file is parsed and patched.
+        if self.app.tool_patches is not None:
             return None
 
         store = self.app.tool_source_store
