@@ -418,6 +418,13 @@ class ToolPatchInfo(BaseModel):
     states: list[PatchState] = Field(default_factory=list)
 
 
+def patches_as_dicts(patch: ToolPatchInfo | None) -> list[dict[str, Any]] | None:
+    """API form of a tool's patch states, or None for an unpatched tool."""
+    if patch is None or not patch.states:
+        return None
+    return [state.model_dump(mode="json") for state in patch.states]
+
+
 class PatchPolicy(BaseModel):
     model_config = ConfigDict(frozen=True)
 
