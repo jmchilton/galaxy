@@ -8,8 +8,18 @@ from galaxy.tool_util.parser import get_tool_source
 from galaxy.tool_util.patches import load_tool_patch_database
 from galaxy.tool_util.security import __main__ as security_main
 from galaxy.tool_util.security.__main__ import main
-from galaxy.tool_util.security.patch_review import review_patches
-from galaxy.tool_util.security.report import NOT_ANALYSED
+from galaxy.tool_util.security.classify import (
+    NOT_CHECKABLE,
+    Uncheckable,
+)
+from galaxy.tool_util.security.patch_review import (
+    PatchReview,
+    review_patches,
+)
+from galaxy.tool_util.security.report import (
+    NOT_ANALYSED,
+    Report,
+)
 from galaxy.tool_util.unittest_utils import functional_test_tool_path
 from galaxy.tool_util.unittest_utils.tool_patches import (
     replace_text_op,
@@ -19,7 +29,7 @@ from galaxy.tool_util.unittest_utils.tool_patches import (
 
 TOOL = functional_test_tool_path("identifier_single.xml")
 KEY_FILE = "_local/identifier_single/1.0.0.yml"
-PATCH_KEYS = ("patches", "before", "after", "cleared", "introduced", "unanalyzed_added")
+PATCH_KEYS = ("patches", "before", "after", "cleared", "introduced", "notes_added")
 ECHO = "echo 'identifier $input1.element_identifier' > 'output1';"
 DOC = "Jobs whose input identifier held other characters than letters, digits, '_', '-' and '.' now print them as '_'."
 CLEANING = security_patch(
@@ -47,6 +57,27 @@ COSMETIC = security_patch(
 UNQUOTING = security_patch(
     [replace_text_op("command", "> 'output1';", "> 'output1'; echo $input1.name;")], "unusual_inputs", DOC
 )
+DECODING = security_patch(
+    [
+        replace_text_op(
+            "command",
+            ECHO,
+            "echo 'identifier ${str($input1.element_identifier).encode().decode(\"unicode_escape\")}' > 'output1';",
+        )
+    ],
+    "unusual_inputs",
+    DOC,
+)
+AWK_TOOL = """<tool id="sanitized_awk" name="sanitized_awk" version="1.0">
+    <command><![CDATA[awk 'BEGIN { print $x }' > '$out']]></command>
+    <inputs>
+        <param name="x" type="text" value="a">
+            <sanitizer invalid_char=""><valid initial="string.letters"><add value="CHAR"/></valid></sanitizer>
+        </param>
+    </inputs>
+    <outputs><data name="out" format="txt"/></outputs>
+</tool>
+"""
 
 
 def _review(tmp_path: Path, patch: dict):
@@ -92,8 +123,56 @@ def test_unquoting_the_reviewed_value_is_a_new_finding(tmp_path: Path) -> None:
 def test_patch_breaking_the_template_is_a_regression(tmp_path: Path) -> None:
     broken = security_patch([replace_text_op("command", ECHO, "#if $input1\n" + ECHO)], "unusual_inputs", DOC)
     review = _review(tmp_path, broken)
-    assert review.unanalyzed_added
+    assert review.notes_added
     assert review.introduced == [] and review.regressed
+
+
+def _awk_review(tmp_path: Path, before: str, after: str):
+    tool = tmp_path / "sanitized_awk.xml"
+    tool.write_text(AWK_TOOL.replace("CHAR", before))
+    op = {
+        "replace_element": {
+            "path": "inputs/param[@name='x']/sanitizer/valid/add",
+            "old": f'<add value="{before}"/>',
+            "new": f'<add value="{after}"/>',
+            "occurrences": 1,
+        }
+    }
+    patch = security_patch([op], "ordinary_inputs", DOC)
+    collection = write_collection(tmp_path / "c", {"_local/sanitized_awk/1.0.yml": patch})
+    return tool, collection, review_patches(get_tool_source(str(tool)), load_tool_patch_database([str(collection)]))
+
+
+def test_raising_a_findings_severity_is_new(tmp_path: Path) -> None:
+    tool, collection, review = _awk_review(tmp_path, "/", ";")
+    assert _rules(review.before.findings) == {("nested-interpreter", "medium")}
+    assert _rules(review.introduced) == {("nested-interpreter", "high")}
+    assert review.cleared == [] and review.regressed
+    assert main([str(tool), "--tool-patch-path", str(collection)]) == 1
+
+
+def test_lowering_a_findings_severity_clears_nothing(tmp_path: Path) -> None:
+    _, _, review = _awk_review(tmp_path, ";", "/")
+    assert _rules(review.after.findings) == {("nested-interpreter", "medium")}
+    assert (review.cleared, review.introduced) == ([], [])
+    assert not review.regressed
+
+
+def test_patch_making_a_finding_uncheckable_is_a_regression(tmp_path: Path) -> None:
+    review = _review(tmp_path, DECODING)
+    assert review.introduced == []
+    assert review.notes_added == [
+        f"unchecked command: {NOT_CHECKABLE}",
+        f"{Uncheckable.REWRITES}: its templates change values with decode",
+    ]
+    assert review.regressed
+
+
+def test_new_reason_for_an_unchecked_location_is_not_a_note_added() -> None:
+    before = Report(unchecked_locations={"command": NOT_ANALYSED})
+    after = Report(unchecked_locations={"command": NOT_CHECKABLE})
+    review = PatchReview(before=before, after=after, patched=get_tool_source(TOOL), patch=None)
+    assert review.notes_added == [] and not review.regressed
 
 
 def test_unmatched_tool_reviews_once(tmp_path: Path) -> None:

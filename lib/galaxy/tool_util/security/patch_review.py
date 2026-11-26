@@ -10,6 +10,8 @@ from galaxy.tool_util.patches import (
     ToolPatchInfo,
 )
 from . import review_tool_source
+from .charsets import SEVERITIES
+from .classify import classify
 from .report import (
     Finding,
     finding_to_dict,
@@ -25,14 +27,15 @@ def finding_match(finding: Finding) -> FindingMatch:
     return (finding.rule, finding.kind, finding.location, finding.context, sorted_refs(finding.refs) or finding.expr)
 
 
-def _notes(report: Report) -> list[str]:
-    """The report's unanalyzed parts and unchecked locations, as the CLI's NOTE lines word them."""
-    return report.unanalyzed + [f"unchecked {k}: {v}" for k, v in sorted(report.unchecked_locations.items())]
-
-
-def _gained(before: list[Finding], after: list[Finding]) -> list[Finding]:
-    before_keys = {finding_match(f) for f in before}
-    return [f for f in after if finding_match(f) not in before_keys]
+def _notes(report: Report) -> dict[tuple[str, str], str]:
+    """The CLI's NOTE lines for a report, keyed by unanalyzed part, unchecked location or uncheckable code."""
+    classification = classify(report)
+    notes = {("unanalyzed", note): note for note in report.unanalyzed}
+    for location, why in classification.unchecked_locations.items():
+        notes[("unchecked", location)] = f"unchecked {location}: {why}"
+    for code, why in classification.reasons.items():
+        notes[("code", code)] = f"{code}: {why}"
+    return notes
 
 
 @dataclass
@@ -44,22 +47,29 @@ class PatchReview:
 
     @property
     def cleared(self) -> list[Finding]:
-        return _gained(self.after.sorted(), self.before.sorted())
+        """The findings with no match after the patch; a lowered severity is not cleared."""
+        after = {finding_match(f) for f in self.after.findings}
+        return [f for f in self.before.sorted() if finding_match(f) not in after]
 
     @property
     def introduced(self) -> list[Finding]:
-        return _gained(self.before.sorted(), self.after.sorted())
+        """The findings with no match before the patch, or of a worse severity than every match there."""
+        worst: dict[FindingMatch, int] = {}
+        for f in self.before.findings:
+            match = finding_match(f)
+            worst[match] = max(worst.get(match, -1), SEVERITIES.index(f.severity))
+        return [f for f in self.after.sorted() if SEVERITIES.index(f.severity) > worst.get(finding_match(f), -1)]
 
     @property
-    def unanalyzed_added(self) -> list[str]:
-        """Template parts the review can follow only before the patch, such as a template the patch broke."""
-        before = set(_notes(self.before))
-        return [note for note in _notes(self.after) if note not in before]
+    def notes_added(self) -> list[str]:
+        """NOTE lines only after the patch: a template part it broke, a location or code it made uncheckable."""
+        before = _notes(self.before)
+        return [note for key, note in _notes(self.after).items() if key not in before]
 
     @property
     def regressed(self) -> bool:
         """The patch introduced a finding or left part of the tool unreviewable."""
-        return bool(self.introduced or self.unanalyzed_added)
+        return bool(self.introduced or self.notes_added)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -68,7 +78,7 @@ class PatchReview:
             "after": self.after.to_dict(),
             "cleared": [finding_to_dict(f) for f in self.cleared],
             "introduced": [finding_to_dict(f) for f in self.introduced],
-            "unanalyzed_added": self.unanalyzed_added,
+            "notes_added": self.notes_added,
         }
 
 

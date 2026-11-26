@@ -42,12 +42,14 @@ regresses a tool (see `--tool-patch-path` below). `--fail-on` can be given sever
 those collections, applying every op whatever a site's policy would allow. The report of each tool, its
 `codes`, `uncheckable_locations` and `--fail-on` are then of the patched tool. The JSON adds the
 patch states (`patches`), the reports `before` and `after` the patches, the findings the patches cleared
-(`cleared`) or introduced (`introduced`), and the template parts the review can no longer follow
-(`unanalyzed_added`); the text output gives them `PATCH`, `CLEARED`, `NEW` and `NEW NOTE` lines. Findings are
+(`cleared`) or introduced (`introduced`), and the `NOTE` lines only the patched tool has (`notes_added`): a
+template part the review can no longer follow, a newly unchecked location or a new uncheckable code. The text
+output gives them `PATCH`, `CLEARED`, `NEW` and `NEW NOTE` lines. Findings are
 matched by rule, place, how the value lands there and the values read, not by template text, so a value moved
-to another place (say, into a configfile) counts as cleared there and new here. A patch regresses a tool, and
-the exit code is 1, when it introduces a finding of any severity or leaves part of a template unreviewable; the
-review does not check that a patch cleared anything. A collection that does not load stops the run. Tools are
+to another place (say, into a configfile) counts as cleared there and new here. A finding that a patch makes
+more severe is new; one it makes less severe is not cleared. A patch regresses a tool, and the exit code is 1,
+when it introduces a finding of any severity or adds a `NOTE` line; the review does not
+check that a patch cleared anything. A collection that does not load stops the run. Tools are
 reviewed under their XML id and version (`_local` keys); `--guid` gives the Tool Shed guid of a single tool
 file to match its shed key.
 

@@ -3,8 +3,8 @@
 Only XML tools are reviewed. A tool that fails to load or review, a tool that is not XML, and a directory with no
 tools are each listed with an error. A tool reached through several paths is reviewed once, under the first.
 With --tool-patch-path, each tool is reviewed before and after its tool patches and reported as patched.
-The exit code is 1 when a path has an error, when --fail-on is met, or when a patch introduces a finding or
-leaves part of a template unreviewable; 0 otherwise.
+The exit code is 1 when a path has an error, when --fail-on is met, or when a patch introduces or worsens a
+finding or adds a NOTE line; 0 otherwise.
 """
 
 from __future__ import annotations
@@ -264,7 +264,7 @@ def _print_patch_review(review: PatchReview) -> None:
         for finding in findings:
             where = _where(finding)
             print(f"  {label:8} {finding.severity.upper():8} {finding.rule:22} {where:18} {finding.message}")
-    for note in review.unanalyzed_added:
+    for note in review.notes_added:
         print(f"  NEW      NOTE     {note}")
 
 
