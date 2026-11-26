@@ -37,9 +37,9 @@ regresses a tool (see `--tool-patch-path` below). `--fail-on` can be given sever
   uncheckable code and so pass `--fail-on uncheckable`.
 - `--fail-on mismatch` (with `--tool-patch-path`) fails on a tool with a security tool patch whose ops no
   longer match it. Without it, a mismatch is only a `PATCH` line.
-- `--fail-on uncleared` (with `--tool-patch-path`) fails on a tool whose security tool patch applies but
-  clears no finding. It is opt-in: a patch can fix what the static review does not see, such as an input a
-  new validator rejects.
+- `--fail-on uncleared` (with `--tool-patch-path`) fails on a tool with an applied security tool patch when
+  its patches, of any kind, clear no finding; a finding made less severe is not cleared. It is opt-in: a patch
+  can fix what the static review does not see, such as an input a new validator rejects.
 
 `pip install galaxy-tool-util` installs the review, its CLI and the spec cases below.
 
@@ -55,8 +55,8 @@ the values read, not by template text, so a value moved to another place (say, i
 cleared there and new here. Capability findings are matched by rule, place and message (the module or name
 they report), so a second encoded blob where one already was is not new. A finding that a patch makes more severe is new; one it makes less severe is not
 cleared. A patch regresses a tool, and the exit code is 1, when it introduces a finding of any severity or adds
-a `NOTE` line; the review does not check that a patch cleared anything. A collection that does not load stops
-the run. Tools are reviewed under their XML id and version (`_local` keys); `--guid` gives the Tool Shed guid
+a `NOTE` line; only `--fail-on uncleared` checks that a patch cleared anything. A collection that does not load
+stops the run. Tools are reviewed under their XML id and version (`_local` keys); `--guid` gives the Tool Shed guid
 of a single tool file to match its shed key.
 
 ## Findings

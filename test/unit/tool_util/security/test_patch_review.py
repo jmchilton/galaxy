@@ -233,8 +233,12 @@ def test_cli_rejects_a_guid_it_cannot_use(
 
 @pytest.mark.parametrize(
     "argv,error",
-    [(["--guid", GUID], "--guid"), (["--fail-on", "mismatch"], "--fail-on mismatch")],
-    ids=["guid", "fail-on-mismatch"],
+    [
+        (["--guid", GUID], "--guid"),
+        (["--fail-on", "mismatch"], "--fail-on mismatch"),
+        (["--fail-on", "uncleared"], "--fail-on uncleared"),
+    ],
+    ids=["guid", "fail-on-mismatch", "fail-on-uncleared"],
 )
 def test_cli_rejects_patch_options_without_a_collection(
     capsys: pytest.CaptureFixture[str], argv: list[str], error: str

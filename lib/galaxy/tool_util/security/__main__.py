@@ -58,7 +58,7 @@ NO_TOOLS = "no tools found"
 
 @dataclass(frozen=True)
 class FailOn:
-    """The --fail-on conditions: a severity index, and whether codes, unchecked locations or mismatches fail."""
+    """The --fail-on conditions: a severity index, and whether codes, unchecked locations or patch states fail."""
 
     severity: int | None = None
     uncheckable: bool = False
@@ -153,10 +153,11 @@ def _parser() -> argparse.ArgumentParser:
         choices=(*SEVERITIES, UNCHECKABLE, UNCHECKED, MISMATCH, UNCLEARED),
         default=[],
         help="exit 1 when any finding, vulnerability or capability, is at or above this severity; with"
-        f" '{UNCHECKABLE}' when a tool has an uncheckable code; with '{UNCHECKED}' when a tool has an unchecked"
-        " location (uncheckable_locations), templates the review did not analyse included; with"
-        f" '{MISMATCH}' when a security tool patch of a tool does not match it, and with '{UNCLEARED}' when"
-        " one applies but clears no finding (both need --tool-patch-path); repeatable",
+        f" '{UNCHECKABLE}' when a tool has an uncheckable code; with '{UNCHECKED}' when a"
+        " tool has an unchecked location (uncheckable_locations), templates the review did not analyse included;"
+        f" with '{MISMATCH}' when a security tool patch of a tool does not match it, and with '{UNCLEARED}' when"
+        " one applies but the patches clear no finding (both need --tool-patch-path);"
+        " repeatable",
     )
     parser.add_argument(
         "--tool-patch-path",
