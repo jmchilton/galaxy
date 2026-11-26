@@ -1,4 +1,4 @@
-"""Structured sources and breakout characters of findings, which let Galaxy check the values of a job."""
+"""Structured sources and breakout characters of findings, which a check of concrete values can use."""
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ from galaxy.tool_util.security.report import (
     USER_PREFERENCE,
     VULNERABILITY,
 )
-from .test_review import (
+from ._util import (
     CONFIG,
     review,
 )
@@ -85,11 +85,6 @@ def refs(report: Report) -> set[SourceRef]:
 )
 def test_finding_names_its_source(tmp_path, command, extra, expected):
     assert expected in refs(review(tmp_path, command, extra=extra))
-
-
-def test_param_path():
-    assert SourceRef(RAW, "opts.adv.deep").param_path == ("opts", "adv", "deep")
-    assert SourceRef(SPECIAL, None, "__user_email__").param_path == ()
 
 
 def test_sources_keep_their_text(tmp_path):

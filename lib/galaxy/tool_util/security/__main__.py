@@ -1,4 +1,4 @@
-"""``python -m galaxy.tool_util.security tool.xml [...]``: print the security review of tools."""
+"""Print the static security review of Galaxy tool XML files."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from .judge import (
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="python -m galaxy.tool_util.security", description=__doc__)
+    parser = argparse.ArgumentParser(prog="galaxy-tool-security-review", description=__doc__)
     parser.add_argument("tools", nargs="+", help="tool XML files")
     parser.add_argument("--json", action="store_true", help="print one JSON document with all reports")
     parser.add_argument("--min-severity", choices=SEVERITIES, default="info")

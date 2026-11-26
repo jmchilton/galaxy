@@ -52,28 +52,24 @@ NOT_ANALYSED = "parts of it were not analysed"
 RUNS_TEXT = "it sends text to a shell to run"
 # Capability findings of a template that sends text to a program that runs it.
 RUNS_TEXT_RULES = frozenset(("capability-pipe-to-shell",))
-# The capability finding of a template that reaches objects by name (getattr).
-REFLECTION_RULE = "template-reflection"
 # The capability finding of a tool that turns the sanitizer off.
 SANITIZE_OFF = "tool-sanitize-off"
-# Capabilities with which a template runs code or reads text that the job does not carry.
+# Capabilities with which a template runs code or reads data that is no value of a tool input.
 CODE_CAPABILITIES = frozenset(
     (
         "template-exec",
         "template-compile-exec",
         "template-file-io",
         "template-network",
-        REFLECTION_RULE,
+        "template-reflection",
         "template-app-access",
         "template-model-access",
     )
 )
 
 
-# The severities of serious findings, the ones of the code level (charsets.level_of) unless a verdict
-# says otherwise. The characters of medium findings, a space, a slash or a quote, are common in element
-# identifiers and dataset names.
-CHECKED_SEVERITIES = frozenset((HIGH, CRITICAL))
+# The severities of serious findings (a spec case's `serious_rules`).
+SERIOUS_SEVERITIES = frozenset((HIGH, CRITICAL))
 
 
 @dataclass(frozen=True)
@@ -83,10 +79,6 @@ class SourceRef:
     accessor: str
     param: str | None = None
     key: str | None = None
-
-    @property
-    def param_path(self) -> tuple[str, ...]:
-        return tuple(self.param.split(".")) if self.param else ()
 
 
 class Source(str):
@@ -160,7 +152,7 @@ class Finding:
 
     @property
     def checkable(self) -> bool:
-        """Whether a character test on the values of the job can tell that this finding applies."""
+        """Whether a character test on a concrete value can tell that this finding applies."""
         return bool(self.breakout or self.closes) and any(
             ref.accessor != OPAQUE and ref not in self.unchecked for ref in self.refs
         )
@@ -178,8 +170,8 @@ class Report:
     # Template sites the analysis could not follow; an honest list of what was not checked.
     unanalyzed: list[str] = field(default_factory=list)
     # Every user value each template (location) writes, by source, with the characters that do
-    # harm in it once a stray quote of another value has left it outside any quotes. A location
-    # whose values the job check cannot judge is left out.
+    # harm in it once a stray quote of another value has left it outside any quotes. An unchecked
+    # location is left out.
     writes: dict[str, dict[SourceRef, frozenset[str]]] = field(default_factory=dict)
     # Quote characters of values that close or open quotes where no finding says so: repr() or
     # json.dumps() write a quote that closes the string around the value, after which a quote of
@@ -192,12 +184,12 @@ class Report:
     # Template code that can turn a plain value into one that is not (chr(), a decoder, a re.sub or
     # .replace whose text is not literal or that rewrites a value template code changed), by location.
     rewrites: dict[str, list[str]] = field(default_factory=dict)
-    # Literal rewrites of a source's own value (`$x.replace('"', '\\"')`), as (trigger, added): the job
-    # check adds the characters ``added`` to a job value that holds one of ``trigger``.
+    # Literal rewrites of a source's own value (`$x.replace('"', '\\"')`), as (trigger, added): a value
+    # that holds one of ``trigger`` also gets the characters ``added``.
     rewritten: dict[SourceRef, list[tuple[frozenset[str], frozenset[str]]]] = field(default_factory=dict)
     # The sources of the user values each template (location) reads, also where no character test
-    # can judge them: what the strict check of a job reads. METADATA and USER_PREFERENCE with
-    # key=None stand for any metadata element and any preference.
+    # can judge them. METADATA and USER_PREFERENCE with key=None stand for any metadata element
+    # and any preference.
     reads: dict[str, list[SourceRef]] = field(default_factory=dict)
 
     def add(self, finding: Finding) -> None:
@@ -291,5 +283,5 @@ def _finding_to_dict(finding: Finding) -> dict[str, Any]:
 
 
 def serious_findings(report: Report) -> list[Finding]:
-    """The high and critical vulnerability findings, the ones checked against job values, most severe first."""
-    return [f for f in report.sorted() if f.kind == VULNERABILITY and f.severity in CHECKED_SEVERITIES]
+    """The high and critical vulnerability findings, most severe first."""
+    return [f for f in report.sorted() if f.kind == VULNERABILITY and f.severity in SERIOUS_SEVERITIES]

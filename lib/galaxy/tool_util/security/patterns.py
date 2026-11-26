@@ -56,7 +56,7 @@ _SERVER_CONFIG_ATTRIBUTES = frozenset(("config", "security"))
 
 
 def access_patterns(report: Report) -> dict[PatternCode, list[Finding]]:
-    """The findings of the report that read data the job does not carry, by pattern code."""
+    """The findings of the report that read data that is no value of a tool input, by pattern code."""
     sanitized = not any(f.rule == SANITIZE_OFF for f in report.findings)
     patterns: dict[PatternCode, list[Finding]] = {}
     for finding in report.findings:

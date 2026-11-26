@@ -7,7 +7,6 @@ locations its review must report; :func:`review_problems` compares the two.
 from __future__ import annotations
 
 import os
-from typing import Any
 
 import yaml
 from pydantic import (
@@ -21,7 +20,10 @@ from galaxy.tool_util.security.patterns import (
     access_patterns,
     PatternCode,
 )
-from galaxy.tool_util.security.report import serious_findings
+from galaxy.tool_util.security.report import (
+    Finding,
+    serious_findings,
+)
 
 SPEC_DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 TOOLS_DIRECTORY = os.path.join(SPEC_DIRECTORY, "tools")
@@ -93,7 +95,7 @@ def review_problems(case: SpecCase) -> list[str]:
     return problems
 
 
-def _matches(want: FindingExpectation, finding: Any) -> bool:
+def _matches(want: FindingExpectation, finding: Finding) -> bool:
     if finding.rule != want.rule:
         return False
     for field in ("severity", "location"):
