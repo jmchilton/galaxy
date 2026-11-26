@@ -1,12 +1,11 @@
 """Every rule the review emits is in the rule catalog."""
 
-import glob
 import os
 
 import pytest
 from pydantic import ValidationError
 
-from galaxy.tool_util.parser import get_tool_source
+from galaxy.tool_util.loader_directory import load_tool_sources_from_path
 from galaxy.tool_util.security import review_tool_source
 from galaxy.tool_util.security.report import (
     CODE_CAPABILITIES,
@@ -29,19 +28,10 @@ from galaxy.util import galaxy_directory
 FUNCTIONAL_TOOLS = os.path.join(galaxy_directory(), "test", "functional", "tools")
 
 
-def _tool_paths():
-    return sorted(
-        glob.glob(os.path.join(TOOLS_DIRECTORY, "*.xml")) + glob.glob(os.path.join(FUNCTIONAL_TOOLS, "*.xml"))
-    )
-
-
 def test_emitted_rules_are_catalogued():
     emitted = {}
-    for path in _tool_paths():
-        try:
-            tool_source = get_tool_source(path)
-        except Exception:
-            continue
+    tools = [load_tool_sources_from_path(d, recursive=True) for d in (TOOLS_DIRECTORY, FUNCTIONAL_TOOLS)]
+    for path, tool_source in (tool for found in tools for tool in found):
         for finding in review_tool_source(tool_source).findings:
             emitted.setdefault(finding.rule, (finding.kind, path))
     unknown = {rule: where for rule, where in emitted.items() if rule not in set(Rule)}
