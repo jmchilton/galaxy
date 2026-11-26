@@ -250,6 +250,7 @@ from galaxy.tools.parameters.wrapped_json import json_wrap
 from galaxy.tools.patches import (
     apply_tool_patches,
     patch_blocks_job_cache,
+    patches_as_dicts,
 )
 from galaxy.util import (
     asbool,
@@ -850,11 +851,11 @@ class ToolBox(AbstractToolBox):
                 tool_location_fetcher=self.tool_location_fetcher,
             )
             self._tools_parsed_from_file += 1
+            return apply_tool_patches(self.app.tool_patches, tool_source, tool_id, config_file)
         except Exception as e:
             # capture and log parsing errors
             global_tool_errors.add_error(config_file, "Tool XML parsing", e)
             raise e
-        return apply_tool_patches(self.app.tool_patches, tool_source, tool_id, config_file)
 
     def _get_tool_source_from_store(self, config_file: StrPath, tool_id: str | None = None) -> ToolSource | None:
         """
@@ -3123,8 +3124,8 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
                 changeset_revision=self.changeset_revision,
                 tool_shed=self.tool_shed,
             )
-        if self.patch is not None and self.patch.states:
-            kwargs["patches"] = self.patch.states
+        if (patches := patches_as_dicts(self.patch)) is not None:
+            kwargs["patches"] = patches
         if trans.user_is_admin:
             kwargs["config_file"] = None if not self.config_file else os.path.abspath(self.config_file)
         return ToolPanelEntry(**kwargs).model_dump(exclude_unset=True)

@@ -41,12 +41,32 @@ class BaseToolPatchesIntegrationTestCase(integration_util.IntegrationTestCase):
     def _output_file_name(self, run: dict) -> str:
         return self._get(f"datasets/{run['outputs'][0]['id']}").json()["file_name"]
 
-    def _assert_job_cache_reuse(self, reused: bool) -> None:
+    def _cached_tool_request_output(self, history_id: str, hda_id: str) -> str:
+        """Run through the tool request API with the job cache on; returns the new output's id."""
+        before = {d["id"] for d in self.dataset_populator.get_history_contents(history_id)}
+        payload = {
+            "history_id": history_id,
+            "tool_id": TOOL_ID,
+            "inputs": {"input1": {"src": "hda", "id": hda_id}},
+            "use_cached_jobs": True,
+        }
+        response = self._post("jobs", data=payload, json=True)
+        self._assert_status_code_is(response, 200)
+        assert self.dataset_populator.wait_on_tool_request(response.json()["tool_request_id"])
+        self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+        (output_id,) = {d["id"] for d in self.dataset_populator.get_history_contents(history_id)} - before
+        return output_id
+
+    def _assert_job_cache_reuse(self, reused: bool, via_tool_request: bool = False) -> None:
         with self.dataset_populator.test_history() as history_id:
             hda = self.dataset_populator.new_dataset(history_id, content="1\n", wait=True)
-            first = self._run_identifier_single(history_id, hda["id"])
-            second = self._run_identifier_single(history_id, hda["id"], use_cached_job=True)
-            assert (self._output_file_name(first) == self._output_file_name(second)) is reused
+            first = self._output_file_name(self._run_identifier_single(history_id, hda["id"]))
+            if via_tool_request:
+                output_id = self._cached_tool_request_output(history_id, hda["id"])
+                second = self._get(f"datasets/{output_id}").json()["file_name"]
+            else:
+                second = self._output_file_name(self._run_identifier_single(history_id, hda["id"], use_cached_job=True))
+            assert (first == second) is reused
 
 
 class TestToolPatchApplied(BaseToolPatchesIntegrationTestCase):
@@ -66,6 +86,9 @@ class TestToolPatchApplied(BaseToolPatchesIntegrationTestCase):
 
     def test_special_inputs_patch_skips_job_cache(self):
         self._assert_job_cache_reuse(False)
+
+    def test_special_inputs_patch_skips_job_cache_for_tool_requests(self):
+        self._assert_job_cache_reuse(False, via_tool_request=True)
 
 
 class TestToolPatchAppliedCachedToolbox(TestToolPatchApplied):
@@ -90,6 +113,7 @@ class TestToolPatchRejectsInputsKeepsJobCache(BaseToolPatchesIntegrationTestCase
         (state,) = self._patch_states()
         assert (state["state"], state["reproducibility"]) == ("applied", "rejects_inputs")
         self._assert_job_cache_reuse(True)
+        self._assert_job_cache_reuse(True, via_tool_request=True)
 
 
 class TestToolPatchAlreadyApplied(BaseToolPatchesIntegrationTestCase):

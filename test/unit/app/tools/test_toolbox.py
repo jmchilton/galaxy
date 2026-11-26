@@ -43,6 +43,7 @@ from galaxy.tool_util.unittest_utils.tool_patches import (
 )
 from galaxy.tool_util_models.dynamic_tool_models import DynamicToolCreatePayload
 from galaxy.tools import ToolBox
+from galaxy.tools.patches import patches_as_dicts
 from galaxy.webapps.galaxy.services.tools import ToolsService
 from galaxy.workflow import modules
 
@@ -612,7 +613,7 @@ class TestToolBox(BaseToolBoxTestCase):
         ]
         assert 'echo -- "$param1"' in patched.command
         assert 'echo -- "$param1"' in patched.tool_source.to_string()
-        assert patched.to_panel_entry(mock_trans())["patches"][0]["state"] == "applied"
+        assert patched.to_panel_entry(mock_trans())["patches"] == patches_as_dicts(patched.patch)
         assert unpatched.patch is None
         assert 'echo "$param1"' in unpatched.command
         assert "patches" not in unpatched.to_panel_entry(mock_trans())
