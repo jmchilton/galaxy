@@ -14,6 +14,10 @@ from __future__ import annotations
 
 import re
 import string
+from re import (  # type: ignore[attr-defined, unused-ignore]
+    _constants as sre_constants,
+    _parser as sre_parse,
+)
 from typing import (
     Any,
     NamedTuple,
@@ -24,9 +28,6 @@ from galaxy.util import (
     mapped_chars,
     sanitize_param,
 )
-
-import re._constants as sre_constants  # type: ignore[import-not-found, unused-ignore]
-import re._parser as sre_parse  # type: ignore[import-not-found, unused-ignore]
 
 Chars = frozenset[str]
 
