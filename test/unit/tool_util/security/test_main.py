@@ -7,10 +7,7 @@ import shutil
 import pytest
 
 from galaxy.tool_util.parser import get_tool_source
-from galaxy.tool_util.security import (
-    __main__ as cli,
-    review_tool_source,
-)
+from galaxy.tool_util.security import review_tool_source
 from galaxy.tool_util.security.__main__ import (
     main,
     NOT_XML,
@@ -22,20 +19,23 @@ from galaxy.tool_util.security.report import (
     RUNS_TEXT,
 )
 from galaxy.tool_util.security.spec import tool_path
-from galaxy.util import galaxy_directory
 
 STRAY_QUOTE = tool_path("stray_quote.xml")
 SANITIZED = tool_path("sanitized_text_single_quoted.xml")
 PIPE = tool_path("pipe_to_shell.xml")
 REFLECTION = tool_path("reflection_getattr.xml")
 NOT_COMPILED = tool_path("search_list.xml")
-FUNCTIONAL_TOOLS = os.path.join(galaxy_directory(), "test", "functional", "tools")
+YAML_TOOL = 'class: GalaxyTool\nid: y\nname: y\nversion: "1"\nshell_command: echo hi\n'
+# Loads, but reviewing its inputs raises.
+BAD_VALIDATOR_TOOL = """<tool id="t" name="t" version="1"><command>echo '$x'</command>
+  <inputs><param name="x" type="text"><validator type="nope">x</validator></param></inputs>
+</tool>"""
 
 
 def test_text_lists_findings_by_tool(capsys):
     assert main([STRAY_QUOTE]) == 0
     lines = capsys.readouterr().out.splitlines()
-    assert lines[0].startswith(f"{STRAY_QUOTE} (spec_stray_quote")
+    assert lines[0] == f"{STRAY_QUOTE} (spec_stray_quote 1.0)"
     assert sum("HIGH     shell-injection" in line for line in lines) == 2
     assert sum("LOW      option-injection" in line for line in lines) == 2
 
@@ -57,33 +57,23 @@ def test_json_has_the_report_of_each_path(capsys):
     )
 
 
-def test_text_names_the_tool_version(capsys):
-    main([STRAY_QUOTE])
-    assert capsys.readouterr().out.splitlines()[0] == f"{STRAY_QUOTE} (spec_stray_quote 1.0)"
-
-
 def test_json_adds_version_and_codes(capsys):
-    main(["--json", STRAY_QUOTE, tool_path("pipe_to_shell.xml")])
+    main(["--json", STRAY_QUOTE, PIPE])
     reports = json.loads(capsys.readouterr().out)
     assert reports[STRAY_QUOTE]["tool_version"] == "1.0"
     assert reports[STRAY_QUOTE]["codes"] == []
-    assert reports[tool_path("pipe_to_shell.xml")]["codes"] == ["uncheckable-letters-are-code"]
+    assert reports[PIPE]["codes"] == ["uncheckable-letters-are-code"]
 
 
-def _directory(tmp_path):
+def test_directory_reviews_each_tool_and_reports_load_errors(tmp_path, capsys):
     shutil.copy(STRAY_QUOTE, tmp_path / "good.xml")
     nested = tmp_path / "nested"
     nested.mkdir()
     (nested / "broken.xml").write_text('<tool id="broken" name="broken" version="1"><command>')
     (nested / "macros.xml").write_text("<macros/>")
-    return tmp_path
-
-
-def test_directory_reviews_each_tool_and_reports_load_errors(tmp_path, capsys):
-    directory = _directory(tmp_path)
-    assert main(["--json", str(directory)]) == 1
+    assert main(["--json", str(tmp_path)]) == 1
     reports = json.loads(capsys.readouterr().out)
-    good, broken = os.path.join(str(directory), "good.xml"), os.path.join(str(directory), "nested", "broken.xml")
+    good, broken = os.path.join(str(tmp_path), "good.xml"), os.path.join(str(nested), "broken.xml")
     assert sorted(reports) == sorted([good, broken])
     assert reports[good]["tool_id"] == "spec_stray_quote"
     assert reports[broken]["error"]
@@ -142,7 +132,7 @@ def test_fail_on_counts_capability_findings(capsys):
 
 def test_directory_lists_yaml_tools_as_not_reviewed(tmp_path, capsys):
     shutil.copy(STRAY_QUOTE, tmp_path / "good.xml")
-    shutil.copy(os.path.join(FUNCTIONAL_TOOLS, "simple_constructs.yml"), tmp_path / "tool.yml")
+    (tmp_path / "tool.yml").write_text(YAML_TOOL)
     assert main(["--json", str(tmp_path)]) == 1
     reports = json.loads(capsys.readouterr().out)
     yml = os.path.join(str(tmp_path), "tool.yml")
@@ -155,25 +145,25 @@ def test_directory_lists_yaml_tools_as_not_reviewed(tmp_path, capsys):
     }
 
 
-def test_yaml_tool_file_is_not_reviewed(capsys):
-    yml = os.path.join(FUNCTIONAL_TOOLS, "simple_constructs.yml")
-    assert main([yml]) == 1
+def test_yaml_tool_file_is_not_reviewed(tmp_path, capsys):
+    yml = tmp_path / "tool.yml"
+    yml.write_text(YAML_TOOL)
+    assert main([str(yml)]) == 1
     assert capsys.readouterr().out == f"{yml}\n  ERROR    {NOT_XML}\n"
 
 
-def test_review_error_keeps_tool_id_and_version(monkeypatch, capsys):
-    def fail(tool_source):
-        raise ValueError("boom")
-
-    monkeypatch.setattr(cli, "review_tool_source", fail)
-    assert main(["--json", STRAY_QUOTE]) == 1
-    report = json.loads(capsys.readouterr().out)[STRAY_QUOTE]
-    assert report == {
-        "tool_id": "spec_stray_quote",
-        "tool_version": "1.0",
-        "error": "ValueError: boom",
+def test_review_error_keeps_tool_id_and_version(tmp_path, capsys):
+    path = tmp_path / "tool.xml"
+    path.write_text(BAD_VALIDATOR_TOOL)
+    assert main(["--json", STRAY_QUOTE, str(path)]) == 1
+    reports = json.loads(capsys.readouterr().out)
+    assert reports[str(path)] == {
+        "tool_id": "t",
+        "tool_version": "1",
+        "error": "ValueError: Unknown 'type' attribute in validator nope",
         "codes": ["uncheckable-review-failed"],
     }
+    assert reports[STRAY_QUOTE]["tool_id"] == "spec_stray_quote"
 
 
 def test_tool_reached_twice_is_reviewed_once_under_its_first_path(tmp_path, capsys):

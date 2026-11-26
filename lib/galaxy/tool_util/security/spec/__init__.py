@@ -71,6 +71,11 @@ class ReviewExpectation(_Model):
             raise ValueError(f"classify() never returns {Uncheckable.REVIEW_FAILED}")
         return codes
 
+    @property
+    def rules(self) -> frozenset[Rule]:
+        """The rules the case names, in ``serious_rules`` or ``findings``."""
+        return frozenset((*(self.serious_rules or ()), *(want.rule for want in self.findings)))
+
 
 class SpecCase(_Model):
     doc: str

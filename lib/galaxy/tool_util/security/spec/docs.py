@@ -5,6 +5,7 @@
 
 from collections.abc import (
     Callable,
+    Collection,
     Mapping,
     Sequence,
 )
@@ -65,7 +66,7 @@ def _rules(cases: dict[str, SpecCase]) -> list[str]:
         ("Vulnerabilities", [r for r in rules.Rule if r in rules.VULNERABILITY_RULES]),
         ("Capabilities", [r for r in rules.Rule if r not in rules.VULNERABILITY_RULES]),
     )
-    return lines + _described(groups, rules.DESCRIPTIONS, cases, _case_rules)
+    return lines + _described(groups, rules.DESCRIPTIONS, cases, lambda case: case.review.rules)
 
 
 def _uncheckable(cases: dict[str, SpecCase]) -> list[str]:
@@ -83,15 +84,11 @@ def _uncheckable(cases: dict[str, SpecCase]) -> list[str]:
     return lines + _described(groups, UNCHECKABLE_DESCRIPTIONS, cases, lambda case: case.review.codes or [])
 
 
-def _case_rules(case: SpecCase) -> list[str]:
-    return [*(case.review.serious_rules or ()), *(want.rule for want in case.review.findings)]
-
-
 def _described(
     groups: Sequence[tuple[str, Sequence[Code]]],
     descriptions: Mapping[Code, str],
     cases: dict[str, SpecCase],
-    codes_of: Callable[[SpecCase], Sequence[str]],
+    codes_of: Callable[[SpecCase], Collection[str]],
 ) -> list[str]:
     lines = []
     for title, codes in groups:

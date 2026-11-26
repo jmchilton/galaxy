@@ -1,8 +1,5 @@
 """What the review cannot decide from a tool's templates alone."""
 
-import pytest
-from pydantic import ValidationError
-
 from galaxy.tool_util.security.classify import (
     classify,
     DESCRIPTIONS,
@@ -11,7 +8,6 @@ from galaxy.tool_util.security.classify import (
     Uncheckable,
 )
 from galaxy.tool_util.security.report import RUNS_TEXT
-from galaxy.tool_util.security.spec import ReviewExpectation
 from ._util import review
 
 
@@ -30,8 +26,8 @@ def test_codes_need_an_unchecked_location(tmp_path):
 
 def test_rewrites_name_the_rewriting_code(tmp_path):
     result = classify(review(tmp_path, "echo '${str($text).replace('__sq__', chr(39))}' | bash"))
-    assert Uncheckable.REWRITES in result.codes
-    assert "chr" in result.reasons[Uncheckable.REWRITES]
+    assert result.codes == [Uncheckable.LETTERS_ARE_CODE, Uncheckable.REWRITES]
+    assert result.reasons[Uncheckable.REWRITES] == "its templates change values with .replace, chr"
 
 
 def test_user_object_read_with_the_sanitizer_on_is_not_template_code(tmp_path):
@@ -43,7 +39,7 @@ def test_user_object_read_with_the_sanitizer_on_is_not_template_code(tmp_path):
 
 def test_pipe_to_shell_is_letters_are_code(tmp_path):
     result = classify(review(tmp_path, "echo '$text' | bash"))
-    assert Uncheckable.LETTERS_ARE_CODE in result.codes
+    assert result.codes == [Uncheckable.LETTERS_ARE_CODE]
     assert result.unchecked_locations == {"command": RUNS_TEXT}
 
 
@@ -62,8 +58,3 @@ def test_undecidable_finding_is_an_unchecked_location(tmp_path):
 def test_codes_and_descriptions_match():
     assert set(DESCRIPTIONS) == set(Uncheckable)
     assert all(DESCRIPTIONS.values())
-
-
-def test_spec_rejects_review_failed_as_a_classify_code():
-    with pytest.raises(ValidationError):
-        ReviewExpectation(codes=[Uncheckable.REVIEW_FAILED])
