@@ -302,9 +302,13 @@ class PatchFile(_FileModel):
     def ops_of_kind(self, kind: ChangeKind) -> list[PatchOp]:
         return [op for op in self.ops or [] if self.op_kind(op) == kind]
 
+    def policy_governs(self, kind: ChangeKind) -> bool:
+        """True when reproducibility and changes_requirements describe ops of this kind."""
+        return self.kind != "mixed" or kind == SECURITY
+
     def policy_ops(self) -> list[PatchOp]:
         """Ops that reproducibility and changes_requirements describe."""
-        return self.ops_of_kind(SECURITY) if self.kind == "mixed" else list(self.ops or [])
+        return [op for op in self.ops or [] if self.policy_governs(self.op_kind(op))]
 
     @model_validator(mode="after")
     def _check_rules(self) -> Self:
