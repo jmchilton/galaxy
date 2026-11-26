@@ -1006,6 +1006,8 @@ def _populate_store_inline_unlocked(
                 log.info(f"{status}: {discovered.path}{' — ' + err if err else ''}")
 
     log.info(f"Population complete: {stats}")
+    if tool_patches is not None:
+        log.info(tool_patches.summary())
 
     if not dry_run:
         # Build / update the ToolIndex per writable store from this run's

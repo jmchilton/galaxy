@@ -878,7 +878,7 @@ class TestToolPatches:
         _write_tool(tools_dir / "ptest_1.xml", "ptest_1", command="echo ptest_1")
         _write_tool(tools_dir / "ptest_2.xml", "ptest_2", command="echo ptest_2")
         (tools_dir / "ptest_req.xml").write_text(REQUIREMENT_TOOL)
-        conf = _write_tool_conf(
+        _write_tool_conf(
             tmp_path / "tool_conf.xml",
             tools_dir,
             '<tool file="ptest_1.xml"/><tool file="ptest_2.xml"/><tool file="ptest_req.xml"/>',
@@ -890,10 +890,14 @@ class TestToolPatches:
                 "_local/ptest_req/1.0.yml": REQUIREMENT_PATCH,
             },
         )
-        cfg = populate_config(tmp_path, conf)
-        cfg.tool_patch_paths = [str(collection)]
+        return self._config(tmp_path), collection
+
+    def _config(self, tmp_path):
+        """A fresh config, as a restarted process would load it."""
+        cfg = populate_config(tmp_path, tmp_path / "tool_conf.xml")
+        cfg.tool_patch_paths = [str(tmp_path / "patches")]
         cfg.tool_patch_requirement_changes = True
-        return cfg, collection
+        return cfg
 
     def test_stores_patched_source_and_index_entry(self, tmp_path):
         cfg, _ = self._setup(tmp_path)
@@ -918,6 +922,9 @@ class TestToolPatches:
         _, before = _load_default_index(cfg)
 
         write_collection(collection, {"_local/ptest_1/1.0.yml": _command_patch("echo -- 'ptest_1'")})
+        # The running process keeps the collections it loaded; a restart picks up the change.
+        assert _populate_default(cfg, pattern="ptest_", incremental=True)["unchanged"] == 3
+        cfg = self._config(tmp_path)
         result = _populate_default(cfg, pattern="ptest_", incremental=True)
 
         assert (result["stored"], result["unchanged"]) == (1, 2)
@@ -930,6 +937,8 @@ class TestToolPatches:
         cfg, collection = self._setup(tmp_path)
         tokens = [tool_confs_token(cfg)]
         write_collection(collection, {"_local/ptest_1/1.0.yml": _command_patch("echo -- 'ptest_1'")})
+        assert tool_confs_token(cfg) == tokens[0]
+        cfg = self._config(tmp_path)
         tokens.append(tool_confs_token(cfg))
         cfg.tool_patch_reproducibility = "rejects_inputs"
         tokens.append(tool_confs_token(cfg))
