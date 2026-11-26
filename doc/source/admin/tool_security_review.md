@@ -35,23 +35,25 @@ regresses a tool (see `--tool-patch-path` below). `--fail-on` can be given sever
 - `--fail-on unchecked` fails on a tool with any classified unchecked location (`uncheckable_locations`). That
   includes templates the review did not analyse, such as one that does not compile, which have no
   uncheckable code and so pass `--fail-on uncheckable`.
+- `--fail-on mismatch` (with `--tool-patch-path`) fails on a tool with a security tool patch whose ops no
+  longer match it. Without it, a mismatch is only a `PATCH` line.
 
 `pip install galaxy-tool-util` installs the review, its CLI and the spec cases below.
 
 `--tool-patch-path` (repeatable) reviews each tool before and after the tool patches (see `tool_patch_paths`) of
 those collections, applying every op whatever a site's policy would allow. The report of each tool, its
 `codes`, `uncheckable_locations` and `--fail-on` are then of the patched tool. The JSON adds the
-patch states (`patches`), the reports `before` and `after` the patches, the findings the patches cleared
-(`cleared`) or introduced (`introduced`), and the `NOTE` lines only the patched tool has (`notes_added`): a
-template part the review can no longer follow, a newly unchecked location or a new uncheckable code. The text
-output gives them `PATCH`, `CLEARED`, `NEW` and `NEW NOTE` lines. Findings are
-matched by rule, place, how the value lands there and the values read, not by template text, so a value moved
-to another place (say, into a configfile) counts as cleared there and new here. A finding that a patch makes
-more severe is new; one it makes less severe is not cleared. A patch regresses a tool, and the exit code is 1,
-when it introduces a finding of any severity or adds a `NOTE` line; the review does not
-check that a patch cleared anything. A collection that does not load stops the run. Tools are
-reviewed under their XML id and version (`_local` keys); `--guid` gives the Tool Shed guid of a single tool
-file to match its shed key.
+patch states (`patches`), the unpatched report with its `codes` and `uncheckable_locations` (`before`), the
+findings the patches cleared (`cleared`) or introduced (`introduced`), and the `NOTE` lines only the patched
+tool has (`notes_added`): a template part the review can no longer follow, a newly unchecked location or a new
+uncheckable code. The text output gives them `PATCH`, `CLEARED`, `NEW` and `NEW NOTE` lines; `--min-severity`
+hides `CLEARED` lines but never `NEW` ones. Findings are matched by rule, place, how the value lands there and
+the values read, not by template text, so a value moved to another place (say, into a configfile) counts as
+cleared there and new here. A finding that a patch makes more severe is new; one it makes less severe is not
+cleared. A patch regresses a tool, and the exit code is 1, when it introduces a finding of any severity or adds
+a `NOTE` line; the review does not check that a patch cleared anything. A collection that does not load stops
+the run. Tools are reviewed under their XML id and version (`_local` keys); `--guid` gives the Tool Shed guid
+of a single tool file to match its shed key.
 
 ## Findings
 

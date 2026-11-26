@@ -29,7 +29,7 @@ from galaxy.tool_util.unittest_utils.tool_patches import (
 
 TOOL = functional_test_tool_path("identifier_single.xml")
 KEY_FILE = "_local/identifier_single/1.0.0.yml"
-PATCH_KEYS = ("patches", "before", "after", "cleared", "introduced", "notes_added")
+PATCH_KEYS = ("patches", "before", "cleared", "introduced", "notes_added")
 ECHO = "echo 'identifier $input1.element_identifier' > 'output1';"
 DOC = "Jobs whose input identifier held other characters than letters, digits, '_', '-' and '.' now print them as '_'."
 CLEANING = security_patch(
@@ -54,6 +54,7 @@ COSMETIC = security_patch(
     "unusual_inputs",
     DOC,
 )
+GUID = "toolshed.example.org/repos/owner/repo/identifier_single/1.0.0"
 UNQUOTING = security_patch(
     [replace_text_op("command", "> 'output1';", "> 'output1'; echo $input1.name;")], "unusual_inputs", DOC
 )
@@ -193,16 +194,43 @@ def test_cli_rejects_a_missing_collection(tmp_path: Path) -> None:
         main([TOOL, "--tool-patch-path", str(tmp_path / "missing")])
 
 
-def test_cli_rejects_guid_for_a_directory(tmp_path: Path) -> None:
+def _usage_error(argv: list[str], capsys: pytest.CaptureFixture[str]) -> str:
+    with pytest.raises(SystemExit) as exit_info:
+        main(argv)
+    assert exit_info.value.code == 2
+    return capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "argv,error",
+    [
+        ([os.path.dirname(TOOL), "--guid", GUID], "--guid needs exactly one tool file"),
+        ([TOOL, "--guid", "identifier_single"], "--guid is not a Tool Shed guid"),
+        ([TOOL, "--guid", "toolshed.example.org/repos/owner/repo"], "--guid is not a Tool Shed guid"),
+    ],
+    ids=["directory", "not-shed", "short"],
+)
+def test_cli_rejects_a_guid_it_cannot_use(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], argv: list[str], error: str
+) -> None:
     collection = write_collection(tmp_path / "c", {KEY_FILE: CLEANING})
-    with pytest.raises(SystemExit):
-        main([os.path.dirname(TOOL), "--tool-patch-path", str(collection), "--guid", "x/repos/o/r/t/1"])
+    assert error in _usage_error([*argv, "--tool-patch-path", str(collection)], capsys)
+
+
+@pytest.mark.parametrize(
+    "argv,error",
+    [(["--guid", GUID], "--guid"), (["--fail-on", "mismatch"], "--fail-on mismatch")],
+    ids=["guid", "fail-on-mismatch"],
+)
+def test_cli_rejects_patch_options_without_a_collection(
+    capsys: pytest.CaptureFixture[str], argv: list[str], error: str
+) -> None:
+    assert f"{error} needs --tool-patch-path" in _usage_error([TOOL, *argv], capsys)
 
 
 def test_cli_matches_shed_keys_by_guid(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     collection = write_collection(tmp_path / "c", {"owner/repo/identifier_single/1.0.0.yml": CLEANING})
-    guid = "toolshed.example.org/repos/owner/repo/identifier_single/1.0.0"
-    exit_code, report = _cli_json([TOOL, "--tool-patch-path", str(collection), "--guid", guid], capsys)
+    exit_code, report = _cli_json([TOOL, "--tool-patch-path", str(collection), "--guid", GUID], capsys)
     assert exit_code == 0
     assert [s["state"] for s in report["patches"]] == ["applied"]
 
@@ -219,7 +247,7 @@ def test_cli_reports_patch_review(
     assert set(report) == set(unpatched) | set(PATCH_KEYS)
     assert [s["key"] for s in report["patches"]] == ["_local/identifier_single/1.0.0"]
     assert bool(report["introduced"]) is bool(exit_code)
-    assert report["findings"] == report["after"]["findings"]
+    assert set(report["before"]) == set(unpatched) - {"tool_version"}
     assert report["tool_version"] == "1.0.0"
 
 
@@ -230,6 +258,28 @@ def test_cli_text_shows_patch_states_and_cleared_findings(tmp_path: Path, capsys
     assert lines[1].split() == ["PATCH", "applied", "security", "_local/identifier_single/1.0.0"]
     assert any(line.startswith("  CLEARED  HIGH     shell-injection") for line in lines)
     assert not any(line.startswith("  NEW ") for line in lines)
+
+
+def test_cli_min_severity_hides_cleared_but_not_new_findings(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    for name, patch in (("clears", CLEANING), ("introduces", UNQUOTING)):
+        collection = write_collection(tmp_path / name, {KEY_FILE: patch})
+        main([TOOL, "--tool-patch-path", str(collection), "--min-severity", "critical"])
+    lines = capsys.readouterr().out.splitlines()
+    assert not any(line.startswith("  CLEARED ") for line in lines)
+    assert any(line.startswith("  NEW      MEDIUM   argument-injection") for line in lines)
+
+
+@pytest.mark.parametrize("fail_on,exit_code", [([], 0), (["--fail-on", "mismatch"], 1)], ids=["default", "fail-on"])
+def test_cli_fails_on_a_mismatched_security_patch_only_when_asked(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], fail_on: list[str], exit_code: int
+) -> None:
+    stale = security_patch([replace_text_op("command", "echo 'no such text'", "echo 'other'")], "unusual_inputs", DOC)
+    collection = write_collection(tmp_path / "c", {KEY_FILE: stale})
+    got, report = _cli_json([TOOL, "--tool-patch-path", str(collection), *fail_on], capsys)
+    assert [s["state"] for s in report["patches"]] == ["mismatch"]
+    assert got == exit_code
 
 
 def test_cli_fails_on_a_patch_breaking_the_template(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
