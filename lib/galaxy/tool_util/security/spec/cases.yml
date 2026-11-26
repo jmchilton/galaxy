@@ -938,6 +938,52 @@ known_global_list:
       harm: true
       expect: {rejected: false}
 
+known_literal_list:
+  doc: >-
+    idpqonvert and llm_hub look a parameter up with `getVar` of each name in a list written in the template,
+    changed by `replace` with fixed text. The names are fixed, so the loop reads the parameters they name, whose
+    values are checked as usual.
+  tool: known_literal_list.xml
+  code: shell-injection
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, accessor: raw, param: scoring.comet_xcorr_weight, checkable: true}
+      - {rule: shell-injection, severity: high, accessor: raw, param: scoring.ms-gf_specevalue_weight, checkable: true}
+  red:
+    - inputs: {scoring: {comet_xcorr_weight: "1", ms-gf_specevalue_weight: "a';touch harm-marker;'"}}
+      harm: true
+      expect:
+        rejected: true
+        message_contains: ["the value of input 'scoring.ms-gf_specevalue_weight' contains the characters [' ;]"]
+  green:
+    - inputs: {scoring: {comet_xcorr_weight: "1", ms-gf_specevalue_weight: "a;b|c && d"}}
+      harm: true
+      expect: {rejected: false}
+
+known_select_value:
+  doc: >-
+    infernal cmbuild writes each output a select names with `getVar` of each item of the select's value. Galaxy
+    accepts only the select's options, as a list, or as one option, whose letters the loop then gives: the loop
+    reads the parameters these name, whose values are checked as usual.
+  tool: known_select_value.xml
+  code: shell-injection
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, accessor: raw, param: word, checkable: true}
+      - {rule: shell-injection, severity: high, accessor: raw, param: other, checkable: true}
+  red:
+    - inputs: {fields: [other, word], word: "a';touch harm-marker;'", other: b}
+      harm: true
+      expect:
+        rejected: true
+        message_contains: ["the value of input 'word' contains the characters [' ;]"]
+  green:
+    - inputs: {fields: [word, other], word: "a;b|c && d", other: b}
+      harm: true
+      expect: {rejected: false}
+
 app_model_read:
   doc: >-
     The application object reaches any data of the server. The review flags the read but follows no value

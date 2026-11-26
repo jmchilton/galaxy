@@ -1,0 +1,20 @@
+<tool id="spec_known_select_value" name="Texts read by a loop over a select's value" version="1.0" profile="24.0">
+    <description>reads the text parameters a select names, as infernal cmbuild reads its outputs</description>
+    <command><![CDATA[
+#for j in $fields.value:
+    echo '${getVar($j).value}' >> '$out' &&
+#end for
+true
+    ]]></command>
+    <inputs>
+        <param name="fields" type="select" multiple="true">
+            <option value="word" selected="true">word</option>
+            <option value="other">other</option>
+        </param>
+        <param name="word" type="text"/>
+        <param name="other" type="text"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

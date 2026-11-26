@@ -1,0 +1,19 @@
+<tool id="spec_known_literal_list" name="Texts read by a loop over a literal list" version="1.0" profile="24.0">
+    <description>reads a text parameter of each name a fixed list gives, as idpqonvert reads its score weights</description>
+    <command><![CDATA[
+#for $engine in ["comet:xcorr", "ms-gf:specevalue"]
+    #set $name = $engine.replace(":", "_")
+    echo '${getVar("scoring." + $name + "_weight").value}' >> '$out' &&
+#end for
+true
+    ]]></command>
+    <inputs>
+        <section name="scoring" title="Scoring">
+            <param name="comet_xcorr_weight" type="text" value="1"/>
+            <param name="ms-gf_specevalue_weight" type="text" value="1"/>
+        </section>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

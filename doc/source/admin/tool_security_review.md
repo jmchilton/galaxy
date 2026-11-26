@@ -406,6 +406,73 @@ inputs:
     other: a;b|c && d
 ```
 
+#### known_literal_list
+
+idpqonvert and llm_hub look a parameter up with `getVar` of each name in a list written in the template, changed by `replace` with fixed text. The names are fixed, so the loop reads the parameters they name, whose values are checked as usual.
+
+Tool `known_literal_list.xml`:
+
+```
+#for $engine in ["comet:xcorr", "ms-gf:specevalue"]
+    #set $name = $engine.replace(":", "_")
+    echo '${getVar("scoring." + $name + "_weight").value}' >> '$out' &&
+#end for
+true
+```
+
+Refused
+
+```
+inputs:
+  scoring:
+    comet_xcorr_weight: '1'
+    ms-gf_specevalue_weight: a';touch harm-marker;'
+```
+
+Runs
+
+```
+inputs:
+  scoring:
+    comet_xcorr_weight: '1'
+    ms-gf_specevalue_weight: a;b|c && d
+```
+
+#### known_select_value
+
+infernal cmbuild writes each output a select names with `getVar` of each item of the select's value. Galaxy accepts only the select's options, as a list, or as one option, whose letters the loop then gives: the loop reads the parameters these name, whose values are checked as usual.
+
+Tool `known_select_value.xml`:
+
+```
+#for j in $fields.value:
+    echo '${getVar($j).value}' >> '$out' &&
+#end for
+true
+```
+
+Refused
+
+```
+inputs:
+  fields:
+  - other
+  - word
+  word: a';touch harm-marker;'
+  other: b
+```
+
+Runs
+
+```
+inputs:
+  fields:
+  - word
+  - other
+  word: a;b|c && d
+  other: b
+```
+
 ### `nested-interpreter`
 
 A value is written into the program of another interpreter (`bash -c`, `sed`, `perl -e`, ...) and can change what that program does.
