@@ -54,6 +54,10 @@ def worst(a: str, b: str) -> str:
     return a if SEVERITIES.index(a) >= SEVERITIES.index(b) else b
 
 
+def at_or_above(severity: str, threshold: str) -> bool:
+    return SEVERITIES.index(severity) >= SEVERITIES.index(threshold)
+
+
 # What a value that leaves its place can do, the level of a finding: become code, stop being the data
 # it is meant to be, or split into more words.
 CODE = "code"

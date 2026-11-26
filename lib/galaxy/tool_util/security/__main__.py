@@ -31,7 +31,10 @@ from galaxy.tool_util.patches import (
 )
 from galaxy.tool_util.patches.model import REPRODUCIBILITY_LEVELS
 from . import review_tool_source
-from .charsets import SEVERITIES
+from .charsets import (
+    at_or_above,
+    SEVERITIES,
+)
 from .classify import (
     Classification,
     classify,
@@ -58,9 +61,9 @@ NO_TOOLS = "no tools found"
 
 @dataclass(frozen=True)
 class FailOn:
-    """The --fail-on conditions: a severity index, and whether codes, unchecked locations or patch states fail."""
+    """The --fail-on conditions: a severity, and whether codes, unchecked locations or patch states fail."""
 
-    severity: int | None = None
+    severity: str | None = None
     uncheckable: bool = False
     unchecked: bool = False
     mismatch: bool = False
@@ -68,7 +71,7 @@ class FailOn:
 
     @classmethod
     def parse(cls, values: list[str]) -> FailOn:
-        severity = min((SEVERITIES.index(v) for v in values if v in SEVERITIES), default=None)
+        severity = min((v for v in values if v in SEVERITIES), key=SEVERITIES.index, default=None)
         return cls(
             severity,
             uncheckable=UNCHECKABLE in values,
@@ -78,7 +81,7 @@ class FailOn:
         )
 
     def met(self, report: Report, classification: Classification) -> bool:
-        if self.severity is not None and any(SEVERITIES.index(f.severity) >= self.severity for f in report.findings):
+        if self.severity is not None and any(at_or_above(f.severity, self.severity) for f in report.findings):
             return True
         return (self.uncheckable and bool(classification.codes)) or (
             self.unchecked and bool(classification.unchecked_locations)
