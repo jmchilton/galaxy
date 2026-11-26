@@ -1,7 +1,6 @@
 """Tests for galaxy.tool_util.patches."""
 
 import hashlib
-import json
 import logging
 import os
 import shutil
@@ -45,9 +44,12 @@ from galaxy.tool_util.patches.model import (
     PatchOp,
 )
 from galaxy.tool_util.unittest_utils import functional_test_tool_path
+from galaxy.tool_util.unittest_utils.tool_patches import (
+    UPSTREAM,
+    write_collection,
+)
 from galaxy.util.template import fill_template
 
-UPSTREAM = {"repo": "galaxyproject/tools-iuc", "pr": 1, "merge_commit": "0123456789abcdef0123456789abcdef01234567"}
 GALAXY_CHANGE = [{"repo": "galaxyproject/galaxy", "pr": 2}]
 DOC = "Jobs whose label contained a space now run with it quoted."
 
@@ -632,32 +634,6 @@ REQUIREMENT_OP = {
         "occurrences": 1,
     }
 }
-
-
-def write_collection(
-    root: Path,
-    files: dict[str, Any],
-    *,
-    name: str = "test-patches",
-    format_version: int = 1,
-    codes: dict[str, Any] | None = None,
-    coverage: dict[str, list[str]] | None = None,
-    extra: dict[str, Any] | None = None,
-) -> Path:
-    root.mkdir(parents=True, exist_ok=True)
-    metadata = {"name": name, "version": "2026.11.25", "format_version": format_version, **(extra or {})}
-    (root / "collection.yml").write_text(yaml.safe_dump(metadata))
-    for rel, doc in files.items():
-        path = root / "patches" / rel
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(doc if isinstance(doc, str) else yaml.safe_dump(doc))
-    if codes is not None:
-        (root / "codes.yml").write_text(yaml.safe_dump({"format_version": 1, "codes": codes}))
-    for rel, shas in (coverage or {}).items():
-        path = root / "coverage" / rel
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"checked": [{"expanded_sha256": sha} for sha in shas]}))
-    return root
 
 
 def load_db(*roots: Path, **kwds: Any) -> ToolPatchDatabase:

@@ -111,6 +111,9 @@ class GalaxyAppConfigurationAttributes:
     tool_search_index_dir: str
     tool_tag_mappings_file: str | None
     biotools_content_directory: str | None
+    tool_patch_paths: list[Any]
+    tool_patch_reproducibility: str
+    tool_patch_requirement_changes: bool
     biotools_use_api: bool
     biotools_service_cache_type: str
     biotools_service_cache_data_dir: str

@@ -23,6 +23,8 @@ from pydantic import (
     ConfigDict,
 )
 
+from galaxy.tool_util.patches.model import PatchState
+
 
 class ToolShedRepositoryInfo(BaseModel):
     name: str | None
@@ -59,6 +61,8 @@ class ToolPanelEntry(BaseModel):
     tool_shed_repository: ToolShedRepositoryInfo | None = None
     # Present only for admin users.
     config_file: str | None = None
+    # Present only for tools a tool patch file matched.
+    patches: list[PatchState] | None = None
 
 
 __all__ = ("ToolPanelEntry", "ToolShedRepositoryInfo")

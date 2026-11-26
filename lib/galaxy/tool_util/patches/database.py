@@ -82,7 +82,7 @@ def _sha256(text: str) -> str:
 
 
 def _tree_text(tree: ElementTree) -> str:
-    return xml_to_string(tree.getroot())
+    return str(xml_to_string(tree.getroot()))
 
 
 def _dirstate_signature(repo_dir: str) -> tuple[int, int, int] | None:

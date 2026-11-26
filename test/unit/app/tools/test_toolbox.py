@@ -1,4 +1,5 @@
 import logging
+import string
 import time
 from pathlib import Path
 from typing import (
@@ -22,14 +23,23 @@ from galaxy import (
 from galaxy.app import UniverseApplication
 from galaxy.app_unittest_utils.galaxy_mock import MockTrans
 from galaxy.app_unittest_utils.toolbox_support import BaseToolBoxTestCase
-from galaxy.app_unittest_utils.tools_support import SIMPLE_CAT_TOOL_CONTENTS
+from galaxy.app_unittest_utils.tools_support import (
+    SIMPLE_CAT_TOOL_CONTENTS,
+    SIMPLE_TOOL_CONTENTS,
+)
 from galaxy.managers.context import ProvidesHistoryContext
 from galaxy.managers.tools import DynamicToolManager
 from galaxy.tool_util.ontologies import ontology_data
+from galaxy.tool_util.patches import load_tool_patch_database
 from galaxy.tool_util.unittest_utils import mock_trans
 from galaxy.tool_util.unittest_utils.sample_data import (
     SIMPLE_MACRO,
     SIMPLE_TOOL_WITH_MACRO,
+)
+from galaxy.tool_util.unittest_utils.tool_patches import (
+    replace_text_op,
+    security_patch,
+    write_collection,
 )
 from galaxy.tool_util_models.dynamic_tool_models import DynamicToolCreatePayload
 from galaxy.tools import ToolBox
@@ -40,6 +50,18 @@ if TYPE_CHECKING:
     from galaxy.tools import Tool
 
 log = logging.getLogger(__name__)
+
+SHED_GUID_V1 = "toolshed.example.org/repos/galaxyproject/example/test_tool/0.1"
+SHED_GUID_V2 = "toolshed.example.org/repos/galaxyproject/example/test_tool/0.2"
+SHED_TOOL_TEMPLATE = """    <tool file="{path}" guid="{guid}">
+        <tool_shed>toolshed.example.org</tool_shed>
+        <repository_name>example</repository_name>
+        <repository_owner>galaxyproject</repository_owner>
+        <installed_changeset_revision>{changeset}</installed_changeset_revision>
+        <id>{guid}</id>
+        <version>{version}</version>
+    </tool>"""
+PATCH_DOC = "Jobs whose text started with a dash now pass it as an operand."
 
 
 class TestToolBox(BaseToolBoxTestCase):
@@ -552,6 +574,60 @@ class TestToolBox(BaseToolBoxTestCase):
             "example",
         )
         assert new_tool.installed_changeset_revision == old_tool.installed_changeset_revision
+
+    def _patch_shed_v1(self):
+        collection = write_collection(
+            Path(self.test_directory) / "patches",
+            {
+                "galaxyproject/example/test_tool/0.1.yml": security_patch(
+                    [replace_text_op("command", 'echo "$param1"', 'echo -- "$param1"')], "special_inputs", PATCH_DOC
+                )
+            },
+        )
+        self.app.tool_patches = load_tool_patch_database([str(collection)])
+        self.app.tool_shed_repository_cache = None
+        tools = []
+        for changeset, guid in enumerate((SHED_GUID_V1, SHED_GUID_V2), 1):
+            version = guid.rsplit("/", 1)[1]
+            path = f"toolshed.example.org/repos/galaxyproject/example/{changeset}/example/tool.xml"
+            tool_file = Path(self.test_directory) / path
+            tool_file.parent.mkdir(parents=True)
+            tool_file.write_text(
+                string.Template(SIMPLE_TOOL_CONTENTS).safe_substitute(
+                    version=version, profile="16.01", tool_id="test_tool"
+                )
+            )
+            tools.append(SHED_TOOL_TEMPLATE.format(path=path, guid=guid, changeset=changeset, version=version))
+        tools_xml = "\n".join(tools)
+        self._add_config(f'<toolbox tool_path="{self.test_directory}">\n{tools_xml}\n</toolbox>')
+
+    def test_tool_patch_applies_to_keyed_version_only(self):
+        self._patch_shed_v1()
+        patched = self.toolbox.get_tool(SHED_GUID_V1, exact=True)
+        unpatched = self.toolbox.get_tool(SHED_GUID_V2, exact=True)
+
+        assert patched.patch is not None
+        assert [(s.state, s.key, s.reproducibility_doc) for s in patched.patch.states] == [
+            ("applied", "galaxyproject/example/test_tool/0.1", PATCH_DOC)
+        ]
+        assert 'echo -- "$param1"' in patched.command
+        assert 'echo -- "$param1"' in patched.tool_source.to_string()
+        assert patched.to_panel_entry(mock_trans())["patches"][0]["state"] == "applied"
+        assert unpatched.patch is None
+        assert 'echo "$param1"' in unpatched.command
+        assert "patches" not in unpatched.to_panel_entry(mock_trans())
+
+    def test_reload_tool_by_id_keeps_tool_patch(self):
+        self._patch_shed_v1()
+        old_tool = self.toolbox.get_tool(SHED_GUID_V1, exact=True)
+
+        message, status = self.toolbox.reload_tool_by_id(SHED_GUID_V1)
+
+        assert status == "done", message
+        reloaded = self.toolbox.get_tool(SHED_GUID_V1, tool_version="0.1", exact=True)
+        assert reloaded is not old_tool
+        assert reloaded.patch is not None and reloaded.patch.states[0].state == "applied"
+        assert 'echo -- "$param1"' in reloaded.command
 
     def test_tool_shed_properties_only_on_installed_tools(self):
         self._init_tool()
