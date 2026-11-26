@@ -1453,11 +1453,9 @@
     directory. Patches are keyed by Tool Shed owner, repository, tool
     id and version (or tool id and version for tools not installed
     from a Tool Shed). Tool versions are unchanged; patch state is
-    reported in the tool API. Collections are read at startup, so
-    changes need a restart (with `use_cached_toolbox`, the populator
-    also re-reads them when the tool source store is populated).
-    Read-only tool source stores are trusted as published and never
-    re-patched.
+    reported in the tool API. Collections are read once per process,
+    so changes need a restart. Read-only tool source stores are
+    trusted as published and never re-patched.
 :Default: ``[]``
 :Type: seq
 
