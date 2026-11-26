@@ -286,26 +286,20 @@ def test_invalid_patch_files_are_rejected(doc: dict[str, Any]) -> None:
 
 COLLECTION_FIX = {"authoring": "hand", "collection_fix": True}
 NEEDS_SECURITY_UPSTREAM = "security ops or advisories need a security upstream entry"
+MIXED_COLLECTION_FIX = security_doc(
+    {**QUOTE_LABEL, "kind": "security"},
+    {**text_op("cat", "cat -"), "kind": "compat"},
+    kind="mixed",
+    needed_from="26.1",
+    galaxy_change=GALAXY_CHANGE,
+    upstream=[],
+    **COLLECTION_FIX,
+)
 
 
 @pytest.mark.parametrize(
     "doc,match",
     [
-        pytest.param(security_doc(QUOTE_LABEL, **COLLECTION_FIX, upstream=[]), None, id="without_upstream"),
-        pytest.param(security_doc(QUOTE_LABEL, **COLLECTION_FIX), None, id="stacked_on_upstream"),
-        pytest.param(
-            security_doc(
-                {**QUOTE_LABEL, "kind": "security"},
-                {**text_op("cat", "cat -"), "kind": "compat"},
-                kind="mixed",
-                needed_from="26.1",
-                galaxy_change=GALAXY_CHANGE,
-                upstream=[],
-                **COLLECTION_FIX,
-            ),
-            None,
-            id="mixed_without_upstream",
-        ),
         *[
             pytest.param(
                 {**security_doc(QUOTE_LABEL, authoring="hand"), "collection_fix": v},
@@ -333,27 +327,15 @@ NEEDS_SECURITY_UPSTREAM = "security ops or advisories need a security upstream e
             id="security_advisory_without_upstream",
         ),
         pytest.param(
-            security_doc(
-                {**QUOTE_LABEL, "kind": "security"},
-                {**text_op("cat", "cat -"), "kind": "compat"},
-                kind="mixed",
-                needed_from="26.1",
-                galaxy_change=GALAXY_CHANGE,
-                upstream=[],
-                advisory={**ADVISORY, "code": "partial_fix", "kind": "security"},
-                **COLLECTION_FIX,
-            ),
+            {**MIXED_COLLECTION_FIX, "advisory": {**ADVISORY, "code": "partial_fix", "kind": "security"}},
             NEEDS_SECURITY_UPSTREAM,
             id="mixed_security_advisory_without_upstream",
         ),
     ],
 )
-def test_collection_fix_rules(doc: dict[str, Any], match: str | None) -> None:
-    if match is None:
-        assert PatchFile.model_validate(doc).collection_fix is True
-    else:
-        with pytest.raises(ValidationError, match=match):
-            PatchFile.model_validate(doc)
+def test_invalid_collection_fix_files_are_rejected(doc: dict[str, Any], match: str) -> None:
+    with pytest.raises(ValidationError, match=match):
+        PatchFile.model_validate(doc)
 
 
 def test_unquoted_needed_from_in_yaml_is_rejected() -> None:
@@ -420,6 +402,9 @@ def test_unquoted_needed_from_in_yaml_is_rejected() -> None:
         ),
         pytest.param(security_doc(QUOTE_LABEL), id="security_builder"),
         pytest.param(compat_doc(QUOTE_LABEL), id="compat_builder"),
+        pytest.param(security_doc(QUOTE_LABEL, **COLLECTION_FIX, upstream=[]), id="collection_fix_without_upstream"),
+        pytest.param(security_doc(QUOTE_LABEL, **COLLECTION_FIX), id="collection_fix_stacked_on_upstream"),
+        pytest.param(MIXED_COLLECTION_FIX, id="collection_fix_mixed_without_upstream"),
         pytest.param(
             compat_doc(
                 QUOTE_LABEL, advisory={**ADVISORY, "kind": "security"}, upstream=[{**UPSTREAM, "kind": "security"}]
