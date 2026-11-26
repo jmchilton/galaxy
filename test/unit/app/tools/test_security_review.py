@@ -37,7 +37,9 @@ from galaxy.tools.security_refusal import ToolInputRejected
 from galaxy.tools.security_review import (
     _identifiers,
     ANALYSED,
+    ENFORCE_ALL,
     ENFORCE_CODE,
+    ENFORCE_DATA,
     LOG,
     NOT_ANALYSED,
     OFF,
@@ -945,6 +947,27 @@ def test_strict_when_unsure_refuses_plain_values_when_the_check_fails_on_a_rewri
     tool = make_tool(app, tmp_path, UNUSED_REWRITE, "unused_rewrite.xml")
     message = strict_refusal(reviewer(tmp_path, ENFORCE_CODE), tool, evaluator(app, tool, ["a"], word="b"))
     assert message.startswith("[uncheckable-rewrites] This job was not run: this Galaxy server cannot check any value")
+    assert "security review failed, and its templates change values with .replace." in message
+
+
+CREATING_JOB = ECHO_ONE.replace("echo '$e.element_identifier'", "echo '$e.creating_job.tool_version'")
+
+
+@pytest.mark.parametrize("mode", [ENFORCE_DATA, ENFORCE_ALL])
+def test_stricter_level_refuses_plain_values_of_a_tool_with_template_code(app, tmp_path, mode):
+    # Only a stricter level leaves the version unchecked, and classify() gives no code for it.
+    tool = make_tool(app, tmp_path, CREATING_JOB, "creating_job.xml")
+    reviewer(tmp_path, ENFORCE_CODE).check_job(tool, evaluator(app, tool, ["a"], word="b"))
+    message = strict_refusal(reviewer(tmp_path, mode), tool, evaluator(app, tool, ["a"], word="b"))
+    assert message.startswith("[uncheckable-template-code] This job was not run: this Galaxy server cannot check")
+    assert "judge (command), and its templates run code or read data the job does not carry ($creating_job" in message
+
+
+def test_log_warns_of_what_a_stricter_level_refuses(app, tmp_path, caplog):
+    tool = make_tool(app, tmp_path, CREATING_JOB, "creating_job.xml")
+    reviewer(tmp_path, LOG).check_job(tool, evaluator(app, tool, ["a"], word="b"))
+    (warning,) = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert warning.startswith("Tool security review (uncheckable-template-code): job 7 of tool echo_ids")
 
 
 def test_strict_when_unsure_lets_checked_values_run(app, tmp_path):
