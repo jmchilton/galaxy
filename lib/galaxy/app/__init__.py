@@ -463,7 +463,7 @@ class MinimalGalaxyApplication(BasicSharedApp, HaltableContainer, SentryClientMi
             self._toolbox = tools.ToolBox(self.config.tool_configs, self.config.tool_path, self)
 
         if self.tool_patches is not None:
-            log.info(self.tool_patches.summary())
+            log.info("%s (parsed at startup; stored sources keep their recorded state)", self.tool_patches.summary())
 
         # Initialize container finder and toolbox search (requires toolbox)
         self._init_container_finder()
