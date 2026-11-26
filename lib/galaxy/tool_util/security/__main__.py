@@ -281,7 +281,7 @@ def _print_report(
             verdict, reason = finding.assessment["verdict"], finding.assessment["reason"]
             attack = f" Value: {finding.assessment['attack']}" if finding.assessment.get("attack") else ""
             print(f"           model says {verdict}: {reason}{attack}")
-    for note in note_lines(report, classification).values():
+    for _, note in note_lines(report, classification):
         print(f"  NOTE     {note}")
 
 

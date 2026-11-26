@@ -37,13 +37,13 @@ def finding_match(finding: Finding) -> FindingMatch:
     return (finding.rule, finding.kind, finding.location, finding.context, sorted_refs(finding.refs) or named)
 
 
-def note_lines(report: Report, classification: Classification) -> dict[tuple[str, str], str]:
-    """The NOTE lines of a report, keyed by unanalyzed part, unchecked location or uncheckable code."""
-    notes = {("unanalyzed", note): note for note in report.unanalyzed}
-    for location, why in classification.unchecked_locations.items():
-        notes[("unchecked", location)] = f"unchecked {location}: {why}"
-    for code, why in classification.reasons.items():
-        notes[("code", code)] = f"{code}: {why}"
+def note_lines(report: Report, classification: Classification) -> list[tuple[tuple[str, str], str]]:
+    """The NOTE lines of a report in order, repeats kept, each keyed by unanalyzed part, location or code."""
+    notes = [(("unanalyzed", note), note) for note in report.unanalyzed]
+    notes += [
+        (("unchecked", loc), f"unchecked {loc}: {why}") for loc, why in classification.unchecked_locations.items()
+    ]
+    notes += [(("code", code), f"{code}: {why}") for code, why in classification.reasons.items()]
     return notes
 
 
@@ -81,8 +81,9 @@ class PatchReview:
     @property
     def notes_added(self) -> list[str]:
         """NOTE lines only after the patch: a template part it broke, a location or code it made uncheckable."""
-        before = note_lines(self.before, classify(self.before))
-        return [note for key, note in note_lines(self.after, classify(self.after)).items() if key not in before]
+        before = {key for key, _ in note_lines(self.before, classify(self.before))}
+        added = [(key, note) for key, note in note_lines(self.after, classify(self.after)) if key not in before]
+        return list(dict(added).values())
 
     @property
     def states(self) -> list[PatchState]:
