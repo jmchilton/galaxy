@@ -128,6 +128,7 @@ from galaxy.tool_util.parser.xml import (
     XmlToolSource,
 )
 from galaxy.tool_util.parser.yaml import YamlToolSource
+from galaxy.tool_util.patches import ToolPatchInfo
 from galaxy.tool_util.provided_metadata import (
     NullToolProvidedMetadata,
     parse_tool_provided_metadata,
@@ -246,6 +247,10 @@ from galaxy.tools.parameters.workflow_utils import (
     workflow_building_modes,
 )
 from galaxy.tools.parameters.wrapped_json import json_wrap
+from galaxy.tools.patches import (
+    apply_tool_patches,
+    patch_blocks_job_cache,
+)
 from galaxy.util import (
     asbool,
     in_directory,
@@ -850,11 +855,11 @@ class ToolBox(AbstractToolBox):
                 tool_location_fetcher=self.tool_location_fetcher,
             )
             self._tools_parsed_from_file += 1
-            return tool_source
         except Exception as e:
             # capture and log parsing errors
             global_tool_errors.add_error(config_file, "Tool XML parsing", e)
             raise e
+        return apply_tool_patches(self.app.tool_patches, tool_source, tool_id, config_file)
 
     def _get_tool_source_from_store(self, config_file: StrPath, tool_id: str | None = None) -> ToolSource | None:
         """
@@ -1556,6 +1561,7 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
         Read tool configuration from the element `root` and fill in `self`.
         """
         self.profile = parse_profile_version(tool_source)
+        self.patch: ToolPatchInfo | None = tool_source.patch_state
         # Get the UNIQUE id for the tool
         self.old_id = tool_source.parse_id()
         if guid is None:
@@ -2423,7 +2429,12 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
     ) -> dict[int, Job | None]:
         completed_jobs: dict[int, Job | None] = {}
         for i, param in enumerate(all_params):
-            if use_cached_job and trans.user and not (recorded_job_indexes and i in recorded_job_indexes):
+            if (
+                use_cached_job
+                and trans.user
+                and not (recorded_job_indexes and i in recorded_job_indexes)
+                and not patch_blocks_job_cache(self.patch)
+            ):
                 tool_id = self.id
                 assert tool_id
                 param_dump: ToolStateDumpedToJsonInternalT = params_to_json_internal(self.inputs, param, self.app)
@@ -3120,6 +3131,8 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
                 changeset_revision=self.changeset_revision,
                 tool_shed=self.tool_shed,
             )
+        if self.patch is not None and self.patch.states:
+            kwargs["patches"] = self.patch.states
         if trans.user_is_admin:
             kwargs["config_file"] = None if not self.config_file else os.path.abspath(self.config_file)
         return ToolPanelEntry(**kwargs).model_dump(exclude_unset=True)

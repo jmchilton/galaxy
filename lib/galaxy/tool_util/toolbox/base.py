@@ -1583,7 +1583,12 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
         else:
             old_tool = self._tools_by_id[tool_id]
             assert old_tool.config_file
-            new_tool = self.load_tool(old_tool.config_file, use_cached=False)
+            new_tool = self.load_tool(
+                old_tool.config_file,
+                guid=old_tool.guid,
+                tool_shed_repository=old_tool.tool_shed_repository,
+                use_cached=False,
+            )
             # The tool may have been installed from a tool shed, so set the tool shed attributes.
             # Since the tool version may have changed, we don't override it here.
             new_tool.id = old_tool.id
