@@ -15,6 +15,10 @@ from pydantic import (
 )
 
 from galaxy.tool_util.parameters.data_inputs import ToolDataInput
+from galaxy.tool_util.patches import (
+    ToolPatchCollectionsSummary,
+    ToolPatchInfo,
+)
 from galaxy.tool_util.version import parse_version
 from galaxy.tools import (
     DatabaseOperationTool,
@@ -95,6 +99,9 @@ class ToolIndexEntry(BaseModel):
     changeset_revision: str | None = None
     is_local: bool = True  # True if not from tool shed
 
+    # === Tool patches (None when no patch file matched) ===
+    patch: ToolPatchInfo | None = None
+
     # === Timestamps ===
     indexed_at: datetime | None = None
 
@@ -143,6 +150,8 @@ class ToolIndex(BaseModel):
     built_at: datetime | None = None
     # Matching a fresh probe avoids a per-path coverage scan.
     freshness_token: str | None = None
+    # Patch collections and policy the populator applied; None without any.
+    tool_patch_collections: ToolPatchCollectionsSummary | None = None
 
     # Cached computations (not serialized)
     _requirements_cache: list[dict[str, Any]] | None = PrivateAttr(default=None)

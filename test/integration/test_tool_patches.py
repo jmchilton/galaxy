@@ -68,6 +68,21 @@ class TestToolPatchApplied(BaseToolPatchesIntegrationTestCase):
         self._assert_job_cache_reuse(False)
 
 
+class TestToolPatchAppliedCachedToolbox(TestToolPatchApplied):
+    """The populator stores the patched source and the index carries its state."""
+
+    @classmethod
+    def handle_galaxy_config_kwds(cls, config) -> None:
+        super().handle_galaxy_config_kwds(config)
+        config["use_cached_toolbox"] = True
+
+    def test_index_entry_carries_patch(self):
+        index = self._app.tool_source_store.load_index()
+        entry = index.entries[TOOL_ID]
+        assert entry.patch is not None and entry.patch.states[0].state == "applied"
+        assert [c.name for c in index.tool_patch_collections.collections] == ["identifier-single-test"]
+
+
 class TestToolPatchRejectsInputsKeepsJobCache(BaseToolPatchesIntegrationTestCase):
     collection = "identifier_single_validator"
 

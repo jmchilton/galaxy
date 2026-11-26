@@ -50,6 +50,7 @@ from galaxy.tool_util.toolbox.base import (
 from galaxy.tool_util.toolbox.lineages.factory import CachedLineageMap
 from galaxy.tool_util.toolbox.lineages.interface import ToolLineage
 from galaxy.tool_util.version import parse_tool_version
+from galaxy.tools.patches import patches_as_dicts
 from galaxy.tools.source_store import (
     StoredToolSource,
     ToolSourceStore,
@@ -501,6 +502,8 @@ class CachedTool:
                 "changeset_revision": entry.changeset_revision,
                 "tool_shed": entry.tool_shed,
             }
+        if (patches := patches_as_dicts(entry.patch)) is not None:
+            payload["patches"] = patches
         if trans is not None and trans.user_is_admin:
             payload["config_file"] = entry.source_path
         return payload
@@ -626,6 +629,7 @@ class CachedToolBox(ToolBox):
         self._tool_panel_loaded_from_index = False
         if self._store is not None:
             self._require_read_only_store_indexes()
+            self._log_read_only_tool_patches()
             self._tool_index = self._store.load_index() or ToolIndex()
             if self._index_needs_population():
                 self._populate_once(self._index_needs_population)
@@ -665,6 +669,18 @@ class CachedToolBox(ToolBox):
             + ". Publish a tool source bundle built with this Galaxy version's populate_store.py,"
             " or remove the store from tool_source_stores and from its tool conf."
         )
+
+    def _log_read_only_tool_patches(self) -> None:
+        """Log each read-only member's build-time tool patches; local tool_patch_paths never override them."""
+        local = self.app.tool_patches.collections_summary() if self.app.tool_patches else None
+        for name, member in self._member_stores():
+            if not member.read_only or isinstance(member, UnavailableToolSourceStore):
+                continue
+            index = member.load_index()
+            published = index.tool_patch_collections if index else None
+            log.info("Read-only tool source store %s was built with tool patches: %s", name, published)
+            if published != local:
+                log.info("Read-only tool source store %s keeps its own tool patches, not the local configuration", name)
 
     def _member_stores(self) -> list[tuple[str, ToolSourceStore]]:
         if self._store is None:
@@ -1631,6 +1647,8 @@ class CachedToolBox(ToolBox):
                 )
         tool = create_tool_from_source(self.app, tool_source, **kwds)
         tool.stored_source_path = stored.source_path
+        # The stored source is already patched; its patch state lives on the index entry.
+        tool.patch = entry.patch if entry else None
         return tool
 
     def invalidate_index_cache(self) -> None:
