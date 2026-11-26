@@ -1061,11 +1061,13 @@ mapping:
         desc: |
           Tool patch collections, applied in order to the macro-expanded XML of the
           matching tool versions when tools load. Each entry is a collection directory
-          or `builtin` (the collection shipped with Galaxy). Patches are keyed by
-          Tool Shed owner, repository, tool id and version (or tool id and version for
-          tools not installed from a Tool Shed). Tool versions are unchanged; patch
-          state is reported in the tool API. Collections are read at startup, so
-          changes need a restart. Read-only tool source stores are trusted as
+          or `builtin` (the collection shipped with Galaxy); relative directories
+          resolve against Galaxy's working directory. Patches are keyed by Tool Shed
+          owner, repository, tool id and version (or tool id and version for tools not
+          installed from a Tool Shed). Tool versions are unchanged; patch state is
+          reported in the tool API. Collections are read at startup, so changes need a
+          restart (with `use_cached_toolbox`, the populator also re-reads them when the
+          tool source store is populated). Read-only tool source stores are trusted as
           published and never re-patched.
 
       tool_patch_reproducibility:
@@ -1079,7 +1081,9 @@ mapping:
           `rejects_inputs` (some previously accepted inputs are rejected),
           `special_inputs` (jobs with special-character or edge-case inputs run
           differently) and `all_inputs` (any job may differ). Patches above this
-          level are reported as advisories and not applied.
+          level are reported as advisories and not applied. A tool with an applied
+          patch above `rejects_inputs` is never served from the job cache, because
+          jobs don't yet record which patch they ran with.
 
       tool_patch_requirement_changes:
         type: bool

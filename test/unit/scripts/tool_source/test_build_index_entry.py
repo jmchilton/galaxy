@@ -33,6 +33,8 @@ class _StoredStub:
 
 
 class _ToolSourceStub:
+    patch_state = None
+
     def __init__(
         self,
         tool_id: str = "bowtie2",

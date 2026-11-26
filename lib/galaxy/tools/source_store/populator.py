@@ -76,12 +76,12 @@ from galaxy.tool_util.parser.util import (
     parse_profile_version,
     parse_tool_version_with_defaults,
 )
-from galaxy.tool_util.patches import key_from_ids
 from galaxy.tool_util.toolbox.parser import get_toolbox_parser
 from galaxy.tools import tool_produces_real_jobs
 from galaxy.tools.biotools import get_galaxy_biotools_metadata_source
 from galaxy.tools.patches import (
     apply_tool_patches,
+    indexed_patch_digest,
     tool_patch_database_from_config,
 )
 from galaxy.tools.source_store.discover import (
@@ -543,7 +543,7 @@ def build_index_entry_from_source(
             source_class=stored.tool_source_class,
             source_path=stored.source_path,
             file_hash=(stored.metadata or {}).get("file_hash"),
-            patch=getattr(tool_source, "patch_state", None),
+            patch=tool_source.patch_state,
             hidden=hidden,
             require_login=require_login,
             tool_type=tool_type,
@@ -835,12 +835,6 @@ def _populate_store_inline_unlocked(
     # Read-only stores are trusted as published; only stores this run writes are patched.
     tool_patches = tool_patch_database_from_config(config)
 
-    def current_patch_digest(entry: ToolIndexEntry, path: str) -> str | None:
-        if tool_patches is None:
-            return None
-        key = key_from_ids(entry.id, entry.id, entry.version)
-        return tool_patches.tool_digest(key, str(Path(path).parent)) if key is not None else None
-
     # Incremental fast path: ``process_tool`` (below, in parallel) compares each
     # tool file's raw md5 — the hash the eager ToolCache uses for reload
     # detection — against the hash recorded on its prior index entry. A
@@ -888,7 +882,8 @@ def _populate_store_inline_unlocked(
                     and file_hash
                     and old_entry.file_hash == file_hash
                     and old_entry.source_hash in stored_hashes[store_name]
-                    and (old_entry.patch.digest if old_entry.patch else None) == current_patch_digest(old_entry, path)
+                    and (old_entry.patch.digest if old_entry.patch else None)
+                    == indexed_patch_digest(tool_patches, old_entry, path)
                 ):
                     return ("unchanged", d, store_name, None, None, None)
 
