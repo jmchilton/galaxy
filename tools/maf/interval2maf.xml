@@ -6,13 +6,13 @@
       <import>macros.xml</import>
   </macros>
   <command>
-python '$__tool_directory__/interval2maf.py' --dbkey=${input1.dbkey} --chromCol=${input1.metadata.chromCol} --startCol=${input1.metadata.startCol} --endCol=${input1.metadata.endCol} --strandCol=${input1.metadata.strandCol}
+python '$__tool_directory__/interval2maf.py' --dbkey='${input1.dbkey}' --chromCol=${input1.metadata.chromCol} --startCol=${input1.metadata.startCol} --endCol=${input1.metadata.endCol} --strandCol=${input1.metadata.strandCol}
 #if $maf_source_type.maf_source == "user"
     --mafFile='$maf_source_type.mafFile' --mafIndex='$maf_source_type.mafFile.metadata.maf_index'
 #else
     --mafType='$maf_source_type.mafType'
 #end if
---interval_file='$input1' --output_file='$out_file1' --mafIndexFile='${GALAXY_DATA_INDEX_DIR}/maf_index.loc' --species=$maf_source_type.species --split_blocks_by_species=$split_blocks_by_species_selector.split_blocks_by_species
+--interval_file='$input1' --output_file='$out_file1' --mafIndexFile='${GALAXY_DATA_INDEX_DIR}/maf_index.loc' --species='$maf_source_type.species' --split_blocks_by_species=$split_blocks_by_species_selector.split_blocks_by_species
 #if $split_blocks_by_species_selector.split_blocks_by_species == "split_blocks_by_species"
     --remove_all_gap_columns=$split_blocks_by_species_selector.remove_all_gap_columns
 #end if
