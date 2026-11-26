@@ -1,6 +1,9 @@
 """Security review of a tool before and after its tool patches."""
 
-from dataclasses import dataclass
+from dataclasses import (
+    dataclass,
+    replace,
+)
 from typing import Any
 
 from galaxy.tool_util.parser.interface import ToolSource
@@ -121,5 +124,6 @@ def review_patches(tool_source: ToolSource, db: ToolPatchDatabase, guid: str | N
     """Review ``tool_source`` unpatched and as ``db`` patches it; findings are matched by :func:`finding_match`."""
     before = review_tool_source(tool_source)
     patched = db.apply_patches(tool_source, guid=guid)
-    after = before if patched is tool_source else review_tool_source(patched)
+    # A copy, so judging the patched report leaves ``before`` unassessed.
+    after = replace(before) if patched is tool_source else review_tool_source(patched)
     return PatchReview(before=before, after=after, patched=patched, patch=patched.patch_state)

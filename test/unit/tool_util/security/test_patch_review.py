@@ -394,3 +394,14 @@ def test_cli_fails_on_an_applied_security_patch_that_clears_nothing_only_when_as
     got, report = _cli_json([TOOL, "--tool-patch-path", str(collection), *fail_on], capsys)
     assert [s["state"] for s in report["patches"]] == ["applied"]
     assert got == exit_code
+
+
+def test_cli_judges_only_the_patched_report_when_no_op_applies(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(security_main, "AnthropicJudge", _RecordingJudge)
+    collection = write_collection(tmp_path / "c", {KEY_FILE: security_patch([STALE_OP], "unusual_inputs", DOC)})
+    _, report = _cli_json([TOOL, "--judge", "--tool-patch-path", str(collection)], capsys)
+    assert [s["state"] for s in report["patches"]] == ["mismatch"]
+    assert [f["assessment"]["verdict"] for f in report["findings"]] == ["arg"]
+    assert [f["assessment"] for f in report["before"]["findings"]] == [None]
