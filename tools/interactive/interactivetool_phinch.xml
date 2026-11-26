@@ -12,7 +12,7 @@
         ## ToDo nginx, proxy.conf etc can be removed from the container
 
         #import os
-        #set $name = os.path.splitext(str($infile.display_name).replace(' ', '_'))[0]
+        #set $name = os.path.splitext(str($infile.display_name).replace(' ', '_').replace('/', '_'))[0]
         ## in case someone names the data testdata.
         rm /home/Phinch/data/testdata.biom | true &&
         ln -s '$infile' '/home/Phinch/data/${name}.biom' &&
