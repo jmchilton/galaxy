@@ -69,9 +69,11 @@ def _uncheckable(cases: dict[str, SpecCase]) -> list[str]:
     lines = [
         "## Uncheckable codes",
         "",
-        "Where a template writes values that no character test of a finding can judge (`unchecked_locations`),",
-        "only a check that every value is plain could vet a job. `classify()` and the CLI give these codes when",
-        "not even that could: the review cannot decide the tool from its templates.",
+        "Where a template writes values that no character test of a finding can judge (the classified unchecked",
+        "locations, `uncheckable_locations` in the CLI's JSON), only a check that every value is plain could vet a",
+        "job. `classify()` and the CLI give these codes when not even that could: the review cannot decide the tool",
+        "from its templates. A template the review did not analyse is unchecked but gets no code of its own, so",
+        "`--fail-on uncheckable` lets it through and `--fail-on unchecked` does not.",
         "",
     ]
     groups = (("Codes", list(classify.Uncheckable)),)

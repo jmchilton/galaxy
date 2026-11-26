@@ -15,11 +15,20 @@ from galaxy.tool_util.security.__main__ import (
     main,
     NOT_XML,
 )
+from galaxy.tool_util.security.classify import READS_BY_NAME
+from galaxy.tool_util.security.report import (
+    CAPABILITY,
+    NOT_ANALYSED,
+    RUNS_TEXT,
+)
 from galaxy.tool_util.security.spec import tool_path
 from galaxy.util import galaxy_directory
 
 STRAY_QUOTE = tool_path("stray_quote.xml")
 SANITIZED = tool_path("sanitized_text_single_quoted.xml")
+PIPE = tool_path("pipe_to_shell.xml")
+REFLECTION = tool_path("reflection_getattr.xml")
+NOT_COMPILED = tool_path("search_list.xml")
 FUNCTIONAL_TOOLS = os.path.join(galaxy_directory(), "test", "functional", "tools")
 
 
@@ -92,7 +101,7 @@ def test_load_error_does_not_stop_the_run(tmp_path, capsys):
 
 @pytest.mark.parametrize(
     "fail_on, exit_code",
-    [(None, 0), ("critical", 0), ("high", 1), ("low", 1), ("uncheckable", 0)],
+    [(None, 0), ("critical", 0), ("high", 1), ("low", 1), ("uncheckable", 0), ("unchecked", 0)],
 )
 def test_fail_on_severity(fail_on, exit_code, capsys):
     assert main([STRAY_QUOTE, *(["--fail-on", fail_on] if fail_on else [])]) == exit_code
@@ -103,11 +112,27 @@ def test_fail_on_sees_findings_min_severity_hides(capsys):
 
 
 def test_fail_on_uncheckable(capsys):
-    pipe = tool_path("pipe_to_shell.xml")
-    assert main(["--fail-on", "uncheckable", pipe]) == 1
-    assert "  UNCHECKABLE uncheckable-letters-are-code: letters alone" in capsys.readouterr().out
-    assert main(["--fail-on", "critical", "--fail-on", "uncheckable", pipe]) == 1
-    assert main(["--fail-on", "critical", pipe]) == 0
+    assert main(["--fail-on", "uncheckable", PIPE]) == 1
+    assert "  NOTE     uncheckable-letters-are-code: letters alone" in capsys.readouterr().out
+    assert main(["--fail-on", "critical", "--fail-on", "uncheckable", PIPE]) == 1
+    assert main(["--fail-on", "critical", PIPE]) == 0
+
+
+def test_fail_on_unchecked_trips_on_templates_not_analysed(capsys):
+    main(["--json", NOT_COMPILED])
+    report = json.loads(capsys.readouterr().out)[NOT_COMPILED]
+    assert report["codes"] == []
+    assert report["uncheckable_locations"] == {"command": NOT_ANALYSED}
+    assert main(["--fail-on", "uncheckable", NOT_COMPILED]) == 0
+    assert main(["--fail-on", "unchecked", NOT_COMPILED]) == 1
+    assert main(["--fail-on", "high", "--fail-on", "unchecked", NOT_COMPILED]) == 1
+
+
+def test_fail_on_counts_capability_findings(capsys):
+    template_code = tool_path("template_code.xml")
+    critical = [f for f in review_tool_source(get_tool_source(template_code)).findings if f.severity == "critical"]
+    assert critical and {f.kind for f in critical} == {CAPABILITY}
+    assert main(["--fail-on", "critical", template_code]) == 1
 
 
 def test_directory_lists_yaml_tools_as_not_reviewed(tmp_path, capsys):
@@ -158,3 +183,19 @@ def test_directory_without_tools_is_an_error(tmp_path, capsys):
     (tmp_path / "macros.xml").write_text("<macros/>")
     assert main([str(tmp_path)]) == 1
     assert capsys.readouterr().out == f"{tmp_path}\n  ERROR    no tools found\n"
+
+
+def test_json_adds_the_classified_unchecked_locations(capsys):
+    main(["--json", STRAY_QUOTE, PIPE, REFLECTION])
+    reports = json.loads(capsys.readouterr().out)
+    assert reports[STRAY_QUOTE]["uncheckable_locations"] == {}
+    assert reports[PIPE]["uncheckable_locations"] == {"command": RUNS_TEXT}
+    assert reports[REFLECTION]["unchecked_locations"] == {}
+    assert reports[REFLECTION]["uncheckable_locations"] == {"command": READS_BY_NAME}
+
+
+def test_text_lists_unchecked_locations_and_codes_in_the_note_column(capsys):
+    main([REFLECTION])
+    lines = capsys.readouterr().out.splitlines()
+    assert f"  NOTE     unchecked command: {READS_BY_NAME}" in lines
+    assert any(line.startswith("  NOTE     uncheckable-template-code: its templates") for line in lines)

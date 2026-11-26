@@ -24,6 +24,7 @@ from galaxy.tool_util.parser.xml import XmlToolSource
 from . import review_tool_source
 from .charsets import SEVERITIES
 from .classify import (
+    Classification,
     classify,
     Uncheckable,
 )
@@ -37,6 +38,7 @@ from .report import (
 )
 
 UNCHECKABLE = "uncheckable"
+UNCHECKED = "unchecked"
 NOT_XML = "not reviewed: only XML tools are analysed"
 NO_TOOLS = "no tools found"
 
@@ -54,10 +56,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--fail-on",
         action="append",
-        choices=(*SEVERITIES, UNCHECKABLE),
+        choices=(*SEVERITIES, UNCHECKABLE, UNCHECKED),
         default=[],
-        help=f"exit 1 when a finding is at or above this severity, or with '{UNCHECKABLE}' when the review"
-        " cannot decide a tool from its templates (repeatable)",
+        help="exit 1 when any finding, vulnerability or capability, is at or above this severity (--judge verdicts"
+        f" do not change this); with '{UNCHECKABLE}' when a tool has an uncheckable code; with '{UNCHECKED}' when a"
+        " tool has an unchecked location (uncheckable_locations), templates the review did not analyse included;"
+        " repeatable",
     )
     parser.add_argument(
         "--judge",
@@ -66,7 +70,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     threshold = SEVERITIES.index(args.min_severity)
-    fail_severities = [SEVERITIES.index(s) for s in args.fail_on if s != UNCHECKABLE]
+    fail_severities = [SEVERITIES.index(s) for s in args.fail_on if s in SEVERITIES]
     fail_threshold = min(fail_severities) if fail_severities else None
     reports: dict[str, dict[str, Any]] = {}
     judge = AnthropicJudge() if args.judge else None
@@ -96,12 +100,15 @@ def main(argv: list[str] | None = None) -> int:
         classification = classify(report)
         reports[path] = {"tool_id": report.tool_id, "tool_version": tool_version, **report.to_dict()}
         reports[path]["codes"] = classification.codes
+        reports[path]["uncheckable_locations"] = classification.unchecked_locations
         if fail_threshold is not None and any(SEVERITIES.index(f.severity) >= fail_threshold for f in report.findings):
             failed = True
         if UNCHECKABLE in args.fail_on and classification.codes:
             failed = True
+        if UNCHECKED in args.fail_on and classification.unchecked_locations:
+            failed = True
         if not args.json:
-            _print_report(path, tool_version, report, threshold, classification.reasons)
+            _print_report(path, tool_version, report, threshold, classification)
     if args.json:
         json.dump(reports, sys.stdout, indent=1)
     return 1 if failed else 0
@@ -154,7 +161,7 @@ def _describe_error(e: BaseException) -> str:
 
 
 def _print_report(
-    path: str, tool_version: str | None, report: Report, threshold: int, reasons: dict[Uncheckable, str]
+    path: str, tool_version: str | None, report: Report, threshold: int, classification: Classification
 ) -> None:
     print(f"{path} ({' '.join(part for part in (report.tool_id, tool_version) if part)})")
     for finding in report.sorted():
@@ -167,8 +174,10 @@ def _print_report(
             print(f"           model says {verdict}: {reason}{attack}")
     for note in report.unanalyzed:
         print(f"  NOTE     {note}")
-    for code, why in reasons.items():
-        print(f"  UNCHECKABLE {code}: {why}")
+    for location, why in classification.unchecked_locations.items():
+        print(f"  NOTE     unchecked {location}: {why}")
+    for code, why in classification.reasons.items():
+        print(f"  NOTE     {code}: {why}")
 
 
 def _where(finding: Finding) -> str:
