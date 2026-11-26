@@ -3,6 +3,7 @@
 import os
 from typing import (
     Any,
+    cast,
     TYPE_CHECKING,
 )
 
@@ -12,14 +13,17 @@ from galaxy.tool_util.patches import (
     ToolPatchDatabase,
     ToolPatchInfo,
 )
-from galaxy.tool_util.patches.model import level_index
+from galaxy.tool_util.patches.model import (
+    level_index,
+    ReproducibilityLevel,
+)
 from galaxy.version import VERSION_MAJOR
 
 if TYPE_CHECKING:
     from galaxy.config import GalaxyAppConfiguration
 
 # Job-cache reuse across the patched/unpatched boundary is safe only up to this level.
-JOB_CACHE_SAFE_LEVEL = "rejects_inputs"
+JOB_CACHE_SAFE_LEVEL: ReproducibilityLevel = "rejects_inputs"
 
 
 def tool_patch_database_from_config(config: "GalaxyAppConfiguration") -> ToolPatchDatabase | None:
@@ -29,7 +33,7 @@ def tool_patch_database_from_config(config: "GalaxyAppConfiguration") -> ToolPat
         return None
     return load_tool_patch_database(
         paths,
-        reproducibility=config.tool_patch_reproducibility,
+        reproducibility=cast(ReproducibilityLevel, config.tool_patch_reproducibility),
         requirement_changes=config.tool_patch_requirement_changes,
         galaxy_series=VERSION_MAJOR,
     )

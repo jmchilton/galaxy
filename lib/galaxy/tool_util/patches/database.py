@@ -65,6 +65,7 @@ from .model import (
     PatchFile,
     PatchPolicy,
     PatchState,
+    ReproducibilityLevel,
     SECURITY,
     ToolPatchCollectionsSummary,
     ToolPatchInfo,
@@ -139,7 +140,7 @@ class ToolPatchDatabase:
         return policy.encode("utf-8")
 
     def digest_for(self, key: PatchKey, changeset: str | None = None) -> str | None:
-        """sha256 over every file matched for key, the policy and series; None when nothing matches."""
+        """sha256 over the files matched for key, their codes and coverage, the policy and series; None on a miss."""
         h = hashlib.sha256()
         matched = override_used = False
         for c in self._active:
@@ -149,6 +150,9 @@ class ToolPatchDatabase:
                     continue
                 matched = True
                 h.update(f"{c.name}\0{rel}\0{c.file_sha256(rel) or ''}\0".encode())
+            if override is not None or c.version_file(key) is not None:
+                coverage = ",".join(sorted(c.coverage(key)))
+                h.update(f"{c.codes_sha256}\0{coverage}\0".encode())
             override_used = override_used or override is not None
         if not matched:
             return None
@@ -170,9 +174,6 @@ class ToolPatchDatabase:
 
     # --- applying ---
 
-    def key_for(self, tool_source: ToolSource, guid: str | None = None) -> PatchKey | None:
-        return patch_key(tool_source, guid)
-
     def changeset_for(self, key: PatchKey, repository_dir_hint: str | None) -> str | None:
         """Checked-out changeset when an override could apply to key, else None."""
         if not is_shed_key(key) or not any(c.has_overrides(key) for c in self._active):
@@ -186,11 +187,7 @@ class ToolPatchDatabase:
     def apply_patches(
         self, tool_source: ToolSource, guid: str | None = None, repository_dir_hint: str | None = None
     ) -> ToolSource:
-        """Return the patched source, or ``tool_source`` itself when no op applied.
-
-        ``patch_state`` is set on the returned source whenever a patch file matched the key.
-        ``repository_dir_hint`` is where to start looking for the shed repository's ``.hg``.
-        """
+        """Patched source (or ``tool_source`` itself when no op applied), with ``patch_state`` set on any match."""
         if not self._active or not isinstance(tool_source, XmlToolSource):
             return tool_source
         key = patch_key(tool_source, guid)
@@ -240,7 +237,7 @@ class ToolPatchDatabase:
         override_rel = c.override_for(key, changeset)
         if override_rel is not None:
             result = self._apply_file(c, key, override_rel, current, override=True)
-            if result is not None and not any(s.state == MISMATCH for s in result.states):
+            if result is not None and _override_usable(result.states):
                 return result
             if version_rel is None:
                 return result or _FileResult([], None)
@@ -372,6 +369,14 @@ class ToolPatchDatabase:
         )
 
 
+def _override_usable(states: Sequence[PatchState]) -> bool:
+    """An override stands unless its security unit (or, without one, its compat unit) mismatched."""
+    mismatched = {s.kind for s in states if s.state == MISMATCH}
+    if SECURITY in {s.kind for s in states}:
+        return SECURITY not in mismatched
+    return not mismatched
+
+
 def _log_state(state: PatchState) -> None:
     where = f"{state.collection.name}:{state.path}"
     if state.state == APPLIED:
@@ -390,7 +395,7 @@ def _log_state(state: PatchState) -> None:
 
 def load_tool_patch_database(
     paths: Sequence[str],
-    reproducibility: str = "all_inputs",
+    reproducibility: ReproducibilityLevel = "all_inputs",
     requirement_changes: bool = False,
     galaxy_series: str | None = None,
 ) -> ToolPatchDatabase:
