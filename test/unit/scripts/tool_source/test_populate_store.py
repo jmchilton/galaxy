@@ -355,6 +355,29 @@ class TestIncrementalFastPath:
         r2 = _populate_default(cfg, pattern="itest_", incremental=True)
         assert (r2["stored"], r2["unchanged"]) == (0, 2)
 
+    def test_changed_tool_reparsed_while_unchanged_carried_forward(self, tmp_path):
+        tools_dir = tmp_path / "tools"
+        for i in (1, 2):
+            _write_tool(tools_dir / f"itest_{i}.xml", f"itest_{i}")
+        conf = _write_tool_conf(
+            tmp_path / "tool_conf.xml",
+            tools_dir,
+            '<tool file="itest_1.xml"/><tool file="itest_2.xml"/>',
+        )
+        cfg = populate_config(tmp_path, conf)
+        _populate_default(cfg, pattern="itest_", incremental=True)
+        _, before = _load_default_index(cfg)
+
+        _write_tool(tools_dir / "itest_1.xml", "itest_1", command="echo changed")
+        result = _populate_default(cfg, pattern="itest_", incremental=True)
+
+        assert (result["stored"], result["unchanged"]) == (1, 1)
+        store, after = _load_default_index(cfg)
+        assert after.entries["itest_1"].source_hash != before.entries["itest_1"].source_hash
+        stored = store.get(after.entries["itest_1"].source_hash)
+        assert stored is not None and "echo changed" in stored.raw_source
+        assert after.entries["itest_2"] == before.entries["itest_2"]
+
     def test_adhoc_shed_tool_becomes_panel_tool_when_conf_catches_up(self, tmp_path):
         tools_dir = tmp_path / "shed_tools"
         tool_path = _write_tool(tools_dir / "fastp.xml", "fastp", version="0.20.1+galaxy0")
