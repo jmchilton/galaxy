@@ -80,7 +80,7 @@ class TestToolPatchApplied(BaseToolPatchesIntegrationTestCase):
         (state,) = self._patch_states()
         assert state["state"] == "applied"
         assert state["key"] == "_local/identifier_single/1.0.0"
-        assert state["reproducibility"] == "special_inputs"
+        assert state["reproducibility"] == "unusual_inputs"
         assert "contained a dot" in state["reproducibility_doc"]
 
     def test_job_runs_patched_command(self):

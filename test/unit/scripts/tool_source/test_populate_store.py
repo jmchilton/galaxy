@@ -860,14 +860,14 @@ REQUIREMENT_PATCH = security_patch(
             }
         }
     ],
-    "all_inputs",
+    "ordinary_inputs",
     PATCH_DOC,
     changes_requirements=True,
 )
 
 
 def _command_patch(new: str) -> dict:
-    return security_patch([replace_text_op("command", "echo ptest_1", new)], "special_inputs", PATCH_DOC)
+    return security_patch([replace_text_op("command", "echo ptest_1", new)], "unusual_inputs", PATCH_DOC)
 
 
 class TestToolPatches:

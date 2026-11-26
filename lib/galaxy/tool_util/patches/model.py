@@ -31,7 +31,7 @@ from .xmlutil import (
 
 ChangeKind = Literal["security", "compat"]
 FileKind = Literal["security", "compat", "mixed"]
-ReproducibilityLevel = Literal["identical", "rejects_inputs", "special_inputs", "all_inputs"]
+ReproducibilityLevel = Literal["identical", "rejects_inputs", "unusual_inputs", "ordinary_inputs"]
 AdvisoryAction = Literal["upgrade", "update_revision", "info", "enable_policy"]
 FileAdvisoryAction = Literal["upgrade", "update_revision", "info"]
 AdvisoryLevel = Literal["must_fix", "consider", "info"]
@@ -55,7 +55,7 @@ PositiveInt = Annotated[int, Field(strict=True, gt=0)]
 # Generator proposal (validator-only < sanitizer/command/configfile < everything else).
 _STRUCTURAL_TAGS = frozenset({"tool", "inputs", "section", "conditional", "when", "repeat"})
 _VALIDATOR_TAGS = frozenset({"validator", "param"})
-_SPECIAL_TAGS = frozenset({"sanitizer", "valid", "mapping", "add", "remove", "command", "configfile", "configfiles"})
+_UNUSUAL_TAGS = frozenset({"sanitizer", "valid", "mapping", "add", "remove", "command", "configfile", "configfiles"})
 _OPS_ONLY_FIELDS = frozenset(
     {"reproducibility", "reproducibility_doc", "reproducibility_reason", "changes_requirements", "fixes"}
 )
@@ -217,18 +217,18 @@ def _op_tags(body: OpBody) -> set[str]:
 
 def propose_level(bodies: list[OpBody]) -> ReproducibilityLevel:
     """Lowest level the op targets allow; never identical."""
-    special = False
+    unusual = False
     for body in bodies:
         tags = _op_tags(body)
         if op_touches_requirements(body):
-            return "all_inputs"
+            return "ordinary_inputs"
         if "validator" in tags and tags <= _VALIDATOR_TAGS:
             continue
-        if tags & _SPECIAL_TAGS:
-            special = True
+        if tags & _UNUSUAL_TAGS:
+            unusual = True
         else:
-            return "all_inputs"
-    return "special_inputs" if special else "rejects_inputs"
+            return "ordinary_inputs"
+    return "unusual_inputs" if unusual else "rejects_inputs"
 
 
 class UpstreamRef(_FileModel):
@@ -428,7 +428,7 @@ def patches_as_dicts(patch: ToolPatchInfo | None) -> list[dict[str, Any]] | None
 class PatchPolicy(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    reproducibility: ReproducibilityLevel = "all_inputs"
+    reproducibility: ReproducibilityLevel = "ordinary_inputs"
     requirement_changes: bool = False
 
 

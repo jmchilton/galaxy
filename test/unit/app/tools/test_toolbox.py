@@ -583,7 +583,7 @@ class TestToolBox(BaseToolBoxTestCase):
             Path(self.test_directory) / "patches",
             {
                 "galaxyproject/example/test_tool/0.1.yml": security_patch(
-                    [replace_text_op("command", 'echo "$param1"', 'echo -- "$param1"')], "special_inputs", PATCH_DOC
+                    [replace_text_op("command", 'echo "$param1"', 'echo -- "$param1"')], "unusual_inputs", PATCH_DOC
                 )
             },
         )

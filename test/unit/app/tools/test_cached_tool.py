@@ -1655,7 +1655,7 @@ PATCH_INFO = ToolPatchInfo(
             collection={"name": "test-patches", "version": "2026.11.25"},
             path="patches/iuc/bedtools/bedtools_mergebed/2.31.1+galaxy2.yml",
             digest="e" * 64,
-            reproducibility="special_inputs",
+            reproducibility="unusual_inputs",
             reproducibility_doc="Jobs with quoted names now run differently.",
         )
     ],

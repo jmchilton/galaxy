@@ -89,7 +89,7 @@ def security_doc(*ops: dict[str, Any], **fields: Any) -> dict[str, Any]:
         "format_version": 1,
         "kind": "security",
         "upstream": [UPSTREAM],
-        "reproducibility": "special_inputs",
+        "reproducibility": "unusual_inputs",
         "reproducibility_doc": DOC,
         "ops": list(ops),
     }
@@ -201,7 +201,7 @@ def probe(tmp_path: Path) -> XmlToolSource:
                         "occurrences": 1,
                     }
                 },
-                reproducibility="all_inputs",
+                reproducibility="ordinary_inputs",
             ),
             id="requirements_op_without_flag",
         ),
@@ -238,7 +238,7 @@ def probe(tmp_path: Path) -> XmlToolSource:
         ),
         pytest.param(compat_doc(QUOTE_LABEL, needed_from=None), id="compat_op_without_needed_from"),
         pytest.param(compat_doc(QUOTE_LABEL, galaxy_change=None), id="compat_without_galaxy_change"),
-        pytest.param(compat_doc(QUOTE_LABEL, reproducibility="special_inputs"), id="compat_not_identical"),
+        pytest.param(compat_doc(QUOTE_LABEL, reproducibility="unusual_inputs"), id="compat_not_identical"),
         pytest.param(security_doc({**QUOTE_LABEL, "needed_from": "26.1"}), id="security_op_needed_from"),
         pytest.param(security_doc(QUOTE_LABEL, needed_from="26.1"), id="security_file_needed_from"),
         pytest.param(security_doc(QUOTE_LABEL, galaxy_change=GALAXY_CHANGE), id="security_file_galaxy_change"),
@@ -310,7 +310,7 @@ def test_unquoted_needed_from_in_yaml_is_rejected() -> None:
                         "occurrences": 1,
                     }
                 },
-                reproducibility="all_inputs",
+                reproducibility="ordinary_inputs",
                 changes_requirements=True,
             ),
             id="requirements",
@@ -699,7 +699,7 @@ def test_applied_patch_rebuilds_tool_source(
     assert (state.state, state.kind, state.key, state.path) == ("applied", "security", "/".join(key), f"patches/{rel}")
     assert state.digest == hashlib.sha256((root / "patches" / rel).read_bytes()).hexdigest()
     assert (state.collection.name, state.collection.version) == ("test-patches", "2026.11.25")
-    assert (state.reproducibility, state.reproducibility_doc, state.upstream[0].pr) == ("special_inputs", DOC, 1)
+    assert (state.reproducibility, state.reproducibility_doc, state.upstream[0].pr) == ("unusual_inputs", DOC, 1)
     assert state.advisory is None
 
 
@@ -784,14 +784,14 @@ def test_reproducibility_cap_demotes_to_advisory(tmp_path: Path, probe: XmlToolS
         "enable_policy",
         "must_fix",
     )
-    assert "special_inputs" in (state.advisory.message or "")
+    assert "unusual_inputs" in (state.advisory.message or "")
     assert "echo $label >>" in command_text(probe.parse_command())
 
 
 @pytest.mark.parametrize("enabled", [False, True])
 def test_requirement_changes_policy(tmp_path: Path, enabled: bool) -> None:
     tool = write_tool(tmp_path / "req.xml", REQUIREMENT_TOOL)
-    doc = security_doc(REQUIREMENT_OP, reproducibility="all_inputs", changes_requirements=True)
+    doc = security_doc(REQUIREMENT_OP, reproducibility="ordinary_inputs", changes_requirements=True)
     db = load_db(write_collection(tmp_path / "c", {LOCAL_PROBE: doc}), requirement_changes=enabled)
     result = db.apply_patches(tool)
     (state,) = patch_states(result)
