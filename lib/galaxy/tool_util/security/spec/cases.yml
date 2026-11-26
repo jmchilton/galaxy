@@ -546,6 +546,48 @@ raw_dataset_history:
       harm: true
       expect: {rejected: false, warns: [uncheckable-template-code]}
 
+include_dataset:
+  doc: >-
+    `#include` of a value reads template code the job sends: here the dataset, which no sanitizer touches.
+    Its `#` directives would run in the server; every job is refused.
+  tool: include_dataset.xml
+  code: uncheckable-template-code
+  review:
+    patterns: [template-code]
+    findings:
+      - {rule: template-include, severity: critical}
+  red:
+    - datasets:
+        input: {content: "touch harm-marker\n"}
+      harm: true
+      expect: {rejected: true, message_contains: ["(#include)"]}
+  green:
+    - config: {when_unsure: log}
+      datasets:
+        input: {content: "echo hi\n"}
+      harm: true
+      expect: {rejected: false, warns: [uncheckable-template-code]}
+
+template_macro_rebound:
+  doc: >-
+    `#include source=$pre#` reads the template macro `pre` only while nothing else answers to `$pre`. Here a
+    `#set` does, so the value is included: every job is refused.
+  tool: template_macro_rebound.xml
+  code: uncheckable-template-code
+  review:
+    patterns: [template-code]
+    findings:
+      - {rule: template-include, severity: critical}
+  red:
+    - inputs: {word: "touch harm-marker &&"}
+      harm: true
+      expect: {rejected: true, message_contains: ["(#include)"]}
+  green:
+    - config: {when_unsure: log}
+      inputs: {word: "echo hi &&"}
+      harm: true
+      expect: {rejected: false, warns: [uncheckable-template-code]}
+
 pipe_to_shell:
   doc: A value in text piped to a shell is code whatever its characters, so every job is refused.
   tool: pipe_to_shell.xml

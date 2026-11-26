@@ -46,6 +46,10 @@ BODY_START = "_filter"
 # in the namespace, VFN in the object of their first argument, VFL in a local value.
 NAME_MAPPER = frozenset(("VFFSL", "VFSL", "VFN", "VFL"))
 NAMESPACE_LOOKUPS = frozenset(("VFFSL", "VFSL"))
+# The method `#include` compiles to: `self._handleCheetahInclude(source, includeFrom=..., raw=...)`.
+INCLUDE = "_handleCheetahInclude"
+# The prefix of the method the review reads a template macro in as (see ``_include_templates``).
+MACRO_METHOD = "galaxy_template_macro_"
 
 
 def name_lookup(node: ast.AST, functions: frozenset[str] = NAME_MAPPER) -> tuple[str, str] | None:
@@ -60,6 +64,33 @@ def name_lookup(node: ast.AST, functions: frozenset[str] = NAME_MAPPER) -> tuple
 def constant(node: ast.AST | None) -> object:
     """The value of a literal in the compiled template, None for anything else."""
     return node.value if isinstance(node, ast.Constant) else None
+
+
+def is_include(func: ast.expr) -> bool:
+    """``self._handleCheetahInclude``, the call ``#include`` compiles to."""
+    return (
+        isinstance(func, ast.Attribute)
+        and func.attr == INCLUDE
+        and isinstance(func.value, ast.Name)
+        and func.value.id == "self"
+    )
+
+
+def include_options(call: ast.Call) -> tuple[bool, bool]:
+    """Whether an ``#include`` call reads text (``source=``) rather than a file, and whether it is ``raw``."""
+    options = {keyword.arg: constant(keyword.value) for keyword in call.keywords}
+    return options.get("includeFrom") == "str", options.get("raw") is True
+
+
+def source_includes(tree: ast.AST) -> Counter[str]:
+    """How often ``tree`` has the ``#include source=$name#`` directive of each name."""
+    found: Counter[str] = Counter()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and is_include(node.func) and len(node.args) == 1:
+            lookup = name_lookup(node.args[0], NAMESPACE_LOOKUPS)
+            if lookup and include_options(node) == (True, False):
+                found[lookup[1]] += 1
+    return found
 
 
 def literal_rewrite_call(call: ast.Call, regex: bool) -> tuple[object, object]:
@@ -176,6 +207,21 @@ def compiled_module(source: str) -> ast.Module:
     return _parse(_generate(source))
 
 
+def _checked_code(source: str) -> str:
+    """The code Cheetah generates for ``source``; raises :class:`CompileTimeExecution` instead of running any."""
+    if match := COMPILE_TIME_DIRECTIVE.search(source):
+        raise CompileTimeExecution(match.group(1), source.count("\n", 0, match.start()) + 1)
+    for match in ENCODING_DIRECTIVE.finditer(source):
+        if match.group(1).lower() not in _ASCII_COMPATIBLE:
+            raise CompileTimeExecution("encoding", source.count("\n", 0, match.end()) + 1)
+    return _generate(source)
+
+
+def checked_module(source: str) -> ast.Module:
+    """The module Cheetah compiles ``source`` to, as an AST; raises like :func:`compile_template`."""
+    return _parse(_checked_code(source))
+
+
 def _imports(tree: ast.Module) -> list[ast.stmt]:
     return [node for node in tree.body if isinstance(node, (ast.Import, ast.ImportFrom))]
 
@@ -184,6 +230,19 @@ def _imports(tree: ast.Module) -> list[ast.stmt]:
 def _baseline_imports() -> Counter[str]:
     """Imports Cheetah puts in every generated module (``os``, ``sys``, ``time``, ``types`` among them)."""
     return Counter(ast.dump(node) for node in _imports(compiled_module("x")))
+
+
+def added_imports(tree: ast.Module) -> list[ast.stmt]:
+    """The imports of the module that Cheetah does not put in every module (``#import``, ``#from``, ``#extends``)."""
+    baseline = _baseline_imports().copy()
+    imports = []
+    for node in _imports(tree):
+        dumped = ast.dump(node)
+        if baseline[dumped] > 0:
+            baseline[dumped] -= 1
+        else:
+            imports.append(node)
+    return imports
 
 
 def _method(func: ast.FunctionDef) -> Method:
@@ -270,26 +329,14 @@ def compile_template(source: str, rewrite: Callable[[ast.Module], set[int]] | No
     Raises :class:`CompileTimeExecution` instead of compiling a template that would run code
     during compilation, and Cheetah's ``ParseError`` or ``SyntaxError`` for a broken template.
     """
-    if match := COMPILE_TIME_DIRECTIVE.search(source):
-        raise CompileTimeExecution(match.group(1), source.count("\n", 0, match.start()) + 1)
-    for match in ENCODING_DIRECTIVE.finditer(source):
-        if match.group(1).lower() not in _ASCII_COMPATIBLE:
-            raise CompileTimeExecution("encoding", source.count("\n", 0, match.end()) + 1)
-    code = _generate(source)
+    code = _checked_code(source)
     tree = _parse(code)
     namespace_get_vars = rewrite(tree) if rewrite is not None else set()
     annotated: dict[int, int] = {}
     for lineno, text in enumerate(code.splitlines(), start=1):
         if match := _LINE_COMMENT.search(text):
             annotated[lineno] = int(match.group(1))
-    baseline = _baseline_imports().copy()
-    imports = []
-    for node in _imports(tree):
-        dumped = ast.dump(node)
-        if baseline[dumped] > 0:
-            baseline[dumped] -= 1
-        else:
-            imports.append(node)
+    imports = added_imports(tree)
     main: Method | None = None
     helpers: dict[str, Method] = {}
     attrs: list[ast.stmt] = []

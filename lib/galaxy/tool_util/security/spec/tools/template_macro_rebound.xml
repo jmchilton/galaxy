@@ -1,0 +1,17 @@
+<tool id="spec_template_macro_rebound" name="Template macro rebound" version="1.0" profile="24.0">
+    <description>includes a value set under the name of a template macro</description>
+    <macros>
+        <template name="pre"><![CDATA[echo pre &&]]></template>
+    </macros>
+    <command><![CDATA[#set $pre = str($word)
+#include source=$pre#
+echo x > '$out']]></command>
+    <inputs>
+        <param name="word" type="text">
+            <sanitizer sanitize="false"/>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

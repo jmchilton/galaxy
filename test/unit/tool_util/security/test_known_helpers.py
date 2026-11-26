@@ -261,3 +261,35 @@ def test_loop_over_a_global_list_reads_each_element(tmp_path, sections, name, in
 def test_loop_over_a_list_set_otherwise_is_reflection(tmp_path, command):
     report = review(tmp_path, command + "tool", inputs=INPUTS + SECTIONS)
     assert any(f.message.startswith(COMPUTED_GET_VAR) for f in report.findings)
+
+
+def sections_macros(set_sections: str = SECTIONS_SET) -> str:
+    return f"""<macros>
+<template name="set_sections"><![CDATA[{set_sections}]]></template>
+<template name="loop"><![CDATA[{SECTIONS_LOOP}]]></template>
+<template name="outer"><![CDATA[#include source=$loop#
+]]></template>
+</macros>"""
+
+
+@pytest.mark.parametrize("loop", ["loop", "outer"])
+def test_loop_in_a_template_macro_over_a_list_a_macro_sets_reads_each_element(tmp_path, loop):
+    command = f"#include source=$set_sections#\n#include source=${loop}#\ntool"
+    report = review(tmp_path, command, inputs=INPUTS + SECTIONS, extra=sections_macros())
+    assert code(report) == set()
+    assert ("shell-injection", "high") in rules(report)
+
+
+@pytest.mark.parametrize(
+    "command,set_sections",
+    [
+        ("#include source=$loop#\n#include source=$set_sections#\n", SECTIONS_SET),
+        ("#include source=$outer#\n#include source=$set_sections#\n#include source=$loop#\n", SECTIONS_SET),
+        ("#if $text\n#include source=$set_sections#\n#end if\n#include source=$loop#\n", SECTIONS_SET),
+        ("#include source=$set_sections#\n#include source=$loop#\n", "#if $text\n#return\n#end if\n" + SECTIONS_SET),
+        ("#include source=$set_sections#\n#include source=$loop#\n", "#stop\n" + SECTIONS_SET),
+    ],
+)
+def test_loop_in_a_template_macro_over_a_list_set_otherwise_is_reflection(tmp_path, command, set_sections):
+    report = review(tmp_path, command + "tool", inputs=INPUTS + SECTIONS, extra=sections_macros(set_sections))
+    assert any(f.message.startswith(COMPUTED_GET_VAR) for f in report.findings)

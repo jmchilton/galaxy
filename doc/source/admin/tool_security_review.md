@@ -995,7 +995,7 @@ config:
 
 ### `uncheckable-template-code`
 
-The templates run Python that can read text the job does not carry (imports, `open()`, `$__app__`, `getattr`, what the dataset model behind `.unsanitized` reaches beyond its own strings and metadata).
+The templates run Python that can read text the job does not carry (imports, `open()`, `#include` of anything but a template macro, `$__app__`, `getattr`, what the dataset model behind `.unsanitized` reaches beyond its own strings and metadata).
 
 #### raw_dataset_history
 
@@ -1021,6 +1021,68 @@ Runs
 datasets:
   input:
     name: reads
+config:
+  when_unsure: log
+```
+
+#### include_dataset
+
+`#include` of a value reads template code the job sends: here the dataset, which no sanitizer touches. Its `#` directives would run in the server; every job is refused.
+
+Tool `include_dataset.xml`:
+
+```
+#set $path = str($input)
+#include $path
+echo x > '$out'
+```
+
+Refused
+
+```
+datasets:
+  input:
+    content: 'touch harm-marker
+
+      '
+```
+
+Runs
+
+```
+datasets:
+  input:
+    content: 'echo hi
+
+      '
+config:
+  when_unsure: log
+```
+
+#### template_macro_rebound
+
+`#include source=$pre#` reads the template macro `pre` only while nothing else answers to `$pre`. Here a `#set` does, so the value is included: every job is refused.
+
+Tool `template_macro_rebound.xml`:
+
+```
+#set $pre = str($word)
+#include source=$pre#
+echo x > '$out'
+```
+
+Refused
+
+```
+inputs:
+  word: touch harm-marker &&
+```
+
+Runs
+
+```
+inputs:
+  word: echo hi &&
 config:
   when_unsure: log
 ```
@@ -1509,9 +1571,9 @@ Refused cases with it: `dataset_content_shell_injection`.
 
 #### `template-code`
 
-Runs Python the review cannot follow (`exec`, `compile`, imports of modules that start processes or open connections).
+Runs Python the review cannot follow (`exec`, `compile`, imports of modules that start processes or open connections, `#include` of anything but a template macro).
 
-Refused cases with it: `rewrites_and_template_code`, `template_code`.
+Refused cases with it: `include_dataset`, `template_macro_rebound`, `rewrites_and_template_code`, `template_code`.
 
 ### Reads of values the server sets
 

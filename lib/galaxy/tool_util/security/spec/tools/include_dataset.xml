@@ -1,0 +1,12 @@
+<tool id="spec_include_dataset" name="Include a dataset" version="1.0" profile="24.0">
+    <description>reads the dataset in as template code</description>
+    <command><![CDATA[#set $path = str($input)
+#include $path
+echo x > '$out']]></command>
+    <inputs>
+        <param name="input" type="data" format="txt"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

@@ -63,6 +63,7 @@ CODE_CAPABILITIES = frozenset(
     (
         "template-exec",
         "template-compile-exec",
+        "template-include",
         "template-file-io",
         "template-network",
         REFLECTION_RULE,

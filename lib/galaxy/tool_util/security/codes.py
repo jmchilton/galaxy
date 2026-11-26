@@ -59,8 +59,8 @@ DESCRIPTIONS = {
     " not literal, or of a value template code changed before). A literal rewrite of a value as the job carries"
     " it is checked with each job.",
     RefusalCode.UNCHECKABLE_TEMPLATE_CODE: "The templates run Python that can read text the job does not carry"
-    " (imports, `open()`, `$__app__`, `getattr`, what the dataset model behind `.unsanitized` reaches beyond its"
-    " own strings and metadata).",
+    " (imports, `open()`, `#include` of anything but a template macro, `$__app__`, `getattr`, what the dataset"
+    " model behind `.unsanitized` reaches beyond its own strings and metadata).",
     RefusalCode.UNCHECKABLE_LETTERS_ARE_CODE: "Letters alone can be code where the tool writes a value: the program"
     " to run, text piped to a shell that runs it (not one that runs a script file), or unquoted Perl or Ruby code.",
     RefusalCode.UNCHECKABLE_UNTRACED_VALUE: "The templates write a value the review cannot trace to one input or"
