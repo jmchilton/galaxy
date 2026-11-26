@@ -1668,7 +1668,7 @@ def test_to_panel_entry_reports_patches_without_materialise():
     assert "patches" not in _stub().to_panel_entry(trans=None)
 
 
-def test_materialized_tool_carries_entry_patch(tmp_path):
+def test_materialised_tool_carries_entry_patch(tmp_path):
     box = _materializing_box()
     entry = _shed_image_entry().model_copy(update={"patch": PATCH_INFO})
 
