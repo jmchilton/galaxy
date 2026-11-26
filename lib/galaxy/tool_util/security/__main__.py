@@ -29,6 +29,7 @@ from galaxy.tool_util.patches import (
     load_tool_patch_database,
     ToolPatchDatabase,
 )
+from galaxy.tool_util.patches.model import REPRODUCIBILITY_LEVELS
 from . import review_tool_source
 from .charsets import SEVERITIES
 from .classify import (
@@ -41,7 +42,9 @@ from .judge import (
     judge_report,
 )
 from .patch_review import (
+    note_lines,
     PatchReview,
+    report_dict,
     review_patches,
 )
 from .report import (
@@ -63,7 +66,6 @@ class FailOn:
     severity: int | None = None
     uncheckable: bool = False
     unchecked: bool = False
-    # Checked by the caller on a PatchReview.
     mismatch: bool = False
 
     @classmethod
@@ -71,7 +73,9 @@ class FailOn:
         severity = min((SEVERITIES.index(v) for v in values if v in SEVERITIES), default=None)
         return cls(severity, UNCHECKABLE in values, UNCHECKED in values, MISMATCH in values)
 
-    def met(self, report: Report, classification: Classification) -> bool:
+    def met(self, report: Report, classification: Classification, review: PatchReview | None = None) -> bool:
+        if self.mismatch and review is not None and review.mismatched:
+            return True
         if self.severity is not None and any(SEVERITIES.index(f.severity) >= self.severity for f in report.findings):
             return True
         return (self.uncheckable and bool(classification.codes)) or (
@@ -106,17 +110,7 @@ class NotReviewed:
 def main(argv: list[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
-    if not args.tool_patch_paths:
-        for option, given in (("--guid", args.guid), (f"--fail-on {MISMATCH}", MISMATCH in args.fail_on)):
-            if given:
-                parser.error(f"{option} needs --tool-patch-path")
-    if args.guid and (len(args.tools) != 1 or os.path.isdir(args.tools[0])):
-        parser.error("--guid needs exactly one tool file")
-    if args.guid and key_from_ids(args.guid, None, None) is None:
-        parser.error("--guid is not a Tool Shed guid (<tool shed>/repos/<owner>/<repo>/<tool id>/<version>)")
-    patch_db = _patch_database(args.tool_patch_paths)
-    if patch_db is not None and len(patch_db.collections) != len(args.tool_patch_paths):
-        parser.error("a --tool-patch-path is not a loadable tool patch collection (see the log)")
+    patch_db = _patch_database(parser, args)
     threshold = SEVERITIES.index(args.min_severity)
     fail_on = FailOn.parse(args.fail_on)
     judge = AnthropicJudge() if args.judge else None
@@ -134,18 +128,11 @@ def main(argv: list[str] | None = None) -> int:
             judge_report(result.tool_source, report, judge)
         tool_version = result.tool_source.parse_version()
         classification = classify(report)
-        reports[path] = {
-            "tool_id": report.tool_id,
-            "tool_version": tool_version,
-            **report.to_dict(),
-            "codes": classification.codes,
-            "uncheckable_locations": classification.unchecked_locations,
-        }
+        reports[path] = {"tool_id": report.tool_id, "tool_version": tool_version, **report_dict(report, classification)}
         review = result.patch_review
         if review is not None:
             reports[path].update(review.to_dict())
-        patch_failed = review is not None and (review.regressed or (fail_on.mismatch and bool(review.mismatched)))
-        if fail_on.met(report, classification) or patch_failed:
+        if fail_on.met(report, classification, review) or (review is not None and review.regressed):
             failed = True
         if not args.json:
             _print_report(path, tool_version, report, threshold, classification, review)
@@ -194,11 +181,23 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _patch_database(paths: list[str] | None) -> ToolPatchDatabase | None:
+def _patch_database(parser: argparse.ArgumentParser, args: argparse.Namespace) -> ToolPatchDatabase | None:
+    """The --tool-patch-path database, after checking the options that need it."""
+    paths = args.tool_patch_paths
     if not paths:
+        for option, given in (("--guid", args.guid), (f"--fail-on {MISMATCH}", MISMATCH in args.fail_on)):
+            if given:
+                parser.error(f"{option} needs --tool-patch-path")
         return None
+    if args.guid and (len(args.tools) != 1 or os.path.isdir(args.tools[0])):
+        parser.error("--guid needs exactly one tool file")
+    if args.guid and key_from_ids(args.guid, None, None) is None:
+        parser.error("--guid is not a Tool Shed guid (<tool shed>/repos/<owner>/<repo>/<tool id>/<version>)")
     # Offline review applies every op, whatever a site's policy or release series would allow.
-    return load_tool_patch_database(paths, reproducibility="ordinary_inputs", requirement_changes=True)
+    db = load_tool_patch_database(paths, reproducibility=REPRODUCIBILITY_LEVELS[-1], requirement_changes=True)
+    if len(db.collections) != len(paths):
+        parser.error("a --tool-patch-path is not a loadable tool patch collection (see the log)")
+    return db
 
 
 def _reviews(
@@ -282,16 +281,12 @@ def _print_report(
             verdict, reason = finding.assessment["verdict"], finding.assessment["reason"]
             attack = f" Value: {finding.assessment['attack']}" if finding.assessment.get("attack") else ""
             print(f"           model says {verdict}: {reason}{attack}")
-    for note in report.unanalyzed:
+    for note in note_lines(report, classification).values():
         print(f"  NOTE     {note}")
-    for location, why in classification.unchecked_locations.items():
-        print(f"  NOTE     unchecked {location}: {why}")
-    for code, why in classification.reasons.items():
-        print(f"  NOTE     {code}: {why}")
 
 
 def _print_patch_review(review: PatchReview, threshold: int) -> None:
-    for state in review.patch.states if review.patch else []:
+    for state in review.states:
         print(f"  PATCH    {state.state:22} {state.kind:18} {state.key}")
     cleared = [f for f in review.cleared if SEVERITIES.index(f.severity) >= threshold]
     # NEW is not filtered: any of it fails the run.
