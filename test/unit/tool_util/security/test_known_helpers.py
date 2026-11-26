@@ -218,3 +218,46 @@ def test_loop_over_select_values_reads_each_option(tmp_path, options, injection)
 def test_loop_over_other_values_is_reflection(tmp_path, command, inputs):
     report = review(tmp_path, command + "tool", inputs=inputs)
     assert any(f.message.startswith(COMPUTED_GET_VAR) for f in report.findings)
+
+
+# tools-iuc gatk4: macros.xml.
+SECTIONS_SET = "#set global $sections = ['', 'sec.']\n"
+SECTIONS_LOOP = """#for $sect in $sections
+    #if $varExists($sect + "inner")
+        tool '$getVar($sect + "inner")'
+    #end if
+#end for
+"""
+
+
+@pytest.mark.parametrize("sections,name,injection", [("['', 'sec.']", "inner", True), ("['']", "word", False)])
+def test_loop_over_a_global_list_reads_each_element(tmp_path, sections, name, injection):
+    command = f"#set global $sections = {sections}\n" + SECTIONS_LOOP.replace("inner", name)
+    report = review(tmp_path, command, inputs=INPUTS + SECTIONS)
+    assert code(report) == set()
+    assert (("shell-injection", "high") in rules(report)) is injection
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        SECTIONS_LOOP + SECTIONS_SET,
+        "#if $text\n" + SECTIONS_SET + "#end if\n" + SECTIONS_LOOP,
+        SECTIONS_SET.replace("'sec.'", "$free") + SECTIONS_LOOP,
+        SECTIONS_SET.replace("['', 'sec.']", "'sec.'") + SECTIONS_LOOP,
+        SECTIONS_SET + "#set global $sections = ['free']\n" + SECTIONS_LOOP,
+        SECTIONS_SET + "#set $sections = ['free']\n" + SECTIONS_LOOP,
+        SECTIONS_SET + "#silent $sections.append('x')\n" + SECTIONS_LOOP,
+        SECTIONS_SET + "#silent $getVar('sections').append('x')\n" + SECTIONS_LOOP,
+        SECTIONS_SET.replace("sections", "values") + SECTIONS_LOOP.replace("sections", "values"),
+        SECTIONS_SET + "#silent $searchList()\n" + SECTIONS_LOOP,
+        SECTIONS_SET + "#silent $self._CHEETAH__globalSetVars['sec' + 'tions'].append('free')\n" + SECTIONS_LOOP,
+        SECTIONS_SET
+        + "#for $l in $self._CHEETAH__globalSetVars.values()\n#silent $l.append('free')\n#end for\n"
+        + SECTIONS_LOOP,
+        SECTIONS_SET + "#def f()\n" + SECTIONS_LOOP + "#end def\n$f()",
+    ],
+)
+def test_loop_over_a_list_set_otherwise_is_reflection(tmp_path, command):
+    report = review(tmp_path, command + "tool", inputs=INPUTS + SECTIONS)
+    assert any(f.message.startswith(COMPUTED_GET_VAR) for f in report.findings)

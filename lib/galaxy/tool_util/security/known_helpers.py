@@ -21,8 +21,8 @@ The copies are made only when each name they look up is a tool input, found wher
 
 Every part of the name is a plain identifier, which rules out dunders, mangled and Cheetah's private names.
 
-A `#for` over the values of a select gets the same reading: one branch per value, with the value in place of
-the loop variable (:func:`unroll_known_loops`).
+A `#for` over the values of a select, or over a list the template sets once, gets the same reading: one branch
+per value, with the value in place of the loop variable (:func:`unroll_known_loops`).
 """
 
 from __future__ import annotations
@@ -472,7 +472,8 @@ def unroll_known_loops(tree: ast.Module, model: Model) -> set[int]:
     """
     found: set[int] = set()
     classes = [node for node in tree.body if isinstance(node, ast.ClassDef)]
-    if len(classes) != 1 or not _plain_class(classes[0]) or _rebinds(tree, _literal_text(tree)):
+    literal = _literal_text(tree)
+    if len(classes) != 1 or not _plain_class(classes[0]) or _rebinds(tree, literal):
         return found
     # A lookup that reaches the search list itself can put any value under a name.
     if any(_lookup_root(node) in (object_names() | method_locals()) - _LOOKED_UP for node in ast.walk(tree)):
@@ -480,13 +481,59 @@ def unroll_known_loops(tree: ast.Module, model: Model) -> set[int]:
     bound = bound_names(tree)
     for method in classes[0].body:
         if isinstance(method, ast.FunctionDef) and method.name == "respond":
-            for loop in reversed([node for node in ast.walk(method) if isinstance(node, ast.For)]):
-                values = _loop_values(loop, model, bound)
-                branches = _branches(loop, values, bound) if values is not None else None
-                if branches is not None:
-                    get_vars, loop.body = branches
-                    found |= get_vars
+            lists = _global_lists(tree, method, literal)
+            for index, stmt in enumerate(method.body):
+                # Set by a statement before this one.
+                before = {name: values for name, (at, values) in lists.items() if at < index}
+                for loop in reversed([node for node in ast.walk(stmt) if isinstance(node, ast.For)]):
+                    values = _loop_values(loop, model, bound, before)
+                    branches = _branches(loop, values, bound) if values is not None else None
+                    if branches is not None:
+                        get_vars, loop.body = branches
+                        found |= get_vars
     return found
+
+
+def _global_lists(
+    tree: ast.Module, method: ast.FunctionDef, literal: set[int]
+) -> dict[str, tuple[int, tuple[str, ...]]]:
+    """Each name `#set global $name = ['a', ...]` in the template body sets, with that statement's index, when
+    nothing else binds it and only `#for` loops name it."""
+    stores = {}
+    for index, stmt in enumerate(method.body):
+        if (
+            isinstance(stmt, ast.Assign)
+            and len(stmt.targets) == 1
+            and isinstance(target := stmt.targets[0], ast.Subscript)
+            and isinstance(target.value, ast.Attribute)
+            and target.value.attr == "_CHEETAH__globalSetVars"
+            and isinstance(target.value.value, ast.Name)
+            and target.value.value.id == "self"
+            and isinstance(name := constant(target.slice), str)
+            and IDENTIFIER.match(name)
+            and name not in object_names()
+            and isinstance(stmt.value, (ast.List, ast.Tuple))
+            and all(isinstance(constant(element), str) for element in stmt.value.elts)
+        ):
+            stores[name] = (index, tuple(str(constant(element)) for element in stmt.value.elts), target)
+    if not stores:
+        return {}
+    iters = {
+        id(lookup.args[1])
+        for node in ast.walk(method)
+        if isinstance(node, ast.For) and lookup_path(node.iter) in stores and (lookup := _lookup(node.iter))
+    }
+    bindings = list(_bindings(tree))
+    lists = {}
+    for name, (index, values, target) in stores.items():
+        if [node for bound, node in bindings if bound == name] != [target]:
+            continue
+        word = _word({name})
+        skip = literal | iters | {id(target.slice)}
+        if any(word.search(text) for node in ast.walk(tree) for text in _texts(node, skip)):
+            continue
+        lists[name] = (index, values)
+    return lists
 
 
 def _lookup_root(node: ast.AST) -> str | None:
@@ -496,12 +543,18 @@ def _lookup_root(node: ast.AST) -> str | None:
     return str(constant(lookup.args[1])).split(".")[0]
 
 
-def _loop_values(loop: ast.For, model: Model, bound: set[str]) -> tuple[str, ...] | None:
-    """The values the variable of `#for $v in str($select).split(',')` can take."""
+def _loop_values(
+    loop: ast.For, model: Model, bound: set[str], lists: dict[str, tuple[str, ...]]
+) -> tuple[str, ...] | None:
+    """The values the variable of `#for $v in str($select).split(',')`, or of a loop over a list ``lists``
+    holds, can take."""
     it = loop.iter
+    if not isinstance(loop.target, ast.Name):
+        return None
+    if (name := lookup_path(it)) in lists:
+        return lists[name]
     if not (
-        isinstance(loop.target, ast.Name)
-        and isinstance(it, ast.Call)
+        isinstance(it, ast.Call)
         and isinstance(it.func, ast.Attribute)
         and it.func.attr == "split"
         and not it.keywords

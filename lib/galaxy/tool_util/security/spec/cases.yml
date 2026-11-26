@@ -875,6 +875,27 @@ known_loop:
       harm: true
       expect: {rejected: false}
 
+known_global_list:
+  doc: >-
+    The gatk4 tools look a parameter up in each section of a list they set once, with `getVar` of the section and
+    the name. The list is fixed, so the loop reads the parameters it names, whose values are checked as usual.
+  tool: known_global_list.xml
+  code: shell-injection
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, accessor: raw, param: optional.other, checkable: true}
+  red:
+    - inputs: {optional: {other: "a';touch harm-marker;'"}}
+      harm: true
+      expect:
+        rejected: true
+        message_contains: ["the value of input 'optional.other' contains the characters [' ;]"]
+  green:
+    - inputs: {optional: {other: "a;b|c && d"}}
+      harm: true
+      expect: {rejected: false}
+
 app_model_read:
   doc: >-
     The application object reaches any data of the server. The review flags the read but follows no value

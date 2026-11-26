@@ -374,6 +374,38 @@ inputs:
   other: b
 ```
 
+#### known_global_list
+
+The gatk4 tools look a parameter up in each section of a list they set once, with `getVar` of the section and the name. The list is fixed, so the loop reads the parameters it names, whose values are checked as usual.
+
+Tool `known_global_list.xml`:
+
+```
+#set global $sections = ['', 'optional.']
+#for $sect in $sections
+    #if $varExists($sect + "other")
+        echo '${getVar($sect + "other").value}' >> '$out' &&
+    #end if
+#end for
+true
+```
+
+Refused
+
+```
+inputs:
+  optional:
+    other: a';touch harm-marker;'
+```
+
+Runs
+
+```
+inputs:
+  optional:
+    other: a;b|c && d
+```
+
 ### `nested-interpreter`
 
 A value is written into the program of another interpreter (`bash -c`, `sed`, `perl -e`, ...) and can change what that program does.
