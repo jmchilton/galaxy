@@ -49,7 +49,8 @@ tool has (`notes_added`): a template part the review can no longer follow, a new
 uncheckable code. The text output gives them `PATCH`, `CLEARED`, `NEW` and `NEW NOTE` lines; `--min-severity`
 hides `CLEARED` lines but never `NEW` ones. Findings are matched by rule, place, how the value lands there and
 the values read, not by template text, so a value moved to another place (say, into a configfile) counts as
-cleared there and new here. A finding that a patch makes more severe is new; one it makes less severe is not
+cleared there and new here. Capability findings are matched by rule, place and message (the module or name
+they report), so a second encoded blob where one already was is not new. A finding that a patch makes more severe is new; one it makes less severe is not
 cleared. A patch regresses a tool, and the exit code is 1, when it introduces a finding of any severity or adds
 a `NOTE` line; the review does not check that a patch cleared anything. A collection that does not load stops
 the run. Tools are reviewed under their XML id and version (`_local` keys); `--guid` gives the Tool Shed guid

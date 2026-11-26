@@ -152,6 +152,26 @@ def test_lowering_a_findings_severity_clears_nothing(tmp_path: Path) -> None:
     assert not review.regressed
 
 
+IMPORTING_TOOL = """<tool id="importing" name="importing" version="1.0">
+    <command><![CDATA[#import os, subprocess
+echo ${os.getcwd()} > '$out']]></command>
+    <inputs><param name="a" type="integer" value="1"/></inputs>
+    <outputs><data name="out" format="txt"/></outputs>
+</tool>
+"""
+
+
+@pytest.mark.parametrize("new", ["#import os, subprocess, re", "#import subprocess, os"], ids=["append", "reorder"])
+def test_capability_findings_match_across_edited_import_lines(tmp_path: Path, new: str) -> None:
+    tool = tmp_path / "importing.xml"
+    tool.write_text(IMPORTING_TOOL)
+    patch = security_patch([replace_text_op("command", "#import os, subprocess", new)], "ordinary_inputs", DOC)
+    db = load_tool_patch_database([str(write_collection(tmp_path / "c", {"_local/importing/1.0.yml": patch}))])
+    review = review_patches(get_tool_source(str(tool)), db)
+    assert ("template-exec", "critical") in _rules(review.after.findings)
+    assert (review.cleared, review.introduced) == ([], [])
+
+
 def test_patch_making_a_finding_uncheckable_is_a_regression(tmp_path: Path) -> None:
     review = _review(tmp_path, DECODING)
     assert review.introduced == []
