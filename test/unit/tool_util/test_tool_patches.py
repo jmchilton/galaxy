@@ -1271,11 +1271,15 @@ def test_summary_counts_applied_states(tmp_path: Path, probe: XmlToolSource) -> 
     db.apply_patches(probe)
     db.apply_patches(db.apply_patches(write_tool(tmp_path / "again" / "probe.xml")))
     assert db.summary().endswith("; applied 2, already_applied 1, mismatch 0, skipped 0, advisory 0")
+    since = db.state_counts()
+    db.apply_patches(write_tool(tmp_path / "third" / "probe.xml"))
+    assert db.summary(since=since).endswith("; applied 1, already_applied 0, mismatch 0, skipped 0, advisory 0")
     assert db.summary().startswith("tool patches: test-patches 2026.11.25 digest ")
 
 
 def test_engine_version_is_in_the_digests(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     db = load_db(write_collection(tmp_path / "c", {LOCAL_PROBE: security_doc(QUOTE_LABEL)}))
-    before = db.digest_for(LOCAL_KEY)
+    before = (db.digest_for(LOCAL_KEY), db.token())
     monkeypatch.setattr("galaxy.tool_util.patches.database.ENGINE_VERSION", 2)
-    assert db.digest_for(LOCAL_KEY) != before
+    after = (db.digest_for(LOCAL_KEY), db.token())
+    assert all(b != a for b, a in zip(before, after))

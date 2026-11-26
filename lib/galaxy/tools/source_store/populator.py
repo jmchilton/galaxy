@@ -834,6 +834,7 @@ def _populate_store_inline_unlocked(
 
     # Read-only stores are trusted as published; only stores this run writes are patched.
     tool_patches = tool_patch_database_from_config(config)
+    patch_counts_at_start = tool_patches.state_counts() if tool_patches else None
 
     # Incremental fast path: ``process_tool`` (below, in parallel) compares each
     # tool file's raw md5 — the hash the eager ToolCache uses for reload
@@ -1007,7 +1008,7 @@ def _populate_store_inline_unlocked(
 
     log.info(f"Population complete: {stats}")
     if tool_patches is not None:
-        log.info(tool_patches.summary())
+        log.info("%s (this populate)", tool_patches.summary(since=patch_counts_at_start))
 
     if not dry_run:
         # Build / update the ToolIndex per writable store from this run's

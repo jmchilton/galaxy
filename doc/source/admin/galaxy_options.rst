@@ -1454,8 +1454,10 @@
     id and version (or tool id and version for tools not installed
     from a Tool Shed). Tool versions are unchanged; patch state is
     reported in the tool API. Collections are read once per process,
-    so changes need a restart. Read-only tool source stores are
-    trusted as published and never re-patched.
+    so changes need a restart of every Galaxy process sharing the tool
+    source store; running `populate_store.py` alone is undone by the
+    next toolbox reload of a process that has not restarted. Read-only
+    tool source stores are trusted as published and never re-patched.
 :Default: ``[]``
 :Type: seq
 
