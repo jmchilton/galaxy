@@ -17,7 +17,7 @@
         mkdir /config/home  &&
         mkdir /config/home/output &&
         export HOME=/config/home &&
-        cp '$infile' '/config/home/$infile.display_name' &&
+        cp '$infile' '/config/home/${str($infile.display_name).replace("/", "_")}' &&
         /init ;
         echo "Galaxy VRM Editor version @VERSION@" > output/version.txt &&
         cp /config/home/output/* output/ | true &&
