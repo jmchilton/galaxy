@@ -1307,3 +1307,10 @@ def test_engine_version_is_in_the_digests(tmp_path: Path, monkeypatch: pytest.Mo
     monkeypatch.setattr("galaxy.tool_util.patches.database.ENGINE_VERSION", 2)
     after = (db.digest_for(LOCAL_KEY), db.token())
     assert all(b != a for b, a in zip(before, after))
+
+
+def test_duplicate_yaml_keys_reject_the_file(tmp_path: Path, probe: XmlToolSource) -> None:
+    doc = yaml.safe_dump(security_doc(QUOTE_LABEL)) + "reproducibility_doc: A second doc.\n"
+    db = load_db(write_collection(tmp_path / "c", {LOCAL_PROBE: doc}))
+    patched = db.apply_patches(probe)
+    assert patched is probe and patched.patch_state is not None and patched.patch_state.states == []

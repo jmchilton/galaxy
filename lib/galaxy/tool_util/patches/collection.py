@@ -61,13 +61,26 @@ class LoadedPatch:
     sha256: str
 
 
+class _UniqueKeyLoader(yaml.SafeLoader):
+    """Safe loader that rejects duplicate mapping keys, which plain YAML silently collapses."""
+
+    def construct_mapping(self, node: yaml.MappingNode, deep: bool = False) -> dict[Any, Any]:
+        seen = set()
+        for key_node, _ in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            if key in seen:
+                raise yaml.constructor.ConstructorError(None, None, f"duplicate key {key!r}", key_node.start_mark)
+            seen.add(key)
+        return super().construct_mapping(node, deep=deep)
+
+
 def parse_patch_yaml(data: bytes) -> Any:
-    return yaml.safe_load(data)
+    return yaml.load(data, Loader=_UniqueKeyLoader)
 
 
 def _read_yaml(path: str) -> Any:
     with open(path, "rb") as f:
-        return yaml.safe_load(f)
+        return yaml.load(f, Loader=_UniqueKeyLoader)
 
 
 def _file_sha256(path: str) -> str | None:
