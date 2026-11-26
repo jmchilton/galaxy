@@ -20,6 +20,7 @@ from galaxy.tool_util.parser.interface import ToolSource
 from galaxy.tool_util.parser.xml import XmlToolSource
 from galaxy.tool_util.patches import (
     collection as patch_collection,
+    engine as patch_engine,
     load_tool_patch_database,
     PatchState,
     ToolPatchDatabase,
@@ -527,6 +528,28 @@ def test_parameter_model_change_is_mismatch(probe: XmlToolSource) -> None:
     result = run(probe, op)
     assert result.state == MISMATCH
     assert result.detail == "parameter model changed"
+
+
+def test_ops_outside_inputs_skip_the_parameter_model(probe: XmlToolSource, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = []
+    build = patch_engine._parameter_model
+
+    def counting(tree: Any) -> Any:
+        calls.append(tree)
+        return build(tree)
+
+    monkeypatch.setattr(patch_engine, "_parameter_model", counting)
+    assert run(probe, QUOTE_LABEL).state == APPLIED
+    assert calls == []
+    add_validator = {
+        "add_element": {
+            "parent": ".//param[@name='a']",
+            "new": '<validator type="in_range" min="0"/>',
+            "occurrences": 1,
+        }
+    }
+    assert run(probe, add_validator).state == APPLIED
+    assert len(calls) == 2
 
 
 # --- keys ---

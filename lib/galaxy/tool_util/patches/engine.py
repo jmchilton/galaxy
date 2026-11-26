@@ -236,7 +236,16 @@ def _same_model(before: Any, after: Any) -> bool:
     return bool(before == after)
 
 
+def _model_source(tree: ElementTree) -> tuple[str | None, bytes | None]:
+    """What :func:`input_models_for_tool_source` reads: the root profile and the first ``<inputs>``."""
+    root = tree.getroot()
+    inputs = root.find("inputs")
+    return root.get("profile"), etree.tostring(inputs, with_tail=False) if inputs is not None else None
+
+
 def parameter_model_changed(before: ElementTree, after: ElementTree) -> bool:
+    if _model_source(before) == _model_source(after):
+        return False
     try:
         pre = _parameter_model(before)
     except Exception as e:
