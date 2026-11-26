@@ -533,6 +533,26 @@ class TestToolBox(BaseToolBoxTestCase):
         # TODO: Not deterministc, probably should be?
         assert test_tool.installed_changeset_revision in ["1", "2"]
 
+    def test_reload_tool_by_id_keeps_shed_identity(self):
+        self._init_tool()
+        self._setup_two_versions_in_config(section=False)
+        self._setup_two_versions()
+        guid = "github.com/galaxyproject/example/test_tool/0.1"
+        old_tool = self.toolbox.get_tool(guid, exact=True)
+
+        message, status = self.toolbox.reload_tool_by_id(guid)
+
+        assert status == "done", message
+        new_tool = self.toolbox.get_tool(guid, exact=True)
+        assert new_tool is not old_tool
+        assert (new_tool.id, new_tool.guid, new_tool.old_id) == (guid, guid, "test_tool")
+        assert (new_tool.tool_shed, new_tool.repository_owner, new_tool.repository_name) == (
+            "github.com",
+            "galaxyproject",
+            "example",
+        )
+        assert new_tool.installed_changeset_revision == old_tool.installed_changeset_revision
+
     def test_tool_shed_properties_only_on_installed_tools(self):
         self._init_tool()
         self._add_config("""<toolbox><tool file="tool.xml" /></toolbox>""")
