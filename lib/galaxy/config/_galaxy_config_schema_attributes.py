@@ -404,6 +404,8 @@ class GalaxyAppConfigurationAttributes:
     outputs_to_working_directory: bool
     retry_job_output_collection: int
     tool_evaluation_strategy: str
+    tool_security_review: str
+    tool_security_review_when_unsure: str
     preserve_python_environment: str
     cleanup_job: str
     drmaa_external_runjob_script: str | None

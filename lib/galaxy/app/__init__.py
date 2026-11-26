@@ -190,6 +190,7 @@ from galaxy.tools.search import (
     CachedToolboxSearch,
     ToolBoxSearch,
 )
+from galaxy.tools.security_review import ToolSecurityReviewer
 from galaxy.tools.source_store import (
     build_tool_source_store,
     ToolSourceStore,
@@ -806,6 +807,9 @@ class GalaxyManagerApplication(MinimalManagerApp, MinimalGalaxyApplication):
         )
         # Initialize the job management configuration
         self.job_config = self._register_singleton(jobs.JobConfiguration)
+        self.tool_security_reviewer = self._register_singleton(
+            ToolSecurityReviewer, ToolSecurityReviewer.from_config(self.config)
+        )
 
         # Setup infrastructure for short term storage manager.
         short_term_storage_config_kwds: dict[str, Any] = {}

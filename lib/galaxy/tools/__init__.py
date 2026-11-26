@@ -328,6 +328,7 @@ if TYPE_CHECKING:
     from galaxy.tool_util.provided_metadata import BaseToolProvidedMetadata
     from galaxy.tools.actions.metadata import SetMetadataToolAction
     from galaxy.tools.parameters import ToolInputsT
+    from galaxy.tools.security_review import ToolReview
 
 log = logging.getLogger(__name__)
 
@@ -1845,6 +1846,15 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
                 else:
                     if os.path.exists(result):
                         return result
+
+    def security_review(self) -> Optional["ToolReview"]:
+        """The security review of this tool's templates, computed on first use.
+
+        None when reviews are off, outside a Galaxy server, or for a tool without a Cheetah command.
+        """
+        if self.app.name != "galaxy":
+            return None
+        return self.app.tool_security_reviewer.review(self)
 
     def tool_provided_metadata(self, job_wrapper):
         if not self.uses_tool_provided_metadata:

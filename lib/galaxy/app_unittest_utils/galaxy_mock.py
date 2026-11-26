@@ -70,6 +70,10 @@ from galaxy.tool_util.deps.containers import NullContainerFinder
 from galaxy.tools import ToolBox
 from galaxy.tools.cache import ToolCache
 from galaxy.tools.data import ToolDataTableManager
+from galaxy.tools.security_review import (
+    OFF,
+    ToolSecurityReviewer,
+)
 from galaxy.tools.source_store import ToolSourceStore
 from galaxy.util import (
     galaxy_directory,
@@ -168,6 +172,7 @@ class MockApp(di.Container, GalaxyDataTestApp):
         self.execution_timer_factory = Bunch(get_timer=StructuredExecutionTimer, galaxy_statsd_client=None)
         self.interactivetool_manager = Bunch(create_interactivetool=lambda *args, **kwargs: None)
         self.is_job_handler = False
+        self.tool_security_reviewer = ToolSecurityReviewer(OFF)
         self.biotools_metadata_source = None
         self.trs_proxy = Bunch()
         set_thread_app(self)

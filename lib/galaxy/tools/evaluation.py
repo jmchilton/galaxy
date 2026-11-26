@@ -116,6 +116,7 @@ from galaxy.work.context import WorkRequestContext
 
 if TYPE_CHECKING:
     from galaxy.tools import Tool
+    from galaxy.tools.security_review import ToolSecurityReviewer
 
 log = logging.getLogger(__name__)
 
@@ -207,8 +208,17 @@ class ToolEvaluator:
     materialize_datasets: bool = True
     param_dict_style = "regular"
 
-    def __init__(self, app: MinimalToolApp, tool: "Tool", job, local_working_directory):
+    def __init__(
+        self,
+        app: MinimalToolApp,
+        tool: "Tool",
+        job,
+        local_working_directory,
+        security_reviewer: "ToolSecurityReviewer | None" = None,
+    ):
         self.app = app
+        # Checks the job's values against the tool's security review before templates are filled.
+        self.security_reviewer = security_reviewer
         self.job = job
         self.tool = tool
         self.local_working_directory = local_working_directory
@@ -829,6 +839,7 @@ class ToolEvaluator:
         config templates corresponding to this tool with these inputs on this
         compute environment.
         """
+        self._check_input_values()
         config_file = self.tool.config_file
         global_tool_logs(
             self._create_interactivetools_entry_points, config_file, "Building Interactive Tool Entry Points", self.tool
@@ -851,6 +862,14 @@ class ToolEvaluator:
             self.environment_variables,
             self.interactivetools,
         )
+
+    def _check_input_values(self) -> None:
+        """Log, or refuse with ToolInputRejected, values that can leave their place in the templates.
+
+        Runs before global_tool_logs, which would replace the message meant for the user.
+        """
+        if self.security_reviewer is not None:
+            self.security_reviewer.check_job(self.tool, self)
 
     def _build_command_line(self):
         """
@@ -1155,6 +1174,8 @@ class PartialToolEvaluator(ToolEvaluator):
     materialize_datasets = False
 
     def build(self):
+        # The command line is built where the job runs; its values are checked here.
+        self._check_input_values()
         config_file = self.tool.config_file
         global_tool_logs(self._build_environment_variables, config_file, "Building Environment Variables", self.tool)
         return (

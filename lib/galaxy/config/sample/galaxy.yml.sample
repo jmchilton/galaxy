@@ -2992,6 +2992,57 @@ galaxy:
   # job. The job then needs a Galaxy runtime where it runs.
   #tool_evaluation_strategy: local
 
+  # Galaxy reviews the command and configfile templates of tools for
+  # places where a value a user controls (a text parameter, an element
+  # identifier, a dataset name) can leave the quotes or the argument it
+  # is written into. A process that prepares jobs reviews a tool when it
+  # prepares the tool's first job, and keeps the review in memory as
+  # long as it keeps the tool. Before a job's command line is built, the
+  # values of its inputs are compared with the tool's findings. Each
+  # level fails the jobs the one before it fails, and more, with a
+  # message that names the input and the characters, and logs a warning:
+  # ``enforce_code`` (the default) fails a job whose value can become
+  # code: start a shell command, change the program of another
+  # interpreter or the code of a configfile, choose the program that is
+  # run. ``enforce_data`` also fails a job whose value can stop being
+  # the data it is meant to be: name a path outside the job's directory,
+  # be read as an option, split into words that are options or paths, or
+  # change the structure of a data configfile. It also fails a job whose
+  # element identifiers or dataset names, where a template writes them,
+  # contain ``/`` or start with ``-`` or ``~``. ``enforce_all`` also
+  # fails a job whose value can split into extra plain words or close
+  # its quotes. Set to ``log`` to log what ``enforce_all`` would fail
+  # and run the job, or ``off`` to turn off the review and the checks.
+  #tool_security_review: enforce_code
+
+  # Some jobs the security review cannot check: the tool's review
+  # failed, the tool writes values in places that no check of their
+  # characters can judge, or the check itself fails. With ``strict``
+  # (the default), Galaxy checks such jobs strictly: every value the job
+  # carries must be plain. That is the values of text and select
+  # parameters whose options users can choose, element identifiers,
+  # dataset names, and the dataset attributes, group tags, metadata,
+  # account values and user preferences that the templates name. A plain
+  # value has no quotes, no ``$ ; & | < > \ ( ) { } [ ] % # *``, no
+  # newline or tab, no word that starts with ``-``, and none of Galaxy's
+  # sanitizer tokens such as ``__gt__``. No value counts as plain, and
+  # every job of the tool fails the strict check, when the review
+  # failed, when the templates can change values or read text the job
+  # does not carry (``chr()``, a decoder, ``re.sub``, a ``.replace``
+  # that brings such a character, ``open()``, ``$__app__``), when
+  # letters alone can be code where the tool writes a value (a shell it
+  # pipes text into, a sed command, unquoted Perl or Ruby code), or when
+  # a template writes a value the review cannot trace to an input (the
+  # user object read in a loop, a conditional built at run time). Galaxy
+  # logs a warning for each job that fails the strict check, and with an
+  # ``enforce_*`` level of ``tool_security_review`` also fails the job,
+  # with a message that names the values or the reason. With ``refuse``,
+  # Galaxy fails every such job whatever its values. With ``log``,
+  # Galaxy only logs what ``strict`` would fail and runs the job. Tools
+  # without a command template, user-defined tools and expression tools
+  # are not reviewed and are not affected.
+  #tool_security_review_when_unsure: strict
+
   # In the past Galaxy would preserve its Python environment when
   # running jobs ( and still does for internal tools packaged with
   # Galaxy). This behavior exposes Galaxy internals to tools and could

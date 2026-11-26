@@ -889,23 +889,37 @@ class TestToolsApi(ApiTestCase, TestsTools):
             hda1 = self.dataset_populator.new_dataset(history_id, content="1\t2\t3", name=cool_name_with_quote)
             assert hda1["name"] == cool_name_with_quote
 
-            rval = self._run(
+            # The security review cannot judge `$__user__.addresses[0].desc`, so by default the job's
+            # values must be plain, and the quote in the dataset name refuses it.
+            refused = self._run(
                 tool_id="model_attributes",
                 inputs={"input1": dataset_to_param(hda1)},
                 history_id=history_id,
                 assert_ok=True,
+            )
+            self.dataset_populator.wait_for_history(history_id, assert_ok=False)
+            details = self.dataset_populator.get_history_dataset_details(
+                history_id, dataset=refused["outputs"][0], wait=False
+            )
+            assert details["state"] == "error", details
+            assert "the name of a dataset of input 'input1' contains [\"]" in details["misc_info"], details
+
+            hda2 = self.dataset_populator.new_dataset(history_id, content="1\t2\t3", name="cool name")
+            rval = self._run(
+                tool_id="model_attributes",
+                inputs={"input1": dataset_to_param(hda2)},
+                history_id=history_id,
+                assert_ok=True,
                 wait_for_job=True,
             )
-            sanitized_dataset_name = self.dataset_populator.get_history_dataset_content(
-                history_id, dataset=rval["outputs"][0]
+            # The history is in error from the refused job: read the outputs without waiting on it.
+            sanitized_email = self.dataset_populator.get_history_dataset_content(
+                history_id, dataset=rval["outputs"][1], wait=False
             )
-            assert sanitized_dataset_name.strip() == cool_name_without_quote
-
-            sanitized_email = self.dataset_populator.get_history_dataset_content(history_id, dataset=rval["outputs"][1])
             assert '"' not in sanitized_email
 
             sanitized_address = self.dataset_populator.get_history_dataset_content(
-                history_id, dataset=rval["outputs"][2]
+                history_id, dataset=rval["outputs"][2], wait=False
             )
             assert sanitized_address.strip() == cool_name_without_quote
 
