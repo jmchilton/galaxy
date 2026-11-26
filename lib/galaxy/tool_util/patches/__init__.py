@@ -16,6 +16,7 @@ from .keys import (
 )
 from .model import (
     AdvisoryInfo,
+    patches_as_dicts,
     PatchFile,
     PatchPolicy,
     PatchState,
@@ -33,6 +34,7 @@ __all__ = (
     "PatchCollection",
     "PatchFile",
     "PatchKey",
+    "patches_as_dicts",
     "PatchPolicy",
     "PatchState",
     "ToolPatchCollectionsSummary",

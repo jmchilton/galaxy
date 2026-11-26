@@ -178,18 +178,18 @@ class ToolPatchDatabase:
 
     # --- applying ---
 
-    def changeset_for(self, key: PatchKey, repository_dir_hint: str | None) -> str | None:
-        """Checked-out changeset when an override could apply to key, else None."""
+    def changeset_for(self, key: PatchKey, tool_path: str | None) -> str | None:
+        """Checked-out changeset of the repository holding tool_path (a file or directory) when an override could apply."""
         if not is_shed_key(key) or not any(c.has_overrides(key) for c in self._active):
             return None
-        return self._checked_out_changeset(repository_dir_hint)
+        return self._checked_out_changeset(tool_path)
 
-    def tool_digest(self, key: PatchKey, repository_dir_hint: str | None = None) -> str | None:
+    def tool_digest(self, key: PatchKey, tool_path: str | None = None) -> str | None:
         """The digest :meth:`apply_patches` records for key, computed without parsing the tool."""
-        return self.digest_for(key, self.changeset_for(key, repository_dir_hint))
+        return self.digest_for(key, self.changeset_for(key, tool_path))
 
     def apply_patches(
-        self, tool_source: ToolSource, guid: str | None = None, repository_dir_hint: str | None = None
+        self, tool_source: ToolSource, guid: str | None = None, tool_path: str | None = None
     ) -> ToolSource:
         """Patched source (or ``tool_source`` itself when no op applied), with ``patch_state`` set on any match."""
         if not self._active or not isinstance(tool_source, XmlToolSource):
@@ -200,7 +200,7 @@ class ToolPatchDatabase:
         matching = [c for c in self._active if c.has_key(key)]
         if not matching:
             return tool_source
-        changeset = self.changeset_for(key, repository_dir_hint or tool_source.source_path)
+        changeset = self.changeset_for(key, tool_path or tool_source.source_path)
         current = _Input(tree=tool_source.xml_tree, text=tool_source.to_string)
         states: list[PatchState] = []
         for c in matching:

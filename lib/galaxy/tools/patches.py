@@ -2,7 +2,6 @@
 
 import os
 from typing import (
-    Any,
     cast,
     TYPE_CHECKING,
 )
@@ -14,6 +13,7 @@ from galaxy.tool_util.patches import (
     ToolPatchDatabase,
     ToolPatchInfo,
 )
+from galaxy.tool_util.patches.engine import APPLIED
 from galaxy.tool_util.patches.model import (
     level_index,
     ReproducibilityLevel,
@@ -42,32 +42,23 @@ def tool_patch_database_from_config(config: "GalaxyAppConfiguration") -> ToolPat
     )
 
 
-def _repository_dir_hint(config_file: StrPath | None) -> str | None:
-    return os.path.dirname(os.path.abspath(config_file)) if config_file else None
-
-
 def apply_tool_patches(
     db: ToolPatchDatabase | None, tool_source: ToolSource, guid: str | None, config_file: StrPath | None
 ) -> ToolSource:
     """Patch a freshly parsed tool source; returns ``tool_source`` itself without a database."""
     if db is None:
         return tool_source
-    return db.apply_patches(tool_source, guid=guid, repository_dir_hint=_repository_dir_hint(config_file))
+    return db.apply_patches(tool_source, guid=guid, tool_path=os.fspath(config_file) if config_file else None)
 
 
-def indexed_patch_digest(db: ToolPatchDatabase | None, entry: "ToolIndexEntry", config_file: StrPath) -> str | None:
-    """The patch digest :func:`apply_tool_patches` would record for an indexed tool, without parsing it."""
-    if db is None or entry.source_class != "XmlToolSource":
-        return None
-    key = key_from_ids(entry.id, entry.id, entry.version)
-    return db.tool_digest(key, _repository_dir_hint(config_file)) if key is not None else None
-
-
-def patches_as_dicts(patch: ToolPatchInfo | None) -> list[dict[str, Any]] | None:
-    """API form of a tool's patch states, or None for an unpatched tool."""
-    if patch is None or not patch.states:
-        return None
-    return [state.model_dump(mode="json") for state in patch.states]
+def indexed_patch_is_current(db: ToolPatchDatabase | None, entry: "ToolIndexEntry", config_file: StrPath) -> bool:
+    """True when ``entry`` records the patch digest :func:`apply_tool_patches` would record now, without parsing."""
+    recorded = entry.patch.digest if entry.patch else None
+    current = None
+    if db is not None and entry.source_class == "XmlToolSource":
+        key = key_from_ids(entry.id, entry.id, entry.version)
+        current = db.tool_digest(key, os.fspath(config_file)) if key is not None else None
+    return recorded == current
 
 
 def patch_blocks_job_cache(patch: ToolPatchInfo | None) -> bool:
@@ -76,6 +67,6 @@ def patch_blocks_job_cache(patch: ToolPatchInfo | None) -> bool:
         return False
     safe = level_index(JOB_CACHE_SAFE_LEVEL)
     return any(
-        state.state == "applied" and state.reproducibility is not None and level_index(state.reproducibility) > safe
+        state.state == APPLIED and state.reproducibility is not None and level_index(state.reproducibility) > safe
         for state in patch.states
     )
