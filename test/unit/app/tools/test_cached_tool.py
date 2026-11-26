@@ -27,6 +27,10 @@ from galaxy.model.tool_shed_install import (
     ToolShedRepository,
 )
 from galaxy.tool_shed.cache import ToolShedRepositoryCache
+from galaxy.tool_util.patches import (
+    PatchState,
+    ToolPatchInfo,
+)
 from galaxy.tool_util.toolbox.base import NullToolTagManager
 from galaxy.tool_util.toolbox.lineages.factory import CachedLineageMap
 from galaxy.tool_util.toolbox.panel import (
@@ -1639,3 +1643,36 @@ def test_toolbox_waits_for_a_peer_populating_the_store(tmp_path, monkeypatch):
     assert needs_population.call_count == 1
     assert box._tool_index is not None
     assert "bowtie2" in box._tool_index.entries
+
+
+PATCH_INFO = ToolPatchInfo(
+    digest="d" * 64,
+    states=[
+        PatchState(
+            state="applied",
+            kind="security",
+            key="iuc/bedtools/bedtools_mergebed/2.31.1+galaxy2",
+            collection={"name": "test-patches", "version": "2026.11.25"},
+            path="patches/iuc/bedtools/bedtools_mergebed/2.31.1+galaxy2.yml",
+            digest="e" * 64,
+            reproducibility="special_inputs",
+            reproducibility_doc="Jobs with quoted names now run differently.",
+        )
+    ],
+)
+
+
+def test_to_panel_entry_reports_patches_without_materialise():
+    entry = _stub(_entry(patch=PATCH_INFO)).to_panel_entry(trans=None)
+    assert entry["patches"] == [state.model_dump(mode="json") for state in PATCH_INFO.states]
+    assert "patches" not in _stub().to_panel_entry(trans=None)
+
+
+def test_materialized_tool_carries_entry_patch(tmp_path):
+    box = _materializing_box()
+    entry = _shed_image_entry().model_copy(update={"patch": PATCH_INFO})
+
+    tool = box._create_tool_from_stored_source(_shed_image_stored(str(tmp_path)), entry=entry)
+
+    assert tool.patch == PATCH_INFO
+    assert box._cached_materialize_count == 1

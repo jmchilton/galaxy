@@ -76,9 +76,14 @@ from galaxy.tool_util.parser.util import (
     parse_profile_version,
     parse_tool_version_with_defaults,
 )
+from galaxy.tool_util.patches import key_from_ids
 from galaxy.tool_util.toolbox.parser import get_toolbox_parser
 from galaxy.tools import tool_produces_real_jobs
 from galaxy.tools.biotools import get_galaxy_biotools_metadata_source
+from galaxy.tools.patches import (
+    apply_tool_patches,
+    tool_patch_database_from_config,
+)
 from galaxy.tools.source_store.discover import (
     ADHOC_TOOL_CONF,
     CONVERTER_TOOL_CONF,
@@ -538,6 +543,7 @@ def build_index_entry_from_source(
             source_class=stored.tool_source_class,
             source_path=stored.source_path,
             file_hash=(stored.metadata or {}).get("file_hash"),
+            patch=getattr(tool_source, "patch_state", None),
             hidden=hidden,
             require_login=require_login,
             tool_type=tool_type,
@@ -608,15 +614,19 @@ def populate_store(
     verbose: bool = False,
     rebuild_index: bool = False,
     target: str | None = None,
+    tool_patch_paths: list[str] | None = None,
 ) -> dict[str, int]:
     """CLI entry: load Galaxy config from disk, then delegate to
     :func:`populate_store_inline` for the actual work.
 
     ``rebuild_index`` is accepted for backwards compat but has no effect:
-    the index is rebuilt on every non-dry-run.
+    the index is rebuilt on every non-dry-run. ``tool_patch_paths``
+    replaces the config's ``tool_patch_paths``.
     """
     log.info("Loading Galaxy configuration...")
     properties = load_app_properties(config_file=config_file, config_section="galaxy")
+    if tool_patch_paths is not None:
+        properties["tool_patch_paths"] = tool_patch_paths
     config = GalaxyAppConfiguration(**properties)
     return populate_store_inline(
         config,
@@ -822,6 +832,15 @@ def _populate_store_inline_unlocked(
         tool_specs = [(d, n) for d, n in tool_specs if pattern in d.path]
         log.info(f"Filtered to {len(tool_specs)} tools matching '{pattern}'")
 
+    # Read-only stores are trusted as published; only stores this run writes are patched.
+    tool_patches = tool_patch_database_from_config(config)
+
+    def current_patch_digest(entry: ToolIndexEntry, path: str) -> str | None:
+        if tool_patches is None:
+            return None
+        key = key_from_ids(entry.id, entry.id, entry.version)
+        return tool_patches.tool_digest(key, str(Path(path).parent)) if key is not None else None
+
     # Incremental fast path: ``process_tool`` (below, in parallel) compares each
     # tool file's raw md5 — the hash the eager ToolCache uses for reload
     # detection — against the hash recorded on its prior index entry. A
@@ -869,13 +888,14 @@ def _populate_store_inline_unlocked(
                     and file_hash
                     and old_entry.file_hash == file_hash
                     and old_entry.source_hash in stored_hashes[store_name]
+                    and (old_entry.patch.digest if old_entry.patch else None) == current_patch_digest(old_entry, path)
                 ):
                     return ("unchanged", d, store_name, None, None, None)
 
             # Galaxy's tool source parser handles macro expansion (XML) and
             # YAML user-tool / CWL parsing transparently; ``to_string`` then
             # serialises whatever the source class needs to round-trip.
-            tool_source = get_tool_source(config_file=path)
+            tool_source = apply_tool_patches(tool_patches, get_tool_source(config_file=path), d.guid, path)
             expanded_content = tool_source.to_string()
             content_hash = compute_hash(expanded_content)
             target_store = stores[store_name]
@@ -1057,6 +1077,7 @@ def _populate_store_inline_unlocked(
                 index.panel_items = _merge_panel_order(previous_index.panel_items, index.panel_items)
                 index.rebuild_panel_projections()
             index.freshness_token = freshness_tokens.get(store_name)
+            index.tool_patch_collections = tool_patches.collections_summary() if tool_patches else None
             try:
                 stores[store_name].store_index(index)
                 log.info(
@@ -1291,6 +1312,15 @@ def main() -> NoReturn:
         ),
     )
     parser.add_argument(
+        "--tool-patch-path",
+        action="append",
+        dest="tool_patch_paths",
+        help=(
+            "Tool patch collection to apply (repeatable, in order); replaces the "
+            "config's tool_patch_paths. Pass 'builtin' for the bundled collection."
+        ),
+    )
+    parser.add_argument(
         "--watch", "-w", action="store_true", help="Watch for file changes and send reload notifications"
     )
     parser.add_argument(
@@ -1322,6 +1352,7 @@ def main() -> NoReturn:
             verbose=args.verbose,
             rebuild_index=args.rebuild_index,
             target=args.target,
+            tool_patch_paths=args.tool_patch_paths,
         )
 
         sys.exit(1 if stats["errors"] > 0 else 0)
