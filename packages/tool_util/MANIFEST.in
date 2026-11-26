@@ -44,6 +44,7 @@ include src/galaxy/tool_util/security/spec/tools/sanitized_text_single_quoted.xm
 include src/galaxy/tool_util/security/spec/tools/search_list.xml
 include src/galaxy/tool_util/security/spec/tools/sed_program.xml
 include src/galaxy/tool_util/security/spec/tools/server_config.xml
+include src/galaxy/tool_util/security/spec/tools/server_python_command.xml
 include src/galaxy/tool_util/security/spec/tools/sort_quoted_operand.xml
 include src/galaxy/tool_util/security/spec/tools/sort_to_named_file.xml
 include src/galaxy/tool_util/security/spec/tools/sort_unquoted_operands.xml

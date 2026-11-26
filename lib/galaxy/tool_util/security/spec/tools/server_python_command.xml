@@ -1,0 +1,14 @@
+<tool id="spec_server_python_command" name="Text value in template Python" version="1.0" profile="24.0">
+    <description>passes a text value to a command the template runs</description>
+    <command><![CDATA[
+#import subprocess
+#set $first = subprocess.check_output('head -n1 ' + str($word), shell=True)
+echo '$first' > '$out'
+    ]]></command>
+    <inputs>
+        <param name="word" type="text"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

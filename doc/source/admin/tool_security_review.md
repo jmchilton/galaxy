@@ -23,18 +23,15 @@ cases below; `anthropic` is needed only for `--judge`.
 
 The review reports two kinds of findings:
 
-- **Vulnerabilities**: a user value reaches a place where its characters change what runs. Their rules
-  include `shell-injection` (the value can close its quotes, or is unquoted, and start another command),
-  `nested-interpreter` (the value is written into the program of `bash -c`, `sed`, `perl -e`, ...),
-  `configfile-injection` (the value can end a string of a configfile a script runs and add code),
-  `command-position` and `variable-name` (letters alone choose the program to run or the variable to set),
-  `path-traversal`, `option-injection` and `argument-injection` (the value can name a path outside the job's
-  directory, be read as an option, or split into more words).
+- **Vulnerabilities**: a user value reaches a place where its characters change what runs, such as
+  `shell-injection` (the value can close its quotes, or is unquoted, and start another command).
   Mostly, `critical` and `high` findings let a value become code, `medium` ones let it stop being the data it is
   meant to be, and `low` ones let it split into extra plain words.
 - **Capabilities**: what the tool's author made the tool able to do on the server, such as Python that runs
   inside the Galaxy process (`template-*` rules), network access, or a request for the user's API key
   (`capability-*` rules).
+
+[Rules](#rules) below lists every rule, with the spec cases that show it.
 
 A report also lists the parts of the templates the review could not follow, or that pipe text into a shell to
 run (`unchecked_locations`), and the template code that rewrites values in ways that can bring back
@@ -713,6 +710,33 @@ patterns:
 - template-code
 ```
 
+### server_python_command
+
+Template Python runs in the Galaxy server process while the job is prepared. A value passed to a command it runs decides what the server executes, whatever its characters.
+
+Tool `server_python_command.xml`:
+
+```
+#import subprocess
+#set $first = subprocess.check_output('head -n1 ' + str($word), shell=True)
+echo '$first' > '$out'
+```
+
+Review:
+
+```
+findings:
+- rule: server-injection
+  severity: critical
+  accessor: text
+  param: word
+  checkable: false
+serious_rules:
+- server-injection
+patterns:
+- template-code
+```
+
 ### user_object_unsanitized
 
 With the sanitizer off, the user object is read as it is stored. A template that reads it other than by the name of one preference, here every preference in a loop, writes values the review cannot trace.
@@ -944,7 +968,7 @@ Cases: `dataset_content_shell_injection`.
 
 Runs Python the review cannot follow (`exec`, `compile`, imports of modules that start processes or open connections).
 
-Cases: `rewrites_and_template_code`, `template_code`.
+Cases: `rewrites_and_template_code`, `template_code`, `server_python_command`.
 
 ### Reads of values the server sets
 
@@ -959,5 +983,175 @@ Cases: `job_metadata_read`.
 Reads the server's configuration or encodes ids (`$__app__.config`, `$__app__.security`).
 
 Cases: `server_config_read`.
+
+## Rules
+
+Each finding has one of these rules.
+
+### Vulnerabilities
+
+#### `shell-injection`
+
+A value can close the quotes around it, or is written unquoted, and start another shell command.
+
+Cases: `raw_text_shell_injection`, `element_identifier_shell_injection`, `dataset_name_stays_quoted`, `wrapped_names_stay_quoted`, `group_tags_shell_injection`, `dataset_content_shell_injection`, `user_preference_stays_quoted`, `user_preference_shell_injection`, `stray_quote`, `path_like_name`, `raw_dataset_model`, `raw_dataset_history`, `shell_runs_script_file`, `rewrites_restore_tokens`, `literal_rewrite`, `rewrites_and_template_code`, `user_object_unsanitized`, `untraced_value`, `known_helper`.
+
+#### `nested-interpreter`
+
+A value is written into the program of another interpreter (`bash -c`, `sed`, `perl -e`, ...) and can change what that program does.
+
+Cases: `nested_shell`, `sed_program`.
+
+#### `configfile-injection`
+
+A value is written into a configfile that a script runs and can end its string and add code.
+
+Cases: `configfile_python`.
+
+#### `command-position`
+
+A value chooses the program that is run: letters alone can be code.
+
+Cases: `command_position`.
+
+#### `variable-name`
+
+A value names the shell variable that is set, such as `BASH_ENV`, `PATH` or `LD_PRELOAD`: letters alone can be code.
+
+Cases: `export_name`.
+
+#### `path-traversal`
+
+A value is written as a path a command writes or reads (a redirection, an argument of `cp`, `ln`, `mv`, ...) and can name a file outside the job's directory.
+
+Cases: `path_traversal`.
+
+#### `option-injection`
+
+A value starts an argument and can begin with a dash, so the command reads it as an option.
+
+Cases: `option_injection`.
+
+#### `argument-injection`
+
+A value is written unquoted, or can close its quotes, and can split into more words.
+
+Cases: `argument_injection`, `env_assignment`, `export_value`.
+
+#### `server-injection`
+
+A value is passed to template Python that runs a command or opens a file (`subprocess`, `os.system`, `open()`, ...) in the Galaxy server process.
+
+Cases: `server_python_command`.
+
+### Capabilities
+
+#### `template-compile-exec`
+
+Uses a Cheetah directive that runs code while the template is compiled, in the Galaxy server process; the template is not analysed further.
+
+#### `template-exec`
+
+Runs Python that can start processes or load code (`exec`, `eval`, `subprocess`, `os.system`, ...).
+
+Cases: `rewrites_and_template_code`, `template_code`.
+
+#### `template-network`
+
+Imports or uses modules that can open network connections.
+
+#### `template-import`
+
+Imports a module; high when the module can read or change server state.
+
+#### `template-reflection`
+
+Reaches objects by name (`getattr`, `getVar` with a computed name, Python or Cheetah internals).
+
+#### `template-env`
+
+Reads the server's environment (`os.environ`, `os.getenv`, ...).
+
+#### `template-file-io`
+
+Reads, writes or inspects files or process state of the server (`open()`, `os.path`, `time.sleep`, ...).
+
+Cases: `dataset_content_shell_injection`.
+
+#### `template-include`
+
+Uses `#include` to read another file into the template.
+
+#### `template-app-access`
+
+Reads Galaxy's application object (`$__app__`) or the user object (`$__user__`).
+
+Cases: `user_object_unsanitized`.
+
+#### `template-model-access`
+
+Reaches Galaxy's database objects (`.unsanitized`, `.dataset`, `.creating_job`, ...).
+
+Cases: `raw_dataset_model`.
+
+#### `capability-background`
+
+Starts a process in the background (`&`).
+
+#### `capability-pipe-to-shell`
+
+Pipes data into a shell, which runs it as a script.
+
+#### `capability-network`
+
+Can reach the network: runs a network program (`curl`, `git`, `pip`, ...), names a URL, or is a data source or interactive tool.
+
+#### `capability-privilege`
+
+Runs a program that changes privileges or ownership (`sudo`, `chown`, `mount`, ...).
+
+#### `capability-persistence`
+
+Runs a program that can outlive the job (`nohup`, `crontab`, `screen`, ...).
+
+#### `capability-environment`
+
+Runs a program that prints the job's environment (`printenv`).
+
+#### `capability-reverse-shell`
+
+Opens a network socket from the shell (`/dev/tcp/...`).
+
+#### `capability-sensitive-path`
+
+Names a credential or system file (`/etc/passwd`, `.ssh`, `galaxy.yml`, ...).
+
+#### `capability-miner`
+
+Names cryptocurrency mining software.
+
+#### `capability-obfuscation`
+
+Contains a long encoded blob.
+
+#### `capability-api-key`
+
+Puts the user's Galaxy API key or identity provider token into the job's environment.
+
+#### `capability-container`
+
+Runs in a container image.
+
+#### `tool-code-file`
+
+Runs Python of the tool in the Galaxy server process (a `<code>` file, `dynamic_options`).
+
+#### `tool-sanitize-off`
+
+Turns parameter sanitization off for the whole tool.
+
+#### `output-path`
+
+Collects or discovers outputs outside the job directory.
 
 <!-- END spec cases -->

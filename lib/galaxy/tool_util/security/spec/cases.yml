@@ -267,6 +267,17 @@ template_code:
     findings:
       - {rule: template-exec, severity: critical}
 
+server_python_command:
+  doc: >-
+    Template Python runs in the Galaxy server process while the job is prepared. A value passed to a command it
+    runs decides what the server executes, whatever its characters.
+  tool: server_python_command.xml
+  review:
+    patterns: [template-code]
+    serious_rules: [server-injection]
+    findings:
+      - {rule: server-injection, severity: critical, accessor: text, param: word, checkable: false}
+
 user_object_unsanitized:
   doc: >-
     With the sanitizer off, the user object is read as it is stored. A template that reads it other than by

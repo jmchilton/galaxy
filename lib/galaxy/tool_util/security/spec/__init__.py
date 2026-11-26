@@ -24,6 +24,7 @@ from galaxy.tool_util.security.report import (
     Finding,
     serious_findings,
 )
+from galaxy.tool_util.security.rules import Rule
 
 SPEC_DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 TOOLS_DIRECTORY = os.path.join(SPEC_DIRECTORY, "tools")
@@ -37,7 +38,7 @@ class _Model(BaseModel):
 class FindingExpectation(_Model):
     """A finding the review reports: every field given must match."""
 
-    rule: str
+    rule: Rule
     severity: str | None = None
     location: str | None = None
     accessor: str | None = None
@@ -49,7 +50,7 @@ class FindingExpectation(_Model):
 class ReviewExpectation(_Model):
     findings: list[FindingExpectation] = []
     # Exactly the rules of the high and critical vulnerabilities, when given.
-    serious_rules: list[str] | None = None
+    serious_rules: list[Rule] | None = None
     # Exactly these, when given.
     unchecked_locations: dict[str, str] | None = None
     rewrites: bool | None = None
@@ -84,7 +85,7 @@ def review_problems(case: SpecCase) -> list[str]:
     if expected.serious_rules is not None:
         serious = sorted({f.rule for f in serious_findings(report)})
         if serious != sorted(expected.serious_rules):
-            problems.append(f"serious rules are {serious}, expected {sorted(expected.serious_rules)}")
+            problems.append(f"serious rules are {serious}, expected {[str(r) for r in sorted(expected.serious_rules)]}")
     if expected.unchecked_locations is not None and report.unchecked_locations != expected.unchecked_locations:
         problems.append(f"unchecked locations are {report.unchecked_locations}")
     if expected.rewrites is not None and bool(report.rewrites) != expected.rewrites:
