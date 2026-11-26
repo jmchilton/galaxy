@@ -93,6 +93,14 @@ class ReplaceText(_FileModel):
     new: NonEmptyStr
     occurrences: Occurrences
 
+    @property
+    def selector(self) -> str:
+        return self.path
+
+    @property
+    def fragments(self) -> list[str]:
+        return []
+
     @model_validator(mode="after")
     def _check(self) -> Self:
         _check_selector(self.path, element_op=False)
@@ -106,6 +114,14 @@ class ReplaceElement(_FileModel):
     old: NonEmptyStr
     new: NonEmptyStr
     occurrences: Occurrences
+
+    @property
+    def selector(self) -> str:
+        return self.path
+
+    @property
+    def fragments(self) -> list[str]:
+        return [self.old, self.new]
 
     @model_validator(mode="after")
     def _check(self) -> Self:
@@ -123,6 +139,14 @@ class AddElement(_FileModel):
     position: StrictStr = "last"
     occurrences: Occurrences
 
+    @property
+    def selector(self) -> str:
+        return self.parent
+
+    @property
+    def fragments(self) -> list[str]:
+        return [self.new]
+
     @model_validator(mode="after")
     def _check(self) -> Self:
         _check_selector(self.parent, element_op=False)
@@ -138,6 +162,14 @@ class RemoveElement(_FileModel):
     path: StrictStr
     old: NonEmptyStr
     occurrences: Occurrences
+
+    @property
+    def selector(self) -> str:
+        return self.path
+
+    @property
+    def fragments(self) -> list[str]:
+        return [self.old]
 
     @model_validator(mode="after")
     def _check(self) -> Self:
@@ -171,29 +203,15 @@ class PatchOp(_FileModel):
         return body
 
 
-def op_selector(body: OpBody) -> str:
-    return body.parent if isinstance(body, AddElement) else body.path
-
-
-def _op_fragments(body: OpBody) -> list[str]:
-    if isinstance(body, ReplaceElement):
-        return [body.old, body.new]
-    if isinstance(body, AddElement):
-        return [body.new]
-    if isinstance(body, RemoveElement):
-        return [body.old]
-    return []
-
-
 def op_touches_requirements(body: OpBody) -> bool:
     """Static check: fragments hold requirement elements or the selector names them."""
-    if selector_mentions_requirements(op_selector(body)):
+    if selector_mentions_requirements(body.selector):
         return True
-    return any(fragment_touches_requirements(f) for f in _op_fragments(body))
+    return any(fragment_touches_requirements(f) for f in body.fragments)
 
 
 def _op_tags(body: OpBody) -> set[str]:
-    tags = {selector_tag(op_selector(body))} | {str(parse_fragment(f).tag) for f in _op_fragments(body)}
+    tags = {selector_tag(body.selector)} | {str(parse_fragment(f).tag) for f in body.fragments}
     return {t for t in tags if t is not None} - _STRUCTURAL_TAGS
 
 
