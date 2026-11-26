@@ -69,16 +69,24 @@ class FailOn:
     @classmethod
     def parse(cls, values: list[str]) -> FailOn:
         severity = min((SEVERITIES.index(v) for v in values if v in SEVERITIES), default=None)
-        return cls(severity, UNCHECKABLE in values, UNCHECKED in values, MISMATCH in values, UNCLEARED in values)
+        return cls(
+            severity,
+            uncheckable=UNCHECKABLE in values,
+            unchecked=UNCHECKED in values,
+            mismatch=MISMATCH in values,
+            uncleared=UNCLEARED in values,
+        )
 
-    def met(self, report: Report, classification: Classification, review: PatchReview | None = None) -> bool:
-        if review is not None and ((self.mismatch and review.mismatched) or (self.uncleared and review.uncleared)):
-            return True
+    def met(self, report: Report, classification: Classification) -> bool:
         if self.severity is not None and any(SEVERITIES.index(f.severity) >= self.severity for f in report.findings):
             return True
         return (self.uncheckable and bool(classification.codes)) or (
             self.unchecked and bool(classification.unchecked_locations)
         )
+
+    def patch_met(self, review: PatchReview) -> bool:
+        """A patched tool fails when its patches regress it, and on a mismatch or nothing cleared when asked."""
+        return review.regressed or (self.mismatch and review.mismatched) or (self.uncleared and review.uncleared)
 
 
 @dataclass(frozen=True)
@@ -127,7 +135,7 @@ def main(argv: list[str] | None = None) -> int:
         review = result.patch_review
         if review is not None:
             reports[path].update(review.to_dict())
-        if fail_on.met(report, classification, review) or (review is not None and review.regressed):
+        if fail_on.met(report, classification) or (review is not None and fail_on.patch_met(review)):
             failed = True
         if not args.json:
             _print_report(path, tool_version, report, threshold, classification, review)
@@ -268,7 +276,7 @@ def _print_report(
     for finding in report.sorted():
         if SEVERITIES.index(finding.severity) < threshold:
             continue
-        print(f"  {finding.severity.upper():8} {finding.rule:22} {_where(finding):18} {finding.message}")
+        print(f"  {_finding_line(finding)}")
     for _, note in note_lines(report, classification):
         print(f"  NOTE     {note}")
 
@@ -280,10 +288,13 @@ def _print_patch_review(review: PatchReview, threshold: int) -> None:
     # NEW is not filtered: any of it fails the run.
     for label, findings in (("CLEARED", cleared), ("NEW", review.introduced)):
         for finding in findings:
-            where = _where(finding)
-            print(f"  {label:8} {finding.severity.upper():8} {finding.rule:22} {where:18} {finding.message}")
+            print(f"  {label:8} {_finding_line(finding)}")
     for note in review.notes_added:
         print(f"  NEW      NOTE     {note}")
+
+
+def _finding_line(finding: Finding) -> str:
+    return f"{finding.severity.upper():8} {finding.rule:22} {_where(finding):18} {finding.message}"
 
 
 def _where(finding: Finding) -> str:

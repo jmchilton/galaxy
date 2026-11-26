@@ -35,9 +35,11 @@ FindingMatch = tuple[str, str, str, str | None, tuple[SourceRef, ...] | str | No
 
 def finding_match(finding: Finding) -> FindingMatch:
     """Identity of a finding across a patch: rule, place, how the value lands there and what it reads or names."""
-    # A capability's expr can be its whole #import line; its message names the module.
-    named = finding.message if finding.kind == CAPABILITY else finding.expr
-    return (finding.rule, finding.kind, finding.location, finding.context, sorted_refs(finding.refs) or named)
+    where = (finding.rule, finding.kind, finding.location, finding.context)
+    if finding.kind == CAPABILITY:
+        # Not its expr, as Finding.key() uses: that can be the whole #import line; the message names the module.
+        return (*where, finding.message)
+    return (*where, sorted_refs(finding.refs) or finding.expr)
 
 
 def note_lines(report: Report, classification: Classification) -> list[tuple[tuple[str, str], str]]:
@@ -92,15 +94,18 @@ class PatchReview:
     def states(self) -> list[PatchState]:
         return self.patch.states if self.patch else []
 
+    def _has_security_unit(self, state: str) -> bool:
+        return any(s.state == state and s.kind == SECURITY for s in self.states)
+
     @property
-    def mismatched(self) -> list[PatchState]:
-        """The security patch units whose ops no longer match the tool."""
-        return [s for s in self.states if s.state == MISMATCH and s.kind == SECURITY]
+    def mismatched(self) -> bool:
+        """A security patch unit's ops no longer match the tool."""
+        return self._has_security_unit(MISMATCH)
 
     @property
     def uncleared(self) -> bool:
         """A security patch unit applied but the review clears no finding."""
-        return any(s.state == APPLIED and s.kind == SECURITY for s in self.states) and not self.cleared
+        return self._has_security_unit(APPLIED) and not self.cleared
 
     @property
     def regressed(self) -> bool:
