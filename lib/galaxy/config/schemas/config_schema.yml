@@ -1083,9 +1083,9 @@ mapping:
           rejected), `unusual_inputs` (only jobs with unusual values, such as quotes,
           shell metacharacters or odd characters) and `ordinary_inputs` (ordinary jobs
           too; Galaxy's default dataset names such as "data 1" count as ordinary).
-          Patches above this level are reported as advisories and not applied. A tool with an applied
-          patch above `rejects_inputs` is never served from the job cache, because
-          jobs don't yet record which patch they ran with.
+          Patches above this level are reported as advisories and not applied. A tool
+          with an applied patch above `rejects_inputs` is never served from the job
+          cache, because jobs don't yet record which patch they ran with.
 
       tool_patch_requirement_changes:
         type: bool

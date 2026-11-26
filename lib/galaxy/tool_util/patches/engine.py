@@ -18,7 +18,10 @@ from typing import (
 from lxml import etree
 
 from galaxy.tool_util.parameters.factory import input_models_for_tool_source
-from galaxy.tool_util.parser.xml import XmlToolSource
+from galaxy.tool_util.parser.xml import (
+    XmlPagesSource,
+    XmlToolSource,
+)
 from galaxy.util import ElementTree
 from .model import (
     AddElement,
@@ -237,9 +240,9 @@ def _same_model(before: Any, after: Any) -> bool:
 
 
 def _model_source(tree: ElementTree) -> tuple[str | None, bytes | None]:
-    """What :func:`input_models_for_tool_source` reads: the root profile and the first ``<inputs>``."""
+    """What :func:`input_models_for_tool_source` reads: the root profile and the pages' ``<inputs>``."""
     root = tree.getroot()
-    inputs = root.find("inputs")
+    inputs = XmlPagesSource(root).input_elem
     return root.get("profile"), etree.tostring(inputs, with_tail=False) if inputs is not None else None
 
 

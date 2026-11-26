@@ -147,8 +147,8 @@ class ToolPatchDatabase:
     # --- digests and summaries ---
 
     def _policy_bytes(self) -> bytes:
-        policy = f"{ENGINE_VERSION}\0{self.policy.reproducibility}\0{self.policy.requirement_changes}"
-        return f"{policy}\0{self.galaxy_series or ''}".encode()
+        parts = (ENGINE_VERSION, self.policy.reproducibility, self.policy.requirement_changes, self.galaxy_series or "")
+        return "\0".join(map(str, parts)).encode()
 
     def digest_for(self, key: PatchKey, changeset: str | None = None) -> str | None:
         """sha256 over the files matched for key, their codes and coverage, the policy and series; None on a miss."""

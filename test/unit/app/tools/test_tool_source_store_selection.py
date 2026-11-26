@@ -24,7 +24,8 @@ def _stored(tool_id=None, source_path=None, raw="<tool/>", stored_at=None):
 
 def _box(store):
     box = ToolBox.__new__(ToolBox)
-    box.app = SimpleNamespace(config=SimpleNamespace(use_cached_toolbox=True), tool_source_store=store)  # type: ignore[assignment]
+    config = SimpleNamespace(use_cached_toolbox=True)
+    box.app = SimpleNamespace(config=config, tool_source_store=store, tool_patches=None)  # type: ignore[assignment]
     return box
 
 
