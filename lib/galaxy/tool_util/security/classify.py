@@ -14,13 +14,12 @@ from dataclasses import (
 from enum import StrEnum
 
 from .charsets import CODE
+from .patterns import access_patterns
 from .report import (
-    CODE_CAPABILITIES,
     OPAQUE,
     rendered,
     Report,
     RUNS_TEXT_RULES,
-    SANITIZE_OFF,
     serious_findings,
     VULNERABILITY,
 )
@@ -76,15 +75,13 @@ def classify(report: Report) -> Classification:
     reasons: dict[Uncheckable, str] = {}
     if rewrites := sorted({name for found in report.rewrites.values() for name in found}):
         reasons[Uncheckable.REWRITES] = f"its templates change values with {', '.join(rewrites)}"
-    # Unless the tool turns the sanitizer off, Galaxy sanitizes what a template reads from the user object.
-    sanitized = not any(f.rule == SANITIZE_OFF for f in report.findings)
     capabilities = sorted(
         {
             f.expr
-            for f in report.findings
-            if f.rule in CODE_CAPABILITIES and f.expr and not (sanitized and f.expr.startswith("__user__"))
+            for found in access_patterns(report).values()
+            for f in found
             # Reflection in an output filter or an option list cannot write into what the job runs.
-            and not (f.rule == Rule.TEMPLATE_REFLECTION and not rendered(f.location))
+            if f.expr and not (f.rule == Rule.TEMPLATE_REFLECTION and not rendered(f.location))
         }
     )
     if capabilities:

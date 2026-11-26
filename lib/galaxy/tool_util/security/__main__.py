@@ -12,6 +12,7 @@ import json
 import os
 import sys
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import Any
 
 from galaxy.tool_util.loader_directory import (
@@ -43,7 +44,85 @@ NOT_XML = "not reviewed: only XML tools are analysed"
 NO_TOOLS = "no tools found"
 
 
+@dataclass(frozen=True)
+class FailOn:
+    """The --fail-on conditions: a severity index, and whether codes or unchecked locations fail."""
+
+    severity: int | None = None
+    uncheckable: bool = False
+    unchecked: bool = False
+
+    @classmethod
+    def parse(cls, values: list[str]) -> FailOn:
+        severity = min((SEVERITIES.index(v) for v in values if v in SEVERITIES), default=None)
+        return cls(severity, UNCHECKABLE in values, UNCHECKED in values)
+
+    def met(self, report: Report, classification: Classification) -> bool:
+        if self.severity is not None and any(SEVERITIES.index(f.severity) >= self.severity for f in report.findings):
+            return True
+        return (self.uncheckable and bool(classification.codes)) or (
+            self.unchecked and bool(classification.unchecked_locations)
+        )
+
+
+@dataclass(frozen=True)
+class Reviewed:
+    tool_source: ToolSource
+    report: Report
+
+
+@dataclass(frozen=True)
+class NotReviewed:
+    error: str
+    # The tool, when it loaded but its review raised.
+    tool_source: ToolSource | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        tool_id, tool_version = _identify(self.tool_source)
+        return {
+            "tool_id": tool_id,
+            "tool_version": tool_version,
+            "error": self.error,
+            "codes": [Uncheckable.REVIEW_FAILED],
+        }
+
+
 def main(argv: list[str] | None = None) -> int:
+    args = _parser().parse_args(argv)
+    threshold = SEVERITIES.index(args.min_severity)
+    fail_on = FailOn.parse(args.fail_on)
+    judge = AnthropicJudge() if args.judge else None
+    reports: dict[str, dict[str, Any]] = {}
+    failed = False
+    for path, result in _reviews(args.tools):
+        if isinstance(result, NotReviewed):
+            failed = True
+            reports[path] = result.to_dict()
+            if not args.json:
+                print(f"{path}\n  ERROR    {result.error}")
+            continue
+        report = result.report
+        if judge is not None:
+            judge_report(result.tool_source, report, judge)
+        tool_version = result.tool_source.parse_version()
+        classification = classify(report)
+        reports[path] = {
+            "tool_id": report.tool_id,
+            "tool_version": tool_version,
+            **report.to_dict(),
+            "codes": classification.codes,
+            "uncheckable_locations": classification.unchecked_locations,
+        }
+        if fail_on.met(report, classification):
+            failed = True
+        if not args.json:
+            _print_report(path, tool_version, report, threshold, classification)
+    if args.json:
+        json.dump(reports, sys.stdout, indent=1)
+    return 1 if failed else 0
+
+
+def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="galaxy-tool-security-review", description=__doc__)
     parser.add_argument("tools", nargs="+", help="tool files, or directories to search for tools recursively")
     parser.add_argument("--json", action="store_true", help="print one JSON document with all reports")
@@ -68,76 +147,43 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="ask Claude whether each vulnerability of medium severity or above is real (needs Anthropic credentials)",
     )
-    args = parser.parse_args(argv)
-    threshold = SEVERITIES.index(args.min_severity)
-    fail_severities = [SEVERITIES.index(s) for s in args.fail_on if s in SEVERITIES]
-    fail_threshold = min(fail_severities) if fail_severities else None
-    reports: dict[str, dict[str, Any]] = {}
-    judge = AnthropicJudge() if args.judge else None
-    failed = False
-    for path, tool_source, error in _tool_sources(args.tools):
-        report = None
-        if tool_source is not None:
-            try:
-                report = review_tool_source(tool_source)
-            except Exception as e:
-                error = _describe_error(e)
-        if tool_source is None or report is None:
-            failed = True
-            tool_id, tool_version = _identify(tool_source)
-            reports[path] = {
-                "tool_id": tool_id,
-                "tool_version": tool_version,
-                "error": error,
-                "codes": [Uncheckable.REVIEW_FAILED],
-            }
-            if not args.json:
-                print(f"{path}\n  ERROR    {error}")
+    return parser
+
+
+def _reviews(paths: list[str]) -> Iterator[tuple[str, Reviewed | NotReviewed]]:
+    for path, found in _tool_sources(paths):
+        if isinstance(found, str):
+            yield path, NotReviewed(found)
             continue
-        if judge is not None:
-            judge_report(tool_source, report, judge)
-        tool_version = tool_source.parse_version()
-        classification = classify(report)
-        reports[path] = {"tool_id": report.tool_id, "tool_version": tool_version, **report.to_dict()}
-        reports[path]["codes"] = classification.codes
-        reports[path]["uncheckable_locations"] = classification.unchecked_locations
-        if fail_threshold is not None and any(SEVERITIES.index(f.severity) >= fail_threshold for f in report.findings):
-            failed = True
-        if UNCHECKABLE in args.fail_on and classification.codes:
-            failed = True
-        if UNCHECKED in args.fail_on and classification.unchecked_locations:
-            failed = True
-        if not args.json:
-            _print_report(path, tool_version, report, threshold, classification)
-    if args.json:
-        json.dump(reports, sys.stdout, indent=1)
-    return 1 if failed else 0
+        try:
+            report = review_tool_source(found)
+        except Exception as e:
+            yield path, NotReviewed(_describe_error(e), found)
+        else:
+            yield path, Reviewed(found, report)
 
 
-def _tool_sources(paths: list[str]) -> Iterator[tuple[str, ToolSource | None, str | None]]:
+def _tool_sources(paths: list[str]) -> Iterator[tuple[str, ToolSource | str]]:
     """Each XML tool of the paths once, under the first path that reaches it, or why a path is not reviewed."""
     seen: set[str] = set()
     for path in paths:
         found = _directory_tool_files(path) if os.path.isdir(path) else [(path, True)]
         if not found:
-            yield path, None, NO_TOOLS
+            yield path, NO_TOOLS
         for shown, xml in found:
             real = os.path.realpath(shown)
             if real in seen:
                 continue
             seen.add(real)
             if not xml:
-                yield shown, None, NOT_XML
+                yield shown, NOT_XML
                 continue
             try:
                 tool_source = get_tool_source(shown)
             except Exception as e:
-                yield shown, None, _describe_error(e)
+                yield shown, _describe_error(e)
                 continue
-            if isinstance(tool_source, XmlToolSource):
-                yield shown, tool_source, None
-            else:
-                yield shown, None, NOT_XML
+            yield shown, tool_source if isinstance(tool_source, XmlToolSource) else NOT_XML
 
 
 def _directory_tool_files(directory: str) -> list[tuple[str, bool]]:

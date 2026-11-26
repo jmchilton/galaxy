@@ -62,6 +62,11 @@ def test_spec_rejects_an_unknown_rule():
         FindingExpectation(rule="shell-injektion")
 
 
+def test_spec_rejects_an_unknown_severity():
+    with pytest.raises(ValidationError):
+        FindingExpectation(rule="shell-injection", severity="hihg")
+
+
 def test_spec_rejects_review_failed_as_a_classify_code():
     with pytest.raises(ValidationError):
         ReviewExpectation(codes=[Uncheckable.REVIEW_FAILED])

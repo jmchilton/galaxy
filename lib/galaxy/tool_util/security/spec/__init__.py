@@ -17,6 +17,7 @@ from pydantic import (
 
 from galaxy.tool_util.parser import get_tool_source
 from galaxy.tool_util.security import review_tool_source
+from galaxy.tool_util.security.charsets import SEVERITIES
 from galaxy.tool_util.security.classify import (
     classify,
     Uncheckable,
@@ -50,6 +51,13 @@ class FindingExpectation(_Model):
     param: str | None = None
     key: str | None = None
     checkable: bool | None = None
+
+    @field_validator("severity")
+    @classmethod
+    def _known_severity(cls, severity: str | None) -> str | None:
+        if severity is not None and severity not in SEVERITIES:
+            raise ValueError(f"severity must be one of {', '.join(SEVERITIES)}")
+        return severity
 
 
 class ReviewExpectation(_Model):
