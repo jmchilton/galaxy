@@ -63,7 +63,7 @@
 
         bash /askomics/cli/set_config.sh &&
         bash /askomics/cli/set_user.sh &&
-        python3 /askomics/cli/upload_files.py -c /askomics/config/askomics.ini -d /import -k $__user_name__ &&
+        python3 /askomics/cli/upload_files.py -c /askomics/config/askomics.ini -d /import -k '$__user_name__' &&
         bash /askomics/docker/start_all.sh
     ]]>
     </command>
