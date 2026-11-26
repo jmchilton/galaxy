@@ -9,14 +9,35 @@ analysed. The review is static and offline; it does not change how Galaxy runs j
 To see what the review finds in tools, run
 
 ```console
-$ galaxy-tool-security-review path/to/tool.xml [more/tools.xml ...]
+$ galaxy-tool-security-review path/to/tool.xml [more/tools.xml ...] [path/to/tools/ ...]
 ```
 
-(or `python -m galaxy.tool_util.security` from a Galaxy checkout).
+(or `python -m galaxy.tool_util.security` from a Galaxy checkout). A directory is searched recursively for
+tools. Only XML tools are reviewed. Each tool is listed with its id and version. A tool that fails to load or
+review, a YAML or CWL tool (`not reviewed: only XML tools are analysed`) and a directory with no tools
+(`no tools found`) are listed with an error instead, and the other tools are still reviewed. A tool reached
+through several paths, such as a file and its directory, is reviewed once, under the first.
 
-`--min-severity` hides findings below a severity, `--json` prints one JSON document with every report, and
-`--judge` asks Claude whether each vulnerability finding of medium severity or above is real (it needs the
-`anthropic` package and credentials). `pip install galaxy-tool-util` installs the review, its CLI and the spec
+`--min-severity` hides findings below a severity in the text output. `--json` prints one JSON document with
+every finding: by path, the report of the tool with its `tool_version`, its
+[uncheckable codes](#uncheckable-codes) (`codes`) and its classified unchecked locations
+(`uncheckable_locations`, see below). A path with an error has its `error` instead, `tool_id` and
+`tool_version` when the tool loaded, and the code `uncheckable-review-failed`. The text output gives each
+unchecked location and uncheckable code a `NOTE` line.
+
+The exit code is 1 when a path has an error, or when a `--fail-on` condition is met. `--fail-on` can be
+given several times:
+
+- `--fail-on <severity>` (for example `high`) fails on any finding of that severity or above, vulnerability
+  or capability alike: a tool whose templates run Python in the Galaxy process (`template-exec`, critical)
+  fails `--fail-on critical`. `--judge` verdicts do not change which findings count.
+- `--fail-on uncheckable` fails on a tool with an uncheckable code.
+- `--fail-on unchecked` fails on a tool with any classified unchecked location (`uncheckable_locations`). That
+  includes templates the review did not analyse, such as one that does not compile, which have no
+  uncheckable code and so pass `--fail-on uncheckable`.
+
+`--judge` asks Claude whether each vulnerability finding of medium severity or above is real
+(it needs the `anthropic` package and credentials). `pip install galaxy-tool-util` installs the review, its CLI and the spec
 cases below; `anthropic` is needed only for `--judge`.
 
 ## Findings
@@ -38,8 +59,8 @@ run (`unchecked_locations`), and the template code that rewrites values in ways 
 characters the sanitizer took out (`rewrites`). A finding is `checkable` when the characters of a concrete
 value decide whether it applies; the JSON report keeps the characters involved (`breakout`, `closes`,
 `requires`) as inputs for such a value-level check. `galaxy.tool_util.security.classify.classify()` adds the
-templates with a finding that is not checkable, or that read objects by name, as classified unchecked
-locations, next to the report's own `unchecked_locations`. `classify()` also gives the
+templates with a finding that is not checkable, or that read objects by name; the CLI prints this classified set
+as `uncheckable_locations`, next to the report's own `unchecked_locations`. `classify()` also gives the
 [uncheckable codes](#uncheckable-codes) of a tool whose templates the review cannot decide.
 
 ## Spec cases
