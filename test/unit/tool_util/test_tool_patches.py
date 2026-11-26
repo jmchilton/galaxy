@@ -312,7 +312,7 @@ NEEDS_SECURITY_UPSTREAM = "security ops or advisories need a security upstream e
                 "collection_fix is written only when true",
                 id=f"flag_{v!r}",
             )
-            for v in (False, None, 1, "true")
+            for v in (False, None, 1, 1.0, "true")
         ],
         pytest.param(
             security_doc(QUOTE_LABEL, collection_fix=True, upstream=[]),
@@ -331,6 +331,20 @@ NEEDS_SECURITY_UPSTREAM = "security ops or advisories need a security upstream e
             security_doc(QUOTE_LABEL, advisory={**ADVISORY, "code": "partial_fix"}, upstream=[], **COLLECTION_FIX),
             NEEDS_SECURITY_UPSTREAM,
             id="security_advisory_without_upstream",
+        ),
+        pytest.param(
+            security_doc(
+                {**QUOTE_LABEL, "kind": "security"},
+                {**text_op("cat", "cat -"), "kind": "compat"},
+                kind="mixed",
+                needed_from="26.1",
+                galaxy_change=GALAXY_CHANGE,
+                upstream=[],
+                advisory={**ADVISORY, "code": "partial_fix", "kind": "security"},
+                **COLLECTION_FIX,
+            ),
+            NEEDS_SECURITY_UPSTREAM,
+            id="mixed_security_advisory_without_upstream",
         ),
     ],
 )
