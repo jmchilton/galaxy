@@ -460,7 +460,6 @@ def element(value: AV, strict: bool = False) -> AV:
 
 # What calling a bound value does: (receiver, positional arguments, keyword arguments, the positional
 # argument nodes) -> the result, or None when the call is not one it knows.
-# typing.List: the alias is evaluated when the module loads, and the package supports Python 3.8.
 BoundCall = Callable[["AV", list["AV"], list["AV"], list[ast.expr]], Optional["AV"]]
 
 

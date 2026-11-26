@@ -9,12 +9,15 @@ analysed. The review is static and offline; it does not change how Galaxy runs j
 To see what the review finds in tools, run
 
 ```console
-$ python -m galaxy.tool_util.security path/to/tool.xml [more/tools.xml ...]
+$ galaxy-tool-security-review path/to/tool.xml [more/tools.xml ...]
 ```
 
+(or `python -m galaxy.tool_util.security` from a Galaxy checkout).
+
 `--min-severity` hides findings below a severity, `--json` prints one JSON document with every report, and
-`--judge` asks Claude whether each finding of medium severity or above is real (it needs the `anthropic`
-package and credentials).
+`--judge` asks Claude whether each vulnerability finding of medium severity or above is real (it needs the
+`anthropic` package and credentials). `pip install galaxy-tool-util` installs the review, its CLI and the spec
+cases below; `anthropic` is needed only for `--judge`.
 
 ## Findings
 
@@ -33,9 +36,11 @@ The review reports two kinds of findings:
   inside the Galaxy process (`template-*` rules), network access, or a request for the user's API key
   (`capability-*` rules).
 
-A report also lists the parts of the templates the review could not follow, the templates whose values no
-character test can judge (`unchecked_locations`), and the template code that rewrites values in ways that can
-bring back characters the sanitizer took out (`rewrites`).
+A report also lists the parts of the templates the review could not follow, or that pipe text into a shell to
+run (`unchecked_locations`), and the template code that rewrites values in ways that can bring back
+characters the sanitizer took out (`rewrites`). A finding is `checkable` when the characters of a concrete
+value decide whether it applies; the JSON report keeps the characters involved (`breakout`, `closes`,
+`requires`) as inputs for such a value-level check.
 
 ## Spec cases
 
@@ -407,7 +412,7 @@ findings:
 
 ### path_like_name
 
-`sort -o` writes to a file named after the element identifier. The review reports that the identifier can close its quotes, but does not take it for a path of its own: a slash or a leading dash in it gets no finding.
+`sort -o` writes to a file named after the element identifier. The review reports that the identifier can close its quotes.
 
 Tool `sort_to_named_file.xml`:
 

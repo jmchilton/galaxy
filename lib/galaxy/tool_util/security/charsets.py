@@ -25,12 +25,8 @@ from galaxy.util import (
     sanitize_param,
 )
 
-try:
-    import re._constants as sre_constants  # type: ignore[import-not-found, unused-ignore]
-    import re._parser as sre_parse  # type: ignore[import-not-found, unused-ignore]
-except ImportError:  # Python < 3.11
-    import sre_constants  # type: ignore[no-redef, unused-ignore]
-    import sre_parse  # type: ignore[no-redef, unused-ignore]
+import re._constants as sre_constants  # type: ignore[import-not-found, unused-ignore]
+import re._parser as sre_parse  # type: ignore[import-not-found, unused-ignore]
 
 Chars = frozenset[str]
 

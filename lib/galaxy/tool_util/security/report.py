@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from dataclasses import (
     asdict,
     dataclass,
@@ -236,11 +235,6 @@ class Report:
         found = self.rewrites.setdefault(location, [])
         if name not in found:
             found.append(name)
-
-    def added_by_rewrites(self, ref: SourceRef, chars: Iterable[str]) -> frozenset[str]:
-        """What the literal rewrites of a source add to a value of it that holds ``chars``."""
-        held = frozenset(chars)
-        return frozenset().union(*(added for trigger, added in self.rewritten.get(ref, ()) if held & trigger))
 
     def assess(self, finding: Finding, assessment: dict[str, Any]) -> None:
         self.findings = [replace(f, assessment=assessment) if f is finding else f for f in self.findings]

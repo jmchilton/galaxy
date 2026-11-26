@@ -64,7 +64,6 @@ class Assessment(BaseModel):
             "unsure: the material shown is not enough to decide."
         )
     )
-    # Optional rather than `str | None`: pydantic evaluates field annotations at runtime.
     attack: str | None = Field(
         description="A concrete value that survives sanitization, validation and quoting here; null for none/unsure."
     )

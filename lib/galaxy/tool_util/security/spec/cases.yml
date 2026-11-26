@@ -143,8 +143,7 @@ argument_injection:
 path_like_name:
   doc: >-
     `sort -o` writes to a file named after the element identifier. The review reports that the identifier can
-    close its quotes, but does not take it for a path of its own: a slash or a leading dash in it gets no
-    finding.
+    close its quotes.
   tool: sort_to_named_file.xml
   review:
     serious_rules: [shell-injection]
