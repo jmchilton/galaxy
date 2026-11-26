@@ -37,6 +37,9 @@ regresses a tool (see `--tool-patch-path` below). `--fail-on` can be given sever
   uncheckable code and so pass `--fail-on uncheckable`.
 - `--fail-on mismatch` (with `--tool-patch-path`) fails on a tool with a security tool patch whose ops no
   longer match it. Without it, a mismatch is only a `PATCH` line.
+- `--fail-on uncleared` (with `--tool-patch-path`) fails on a tool whose security tool patch applies but
+  clears no finding. It is opt-in: a patch can fix what the static review does not see, such as an input a
+  new validator rejects.
 
 `--judge` asks Claude whether each vulnerability finding of medium severity or above is real
 (it needs the `anthropic` package and credentials). `pip install galaxy-tool-util` installs the review, its CLI and the spec

@@ -365,3 +365,15 @@ def test_cli_judges_the_patched_source(
     assert judge.contexts and all("echo $input1.name" in context for context in judge.contexts)
     medium = [f for f in report["introduced"] if f["severity"] == "medium"]
     assert medium and all(f["assessment"]["verdict"] == "arg" for f in medium)
+
+
+@pytest.mark.parametrize(
+    "patch,exit_code", [(CLEANING, 0), (COSMETIC, 1)], ids=["clears_its_finding", "clears_nothing"]
+)
+def test_cli_fails_on_an_applied_security_patch_that_clears_nothing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], patch: dict, exit_code: int
+) -> None:
+    collection = write_collection(tmp_path / "c", {KEY_FILE: patch})
+    got, report = _cli_json([TOOL, "--tool-patch-path", str(collection), "--fail-on", "uncleared"], capsys)
+    assert [s["state"] for s in report["patches"]] == ["applied"]
+    assert got == exit_code
