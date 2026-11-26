@@ -16,6 +16,7 @@ from pathlib import Path
 from pydantic import BaseModel
 from sqlalchemy.engine import make_url
 
+from galaxy.tool_util.patches import ToolPatchCollectionsSummary
 from galaxy.util import RW_R__R__
 from galaxy.version import VERSION
 from .index import (
@@ -73,6 +74,8 @@ class ToolSourceStoreManifest(BaseModel):
     capabilities: list[str]
     built_at: datetime
     tool_snapshot: ToolSnapshotManifest
+    # Patch collections and policy applied at build time; consumers trust them as published.
+    tool_patches: ToolPatchCollectionsSummary | None = None
 
 
 def read_manifest(path: Path) -> ToolSourceStoreManifest:
@@ -217,6 +220,7 @@ def build_manifest(store_name: str, index: ToolIndex, *, built_at: datetime | No
         capabilities=sorted(TOOL_SOURCE_STORE_CAPABILITIES),
         built_at=built_at or datetime.now(UTC),
         tool_snapshot=tool_snapshot(index),
+        tool_patches=index.tool_patch_collections,
     )
 
 

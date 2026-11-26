@@ -9,7 +9,8 @@ A mismatch is always safe — it only falls back to scanning/populating.
 
 The built-in probe is ``tool_confs``: md5 over the tool and data-manager
 conf file contents, plus the (recursive) directory mtimes of any
-``tool_dir`` entries they declare. This captures tool
+``tool_dir`` entries they declare, plus the configured tool patch
+collections and policy. This captures tool
 additions/removals/renames — the same class of drift the coverage scan
 detects — without touching individual tool files. In-place edits to a
 tool's XML are invisible to both, by design: content changes are the
@@ -30,6 +31,7 @@ from collections.abc import (
 )
 from typing import TYPE_CHECKING
 
+from galaxy.tools.patches import tool_patch_database_from_config
 from .discover import conf_tool_directories
 
 if TYPE_CHECKING:
@@ -91,6 +93,9 @@ def tool_confs_token(config: "GalaxyAppConfiguration") -> str:
         digest.update(directory.encode())
         for chunk in _dir_mtime_chunks(directory, recursive):
             digest.update(chunk)
+    # Patched sources are stored, so changed collections or policy must re-populate.
+    if (tool_patches := tool_patch_database_from_config(config)) is not None:
+        digest.update(b"\0tool_patches\0" + tool_patches.token().encode())
     return f"confs:{digest.hexdigest()}"
 
 

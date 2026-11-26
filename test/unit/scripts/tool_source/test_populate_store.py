@@ -28,6 +28,11 @@ sys.path.insert(0, str(galaxy_root / "lib"))
 
 from galaxy.app_unittest_utils.tool_source_support import populate_config
 from galaxy.config import GalaxyAppConfiguration
+from galaxy.tool_util.unittest_utils.tool_patches import (
+    replace_text_op,
+    security_patch,
+    write_collection,
+)
 from galaxy.tools.source_store import (
     discover,
     populator,
@@ -35,6 +40,7 @@ from galaxy.tools.source_store import (
 from galaxy.tools.source_store.discover import discover_tools as actual_discover_tools
 from galaxy.tools.source_store.factory import _build_default_store
 from galaxy.tools.source_store.freshness import tool_confs_token
+from galaxy.tools.source_store.manifest import build_manifest
 from galaxy.tools.source_store.populator import (
     compute_hash,
     DEFAULT_STORE_NAME,
@@ -835,3 +841,98 @@ class TestToolsMissingFromReadOnlyStore:
             "first_installed",
             "second_installed",
         ]
+
+
+PATCH_DOC = "Jobs now run with the patched command. Other jobs are unchanged."
+REQUIREMENT_TOOL = (
+    '<tool id="ptest_req" name="ptest_req" version="1.0" profile="21.09">'
+    '<requirements><requirement type="package" version="1.0">probe</requirement></requirements>'
+    "<command>echo req</command></tool>"
+)
+REQUIREMENT_PATCH = security_patch(
+    [
+        {
+            "replace_element": {
+                "path": "requirements/requirement",
+                "old": '<requirement type="package" version="1.0">probe</requirement>',
+                "new": '<requirement type="package" version="1.1">probe</requirement>',
+                "occurrences": 1,
+            }
+        }
+    ],
+    "all_inputs",
+    PATCH_DOC,
+    changes_requirements=True,
+)
+
+
+def _command_patch(new: str) -> dict:
+    return security_patch([replace_text_op("command", "echo ptest_1", new)], "special_inputs", PATCH_DOC)
+
+
+class TestToolPatches:
+    """The populator stores patched sources and re-patches when a collection changes."""
+
+    def _setup(self, tmp_path):
+        tools_dir = tmp_path / "tools"
+        _write_tool(tools_dir / "ptest_1.xml", "ptest_1", command="echo ptest_1")
+        _write_tool(tools_dir / "ptest_2.xml", "ptest_2", command="echo ptest_2")
+        (tools_dir / "ptest_req.xml").write_text(REQUIREMENT_TOOL)
+        conf = _write_tool_conf(
+            tmp_path / "tool_conf.xml",
+            tools_dir,
+            '<tool file="ptest_1.xml"/><tool file="ptest_2.xml"/><tool file="ptest_req.xml"/>',
+        )
+        collection = write_collection(
+            tmp_path / "patches",
+            {
+                "_local/ptest_1/1.0.yml": _command_patch("echo -- ptest_1"),
+                "_local/ptest_req/1.0.yml": REQUIREMENT_PATCH,
+            },
+        )
+        cfg = populate_config(tmp_path, conf)
+        cfg.tool_patch_paths = [str(collection)]
+        cfg.tool_patch_requirement_changes = True
+        return cfg, collection
+
+    def test_stores_patched_source_and_index_entry(self, tmp_path):
+        cfg, _ = self._setup(tmp_path)
+
+        _populate_default(cfg, pattern="ptest_")
+
+        store, index = _load_default_index(cfg)
+        entry = index.entries["ptest_1"]
+        assert entry.patch is not None
+        assert [(s.state, s.reproducibility_doc) for s in entry.patch.states] == [("applied", PATCH_DOC)]
+        stored = store.get(entry.source_hash)
+        assert stored is not None and "echo -- ptest_1" in stored.raw_source
+        assert index.entries["ptest_2"].patch is None
+        assert [r["version"] for r in index.entries["ptest_req"].requirements] == ["1.1"]
+        assert index.tool_patch_collections is not None
+        assert [c.name for c in index.tool_patch_collections.collections] == ["test-patches"]
+        assert build_manifest(DEFAULT_STORE_NAME, index).tool_patches == index.tool_patch_collections
+
+    def test_changed_patch_file_repatches_unchanged_tool(self, tmp_path):
+        cfg, collection = self._setup(tmp_path)
+        _populate_default(cfg, pattern="ptest_", incremental=True)
+        _, before = _load_default_index(cfg)
+
+        write_collection(collection, {"_local/ptest_1/1.0.yml": _command_patch("echo -- 'ptest_1'")})
+        result = _populate_default(cfg, pattern="ptest_", incremental=True)
+
+        assert (result["stored"], result["unchanged"]) == (1, 2)
+        store, after = _load_default_index(cfg)
+        stored = store.get(after.entries["ptest_1"].source_hash)
+        assert stored is not None and "echo -- 'ptest_1'" in stored.raw_source
+        assert after.entries["ptest_2"] == before.entries["ptest_2"]
+
+    def test_freshness_token_follows_collections_and_policy(self, tmp_path):
+        cfg, collection = self._setup(tmp_path)
+        tokens = [tool_confs_token(cfg)]
+        write_collection(collection, {"_local/ptest_2/1.0.yml": _command_patch("echo -- ptest_1")})
+        tokens.append(tool_confs_token(cfg))
+        cfg.tool_patch_reproducibility = "rejects_inputs"
+        tokens.append(tool_confs_token(cfg))
+        cfg.tool_patch_paths = []
+        tokens.append(tool_confs_token(cfg))
+        assert len(set(tokens)) == 4

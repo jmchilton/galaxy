@@ -27,6 +27,9 @@ class PopulateConfig:
     # Lets a populate that writes the default store build an empty
     # datatypes registry for converter discovery.
     datatypes_config: list[str] = []
+    tool_patch_paths: list[str] = []
+    tool_patch_reproducibility = "all_inputs"
+    tool_patch_requirement_changes = False
 
     def __init__(self, root: str | os.PathLike[str], tool_conf: str | os.PathLike[str]):
         self.root = str(root)
