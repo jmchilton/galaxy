@@ -8,12 +8,12 @@ or a string method; a dataset gives its path, its name, its metadata.
 from __future__ import annotations
 
 import ast
+from collections.abc import Iterator
 from dataclasses import (
     dataclass,
     field,
     replace,
 )
-from typing import Iterator
 
 from .charsets import (
     default_chars,

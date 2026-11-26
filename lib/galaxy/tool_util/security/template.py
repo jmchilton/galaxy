@@ -19,12 +19,12 @@ import bisect
 import re
 import warnings
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import (
     dataclass,
     field,
 )
 from functools import lru_cache
-from typing import Callable
 
 from Cheetah.Compiler import Compiler
 from Cheetah.Parser import Parser
@@ -100,14 +100,16 @@ class LinearParser(Parser):  # type: ignore[misc, unused-ignore]  # Cheetah is u
 
     def startswith(self, it: str, pos: int | None = None) -> bool:
         if pos is None or pos == self._pos:
-            return self._src.startswith(it, self._pos)
+            src: str = self._src
+            return src.startswith(it, self._pos)
         return bool(super().startswith(it, pos))
 
     def findBOL(self, pos: int | None = None) -> int:
         if pos is None:
             pos = self._pos
-        newline = self._src.rfind("\n", 0, pos)
-        return max(newline + 1, self._src.rfind("\r", newline + 1, pos) + 1)
+        src: str = self._src
+        newline = src.rfind("\n", 0, pos)
+        return max(newline + 1, src.rfind("\r", newline + 1, pos) + 1)
 
 
 class NoCompileTimeSettings(Compiler):  # type: ignore[misc, unused-ignore]  # Cheetah is untyped

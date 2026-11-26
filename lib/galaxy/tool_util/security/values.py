@@ -10,6 +10,10 @@ from __future__ import annotations
 
 import ast
 import threading
+from collections.abc import (
+    Callable,
+    Iterator,
+)
 from contextlib import contextmanager
 from dataclasses import (
     dataclass,
@@ -17,9 +21,6 @@ from dataclasses import (
     replace,
 )
 from typing import (
-    Callable,
-    Iterator,
-    List,
     Optional,
 )
 
@@ -38,7 +39,7 @@ class AV:
     chars: Chars = NONE
     sources: frozenset[str] = frozenset()
     nodes: tuple[Node, ...] = ()
-    elem: Optional[AV] = None  # element when iterated or indexed
+    elem: AV | None = None  # element when iterated or indexed
     items: tuple[AV, ...] | None = None  # tuple or list literal
     quoted: str = ""  # "shlex", "json" or "pyrepr": the value was escaped for that syntax
     py: str = ""  # a Python name such as "re.sub"
@@ -460,7 +461,7 @@ def element(value: AV, strict: bool = False) -> AV:
 # What calling a bound value does: (receiver, positional arguments, keyword arguments, the positional
 # argument nodes) -> the result, or None when the call is not one it knows.
 # typing.List: the alias is evaluated when the module loads, and the package supports Python 3.8.
-BoundCall = Callable[["AV", List["AV"], List["AV"], List[ast.expr]], Optional["AV"]]
+BoundCall = Callable[["AV", list["AV"], list["AV"], list[ast.expr]], Optional["AV"]]
 
 
 def returns_receiver(receiver: AV, args: list[AV], keywords: list[AV], nodes: list[ast.expr]) -> AV:

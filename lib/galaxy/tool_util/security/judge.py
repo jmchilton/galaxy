@@ -24,7 +24,6 @@ import re
 from typing import (
     Any,
     Literal,
-    Optional,
     Protocol,
 )
 
@@ -66,7 +65,7 @@ class Assessment(BaseModel):
         )
     )
     # Optional rather than `str | None`: pydantic evaluates field annotations at runtime.
-    attack: Optional[str] = Field(
+    attack: str | None = Field(
         description="A concrete value that survives sanitization, validation and quoting here; null for none/unsure."
     )
     reason: str = Field(description="One or two sentences naming the quoting, sanitizer or validator that decides it.")

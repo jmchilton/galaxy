@@ -11,14 +11,13 @@ import ast
 import builtins
 import dataclasses
 import re
+from collections.abc import Callable
 from dataclasses import (
     dataclass,
     field,
 )
 from typing import (
     Any,
-    Callable,
-    FrozenSet,
 )
 
 from Cheetah.Template import Template
@@ -332,7 +331,7 @@ _EVALUATED_STRING = {
 
 _FSTRING_PREFIX = re.compile(r"(?<![\w.])([fF][rR]?|[rR][fF])$")
 
-States = FrozenSet[Any]
+States = frozenset[Any]
 _COLLECTOR = "_captureCollector_"
 
 _PERCENT = re.compile(r"%(\(\w+\))?[-+ #0]*\d*(?:\.\d+)?([sdrifgGeExXc%])")

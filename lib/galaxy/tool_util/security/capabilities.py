@@ -17,13 +17,13 @@ from __future__ import annotations
 import ast
 import re
 import warnings
+from collections.abc import Callable
 from functools import (
     lru_cache,
     partial,
 )
 from typing import (
     Any,
-    Callable,
 )
 
 from Cheetah.Template import Template

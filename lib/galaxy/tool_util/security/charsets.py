@@ -16,9 +16,7 @@ import re
 import string
 from typing import (
     Any,
-    FrozenSet,
     NamedTuple,
-    Optional,
 )
 
 from galaxy.tool_util.parser.sanitize import ToolParameterSanitizer
@@ -34,7 +32,7 @@ except ImportError:  # Python < 3.11
     import sre_constants  # type: ignore[no-redef, unused-ignore]
     import sre_parse  # type: ignore[no-redef, unused-ignore]
 
-Chars = FrozenSet[str]
+Chars = frozenset[str]
 
 PROBE: Chars = frozenset(string.punctuation + " \t\n")
 NONE: Chars = frozenset()
@@ -134,12 +132,12 @@ class Verdict(NamedTuple):
     why: str
     # Characters at least one of which a value must contain to do what `why` says; None when that
     # is any of `chars`, empty when no character decides it.
-    breakout: Optional[Chars] = None
+    breakout: Chars | None = None
     # When not empty, the value must also contain one of these: closing single quotes starts a
     # command only with a command character after the quote.
     requires: Chars = frozenset()
     # The level of the finding, when it is not the one of its severity (level_of).
-    level: Optional[str] = None
+    level: str | None = None
     # At the data level, the value must also contain one of these (DATA_HARM): splitting into
     # plain words counts only at the level of all.
     data_requires: Chars = frozenset()

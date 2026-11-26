@@ -6,12 +6,7 @@ written. The other codes read values the server sets.
 """
 
 import re
-from enum import Enum
-from typing import (
-    Dict,
-    List,
-    Optional,
-)
+from enum import StrEnum
 
 from galaxy.tool_util.security.report import (
     CODE_CAPABILITIES,
@@ -21,7 +16,7 @@ from galaxy.tool_util.security.report import (
 )
 
 
-class PatternCode(str, Enum):
+class PatternCode(StrEnum):
     # The review cannot follow the value read.
     REFLECTION = "reflection"
     MODEL_ACCESS = "model-access"
@@ -60,10 +55,10 @@ _JOB_METADATA = re.compile(r"(^\$?|\.)creating_job(\.tool_(id|version))?$")
 _SERVER_CONFIG_ATTRIBUTES = frozenset(("config", "security"))
 
 
-def access_patterns(report: Report) -> Dict[PatternCode, List[Finding]]:
+def access_patterns(report: Report) -> dict[PatternCode, list[Finding]]:
     """The findings of the report that read data the job does not carry, by pattern code."""
     sanitized = not any(f.rule == SANITIZE_OFF for f in report.findings)
-    patterns: Dict[PatternCode, List[Finding]] = {}
+    patterns: dict[PatternCode, list[Finding]] = {}
     for finding in report.findings:
         code = pattern_of(finding, sanitized)
         if code is not None:
@@ -71,7 +66,7 @@ def access_patterns(report: Report) -> Dict[PatternCode, List[Finding]]:
     return patterns
 
 
-def pattern_of(finding: Finding, sanitized: bool) -> Optional[PatternCode]:
+def pattern_of(finding: Finding, sanitized: bool) -> PatternCode | None:
     if finding.rule not in CODE_CAPABILITIES:
         return None
     expr = finding.expr or ""

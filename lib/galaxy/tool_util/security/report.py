@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import (
     asdict,
     dataclass,
@@ -10,7 +11,6 @@ from dataclasses import (
 )
 from typing import (
     Any,
-    Iterable,
 )
 
 from .charsets import (

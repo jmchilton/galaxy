@@ -14,13 +14,11 @@ command and a comment. Scripts with here-documents are not read with this lexer.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import (
     Any,
-    Callable,
     NamedTuple,
-    Optional,
-    Tuple,
 )
 
 from .charsets import STRING_QUOTES
@@ -105,7 +103,7 @@ class Frame(NamedTuple):
     kind: str = "top"
     quote: str = ""
     inner: str = ""  # quote state inside the program text of a nested interpreter
-    sed: Optional[SedState] = None  # where the program text of a sed command has got to
+    sed: SedState | None = None  # where the program text of a sed command has got to
     sandbox: bool = False  # sed --sandbox: the program can neither run commands nor open files
     cmd: str | None = None  # "?" when the command word contains a placeholder
     wrapper: bool = False
@@ -150,7 +148,7 @@ class Context:
     first_arg: bool = False  # the first argument of the command that is not an option
     # The value starts an argument that does not follow an option: a leading dash makes it one.
     option_position: bool = False
-    sed: Optional[SedState] = None  # where in a sed program the value lands
+    sed: SedState | None = None  # where in a sed program the value lands
     sandbox: bool = False  # the sed program cannot run commands or open files
     # In a variable assignment: "name" of the variable a declaration sets, "value" of a declaration's
     # operand (the shell may split it), "split" one it always splits, "env" an assignment of a wrapper
@@ -185,7 +183,7 @@ class Context:
 INITIAL = ShellState()
 SCRIPT = ShellState(script=True)
 
-Event = Tuple[str, ...]
+Event = tuple[str, ...]
 
 
 class _Lexer:
