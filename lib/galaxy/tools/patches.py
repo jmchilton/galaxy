@@ -1,7 +1,9 @@
 """Galaxy-side wiring of :mod:`galaxy.tool_util.patches`: config to database, and tool patch helpers."""
 
 import os
+import threading
 from typing import (
+    Any,
     cast,
     TYPE_CHECKING,
 )
@@ -29,17 +31,30 @@ if TYPE_CHECKING:
 JOB_CACHE_SAFE_LEVEL: ReproducibilityLevel = "rejects_inputs"
 
 
+_DATABASES_ATTR = "_tool_patch_databases"
+_databases_lock = threading.Lock()
+
+
 def tool_patch_database_from_config(config: "GalaxyAppConfiguration") -> ToolPatchDatabase | None:
-    """The configured patch database, or None when ``tool_patch_paths`` is empty."""
-    paths = list(config.tool_patch_paths or [])
+    """The configured patch database, or None when ``tool_patch_paths`` is empty.
+
+    Loaded once per config object and settings, so a process applies one database until it restarts.
+    """
+    paths = tuple(config.tool_patch_paths or ())
     if not paths:
         return None
-    return load_tool_patch_database(
-        paths,
-        reproducibility=cast(ReproducibilityLevel, config.tool_patch_reproducibility),
-        requirement_changes=config.tool_patch_requirement_changes,
-        galaxy_series=VERSION_MAJOR,
-    )
+    reproducibility = cast(ReproducibilityLevel, config.tool_patch_reproducibility)
+    settings = (paths, reproducibility, bool(config.tool_patch_requirement_changes))
+    with _databases_lock:
+        databases: dict[tuple[Any, ...], ToolPatchDatabase] = vars(config).setdefault(_DATABASES_ATTR, {})
+        if settings not in databases:
+            databases[settings] = load_tool_patch_database(
+                list(paths),
+                reproducibility=reproducibility,
+                requirement_changes=settings[2],
+                galaxy_series=VERSION_MAJOR,
+            )
+        return databases[settings]
 
 
 def apply_tool_patches(
