@@ -7,6 +7,7 @@ why not even that could: the review does not vet the tool.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import (
     dataclass,
     field,
@@ -67,15 +68,34 @@ class Classification:
         return sorted(self.reasons)
 
 
+# Why each code applies, filled with what the review found (uncheckable_evidence), joined by commas.
+WHY = {
+    Uncheckable.REWRITES: "its templates change values with {}",
+    Uncheckable.TEMPLATE_CODE: "its templates run code or read data no input carries ({})",
+    Uncheckable.LETTERS_ARE_CODE: "letters alone can be code where it writes values ({})",
+    Uncheckable.UNTRACED_VALUE: "it writes values it cannot trace to an input ({})",
+}
+
+
 def classify(report: Report) -> Classification:
     """What the review cannot decide from the templates of the tool it reviewed."""
-    unchecked = _unchecked_locations(report)
+    unchecked = unchecked_locations(report)
     if not unchecked:
         # Every finding is decided by the characters of a value.
         return Classification()
-    reasons: dict[Uncheckable, str] = {}
+    return Classification(uncheckable_reasons(report), unchecked)
+
+
+def uncheckable_reasons(report: Report, why: Mapping[Uncheckable, str] = WHY) -> dict[Uncheckable, str]:
+    """The codes of :func:`uncheckable_evidence`, each with ``why`` filled with its evidence."""
+    return {code: why[code].format(", ".join(found)) for code, found in uncheckable_evidence(report).items()}
+
+
+def uncheckable_evidence(report: Report) -> dict[Uncheckable, list[str]]:
+    """Each reason no value of the tool counts as plain, with what shows it, whether or not a location is unchecked."""
+    evidence: dict[Uncheckable, list[str]] = {}
     if rewrites := sorted({name for found in report.rewrites.values() for name in found}):
-        reasons[Uncheckable.REWRITES] = f"its templates change values with {', '.join(rewrites)}"
+        evidence[Uncheckable.REWRITES] = rewrites
     capabilities = sorted(
         {
             f.expr
@@ -86,24 +106,21 @@ def classify(report: Report) -> Classification:
         }
     )
     if capabilities:
-        reasons[Uncheckable.TEMPLATE_CODE] = (
-            f"its templates run code or read data no input carries ({', '.join(capabilities)})"
-        )
+        evidence[Uncheckable.TEMPLATE_CODE] = capabilities
     serious = serious_findings(report)
     runs = {f.location for f in report.findings if f.rule in RUNS_TEXT_RULES}
     runs |= {f.location for f in serious if not (f.breakout or f.closes)}
     if runs:
-        reasons[Uncheckable.LETTERS_ARE_CODE] = (
-            f"letters alone can be code where it writes values ({', '.join(sorted(runs))})"
-        )
+        evidence[Uncheckable.LETTERS_ARE_CODE] = sorted(runs)
     if untraced := sorted(
         {f.location for f in serious if any(ref.accessor == OPAQUE and ref.param is None for ref in f.refs)}
     ):
-        reasons[Uncheckable.UNTRACED_VALUE] = f"it writes values it cannot trace to an input ({', '.join(untraced)})"
-    return Classification(reasons, unchecked)
+        evidence[Uncheckable.UNTRACED_VALUE] = untraced
+    return evidence
 
 
-def _unchecked_locations(report: Report) -> dict[str, str]:
+def unchecked_locations(report: Report) -> dict[str, str]:
+    """The locations no character test of a code-level finding can judge, with why."""
     unchecked = dict(report.unchecked_locations)
     for f in report.findings:
         if f.kind == VULNERABILITY and f.level == CODE and not f.checkable:
