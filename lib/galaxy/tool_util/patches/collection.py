@@ -23,6 +23,7 @@ from .keys import (
     decode_segment,
     encode_segment,
     is_canonical_segment,
+    is_shed_key,
     key_string,
     LOCAL,
     PatchKey,
@@ -191,38 +192,39 @@ class PatchCollection:
             return
         for owner in self._dirs(patches):
             if owner.name == LOCAL:
-                for tool in self._dirs(owner.path):
-                    tool_id = self._decode(tool)
-                    if tool_id is None:
-                        continue
-                    if tool_id.startswith(REFUSED_LOCAL_PREFIXES):
-                        self._refuse(tool.path, "Galaxy-bundled tools never get patch keys")
-                        continue
-                    for entry in self._files_in(tool.path):
-                        if entry.is_dir(follow_symlinks=False):
-                            self._refuse(entry.path, "per-changeset overrides need a Tool Shed key")
-                        else:
-                            self._add_version_file((LOCAL, tool_id), entry)
+                self._walk_local(owner)
+            elif (owner_name := self._decode(owner)) is not None:
+                self._walk_shed_owner(owner_name, owner)
+
+    def _walk_local(self, owner: os.DirEntry[str]) -> None:
+        for tool in self._dirs(owner.path):
+            tool_id = self._decode(tool)
+            if tool_id is None:
                 continue
-            owner_name = self._decode(owner)
-            if owner_name is None:
+            if tool_id.startswith(REFUSED_LOCAL_PREFIXES):
+                self._refuse(tool.path, "Galaxy-bundled tools never get patch keys")
                 continue
-            for repo in self._dirs(owner.path):
-                repo_name = self._decode(repo)
-                if repo_name is None:
-                    continue
-                for tool in self._dirs(repo.path):
-                    tool_id = self._decode(tool)
-                    if tool_id is None:
-                        continue
-                    prefix = (owner_name, repo_name, tool_id)
-                    for entry in self._files_in(tool.path):
-                        if entry.is_dir(follow_symlinks=False):
-                            version = self._decode(entry)
-                            if version is not None:
-                                self._add_overrides((*prefix, version), entry)
-                        else:
-                            self._add_version_file(prefix, entry)
+            self._walk_tool((LOCAL, tool_id), tool)
+
+    def _walk_shed_owner(self, owner_name: str, owner: os.DirEntry[str]) -> None:
+        for repo in self._dirs(owner.path):
+            repo_name = self._decode(repo)
+            if repo_name is None:
+                continue
+            for tool in self._dirs(repo.path):
+                tool_id = self._decode(tool)
+                if tool_id is not None:
+                    self._walk_tool((owner_name, repo_name, tool_id), tool)
+
+    def _walk_tool(self, prefix: PatchKey, tool: os.DirEntry[str]) -> None:
+        """Version files of one tool, plus per-changeset override directories for shed keys."""
+        for entry in self._files_in(tool.path):
+            if not entry.is_dir(follow_symlinks=False):
+                self._add_version_file(prefix, entry)
+            elif not is_shed_key(prefix):
+                self._refuse(entry.path, "per-changeset overrides need a Tool Shed key")
+            elif (version := self._decode(entry)) is not None:
+                self._add_overrides((*prefix, version), entry)
 
     # --- lookup ---
 
