@@ -241,6 +241,11 @@ def join(*values: AV | None) -> AV:
             elem = join(element(out, strict=True), element(other, strict=True))
         alternatives = _alternatives(out, other)
         chars = out.chars | other.chars
+        bound = out.bound
+        if out.bound != other.bound:
+            # Callables joined with each other or anything else: a call gives what any of them can give.
+            callables = [stringify(v) for v in (out, other) if v.bound is not None]
+            bound = (join(*callables), joins_arguments) if callables else None
         if alternatives is None:
             # Too many strings to write one by one: assume their quotes can surround nothing.
             chars = chars | _QUOTES
@@ -254,7 +259,7 @@ def join(*values: AV | None) -> AV:
             items=items,
             quoted=_quoted(out, other),
             py=out.py if out.py == other.py else "",
-            bound=out.bound if out.bound == other.bound else None,
+            bound=bound,
             helper=out.helper if out.helper == other.helper else "",
             whole=(out.whole or not out.tainted) and (other.whole or not other.tainted),
             lead=_lead(out, other),
@@ -407,7 +412,11 @@ def stringify(value: AV) -> AV:
             quoted="pyrepr",
             whole=False,
         )
-    if value.bound is not None or value.py or value.helper:
+    if value.bound is not None:
+        # What calling it can give: the body of a lambda, the value a method is bound to.
+        returned = contents(value.bound[0])
+        return AV(chars=returned.chars, sources=returned.sources, whole=False) if returned.tainted else CLEAN
+    if value.py or value.helper:
         return CLEAN
     return AV(
         chars=value.chars,
@@ -454,6 +463,9 @@ def element(value: AV, strict: bool = False) -> AV:
         return value.elem
     if value.items is not None:
         return join(*value.items)
+    if value.bound is not None:
+        # `iter(f, sentinel)` gives what calls of f give.
+        return stringify(value)
     if strict:
         return CLEAN
     # Iterating or slicing a string.

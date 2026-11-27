@@ -19,17 +19,13 @@ import re
 import warnings
 from collections.abc import Callable
 from functools import (
-    lru_cache,
     partial,
 )
 from typing import (
     Any,
 )
 
-from Cheetah.Template import Template
-
 from galaxy.tool_util.parser.interface import ToolSource
-from galaxy.util.tree_dict import TreeDict
 from . import shell
 from .charsets import (
     CRITICAL,
@@ -65,6 +61,7 @@ from .template import (
     literal_rewrite_call,
     name_lookup,
     NAMESPACE_LOOKUPS,
+    template_attributes,
 )
 
 SERVER = "runs in the Galaxy server process"
@@ -122,13 +119,6 @@ _GETATTR = frozenset(("getattr",))
 _KEEPING_CODECS = frozenset(("utf-8", "utf8", "utf_8", "ascii"))
 
 
-@lru_cache(maxsize=1)
-def _template_attributes() -> frozenset[str]:
-    """Names `getVar` finds on an object of the search list rather than as a key: on a compiled template object,
-    the #set global dict, or the TreeDict Galaxy retries the namespace as."""
-    return frozenset(dir(Template("x", searchList=[{}]))) | frozenset(dir({})) | frozenset(dir(TreeDict({})))
-
-
 class PythonAudit:
     """Flag Python in a template (or an expression) that acts on the server instead of computing text."""
 
@@ -167,6 +157,8 @@ class PythonAudit:
         # The names the method being walked binds, and what its lambdas can reach of the template.
         self.method_locals: frozenset[str] = frozenset()
         self.imported: frozenset[str] | None = frozenset()
+        # The `$` names whose value can change before a lambda's call: #set global values, members.
+        self.changing: frozenset[str] = frozenset()
         self.judged_lambdas: set[int] = set()
 
     def add(self, rule: str, severity: str, message: str, expr: str, line: int | None = None) -> None:
@@ -210,6 +202,7 @@ class PythonAudit:
                     elif lookup := name_lookup(node, NAMESPACE_LOOKUPS):
                         self.namespace_reads.add(lookup[1].split(".")[0])
         self.imported = imported_names(template.imports)
+        self.changing = frozenset(self.global_names | self.members)
         for method in [template.main, *template.helpers.values()]:
             self.method_locals = method_locals(method)
             for stmt in method.body:
@@ -330,12 +323,11 @@ class PythonAudit:
             return
         self.judged_lambdas.update(id(nested) for nested in nested_lambdas(node))
         model = self.model
-        changing = frozenset(self.global_names | self.members)
         reason = impurity(
             node,
             self.method_locals,
             self.imported,
-            changing,
+            self.changing,
             lambda name: model is not None and model.lookup(name) is not None,
         )
         if reason is not None:
@@ -458,7 +450,7 @@ class PythonAudit:
         # A dict attribute is found on the #set global store; a #set global of a member may not have run yet.
         if (
             root in self.members
-            or root in _template_attributes()
+            or root in template_attributes()
             or (root.startswith("_") and root not in ("__app__", "__user__") and not self.is_special(root))
         ):
             return None

@@ -28,6 +28,9 @@ from functools import lru_cache
 
 from Cheetah.Compiler import Compiler
 from Cheetah.Parser import Parser
+from Cheetah.Template import Template
+
+from galaxy.util.tree_dict import TreeDict
 
 # Directives that execute at parse time. The directive start token cannot change without
 # one of them, so a plain text search over-approximates and cannot be evaded.
@@ -50,6 +53,13 @@ NAMESPACE_LOOKUPS = frozenset(("VFFSL", "VFSL"))
 INCLUDE = "_handleCheetahInclude"
 # The prefix of the method the review reads a template macro in as (see ``_include_templates``).
 MACRO_METHOD = "galaxy_template_macro_"
+
+
+@lru_cache(maxsize=1)
+def template_attributes() -> frozenset[str]:
+    """Names Cheetah finds on an object rather than as a key: on a compiled template object, on the locals of a
+    frame and the #set global dict, or on the TreeDict Galaxy retries the namespace as."""
+    return frozenset(dir(Template("x", searchList=[{}]))) | frozenset(dir({})) | frozenset(dir(TreeDict({})))
 
 
 def name_lookup(node: ast.AST, functions: frozenset[str] = NAME_MAPPER) -> tuple[str, str] | None:
