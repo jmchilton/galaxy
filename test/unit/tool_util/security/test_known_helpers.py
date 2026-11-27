@@ -307,6 +307,7 @@ LITERAL_LOOPS = [
 @pytest.mark.parametrize("name,injection", [("free", True), ("word", False)])
 def test_loop_over_a_literal_list_reads_each_element(tmp_path, command, name, injection):
     report = review(tmp_path, command.replace("NAME", name).replace("NA!ME", f"{name[:2]}!{name[2:]}"))
+    assert not report.unanalyzed
     assert code(report) == set()
     assert (("shell-injection", "high") in rules(report)) is injection
 
@@ -318,6 +319,7 @@ def test_loop_over_a_literal_list_reads_a_section_named_with_a_dash(tmp_path):
     )
     command = "#for $e in ['ms-gf:w']\n#set $n = $e.replace(':', '_')\ntool '$getVar('scoring.' + $n)'\n#end for"
     report = review(tmp_path, command, inputs=inputs)
+    assert not report.unanalyzed
     assert code(report) == set()
     assert ("shell-injection", "high") in rules(report)
 
@@ -357,8 +359,25 @@ VALUE_LOOP = "#for j in $oformat.value:\n--$j '$getVar($j)'\n#end for\n"
 )
 def test_loop_over_a_select_value_reads_each_option(tmp_path, options, injection):
     report = review(tmp_path, VALUE_LOOP + "tool", inputs=select(options))
+    assert not report.unanalyzed
     assert code(report) == set()
     assert (("shell-injection", "high") in rules(report)) is injection
+
+
+def test_loop_over_a_select_value_reads_the_parameter_a_letter_of_an_option_names(tmp_path):
+    inputs = select('<option value="tblout"/><option value="word"/>') + (
+        '<param name="t" type="text"><sanitizer sanitize="false"/></param>'
+    )
+    report = review(tmp_path, VALUE_LOOP + "tool", inputs=inputs)
+    assert code(report) == set()
+    assert ("shell-injection", "high") in rules(report)
+
+
+TWO_SELECTS = """<conditional name="c">
+<param name="kind" type="select"><option value="a"/><option value="b"/></param>
+<when value="a"><param name="oformat" type="select" multiple="true"><option value="tblout"/></param></when>
+<when value="b"><param name="oformat" type="select" multiple="true"><option value="free"/></param></when>
+</conditional>"""
 
 
 @pytest.mark.parametrize(
@@ -398,6 +417,22 @@ def test_loop_over_a_select_value_reads_each_option(tmp_path, options, injection
         ("#set global $e = $free\n#for $e in ['word']\ntool '${''.join($getVar($e) for _x in [1])}'\n#end for", INPUTS),
         (VALUE_LOOP.replace("'$getVar($j)'", "'${''.join($getVar($j) for _x in [1])}'"), select()),
         (OFORMAT.replace("'$getVar($o, 'MISSING_OUTPUT'+$o)'", "'${''.join($getVar($o) for _x in [1])}'"), select()),
+        # A read in a nested loop before the statement in it that binds the name again.
+        (
+            "#for $e in ['text']\n#set $n = $e\n#for $x in [1, 2]\ntool '$getVar($n)'\n#set $n = $free\n#end for\n#end for",
+            INPUTS,
+        ),
+        # `replace` with a count, and another method given two texts, are not folded.
+        ("#for $e in ['te:x:t']\n#set $n = $e.replace(':', '', 1)\ntool '$getVar($n)'\n#end for", INPUTS),
+        ("#for $e in ['te:xt']\n#set $n = $e.format(':', '')\ntool '$getVar($n)'\n#end for", INPUTS),
+        # A later part of the name is private or a dunder.
+        ("#for $n in ['text.__class__']\ntool '$getVar($n)'\n#end for", INPUTS),
+        ("#for $n in ['text._value']\ntool '$getVar($n)'\n#end for", INPUTS),
+        # Two selects answer for the path, with different options.
+        (VALUE_LOOP.replace("$oformat", "$c.oformat"), INPUTS + TWO_SELECTS),
+        # Set and dict comprehensions have their own frame too.
+        ("#for $n in ['word']\ntool '${''.join({$getVar($n) for _x in [1]})}'\n#end for", INPUTS),
+        ("#for $n in ['word']\ntool '${''.join({$getVar($n): 1 for _x in [1]})}'\n#end for", INPUTS),
     ],
 )
 def test_loop_over_values_the_review_cannot_list_is_reflection(tmp_path, command, inputs):
