@@ -1,7 +1,8 @@
 <tool id="collection_list_paired_or_unpaired" name="collection_list_paired_or_unpaired" version="0.1.0">
   <command>
+    #import shlex
     #for $key in $f1.keys()#
-      echo "identifier is $key";
+      echo 'identifier is '${shlex.quote(str($key))};
       #set $element = $f1[$key]
 
     #if $element.has_single_item:

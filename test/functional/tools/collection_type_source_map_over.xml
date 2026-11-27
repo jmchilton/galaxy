@@ -1,8 +1,9 @@
 <tool id="collection_type_source_map_over" name="collection_type_source_map_over" version="0.1.0">
   <command>
+    #import shlex
     mkdir output;
     #for $key in $input_collect.keys()#
-    cat "$input_collect[$key]" >> output/"$key";
+    cat "$input_collect[$key]" >> output/${shlex.quote(str($key))};
     #end for#
   </command>
   <inputs>

@@ -1,8 +1,9 @@
 <tool id="collection_type_source_conditional" name="collection_type_source_conditional" version="0.1.0">
   <command>
+    #import shlex
     mkdir output;
     #for $key in $cond.input_collect.keys()#
-    cat "$cond.input_collect[$key]" > output/"$key";
+    cat "$cond.input_collect[$key]" > output/${shlex.quote(str($key))};
     #end for#
   </command>
   <inputs>
