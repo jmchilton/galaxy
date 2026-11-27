@@ -66,6 +66,12 @@ _SAFE_SPECIALS = (
     " GALAXY_ROOT_DIR GALAXY_DATATYPES_CONF_FILE chromInfo __user_id__ userId user_id __job_resource"
 ).split()
 SAFE_SPECIALS = frozenset(_SAFE_SPECIALS)
+# Of these, the names Galaxy sets before it adds the job's parameters to the namespace, or never sets:
+# a job parameter of the same name replaces them where it reaches the templates, which it does only
+# for a tool that keeps the job parameters that are not inputs (a data source tool).
+REPLACEABLE_SPECIALS = frozenset(
+    "__datatypes_config__ GALAXY_DATATYPES_CONF_FILE __history_id__ __galaxy_url__ user_id __job_resource".split()
+)
 _USER_SPECIALS = "__user_email__ userEmail __user_name__ dbkey".split()
 
 # Select-like parameter types whose values come from the user's data.
@@ -84,7 +90,12 @@ class Model:
     # (`Tool.template_job_parameters`). None: any name, for a tool that keeps all its job parameters
     # (a data source tool) or a review that does not know the tool's.
     template_job_parameters: frozenset[str] | None = None
+    keeps_undeclared_job_parameters: bool = False
     _job_parameters: dict[str, Opaque] = field(default_factory=dict, repr=False)
+
+    def galaxy_path(self, name: str) -> bool:
+        """Whether ``name`` is a path Galaxy sets, which no job parameter replaces."""
+        return name in SAFE_SPECIALS and not (self.keeps_undeclared_job_parameters and name in REPLACEABLE_SPECIALS)
 
     def can_be_job_parameter(self, name: str) -> bool:
         """Whether a job parameter of this name, not a tool input, reaches the templates."""
@@ -109,6 +120,9 @@ class Model:
         refs = dict.fromkeys(self.root.sources(names))
         for name in _USER_SPECIALS:
             if name in names:
+                refs[SourceRef(SPECIAL, key=name)] = None
+        if self.keeps_undeclared_job_parameters:
+            for name in REPLACEABLE_SPECIALS & names:
                 refs[SourceRef(SPECIAL, key=name)] = None
         for attribute, key in USER_ACCOUNT_ATTRIBUTES.items():
             if attribute in names:
@@ -299,12 +313,21 @@ def _has_test_param(input_source: InputSource) -> bool:
     return elem is None or elem.find("param") is not None
 
 
-def build_model(tool_source: ToolSource, template_job_parameters: frozenset[str] | None = None) -> Model:
+def build_model(
+    tool_source: ToolSource,
+    template_job_parameters: frozenset[str] | None = None,
+    keeps_undeclared_job_parameters: bool = False,
+) -> Model:
     tool_sanitize = bool(tool_source.parse_sanitize())
     root = Group("")
     for page_source in tool_source.parse_input_pages().page_sources:
         _add_inputs(root, page_source.parse_input_sources(), "", tool_sanitize)
-    model = Model(root=root, sanitize=tool_sanitize, template_job_parameters=template_job_parameters)
+    model = Model(
+        root=root,
+        sanitize=tool_sanitize,
+        template_job_parameters=None if keeps_undeclared_job_parameters else template_job_parameters,
+        keeps_undeclared_job_parameters=keeps_undeclared_job_parameters,
+    )
 
     xml_tree: Any = getattr(tool_source, "xml_tree", None)
     if xml_tree is not None:
@@ -334,6 +357,10 @@ def build_model(tool_source: ToolSource, template_job_parameters: frozenset[str]
 
     for name in _SAFE_SPECIALS:
         model.specials[name] = Special(name)
+        if keeps_undeclared_job_parameters and name in REPLACEABLE_SPECIALS:
+            chars = default_chars(tool_sanitize)
+            text = f"${name}, which a job parameter of a tool that keeps all its job parameters replaces"
+            model.specials[name] = Special(name, value=tainted(chars, source(text, SPECIAL, key=name)))
     for name in _USER_SPECIALS:
         chars = default_chars(tool_sanitize)
         model.specials[name] = Special(name, value=tainted(chars, source(f"${name}", SPECIAL, key=name)))

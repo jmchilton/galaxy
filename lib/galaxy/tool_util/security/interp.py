@@ -30,7 +30,6 @@ from . import (
 from .charsets import Verdict
 from .model import (
     Model,
-    SAFE_SPECIALS,
 )
 from .nodes import (
     Data,
@@ -1909,13 +1908,12 @@ class TemplateAnalysis:
             return f"{inner}.{name}" if inner is not None else None
         return None
 
-    @staticmethod
-    def _galaxy_file(node: ast.Call) -> bool:
+    def _galaxy_file(self, node: ast.Call) -> bool:
         """``open()`` of a file that is not a dataset: a constant path, or one under a directory of Galaxy."""
         if not node.args or isinstance(node.args[0], ast.Constant):
             return True
         for inner in ast.walk(node.args[0]):
-            if (lookup := name_lookup(inner)) and lookup[1].split(".")[0] in SAFE_SPECIALS:
+            if (lookup := name_lookup(inner)) and self.model.galaxy_path(lookup[1].split(".")[0]):
                 return True
         return False
 

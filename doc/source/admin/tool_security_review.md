@@ -1278,6 +1278,44 @@ serious_rules:
 - shell-injection
 ```
 
+### galaxy_url_replaced
+
+A tool that keeps all its job parameters (`<inputs check_values="false">`, a data source tool, which seldom sanitizes) passes its templates the request parameters as they were sent. A parameter named like a value Galaxy sets before it adds the job's parameters (`__galaxy_url__`, `__history_id__`, `__datatypes_config__`) then replaces it, so the review reads such a name as a job parameter and reports its findings.
+
+Tool `galaxy_url_data_source.xml`:
+
+```
+echo '$__galaxy_url__' > '$out'
+```
+
+Review:
+
+```
+findings:
+- rule: shell-injection
+  severity: high
+  key: __galaxy_url__
+  checkable: true
+serious_rules:
+- shell-injection
+```
+
+### galaxy_url_kept
+
+A regular tool's templates get only its inputs and the job parameters Galaxy passes them: a job parameter named `__galaxy_url__` does not replace Galaxy's value, which stays out of the review's sight.
+
+Tool `galaxy_url_regular.xml`:
+
+```
+echo '$__galaxy_url__' > '$out'
+```
+
+Review:
+
+```
+serious_rules: []
+```
+
 ### app_model_read
 
 The application object reaches any data of the server. The review flags the read but follows no value of it, and this tool writes only a count.
@@ -1489,7 +1527,7 @@ Each finding has one of these rules.
 
 A value can close the quotes around it, or is written unquoted, and start another shell command.
 
-Cases: `raw_text_shell_injection`, `ftpfile_param_shell_injection`, `element_identifier_shell_injection`, `dataset_name_stays_quoted`, `wrapped_names_stay_quoted`, `group_tags_shell_injection`, `dataset_content_shell_injection`, `user_preference_stays_quoted`, `user_preference_shell_injection`, `stray_quote`, `path_like_name`, `raw_dataset_model`, `raw_dataset_history`, `shell_runs_script_file`, `rewrites_restore_tokens`, `literal_rewrite`, `rewrites_and_template_code`, `user_object_unsanitized`, `untraced_value`, `known_helper`, `known_loop`, `known_global_list`, `known_literal_list`, `known_select_value`, `nested_scope_lookup`, `nested_scope_lambda`, `maybe_unset_local`.
+Cases: `raw_text_shell_injection`, `ftpfile_param_shell_injection`, `element_identifier_shell_injection`, `dataset_name_stays_quoted`, `wrapped_names_stay_quoted`, `group_tags_shell_injection`, `dataset_content_shell_injection`, `user_preference_stays_quoted`, `user_preference_shell_injection`, `stray_quote`, `path_like_name`, `raw_dataset_model`, `raw_dataset_history`, `shell_runs_script_file`, `rewrites_restore_tokens`, `literal_rewrite`, `rewrites_and_template_code`, `user_object_unsanitized`, `untraced_value`, `known_helper`, `known_loop`, `known_global_list`, `known_literal_list`, `known_select_value`, `nested_scope_lookup`, `nested_scope_lambda`, `maybe_unset_local`, `galaxy_url_replaced`.
 
 #### `nested-interpreter`
 
