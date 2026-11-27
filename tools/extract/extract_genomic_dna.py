@@ -122,7 +122,7 @@ def __main__():
 
             # Get stderr, allowing for case where it's very large.
             tmp_stderr = open(tmp_name, "rb")
-            stderr = ""
+            stderr = b""
             buffsize = 1048576
             try:
                 while True:
@@ -135,7 +135,7 @@ def __main__():
 
             # Error checking.
             if returncode != 0:
-                raise Exception(stderr)
+                raise Exception(stderr.decode(errors="replace"))
         except Exception as e:
             stop_err("Error running faToTwoBit. " + str(e))
     else:
