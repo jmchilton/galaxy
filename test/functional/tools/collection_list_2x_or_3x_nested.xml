@@ -1,7 +1,8 @@
 <tool id="collection_list_2x_or_3x_nested" name="collection_list_2x_or_3x_nested" version="0.1.0">
   <command><![CDATA[
+    #import shlex
     #for $key in $f1.keys()#
-      echo "identifier is $key" >> "$out1";
+      echo 'identifier is '${shlex.quote(str($key))} >> "$out1";
       #set $element = $f1[$key]
       echo 'collection_type<${element.collection.collection_type}>' >> "$out1";
     #end for#
