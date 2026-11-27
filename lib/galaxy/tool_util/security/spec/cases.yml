@@ -210,6 +210,30 @@ raw_dataset_history:
     findings:
       - {rule: shell-injection, accessor: opaque, param: input, checkable: false}
 
+include_dataset:
+  doc: >-
+    `#include` of a value reads in template code from the value: here the dataset, which no sanitizer touches.
+    Its `#` directives would run in the server, and the review does not follow them.
+  tool: include_dataset.xml
+  review:
+    codes: [uncheckable-template-code]
+    patterns: [template-code]
+    unchecked_locations: {command: parts of it were not analysed}
+    findings:
+      - {rule: template-include, severity: critical}
+
+template_macro_rebound:
+  doc: >-
+    `#include source=$pre#` reads the template macro `pre` only while nothing else answers to `$pre`. Here a
+    `#set` does, so the value is included, as template code the review does not follow.
+  tool: template_macro_rebound.xml
+  review:
+    codes: [uncheckable-template-code]
+    patterns: [template-code]
+    unchecked_locations: {command: parts of it were not analysed}
+    findings:
+      - {rule: template-include, severity: critical}
+
 pipe_to_shell:
   doc: A value in text piped to a shell is code whatever its characters, so the review lists the command as unchecked.
   tool: pipe_to_shell.xml

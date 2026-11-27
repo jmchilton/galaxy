@@ -52,6 +52,9 @@ from .report import (
 )
 from .template import (
     CompiledTemplate,
+    INCLUDE,
+    include_options,
+    is_include,
     literal_rewrite_call,
     name_lookup,
     NAMESPACE_LOOKUPS,
@@ -262,7 +265,10 @@ class PythonAudit:
                 line = template.template_line(node) or line
             if isinstance(node, ast.Store) or id(node) in seen:
                 continue
-            if isinstance(node, ast.Call) and self.is_get_var(node.func):
+            if isinstance(node, ast.Call) and is_include(node.func):
+                seen.update(id(part) for part in ast.walk(node.func))
+                self.include(node, line)
+            elif isinstance(node, ast.Call) and self.is_get_var(node.func):
                 name = node.args[0] if node.args else None
                 if isinstance(name, ast.Constant) and isinstance(name.value, str):
                     if (chain := self.get_var_chain(name.value)) is not None:
@@ -290,6 +296,33 @@ class PythonAudit:
                 self.add(
                     "template-reflection", HIGH, f"Reaches Python internals through `.{node.attr}`", node.attr, line
                 )
+
+    def add_include(self, severity: str, message: str, expr: str, line: int | None) -> None:
+        self.add("template-include", severity, message, expr, line)
+        note = f"{self.location}: what `#include` reads in was not analysed"
+        if note not in self.report.unanalyzed:
+            self.report.unanalyzed.append(note)
+
+    def include(self, call: ast.Call, line: int | None) -> None:
+        """An ``#include``: a file, or text with ``source=``, that Cheetah reads in as template code (``raw``: text)."""
+        text, raw = include_options(call)
+        expr = "#include raw" if raw else "#include"
+        if call.args and isinstance(call.args[0], ast.Constant):
+            what = (
+                "fixed text, as template code the review does not follow"
+                if text
+                else "a fixed file the review does not see"
+            )
+            self.add_include(HIGH, f"Uses `{expr}` of {what}", expr, line)
+        elif raw:
+            self.add_include(HIGH, "Uses `#include raw` of a value: reads the file a job value names", expr, line)
+        else:
+            self.add_include(
+                CRITICAL,
+                "Uses `#include` of a value: runs what a job sends as template code",
+                expr,
+                line,
+            )
 
     def chain(self, node: ast.AST, seen: set[int]) -> list[str] | None:
         """A dotted reference rooted at a name: `os.path.join`, or the NameMapper form `$os.path.join`."""
@@ -462,12 +495,10 @@ class PythonAudit:
             )
         elif root == "__user__" and rest:
             self.add("template-app-access", MEDIUM, f"Reads the user object through `${dotted}`", dotted, line)
+        elif root == INCLUDE or (root == "self" and first == INCLUDE):
+            self.add_include(CRITICAL, "Calls the method of `#include` on a value", dotted, line)
         elif root == "self" and rest:
-            if first == "_handleCheetahInclude":
-                self.add(
-                    "template-include", HIGH, "Uses `#include`: reads another file into the template", dotted, line
-                )
-            elif first not in _GENERATED_SELF and first not in self.assigned:
+            if first not in _GENERATED_SELF and first not in self.assigned:
                 self.add("template-reflection", MEDIUM, f"Uses the template object through `{dotted}`", dotted, line)
         elif root == "trans" and first == "response":
             pass  # the writer Cheetah restores after `#capture`

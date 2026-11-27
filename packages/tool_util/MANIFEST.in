@@ -27,6 +27,7 @@ include src/galaxy/tool_util/security/spec/tools/export_name.xml
 include src/galaxy/tool_util/security/spec/tools/export_value.xml
 include src/galaxy/tool_util/security/spec/tools/getvar_user_name.xml
 include src/galaxy/tool_util/security/spec/tools/group_tags.xml
+include src/galaxy/tool_util/security/spec/tools/include_dataset.xml
 include src/galaxy/tool_util/security/spec/tools/job_metadata.xml
 include src/galaxy/tool_util/security/spec/tools/known_global_list.xml
 include src/galaxy/tool_util/security/spec/tools/known_helper.xml
@@ -54,6 +55,7 @@ include src/galaxy/tool_util/security/spec/tools/sort_to_named_file.xml
 include src/galaxy/tool_util/security/spec/tools/sort_unquoted_operands.xml
 include src/galaxy/tool_util/security/spec/tools/stray_quote.xml
 include src/galaxy/tool_util/security/spec/tools/template_code.xml
+include src/galaxy/tool_util/security/spec/tools/template_macro_rebound.xml
 include src/galaxy/tool_util/security/spec/tools/user_preference_unsanitized.xml
 include src/galaxy/tool_util/security/spec/tools/user_preference.xml
 include src/galaxy/tool_util/security/spec/tools/user_preferences_loop.xml

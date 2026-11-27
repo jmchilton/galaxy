@@ -588,6 +588,58 @@ codes:
 - uncheckable-template-code
 ```
 
+### include_dataset
+
+`#include` of a value reads in template code from the value: here the dataset, which no sanitizer touches. Its `#` directives would run in the server, and the review does not follow them.
+
+Tool `include_dataset.xml`:
+
+```
+#set $path = str($input)
+#include $path
+echo x > '$out'
+```
+
+Review:
+
+```
+findings:
+- rule: template-include
+  severity: critical
+unchecked_locations:
+  command: parts of it were not analysed
+patterns:
+- template-code
+codes:
+- uncheckable-template-code
+```
+
+### template_macro_rebound
+
+`#include source=$pre#` reads the template macro `pre` only while nothing else answers to `$pre`. Here a `#set` does, so the value is included, as template code the review does not follow.
+
+Tool `template_macro_rebound.xml`:
+
+```
+#set $pre = str($word)
+#include source=$pre#
+echo x > '$out'
+```
+
+Review:
+
+```
+findings:
+- rule: template-include
+  severity: critical
+unchecked_locations:
+  command: parts of it were not analysed
+patterns:
+- template-code
+codes:
+- uncheckable-template-code
+```
+
 ### pipe_to_shell
 
 A value in text piped to a shell is code whatever its characters, so the review lists the command as unchecked.
@@ -1127,9 +1179,9 @@ Cases: `dataset_content_shell_injection`.
 
 #### `template-code`
 
-Runs Python the review cannot follow (`exec`, `compile`, imports of modules that start processes or open connections).
+Runs Python the review cannot follow (`exec`, `compile`, imports of modules that start processes or open connections, `#include` of anything but a template macro).
 
-Cases: `rewrites_and_template_code`, `template_code`, `server_python_command`.
+Cases: `include_dataset`, `template_macro_rebound`, `rewrites_and_template_code`, `template_code`, `server_python_command`.
 
 ### Reads of values the server sets
 
@@ -1243,7 +1295,13 @@ Cases: `dataset_content_shell_injection`.
 
 #### `template-include`
 
-Uses `#include` to read another file into the template.
+Uses `#include` of anything but a template macro (a file, fixed text, a value): reads in template code the review does not follow.
+
+Cases: `include_dataset`, `template_macro_rebound`.
+
+#### `template-macro`
+
+Includes a template macro of the tool, which the review reads in and analyses in place.
 
 #### `template-app-access`
 
@@ -1339,9 +1397,9 @@ Cases: `rewrites_restore_tokens`, `rewrites_and_template_code`.
 
 #### `uncheckable-template-code`
 
-The templates run Python that can read text no tool input carries (imports, `open()`, `$__app__`, `getattr`, what the dataset model behind `.unsanitized` reaches).
+The templates run Python that can read text no tool input carries (imports, `open()`, `#include` of anything but a template macro, `$__app__`, `getattr`, what the dataset model behind `.unsanitized` reaches).
 
-Cases: `raw_dataset_history`, `rewrites_and_template_code`, `template_code`, `server_python_command`, `user_object_unsanitized`, `reflection_bypass`, `getvar_user_name`, `output_size_limit_reach`.
+Cases: `raw_dataset_history`, `include_dataset`, `template_macro_rebound`, `rewrites_and_template_code`, `template_code`, `server_python_command`, `user_object_unsanitized`, `reflection_bypass`, `getvar_user_name`, `output_size_limit_reach`.
 
 #### `uncheckable-letters-are-code`
 

@@ -14,7 +14,9 @@ and the resulting syntax tree is analysed, see :mod:`.template` for why that is 
 
 from __future__ import annotations
 
+import ast
 import re
+from collections import Counter
 from dataclasses import replace
 from functools import partial
 
@@ -26,11 +28,18 @@ from .capabilities import (
     audit_tool,
     PythonAudit,
 )
-from .charsets import CRITICAL
+from .charsets import (
+    CRITICAL,
+    INFO,
+)
 from .interp import (
     configfile_language,
     TemplateAnalysis,
     unresolved_names,
+)
+from .known_helpers import (
+    namespace_names,
+    self_contained,
 )
 from .model import (
     build_model,
@@ -51,9 +60,12 @@ from .report import (
 )
 from .rewrites import rewrite_template
 from .template import (
+    checked_module,
     compile_template,
     CompiledTemplate,
     CompileTimeExecution,
+    MACRO_METHOD,
+    source_includes,
 )
 
 __all__ = ("Finding", "Report", "review_tool_source", "Source", "SourceRef")
@@ -62,24 +74,113 @@ __all__ = ("Finding", "Report", "review_tool_source", "Source", "SourceRef")
 _HEREDOC = re.compile(r"(?<!<)<<(?!<)")
 
 
-# `#include source=$name#` (or `${name}`, ending at the line end without the closing `#`).
-_INCLUDE = re.compile(r"#include[ \t]+source[ \t]*=[ \t]*\$(?:\{(\w+)\}|(\w+)(?![\w.\[(]))[ \t]*#?")
+# `#include source=$name#`, or without the closing `#` (then it takes the newline of its line).
+_INCLUDE = re.compile(r"#include[ \t]+source[ \t]*=[ \t]*\$(\w+)(?![\w.\[(])([ \t]*#)?")
+# Template macros one template reads in.
+_MAX_MACROS = 100
 
 
-def _include_templates(source: str, templates: dict[str, str]) -> str:
-    """The template with each ``#include`` of a template macro replaced by the macro's text.
+def _include_templates(source: str, location: str, model: Model, report: Report) -> str:
+    """The template with each ``#include source=$name#`` of a template macro read in as a ``#def`` of its text.
 
-    Cheetah reads the included text as template code, so it is analysed in place. Lines after an
-    include are numbered in the expanded text.
+    A ``#def`` renders as Cheetah renders an include, with locals of its own; only where nothing but the macro answers.
     """
-    if not templates:
+    macros = {
+        name: text
+        for name, text in model.templates.items()
+        if model.lookup(name) is None and model.lookup(MACRO_METHOD + name) is None
+    }
+    if any(MACRO_METHOD in text for text in (source, *macros.values())):
         return source
-    for _ in range(10):
-        expanded = _INCLUDE.sub(lambda m: templates.get(m.group(1) or m.group(2), m.group(0)), source)
-        if expanded == source:
-            break
-        source = expanded
-    return source
+    while True:
+        try:
+            read_in, included, misread = _read_in(source, macros)
+            if included and not misread:
+                tree = checked_module(read_in)
+                names = {name for name, _ in included}
+                misread = names - namespace_names(tree, names)
+                defined = {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
+                if not {MACRO_METHOD + name for name in names} <= defined:
+                    misread = names  # the end of the template took the methods in
+        except Exception:
+            return source  # a template can break Cheetah's parser; compiling it reports why
+        if not misread:
+            for name, line in included:
+                report.add(
+                    Finding(
+                        rule="template-macro",
+                        kind=CAPABILITY,
+                        severity=INFO,
+                        message=f"Includes the template macro `{name}`, reviewed in place.",
+                        location=location,
+                        line=line,
+                        expr=name,
+                    )
+                )
+            return read_in
+        macros = {name: text for name, text in macros.items() if name not in misread}
+
+
+def _read_in(source: str, macros: dict[str, str]) -> tuple[str, list[tuple[str, int | None]], set[str]]:
+    """``source`` with the includes of ``macros`` read in, and the name and line (None in a macro) of each include;
+    or ``source`` and the macros that cannot be read in."""
+    texts: dict[str | None, str] = {}
+    graph: dict[str | None, set[str]] = {}
+    included: list[tuple[str, int | None]] = []
+    misread: set[str] = set()
+    pending: list[str | None] = [None]
+    while pending:
+        key = pending.pop()
+        if key in graph:
+            continue
+        text = source if key is None else macros[key]
+        tree = checked_module(text)
+        matches = [match for match in _INCLUDE.finditer(text) if match.group(1) in macros]
+        found = Counter(match.group(1) for match in matches)
+        directives = source_includes(tree)
+        # Include text in a comment, a #raw block or a string is not the directive.
+        misread |= {name for name, count in found.items() if directives[name] != count}
+        if key is not None and not self_contained(tree):
+            misread.add(key)
+        if len(graph) >= _MAX_MACROS:
+            misread |= set(found)
+        graph[key] = set(found)
+        included += [(m.group(1), text.count("\n", 0, m.start()) + 1 if key is None else None) for m in matches]
+        texts[key] = _INCLUDE.sub(lambda m: _call(m) if m.group(1) in macros else m.group(0), text)
+        pending.extend(found)
+    misread |= _cycles(graph)
+    if misread:
+        return source, [], misread
+    methods = "".join(f"\n#def {MACRO_METHOD}{name}\n{_closed(text)}" for name, text in texts.items() if name)
+    return f"{texts[None]}{methods}\n", included, set()
+
+
+def _call(match: re.Match[str]) -> str:
+    """The `#echo` of the macro's method: a directive like the include, so the newline after it renders the same."""
+    return f"#echo ${MACRO_METHOD}{match.group(1)}(){'#' if match.group(2) else ''}"
+
+
+def _closed(text: str) -> str:
+    """``text`` and an ``#end def`` that renders nothing: on a line of its own after a directive, else on its line."""
+    last = text.rsplit("\n", 1)[-1].strip()
+    # A line of a directive or a comment alone renders nothing, not even its newline.
+    lone = (last.startswith("#") and not last.endswith("#")) or last.endswith("#slurp")
+    return f"{text}\n#end def" if lone else f"{text}#end def"
+
+
+def _cycles(graph: dict[str | None, set[str]]) -> set[str]:
+    """The macros that include themselves, through others too."""
+
+    def reaches(start: str) -> set[str]:
+        seen: set[str] = set()
+        pending = list(graph.get(start, ()))
+        while pending:
+            if (name := pending.pop()) not in seen:
+                seen.add(name)
+                pending.extend(graph.get(name, ()))
+        return seen
+
+    return {name for name in graph if name is not None and name in reaches(name)}
 
 
 def _compile(source: str, location: str, report: Report, model: Model) -> CompiledTemplate | None:
@@ -111,7 +212,7 @@ def _compile(source: str, location: str, report: Report, model: Model) -> Compil
 def _analyse(
     source: str, location: str, language: str, model: Model, report: Report, names: dict[str, set[str]]
 ) -> TemplateAnalysis | None:
-    template = _compile(_include_templates(source, model.templates), location, report, model)
+    template = _compile(_include_templates(source, location, model, report), location, report, model)
     if template is None:
         return None
     audit = PythonAudit(report, location, model, analysed=True)

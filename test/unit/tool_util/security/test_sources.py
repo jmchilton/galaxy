@@ -42,7 +42,9 @@ from galaxy.tool_util.security.report import (
 )
 from ._util import (
     CONFIG,
+    INPUTS,
     review,
+    rules,
 )
 
 UNSANITIZED = '<options sanitize="False"/>'
@@ -466,14 +468,179 @@ def test_builtin_the_analysis_models_is_not_an_unanalysed_part(tmp_path, call):
     assert report.unchecked_locations == {}
 
 
-@pytest.mark.parametrize("include", ["#include source=$pre#", "#include source=${pre}"])
+@pytest.mark.parametrize("include", ["#include source=$pre#", "#include source=$pre", "  #include source=$pre#  "])
 def test_included_template_macro_is_analysed_in_place(tmp_path, include):
     macros = """<macros><template name="pre"><![CDATA[echo '${free}' &&]]></template></macros>"""
     report = review(tmp_path, f"{include}\necho '$input.element_identifier'", extra=macros)
     assert report.unanalyzed == []
     assert not any(f.rule == "template-include" for f in report.findings)
+    assert [(f.rule, f.severity, f.expr, f.line) for f in report.findings if f.rule == "template-macro"] == [
+        ("template-macro", "info", "pre", 1)
+    ]
     assert SourceRef(TEXT, "free") in refs(report)
     assert all(f.checkable for f in report.findings if f.kind == "vulnerability")
+
+
+@pytest.mark.parametrize(
+    "command,inputs",
+    [
+        ("#set $pre = str($free)\n", ""),
+        ("#set global $pre = str($free)\n", ""),
+        ("#def pre\nx\n#end def\n", ""),
+        ("#attr $pre = 'x'\n", ""),
+        ("#for $pre in [$free]\nx\n#end for\n", ""),
+        ("#silent $searchList()[0].update({'pre': $free})\n", ""),
+        ("#silent $SL[0].update({'pre': $free})\n", ""),
+        ("#silent $self._CHEETAH__globalSetVars.update({'pre': $free})\n", ""),
+        ("#silent self._CHEETAH__globalSetVars.update({'pre': $free})\n", ""),
+        ("#include source=$other#\n", ""),
+        ("", '<param name="pre" type="text"/>'),
+    ],
+)
+def test_template_macro_a_lookup_can_find_elsewhere_is_a_runtime_include(tmp_path, command, inputs):
+    macros = """<macros>
+<template name="pre"><![CDATA[echo hi &&]]></template>
+<template name="other"><![CDATA[#set global $pre = str($free)]]></template>
+</macros>"""
+    command = f"{command}#include source=$pre#\necho '$input.element_identifier'"
+    report = review(tmp_path, command, extra=macros, inputs=INPUTS + inputs if inputs else "")
+    assert ("template-include", "critical") in {(f.rule, f.severity) for f in report.findings}
+    assert "pre" not in {f.expr for f in report.findings if f.rule == "template-macro"}
+
+
+@pytest.mark.parametrize("name", ["keys", "searchList", "SL"])
+def test_template_macro_named_like_a_name_cheetah_finds_first_is_a_runtime_include(tmp_path, name):
+    macros = f"""<macros><template name="{name}"><![CDATA[echo hi &&]]></template></macros>"""
+    report = review(tmp_path, f"#include source=${name}#\ntool", extra=macros)
+    assert ("template-include", "critical") in {(f.rule, f.severity) for f in report.findings}
+    assert not any(f.rule == "template-macro" for f in report.findings)
+
+
+def test_include_of_a_long_form_placeholder_does_not_compile(tmp_path):
+    macros = """<macros><template name="pre"><![CDATA[echo hi &&]]></template></macros>"""
+    report = review(tmp_path, "#include source=${pre}\ntool", extra=macros)
+    assert report.unanalyzed == ["command: template does not compile (ParseError)"]
+
+
+@pytest.mark.parametrize(
+    "command,reads",
+    [
+        ("## #include source=$pre#\n", True),
+        ("#*\n#include source=$pre#\n*#\n", True),
+        # The text is written: a shell comment to the end of the joined command line.
+        ("#raw\n#include source=$pre#\n#end raw\n", False),
+    ],
+)
+def test_include_text_cheetah_does_not_read_as_the_directive_is_left_as_it_is(tmp_path, command, reads):
+    macros = """<macros><template name="pre"><![CDATA[x
+#set $free = 'clean'
+]]></template></macros>"""
+    report = review(tmp_path, f"{command}echo '$free' > '$out'", extra=macros)
+    assert (SourceRef(TEXT, "free") in refs(report)) == reads
+    assert not any(f.rule in ("template-macro", "template-include") for f in report.findings)
+
+
+@pytest.mark.parametrize(
+    "macro,command",
+    [
+        # Cheetah renders an included text as a template of its own: its locals are not the includer's.
+        ("#set $free = 'clean'", "#include source=$pre#\necho '$free' > '$out'"),
+        ("echo '$free' &&", "#set $free = 'clean'\n#include source=$pre#\necho x > '$out'"),
+        ("#set $x = 'clean'", "#set $x = $free\n#include source=$pre#\necho '$x' > '$out'"),
+        ("#set $k = 'clean'", "#set $k = $free\n#include source=$pre#\necho '$k' > '$out'"),
+        ("#set $v = 'clean'", "#for $v in [$free]\n#include source=$pre#\necho '$v' > '$out'\n#end for"),
+        ("#if $count\n#set $free = 'clean'\n#end if", "#include source=$pre#\necho '$free' > '$out'"),
+        ("#for $free in ['clean']\nx\n#end for", "#include source=$pre#\necho '$free' > '$out'"),
+        # Text around the include on its line.
+        ("x", "  echo '$free' #include source=$pre#\necho x > '$out'"),
+        ("x", "#include source=$pre# echo '$free' > '$out'"),
+        # Without its closing `#`, the include takes its newline: the next line is no shell comment.
+        ("echo hi", "#include source=$pre\n# '$free'\necho done > '$out'"),
+        # A last line of a comment alone renders nothing (Galaxy strips the macro's trailing whitespace).
+        ("echo '$free' &&\n  ## end", "#include source=$pre#\necho x > '$out'"),
+    ],
+)
+def test_template_macro_is_read_in_as_cheetah_renders_it(tmp_path, macro, command):
+    macros = f"""<macros><template name="pre"><![CDATA[{macro}]]></template></macros>"""
+    report = review(tmp_path, command, extra=macros)
+    assert any(f.rule == "shell-injection" and SourceRef(TEXT, "free") in f.refs for f in report.findings)
+    assert [f.expr for f in report.findings if f.rule == "template-macro"] == ["pre"]
+
+
+def test_newline_after_an_include_renders_after_the_macro(tmp_path):
+    macros = """<macros><template name="pre"><![CDATA[echo --opt=#slurp]]></template></macros>"""
+    report = review(tmp_path, "#include source=$pre#\n'$text' > '$out'", extra=macros)
+    assert ("option-injection", "low") in rules(report)
+
+
+@pytest.mark.parametrize(
+    "macro,command",
+    [
+        # Its members are its own.
+        ("#def helper\nx\n#end def", "#include source=$pre#\necho '$helper' > '$out'"),
+        ("#attr $helper = 'x'", "#include source=$pre#\necho '$helper' > '$out'"),
+        ("#import os", "#include source=$pre#\necho '$os' > '$out'"),
+        # It includes itself.
+        ("#include source=$pre#", "#include source=$pre#\necho x > '$out'"),
+    ],
+)
+def test_template_macro_that_cannot_be_read_in_is_a_runtime_include(tmp_path, macro, command):
+    macros = f"""<macros><template name="pre"><![CDATA[{macro}]]></template></macros>"""
+    report = review(tmp_path, command, extra=macros)
+    assert ("template-include", "critical") in {(f.rule, f.severity) for f in report.findings}
+    assert not any(f.rule == "template-macro" for f in report.findings)
+
+
+@pytest.mark.parametrize("macro", ["#raw\nx", "x ## comment"])
+def test_template_macro_ending_in_text_cheetah_does_not_read_is_not_analysed(tmp_path, macro):
+    macros = f"""<macros><template name="pre"><![CDATA[{macro}]]></template></macros>"""
+    report = review(tmp_path, "#include source=$pre#\necho '$free' > '$out'", extra=macros)
+    assert ("template-include", "critical") in {(f.rule, f.severity) for f in report.findings}
+
+
+def test_template_macros_binding_a_name_before_reading_it_are_read_in_place(tmp_path):
+    loop = "#for $s in $sections\necho '$s' &&\n#end for"
+    macros = f"""<macros>
+<template name="set_sections"><![CDATA[#set global $sections = ['a', 'b']]]></template>
+<template name="first"><![CDATA[{loop}]]></template>
+<template name="second"><![CDATA[#set $s = 'c'\necho '$s' &&\n{loop}]]></template>
+</macros>"""
+    includes = ("set_sections", "first", "second", "first")
+    command = "".join(f"#include source=${name}#\n" for name in includes) + "tool"
+    report = review(tmp_path, command, extra=macros)
+    assert not any(f.rule == "template-include" for f in report.findings)
+    assert sorted({f.expr for f in report.findings if f.rule == "template-macro"}) == [
+        "first",
+        "second",
+        "set_sections",
+    ]
+
+
+def test_output_named_like_a_template_macro_is_a_runtime_include(tmp_path):
+    path = tmp_path / "tool.xml"
+    path.write_text("""<tool id="t" name="t" version="1" profile="24.2">
+  <macros><template name="pre"><![CDATA[echo hi &&]]></template></macros>
+  <command><![CDATA[#include source=$pre#
+echo x > '$pre']]></command>
+  <outputs><data name="pre" format="txt"/></outputs>
+</tool>""")
+    report = review_tool_source(get_tool_source(str(path)))
+    assert ("template-include", "critical") in {(f.rule, f.severity) for f in report.findings}
+
+
+def test_template_macros_included_by_macros_are_read_in(tmp_path):
+    macros = """<macros>
+<template name="a"><![CDATA[echo a
+#include source=$b#]]></template>
+<template name="b"><![CDATA[echo '$free' &&]]></template>
+</macros>"""
+    report = review(tmp_path, "echo x\n#include source=$a#\n#include source=$b#\necho y", extra=macros)
+    assert sorted((f.expr, f.line, f.more_lines) for f in report.findings if f.rule == "template-macro") == [
+        ("a", 2, ()),
+        ("b", 3, ()),
+    ]
+    assert not any(f.rule == "template-include" for f in report.findings)
+    assert any(f.rule == "shell-injection" and SourceRef(TEXT, "free") in f.refs for f in report.findings)
 
 
 def test_converted_dataset_is_a_dataset(tmp_path):

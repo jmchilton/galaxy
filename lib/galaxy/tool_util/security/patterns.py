@@ -43,7 +43,7 @@ DESCRIPTIONS = {
     PatternCode.FILE_ACCESS: "Reads or inspects files on the server (`open()`, `os.path`, ...). The review traces"
     " `open()` of an input dataset as its content; any other file is no value of a tool input.",
     PatternCode.TEMPLATE_CODE: "Runs Python the review cannot follow (`exec`, `compile`, imports of modules that"
-    " start processes or open connections).",
+    " start processes or open connections, `#include` of anything but a template macro).",
     PatternCode.JOB_METADATA: "Checks for the job that made a dataset, or reads its tool id or version, which the"
     " server sets.",
     PatternCode.SERVER_CONFIG: "Reads the server's configuration or encodes ids (`$__app__.config`,"

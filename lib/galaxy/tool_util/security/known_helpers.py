@@ -43,9 +43,12 @@ from Cheetah.Template import Template
 from galaxy.util.tree_dict import TreeDict
 from .nodes import Value
 from .template import (
+    added_imports,
     BODY_START,
     compiled_module,
     constant,
+    INCLUDE,
+    MACRO_METHOD,
     NAME_MAPPER,
     NAMESPACE_LOOKUPS,
 )
@@ -90,7 +93,6 @@ KNOWN_HELPERS = (
 _LOOKED_UP = frozenset(("getVar", "varExists", "hasVar"))
 # Names of the generated code that its calls and writes go through.
 _GENERATED = frozenset(("SL", "write", "_filter", "_CHEETAH__globalSetVars", *NAME_MAPPER))
-_INCLUDE = "_handleCheetahInclude"
 _GLOBALS = "_CHEETAH__globalSetVars"
 
 # A call of a helper, the lookup of the helper it calls, and the literal text it passes.
@@ -103,10 +105,9 @@ def specialise_known_helpers(tree: ast.Module) -> set[int]:
     Returns the getVar calls of the copies, which read the tool namespace.
     """
     namespace_get_vars: set[int] = set()
-    classes = [node for node in tree.body if isinstance(node, ast.ClassDef)]
-    if len(classes) != 1 or not _plain_class(classes[0]):
+    template = _template_class(tree)
+    if template is None:
         return namespace_get_vars
-    template = classes[0]
     literal = _literal_text(tree)
     if _rebinds(tree, literal):
         return namespace_get_vars
@@ -143,6 +144,12 @@ def _references() -> dict[str, tuple[str, ...]]:
             if isinstance(node, ast.FunctionDef) and node.name not in ("__init__", "respond"):
                 references[ast.dump(node)] = tuple(arg.arg for arg in node.args.args[1:])
     return references
+
+
+def _template_class(tree: ast.Module) -> ast.ClassDef | None:
+    """The one class of the module, when it has Cheetah's own base."""
+    classes = [node for node in tree.body if isinstance(node, ast.ClassDef)]
+    return classes[0] if len(classes) == 1 and _plain_class(classes[0]) else None
 
 
 def _plain_class(template: ast.ClassDef) -> bool:
@@ -208,35 +215,23 @@ def _preamble(tree: ast.Module) -> set[int]:
 
 def _rebinds(tree: ast.Module, literal: set[int]) -> bool:
     """Whether the template binds or reaches a name that lookups and writes go through, or includes a template."""
-    looked_up = _word(_LOOKED_UP | {_INCLUDE})
+    looked_up = _word(_LOOKED_UP | {INCLUDE})
     generated = _word(_GENERATED)
     generated_code = _generated_code(tree)
     # Reading getVar or varExists is the use the helpers make of them; looking up the include method is not.
     lookup_paths = {
         id(lookup.args[1])
         for node in ast.walk(tree)
-        if (lookup := _lookup(node)) and not (_INCLUDE in (path := str(constant(lookup.args[1]))) or _GLOBALS in path)
+        if (lookup := _lookup(node)) and not (INCLUDE in (path := str(constant(lookup.args[1]))) or _GLOBALS in path)
     }
-    global_keys = set()
-    for node in ast.walk(tree):
-        # `#set global $x` stores into `self._CHEETAH__globalSetVars["x"]`.
-        if (
-            isinstance(node, ast.Subscript)
-            and isinstance(node.value, ast.Attribute)
-            and node.value.attr == "_CHEETAH__globalSetVars"
-            and isinstance(node.value.value, ast.Name)
-            and node.value.value.id == "self"
-            and isinstance(node.slice, ast.Constant)
-            and isinstance(node.slice.value, str)
-        ):
-            global_keys.add(id(node.value))
+    global_keys = _global_stores(tree)
     for node in ast.walk(tree):
         if id(node) in generated_code:
             continue
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
             continue
         if isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Load):
-            if node.attr == _INCLUDE or (node.attr == "_CHEETAH__globalSetVars" and id(node) not in global_keys):
+            if node.attr == INCLUDE or (node.attr == "_CHEETAH__globalSetVars" and id(node) not in global_keys):
                 return True
             continue
         if isinstance(node, ast.FunctionDef) and node.args.args and node.args.args[0].arg == "self":
@@ -257,11 +252,76 @@ def _rebinds(tree: ast.Module, literal: set[int]) -> bool:
     return False
 
 
+def _global_stores(tree: ast.Module) -> set[int]:
+    """The ``self._CHEETAH__globalSetVars`` of each ``self._CHEETAH__globalSetVars["x"]``, which ``#set global $x``
+    stores into."""
+    return {
+        id(node.value)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Subscript)
+        and isinstance(node.value, ast.Attribute)
+        and node.value.attr == _GLOBALS
+        and isinstance(node.value.value, ast.Name)
+        and node.value.value.id == "self"
+        and isinstance(node.slice, ast.Constant)
+        and isinstance(node.slice.value, str)
+    }
+
+
+def namespace_names(tree: ast.Module, names: Iterable[str]) -> set[str]:
+    """Those of ``names`` that only the namespace can answer for in the template (:func:`_unclaimed`); none when
+    it can put a value under any name, through the search list or the ``#set global`` store."""
+    if _template_class(tree) is None or _looks_up_search_list(tree) or _reaches_global_store(tree):
+        return set()
+    bound = bound_names(tree)
+    return {name for name in names if _unclaimed(name, bound)}
+
+
+def _looks_up_search_list(tree: ast.Module) -> bool:
+    """Whether a lookup reaches the search list itself (``$searchList()``, ``$SL``, ``$self``)."""
+    return any(_lookup_root(node) in (object_names() | method_locals()) - _LOOKED_UP for node in ast.walk(tree))
+
+
+def _reaches_global_store(tree: ast.Module) -> bool:
+    """Whether the template names the ``#set global`` store other than in Cheetah's own code and stores."""
+    skipped = _generated_code(tree) | _global_stores(tree)
+    for node in ast.walk(tree):
+        if id(node) in skipped:
+            continue
+        if isinstance(node, ast.Attribute) and node.attr == _GLOBALS:
+            return True
+        if isinstance(node, ast.Name) and node.id == _GLOBALS:
+            return True
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and _GLOBALS in node.value:
+            return True
+    return False
+
+
 def _generated_code(tree: ast.Module) -> set[int]:
     """The nodes of the code Cheetah generates for every template: method preambles, module constants."""
     return _preamble(tree) | {
         id(node) for stmt in tree.body if ast.dump(stmt) in _module_code() for node in ast.walk(stmt)
     }
+
+
+def self_contained(tree: ast.Module) -> bool:
+    """Whether the template has Cheetah's own base and no methods, attributes or imports of its own."""
+    return _template_class(tree) is not None and _members(tree) == _baseline_members() and not added_imports(tree)
+
+
+@lru_cache(maxsize=1)
+def _baseline_members() -> frozenset[str]:
+    return _members(compiled_module("x"))
+
+
+def _members(tree: ast.Module) -> frozenset[str]:
+    return frozenset(
+        ast.dump(stmt)
+        for node in tree.body
+        if isinstance(node, ast.ClassDef)
+        for stmt in node.body
+        if not (isinstance(stmt, ast.FunctionDef) and stmt.name in ("__init__", "respond"))
+    )
 
 
 def bound_names(tree: ast.Module) -> set[str]:
@@ -471,21 +531,25 @@ def unroll_known_loops(tree: ast.Module, model: Model) -> set[int]:
     so the branches run in the order the values come. Returns the getVar calls of the branches.
     """
     found: set[int] = set()
-    classes = [node for node in tree.body if isinstance(node, ast.ClassDef)]
+    template = _template_class(tree)
     literal = _literal_text(tree)
-    if len(classes) != 1 or not _plain_class(classes[0]) or _rebinds(tree, literal):
+    if template is None or _rebinds(tree, literal):
         return found
     # A lookup that reaches the search list itself can put any value under a name.
-    if any(_lookup_root(node) in (object_names() | method_locals()) - _LOOKED_UP for node in ast.walk(tree)):
+    if _looks_up_search_list(tree):
         return found
     bound = bound_names(tree)
-    for method in classes[0].body:
+    for method in template.body:
         if isinstance(method, ast.FunctionDef) and method.name == "respond":
-            lists = _global_lists(tree, method, literal)
-            for index, stmt in enumerate(method.body):
+            macros = _macro_methods(template)
+            lists = _global_lists(tree, method, macros, literal)
+            calls = _first_calls(method, macros)
+            # A statement of the template body, and a template macro from the first statement that calls it.
+            scopes = [*enumerate(method.body), *((calls[name], macros[name]) for name in calls)]
+            for index, scope in scopes:
                 # Set by a statement before this one.
                 before = {name: values for name, (at, values) in lists.items() if at < index}
-                for loop in reversed([node for node in ast.walk(stmt) if isinstance(node, ast.For)]):
+                for loop in reversed([node for node in ast.walk(scope) if isinstance(node, ast.For)]):
                     values = _loop_values(loop, model, bound, before)
                     branches = _branches(loop, values, bound) if values is not None else None
                     if branches is not None:
@@ -494,21 +558,59 @@ def unroll_known_loops(tree: ast.Module, model: Model) -> set[int]:
     return found
 
 
-def _global_lists(
-    tree: ast.Module, method: ast.FunctionDef, literal: set[int]
-) -> dict[str, tuple[int, tuple[str, ...]]]:
-    """Each name `#set global $name = ['a', ...]` in the template body sets, with that statement's index, when
-    nothing else binds it and only `#for` loops name it."""
-    stores = {}
+def _macro_methods(template: ast.ClassDef) -> dict[str, ast.FunctionDef]:
+    """The methods the review read template macros in as."""
+    return {
+        node.name: node
+        for node in template.body
+        if isinstance(node, ast.FunctionDef) and node.name.startswith(MACRO_METHOD)
+    }
+
+
+def _macro_calls(node: ast.AST, macros: dict[str, ast.FunctionDef]) -> set[str]:
+    return {path for part in ast.walk(node) if (path := lookup_path(part)) in macros}
+
+
+def _first_calls(method: ast.FunctionDef, macros: dict[str, ast.FunctionDef]) -> dict[str, int]:
+    """For each template macro, the index of the first statement of ``method`` that runs it, through others too."""
+    first: dict[str, int] = {}
     for index, stmt in enumerate(method.body):
+        pending = list(_macro_calls(stmt, macros))
+        while pending:
+            if (name := pending.pop()) not in first:
+                first[name] = index
+                pending.extend(_macro_calls(macros[name], macros))
+    return first
+
+
+def _runs(stmt: ast.stmt, macros: dict[str, ast.FunctionDef]) -> list[ast.stmt]:
+    """``stmt``, and the statements a template macro it is a call of always runs: those before any that can return."""
+    if not (isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Call) and not stmt.value.args):
+        return [stmt]
+    macro = macros.get(lookup_path(stmt.value.func) or "")
+    if macro is None:
+        return [stmt]
+    body = []
+    for inner in macro.body:
+        if any(isinstance(node, ast.Return) for node in ast.walk(inner)):
+            break
+        body.append(inner)
+    return [stmt, *body]
+
+
+def _global_lists(
+    tree: ast.Module, method: ast.FunctionDef, macros: dict[str, ast.FunctionDef], literal: set[int]
+) -> dict[str, tuple[int, tuple[str, ...]]]:
+    """Each name `#set global $name = ['a', ...]` in the template body sets, or in a template macro a statement of it
+    calls, with that statement's index, when nothing else binds it and only `#for` loops name it."""
+    stores = {}
+    global_stores = _global_stores(tree)
+    for index, stmt in [(index, stmt) for index, top in enumerate(method.body) for stmt in _runs(top, macros)]:
         if (
             isinstance(stmt, ast.Assign)
             and len(stmt.targets) == 1
             and isinstance(target := stmt.targets[0], ast.Subscript)
-            and isinstance(target.value, ast.Attribute)
-            and target.value.attr == "_CHEETAH__globalSetVars"
-            and isinstance(target.value.value, ast.Name)
-            and target.value.value.id == "self"
+            and id(target.value) in global_stores
             and isinstance(name := constant(target.slice), str)
             and IDENTIFIER.match(name)
             and name not in object_names()
@@ -520,7 +622,8 @@ def _global_lists(
         return {}
     iters = {
         id(lookup.args[1])
-        for node in ast.walk(method)
+        for scope in (method, *macros.values())
+        for node in ast.walk(scope)
         if isinstance(node, ast.For) and lookup_path(node.iter) in stores and (lookup := _lookup(node.iter))
     }
     bindings = list(_bindings(tree))
