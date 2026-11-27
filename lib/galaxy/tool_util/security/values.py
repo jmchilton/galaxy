@@ -40,7 +40,9 @@ class AV:
     nodes: tuple[Node, ...] = ()
     elem: Optional[AV] = None  # element when iterated or indexed
     items: tuple[AV, ...] | None = None  # tuple or list literal
-    quoted: str = ""  # "shlex", "json" or "pyrepr": the value was escaped for that syntax
+    # "shlex", "json", "pyrepr" (repr() of a list) or "pystr" (repr() of a string): the value was
+    # escaped for that syntax.
+    quoted: str = ""
     py: str = ""  # a Python name such as "re.sub"
     # A method of another value: a str, list or dict method by name, or what calling it does.
     bound: tuple[AV, str | BoundCall] | None = None

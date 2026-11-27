@@ -687,6 +687,54 @@ inputs:
   word: a;b "c" $d
 ```
 
+#### repr_inside_python_string
+
+Inside a string, the quotes repr() writes end that string, so even a sanitized value that has no quote of its own is then Python code.
+
+Tool `repr_inside_python_string.xml`:
+
+```
+python3 '$script' > '$out'
+```
+
+Refused
+
+```
+inputs:
+  word: +str(open(chr(104)+chr(97)+chr(114)+chr(109)+chr(45)+chr(109)+chr(97)+chr(114)+chr(107)+chr(101)+chr(114),chr(119)))+
+```
+
+Runs: A value without a call cannot run anything: here the line is `word = '' or ''`.
+
+```
+inputs:
+  word: ' or '
+```
+
+#### json_inside_python_string
+
+json.dumps() of a string writes it between double quotes. Inside a "..." string of a Python configfile, those quotes end the string.
+
+Tool `json_inside_python_string.xml`:
+
+```
+python3 '$script' > '$out'
+```
+
+Refused
+
+```
+inputs:
+  word: +str(open(chr(104)+chr(97)+chr(114)+chr(109)+chr(45)+chr(109)+chr(97)+chr(114)+chr(107)+chr(101)+chr(114),chr(119)))+
+```
+
+Runs: A value without a call cannot run anything: here the line is `word = "" or ""`.
+
+```
+inputs:
+  word: ' or '
+```
+
 ### `stray-quote`
 
 A quote in one value is harmless by itself but flips the quoting of the rest of the line, which leaves the command characters of another value unquoted.
@@ -1720,6 +1768,24 @@ Runs
 user:
   preferences:
     spec|label: a';touch harm-marker;'
+```
+
+#### repr_python_literal
+
+repr() of a string is a Python string literal, with the value's quotes and backslashes escaped. Written as code in a Python configfile, outside any string, it stays one string, even for a raw value.
+
+Tool `repr_python_literal.xml`:
+
+```
+python3 '$script' > '$out'
+```
+
+Runs: Quotes and backslashes in the value stay inside the string repr() writes.
+
+```
+inputs:
+  raw_word: a\'); open('harm-marker', 'w'); ('
+  word: a'); open('harm-marker', 'w'); ('
 ```
 
 #### galaxy_url_kept

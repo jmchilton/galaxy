@@ -276,6 +276,65 @@ configfile_python:
       harm: true
       expect: {rejected: false}
 
+repr_python_literal:
+  doc: >-
+    repr() of a string is a Python string literal, with the value's quotes and backslashes escaped. Written as
+    code in a Python configfile, outside any string, it stays one string, even for a raw value.
+  tool: repr_python_literal.xml
+  review:
+    serious_rules: []
+  green:
+    - doc: Quotes and backslashes in the value stay inside the string repr() writes.
+      inputs: {raw_word: "a\\'); open('harm-marker', 'w'); ('", word: "a'); open('harm-marker', 'w'); ('"}
+      harm: true
+      expect: {rejected: false}
+
+repr_inside_python_string:
+  doc: >-
+    Inside a string, the quotes repr() writes end that string, so even a sanitized value that has no quote of
+    its own is then Python code.
+  tool: repr_inside_python_string.xml
+  code: configfile-injection
+  review:
+    serious_rules: [configfile-injection]
+    findings:
+      - {rule: configfile-injection, severity: high, location: "configfile:script", accessor: text, param: word,
+         checkable: true}
+  red:
+    - inputs: {word: "+str(open(chr(104)+chr(97)+chr(114)+chr(109)+chr(45)+chr(109)+chr(97)+chr(114)+chr(107)+chr(101)+chr(114),chr(119)))+"}
+      harm: true
+      expect:
+        rejected: true
+        message_contains: ["the value of input 'word' contains the characters [( )]"]
+  green:
+    - doc: "A value without a call cannot run anything: here the line is `word = '' or ''`."
+      inputs: {word: " or "}
+      harm: true
+      expect: {rejected: false}
+
+json_inside_python_string:
+  doc: >-
+    json.dumps() of a string writes it between double quotes. Inside a "..." string of a Python configfile,
+    those quotes end the string.
+  tool: json_inside_python_string.xml
+  code: configfile-injection
+  review:
+    serious_rules: [configfile-injection]
+    findings:
+      - {rule: configfile-injection, severity: high, location: "configfile:script", accessor: text, param: word,
+         checkable: true}
+  red:
+    - inputs: {word: "+str(open(chr(104)+chr(97)+chr(114)+chr(109)+chr(45)+chr(109)+chr(97)+chr(114)+chr(107)+chr(101)+chr(114),chr(119)))+"}
+      harm: true
+      expect:
+        rejected: true
+        message_contains: ["the value of input 'word' contains the characters [( )]"]
+  green:
+    - doc: 'A value without a call cannot run anything: here the line is `word = "" or ""`.'
+      inputs: {word: " or "}
+      harm: true
+      expect: {rejected: false}
+
 path_traversal:
   doc: >-
     A file name the user gives is written as a path `cp` writes to. With `enforce_data`, a slash in it is refused,
