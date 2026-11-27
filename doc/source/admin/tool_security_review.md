@@ -25,8 +25,8 @@ every finding: by path, the report of the tool with its `tool_version`, its
 `tool_version` when the tool loaded, and the code `uncheckable-review-failed`. The text output gives each
 unchecked location and uncheckable code a `NOTE` line.
 
-The exit code is 1 when a path has an error, or when a `--fail-on` condition is met. `--fail-on` can be
-given several times:
+The exit code is 1 when a path has an error, when a `--fail-on` condition is met, or when a tool patch
+regresses a tool (see `--tool-patch-path` below). `--fail-on` can be given several times:
 
 - `--fail-on <severity>` (for example `high`) fails on any finding of that severity or above, vulnerability
   or capability alike: a tool whose templates run Python in the Galaxy process (`template-exec`, critical)
@@ -37,6 +37,19 @@ given several times:
   uncheckable code and so pass `--fail-on uncheckable`.
 
 `pip install galaxy-tool-util` installs the review, its CLI and the spec cases below.
+
+`--tool-patch-path` (repeatable) reviews each tool before and after the tool patches (see `tool_patch_paths`) of
+those collections, applying every op whatever a site's policy would allow. The report of each tool, its
+`codes`, `uncheckable_locations` and `--fail-on` are then of the patched tool. The JSON adds the
+patch states (`patches`), the reports `before` and `after` the patches, the findings the patches cleared
+(`cleared`) or introduced (`introduced`), and the template parts the review can no longer follow
+(`unanalyzed_added`); the text output gives them `PATCH`, `CLEARED`, `NEW` and `NEW NOTE` lines. Findings are
+matched by rule, place, how the value lands there and the values read, not by template text, so a value moved
+to another place (say, into a configfile) counts as cleared there and new here. A patch regresses a tool, and
+the exit code is 1, when it introduces a finding of any severity or leaves part of a template unreviewable; the
+review does not check that a patch cleared anything. A collection that does not load stops the run. Tools are
+reviewed under their XML id and version (`_local` keys); `--guid` gives the Tool Shed guid of a single tool
+file to match its shed key.
 
 ## Findings
 
