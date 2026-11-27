@@ -259,6 +259,13 @@ inputs:
   f: a;b|c && d
 ```
 
+Runs: A file in the user's FTP directory, so the sweep's payloads, the email address's too, are checked for harm.
+
+```
+inputs:
+  f: reads.txt
+```
+
 ### element_identifier_shell_injection
 
 Element identifiers are not sanitized; one in single quotes can start a command.

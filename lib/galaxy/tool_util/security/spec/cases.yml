@@ -74,8 +74,13 @@ ftpfile_param_shell_injection:
       harm: true
       expect:
         rejected: true
+        message_contains: ["the value of input 'f' contains the characters [$ ']"]
   green:
     - inputs: {f: "a;b|c && d"}
+      expect: {rejected: false}
+    - doc: A file in the user's FTP directory, so the sweep's payloads, the email address's too, are checked for harm.
+      inputs: {f: reads.txt}
+      harm: true
       expect: {rejected: false}
 
 element_identifier_shell_injection:

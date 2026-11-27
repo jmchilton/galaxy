@@ -190,7 +190,9 @@ class SpecJobRunner:
         for param in self.tool.inputs.values():
             if isinstance(param, FTPFileToolParameter):
                 # As a form Galaxy builds sets it: by default the directory is named after the email address.
-                param.user_ftp_dir = f"{os.path.join(self.app.config.ftp_upload_dir, user.email)}/"
+                user_ftp_dir = os.path.join(self.app.config.ftp_upload_dir, user.email)
+                param.user_ftp_dir = f"{user_ftp_dir}/"
+                _upload_by_ftp(user_ftp_dir, job_case.inputs.get(param.name))
         history = model.History(user=user, name="spec")
         session.add(history)
         state: dict[str, Any] = dict(job_case.inputs)
@@ -282,6 +284,15 @@ class SpecJobRunner:
         )
         self.app.model.session.add(hdca)
         return hdca
+
+
+def _upload_by_ftp(user_ftp_dir: str, names: Any) -> None:
+    """The files a job names in the user's FTP directory, as the user uploaded them."""
+    os.makedirs(user_ftp_dir, exist_ok=True)
+    for name in [names] if isinstance(names, str) else names or []:
+        # Only a plain file name, so a job never names a path outside the directory.
+        if name and os.path.basename(name) == name and name not in (os.curdir, os.pardir):
+            open(os.path.join(user_ftp_dir, name), "a").close()
 
 
 def _broken(*args: Any, **kwds: Any) -> NoReturn:

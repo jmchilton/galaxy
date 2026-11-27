@@ -242,7 +242,8 @@ def test_tool_method(app, tmp_path):
 
 # -- Galaxy's own tools ---------------------------------------------------------------------------
 
-GALAXY_UPLOAD_TOOL = os.path.join(os.path.dirname(security_review.__file__), "bundled", "data_source", "upload.xml")
+TOOLS_DIR = os.path.dirname(security_review.__file__)
+GALAXY_UPLOAD_TOOL = os.path.join(TOOLS_DIR, "bundled", "data_source", "upload.xml")
 
 
 @pytest.fixture
@@ -255,10 +256,23 @@ def upload_job() -> Any:
     return SimpleNamespace(job=SimpleNamespace(id=7), param_dict={}, consumes_names=False, consumes_identifiers=False)
 
 
-def test_galaxy_upload_tool_is_exempt_at_every_level(upload_app, caplog):
+@pytest.mark.parametrize(
+    "path",
+    [
+        GALAXY_UPLOAD_TOOL,
+        os.path.join(TOOLS_DIR, os.pardir, "datatypes", "set_metadata_tool.xml"),
+        os.path.join(TOOLS_DIR, "data_fetch.xml"),
+        os.path.join(TOOLS_DIR, "imp_exp", "exp_history_to_archive.xml"),
+        os.path.join(TOOLS_DIR, "imp_exp", "exp_history_to_uri.xml"),
+        os.path.join(TOOLS_DIR, "imp_exp", "imp_history_from_archive.xml"),
+    ],
+    ids=os.path.basename,
+)
+def test_galaxy_own_tools_are_exempt_at_every_level(upload_app, path, caplog):
     caplog.set_level(logging.INFO, logger=security_review.__name__)
-    tool = create_tool_from_source(upload_app, get_tool_source(GALAXY_UPLOAD_TOOL), config_file=GALAXY_UPLOAD_TOOL)
-    assert tool.id == "upload1"
+    tool = create_tool_from_source(upload_app, get_tool_source(path), config_file=path)
+    # Each has a command, so only the exemption leaves it unreviewed.
+    assert tool.command
     assert reviewed_tool_source(tool) is None
     for mode in (ENFORCE_CODE, ENFORCE_DATA, ENFORCE_ALL):
         for when_unsure in (STRICT, "refuse"):
@@ -270,32 +284,19 @@ def test_galaxy_upload_tool_is_exempt_at_every_level(upload_app, caplog):
     assert caplog.text.count("it is one of Galaxy's own tools") == 6
 
 
-TOOLS_DIR = os.path.dirname(security_review.__file__)
-
-
 @pytest.mark.parametrize(
     "path",
     [
-        os.path.join(TOOLS_DIR, os.pardir, "datatypes", "set_metadata_tool.xml"),
-        os.path.join(TOOLS_DIR, "data_fetch.xml"),
-        os.path.join(TOOLS_DIR, "imp_exp", "exp_history_to_archive.xml"),
-        os.path.join(TOOLS_DIR, "imp_exp", "exp_history_to_uri.xml"),
-        os.path.join(TOOLS_DIR, "imp_exp", "imp_history_from_archive.xml"),
+        # Beside data fetch.
+        os.path.join(TOOLS_DIR, "sample_sheet_to_tabular.xml"),
+        # A converter, under set metadata's directory.
+        os.path.join(TOOLS_DIR, os.pardir, "datatypes", "converters", "bam_to_bai.xml"),
+        # Beside the upload tool.
+        os.path.join(TOOLS_DIR, "bundled", "data_source", "ucsc_tablebrowser.xml"),
     ],
     ids=os.path.basename,
 )
-def test_tools_galaxy_runs_itself_are_not_reviewed_at_any_level(upload_app, path):
-    # Each has a command; the job check does not check its values either.
-    tool = create_tool_from_source(upload_app, get_tool_source(path), config_file=path)
-    assert tool.command
-    assert reviewed_tool_source(tool) is None
-    r = ToolSecurityReviewer(ENFORCE_ALL, when_unsure="refuse")
-    assert r.review(tool) is None
-    r.check_job(tool, upload_job())
-
-
-def test_other_tools_galaxy_ships_beside_them_are_reviewed(upload_app):
-    path = os.path.join(TOOLS_DIR, "sample_sheet_to_tabular.xml")
+def test_other_tools_galaxy_ships_beside_them_are_reviewed(upload_app, path):
     tool = create_tool_from_source(upload_app, get_tool_source(path), config_file=path)
     review = ToolSecurityReviewer(ENFORCE_ALL).review(tool)
     assert review is not None and review.status == ANALYSED
