@@ -1164,6 +1164,32 @@ config:
   when_unsure: log
 ```
 
+#### mutator_passed_on
+
+The review follows a method that changes a list where the template calls it on the list, or maps it over values. Passed on to anything else, here `filter`, what it adds is not followed: every value the template reads must be plain.
+
+Tool `mutator_passed_on.xml`:
+
+```
+#set $words = []
+#silent list(filter(words.append, [$word.value]))
+echo '${' '.join($words)}' > '$out'
+```
+
+Refused
+
+```
+inputs:
+  word: a';touch harm-marker;'
+```
+
+Runs
+
+```
+inputs:
+  word: sample_1
+```
+
 ### `not-plain-check-error`
 
 Comparing the job's values with the review's findings failed (a bug), so the job got the strict check instead, and a value is not plain.

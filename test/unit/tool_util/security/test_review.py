@@ -1040,6 +1040,68 @@ def test_values_pass_through_a_pure_lambda(tmp_path, command):
     assert report.unanalyzed == []
 
 
+@pytest.mark.parametrize(
+    "command,note",
+    [
+        # A method that changes a list, passed on as a value.
+        ("#set $acc = []\n#silent list(filter(acc.append, [str($free)]))", "`.append` is passed on as a value"),
+        ("#set $acc = []\n#silent sorted([str($free)], key=acc.append)", "`.append` is passed on as a value"),
+        (
+            "#import itertools\n#set $acc = []\n#silent list(itertools.starmap(acc.append, [(str($free),)]))",
+            "`.append` is passed on as a value",
+        ),
+        (
+            "#set $acc = []\n#set $f = lambda x, m=acc.append: m(x)\n#silent $f(str($free))",
+            "`.append` is passed on as a value",
+        ),
+        (
+            "#set $acc = []\n#set $f = lambda x, m: list(map(m, [x]))\n#silent $f(str($free), acc.append)",
+            "`.append` is passed on as a value",
+        ),
+        ("#set $acc = [[]]\n#silent list(map(acc[0].append, [str($free)]))", "`.append` is passed on as a value"),
+        # Called on a type, with the list as its argument.
+        (
+            "#set $acc = []\n#silent list.append($acc, str($free))",
+            "`.append` is called on `list`, which is not a local of the template",
+        ),
+        (
+            "#set $acc = []\n#silent list(map(list.append, [$acc], [str($free)]))",
+            "`.append` is called on `list`, which is not a local of the template",
+        ),
+        # Called on a name a comprehension binds: the local under another name.
+        (
+            "#set $acc = []\n#silent [a.append(str($free)) for a in [acc]]",
+            "`.append` is called on `a`, which is not a local of the template",
+        ),
+        (
+            "#set $acc = []\n#silent [$a.append(str($free)) for $a in [$acc]]",
+            "`.append` is called on `$a`, which is not a local of the template",
+        ),
+        ("#set $d = {'k': 'safe'}\n#silent [None for d['k'] in [str($free)]]", "a comprehension stores into `d['k']`"),
+    ],
+)
+def test_changes_in_place_the_review_does_not_follow(tmp_path, command, note):
+    command += "\ntool '${acc[0]}'" if "acc" in command else "\ntool '${d['k']}'"
+    assert rendered_raw(command)
+    report = review(tmp_path, command)
+    assert f"command: {note}, what it changes was not followed" in report.unanalyzed
+    assert report.unchecked_locations == {"command": "parts of it were not analysed"}
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "#set $acc = []\n#silent $acc.append(str($free))\ntool '${acc[0]}'",
+        "#set $acc = []\n#silent acc.append(str($free))\ntool '${acc[0]}'",
+        "#set $acc = []\n#silent list(map(acc.append, [str($free)]))\ntool '${acc[0]}'",
+        "#set $acc = []\n#silent [acc.append(str(x)) for x in [$free]]\ntool '${acc[0]}'",
+        "#set $d = {}\n#set $d['k'] = []\n#silent $d['k'].append('x')\ntool '${d['k'][0]}'",
+        "#def h($acc)\n#silent $acc.append('x')\n#end def\ntool",
+    ],
+)
+def test_changes_in_place_the_review_follows(tmp_path, command):
+    assert not review(tmp_path, command).unanalyzed
+
 
 GROUP = """
 <conditional name="c">

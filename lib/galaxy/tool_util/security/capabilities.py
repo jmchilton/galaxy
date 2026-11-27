@@ -45,6 +45,7 @@ from .lambdas import (
     impurity,
     method_locals,
     nested_lambdas,
+    unfollowed_changes,
 )
 from .model import (
     Model,
@@ -213,6 +214,8 @@ class PythonAudit:
             self.method_locals = method_locals(method)
             for stmt in method.body:
                 self.walk(stmt, template)
+            for _, message in unfollowed_changes(method, self.method_locals):
+                self.unanalysed(f"{message}, what it changes was not followed")
             # Argument defaults and decorators run when the template class is created.
             self.method_locals = frozenset()
             for expression in method.at_definition:

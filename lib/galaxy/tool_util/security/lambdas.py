@@ -1,4 +1,4 @@
-"""Lambdas of a template that the review can read as functions of their arguments.
+"""Lambdas of a template that the review can read as functions of their arguments, and changes in place it cannot follow.
 
 The analysis evaluates the body of a lambda once, where the lambda is made, and a call of it gives that value
 joined with what the call passes (:class:`~.interp.TemplateAnalysis`). That is what a call renders only when the
@@ -20,6 +20,11 @@ be anything.
 
 Any other lambda is code the review does not follow (:func:`impurity`): it can read a local the template sets
 again before the call, or change a list of the template's with what the call passes.
+
+A method that changes its object in place is followed where the template calls it on one of its own names, or
+maps it over a list (``map(l.append, values)``). Passed on in any other way, or called on a name a comprehension
+binds or on a type (``list.append($l, value)``), what it changes is not followed, nor what a comprehension stores
+into its target (:func:`unfollowed_changes`).
 """
 
 from __future__ import annotations
@@ -226,3 +231,82 @@ def nested_lambdas(node: ast.Lambda) -> Iterator[ast.Lambda]:
         if isinstance(child, ast.Lambda):
             yield child
 
+
+def unfollowed_changes(method: Method, locals_: frozenset[str]) -> Iterator[tuple[ast.AST, str]]:
+    """Methods that change their object in place, in a method's code, where the analysis does not follow the change.
+
+    Followed: a call on a local or a `$` name (`acc.append(x)`, `$acc.append(x)`), and `map` of such a method.
+    Calls on what a name holds (`$d['k'].append(x)`) are left as the analysis reads them.
+    """
+    for stmt in method.body:
+        yield from _changes(stmt, locals_, frozenset())
+
+
+def _receiver(node: ast.expr) -> str | None:
+    """The name a mutator is taken from: `acc` of `acc.append` and of `$acc.append`, None for anything else."""
+    if isinstance(node, ast.Attribute):
+        if isinstance(node.value, ast.Name):
+            return node.value.id
+        if (lookup := name_lookup(node.value, NAMESPACE_LOOKUPS)) and "." not in lookup[1]:
+            return f"${lookup[1]}"
+        return None
+    if (lookup := name_lookup(node, NAME_MAPPER)) and lookup[0] == "VFN":
+        assert isinstance(node, ast.Call)
+        inner = name_lookup(node.args[0], NAMESPACE_LOOKUPS)
+        return f"${inner[1]}" if inner and "." not in inner[1] and "." not in lookup[1] else None
+    return None
+
+
+def _mutator(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Attribute) and node.attr in MUTATORS:
+        return node.attr
+    if (lookup := name_lookup(node, NAME_MAPPER)) and lookup[0] == "VFN" and lookup[1].split(".")[-1] in MUTATORS:
+        return lookup[1].split(".")[-1]
+    return None
+
+
+def _changes(node: ast.AST, locals_: frozenset[str], own: frozenset[str]) -> Iterator[tuple[ast.AST, str]]:
+    """``own``: the names the comprehensions around ``node`` bind."""
+    if isinstance(node, ast.Lambda):
+        # A lambda is pure, so it changes nothing, or code the review does not follow at all.
+        for default in [*node.args.defaults, *(d for d in node.args.kw_defaults if d is not None)]:
+            yield from _changes(default, locals_, own)
+        return
+    if isinstance(node, _COMPREHENSIONS):
+        for generator in node.generators:
+            yield from _changes(generator.iter, locals_, own)
+            for target in ast.walk(generator.target):
+                if isinstance(target, (ast.Attribute, ast.Subscript)):
+                    yield target, f"a comprehension stores into `{ast.unparse(target)}`"
+            own = own | {n.id for n in ast.walk(generator.target) if isinstance(n, ast.Name)}
+            for condition in generator.ifs:
+                yield from _changes(condition, locals_, own)
+        for part in [node.key, node.value] if isinstance(node, ast.DictComp) else [node.elt]:
+            yield from _changes(part, locals_, own)
+        return
+    called: set[int] = set()
+    if isinstance(node, ast.Call):
+        mapped = isinstance(node.func, ast.Name) and node.func.id == "map" and node.args
+        for function in [node.func, *(node.args[:1] if mapped else [])]:
+            name = _mutator(function)
+            if name is None:
+                continue
+            receiver = _receiver(function)
+            if receiver is None:
+                if function is node.func:
+                    # On what a name holds: left as the analysis reads it.
+                    called.add(id(function))
+                continue
+            called.add(id(function))
+            bare = receiver.lstrip("$")
+            if bare in own or not (receiver.startswith("$") or bare in locals_):
+                yield node, f"`.{name}` is called on `{receiver}`, which is not a local of the template"
+    if (name := _mutator(node)) is not None and id(node) not in called:
+        yield node, f"`.{name}` is passed on as a value"
+    for child in ast.iter_child_nodes(node):
+        if id(child) in called:
+            # The method itself is judged, what it is taken from may hold more.
+            assert isinstance(child, (ast.Attribute, ast.Call))
+            yield from _changes(child.value if isinstance(child, ast.Attribute) else child.args[0], locals_, own)
+            continue
+        yield from _changes(child, locals_, own)

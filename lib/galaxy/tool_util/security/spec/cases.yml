@@ -595,6 +595,26 @@ not_analysed_strict:
       harm: true
       expect: {rejected: false, warns: [not-plain-unchecked-place]}
 
+mutator_passed_on:
+  doc: >-
+    The review follows a method that changes a list where the template calls it on the list, or maps it over
+    values. Passed on to anything else, here `filter`, what it adds is not followed: every value the template
+    reads must be plain.
+  tool: mutator_passed_on.xml
+  code: not-plain-unchecked-place
+  review:
+    unchecked_locations: {command: parts of it were not analysed}
+  red:
+    - inputs: {word: "a';touch harm-marker;'"}
+      harm: true
+      expect:
+        rejected: true
+        message_contains: ["because this tool writes values in places that no check of their characters can judge (command)"]
+  green:
+    - inputs: {word: "sample_1"}
+      harm: true
+      expect: {rejected: false}
+
 raw_dataset_model:
   doc: >-
     `$input.unsanitized.name` is the dataset's name as the user set it, without the sanitizer: the check reads
