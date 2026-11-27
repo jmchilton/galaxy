@@ -46,6 +46,7 @@ if TYPE_CHECKING:
 TOOL = functional_test_tool_path("identifier_single.xml")
 TOOLS_DIR = os.path.dirname(static_findings.__file__)
 SET_METADATA_TOOL = os.path.join(TOOLS_DIR, os.pardir, "datatypes", "set_metadata_tool.xml")
+GALAXY_UPLOAD_TOOL = os.path.join(TOOLS_DIR, "bundled", "data_source", "upload.xml")
 # nested-interpreter is high while the sanitizer lets `;` through, medium once the patch takes it out.
 AWK_TOOL = """<tool id="static_lowered" name="static_lowered" version="1.0">
     <command><![CDATA[awk 'BEGIN { print $x }' > '$out']]></command>
@@ -123,31 +124,33 @@ def test_reviews_the_patched_source_only_when_refusals_are_on(tmp_path: Path) ->
     assert review(_config(refuse=False)) is None
 
 
-@pytest.mark.parametrize(
-    "path",
-    [
-        SET_METADATA_TOOL,
-        os.path.join(TOOLS_DIR, "data_fetch.xml"),
-        os.path.join(TOOLS_DIR, "imp_exp", "exp_history_to_archive.xml"),
-        os.path.join(TOOLS_DIR, "imp_exp", "exp_history_to_uri.xml"),
-        os.path.join(TOOLS_DIR, "imp_exp", "imp_history_from_archive.xml"),
-    ],
-    ids=os.path.basename,
-)
-def test_tools_galaxy_runs_itself_are_not_reviewed(path: str) -> None:
+def _logged(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [record.getMessage() for record in caplog.records if record.name == static_findings.__name__]
+
+
+@pytest.mark.parametrize("path", [GALAXY_UPLOAD_TOOL, SET_METADATA_TOOL], ids=os.path.basename)
+def test_galaxy_own_tools_are_not_reviewed(path: str, caplog: pytest.LogCaptureFixture) -> None:
+    # Which tools are Galaxy's own is is_galaxy_own_tool's, tested with it; here, that the review leaves them out.
+    # upload1's $paramfile is option-injection at low, though Galaxy sets it to a path in the job directory.
+    caplog.set_level(logging.INFO, logger=static_findings.__name__)
     assert with_static_review(_config(severity="low"), get_tool_source(path), path).static_review is None
     assert static_review_is_current(_config(severity="low"), None, path, None)
+    # Galaxy says so at load, once and naming the tool, while refusals are on.
+    (said,) = _logged(caplog)
+    assert path in said and "leaves out Galaxy's own tools" in said
+    caplog.clear()
+    assert with_static_review(_config(refuse=False), get_tool_source(path), path).static_review is None
+    assert _logged(caplog) == []
 
 
 @pytest.mark.parametrize(
     "path",
     [
-        # Beside data fetch, but not tools Galaxy runs itself.
+        # Under lib/galaxy, which the review left out before Galaxy's own tools were listed: the collection
+        # operations, sample sheet tools and converters beside them, and the spec tools.
         os.path.join(TOOLS_DIR, "unzip_collection.xml"),
         os.path.join(TOOLS_DIR, "sample_sheet_to_tabular.xml"),
         os.path.join(TOOLS_DIR, os.pardir, "datatypes", "converters", "bam_to_bai.xml"),
-        # A stock tool through bundled, which an installed Galaxy has as a real directory.
-        os.path.join(TOOLS_DIR, "bundled", "filters", "catWrapper.xml"),
         os.path.join(TOOLS_DIR, os.pardir, "tool_util", "security", "spec", "tools", "command_position.xml"),
     ],
     ids=os.path.basename,
@@ -192,22 +195,6 @@ def test_configurable_severities_are_the_findings_severities_but_info() -> None:
         tuple(schema.get_app_option("tool_security_refuse_static_findings_severity")["enum"])
         == STATIC_FINDINGS_SEVERITIES
     )
-
-
-GALAXY_UPLOAD_TOOL = os.path.join(TOOLS_DIR, "bundled", "data_source", "upload.xml")
-
-
-def test_galaxy_upload_tool_is_exempt(caplog: pytest.LogCaptureFixture) -> None:
-    caplog.set_level(logging.INFO, logger=static_findings.__name__)
-    # Its $paramfile is option-injection at low, though Galaxy sets it to a path in the job directory.
-    assert (
-        with_static_review(
-            _config(severity="low"), get_tool_source(GALAXY_UPLOAD_TOOL), GALAXY_UPLOAD_TOOL
-        ).static_review
-        is None
-    )
-    assert static_review_is_current(_config(severity="low"), None, GALAXY_UPLOAD_TOOL, None)
-    assert caplog.text.count("the static security review leaves out Galaxy's own tools") == 1
 
 
 @pytest.mark.parametrize("name", ["upload.xml", "data_source/upload.xml"])
