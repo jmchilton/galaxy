@@ -629,6 +629,20 @@ def test_default_of_a_lambda_argument_is_read(tmp_path, command):
     assert ("shell-injection", "high") in rules(review(tmp_path, command))
 
 
+@pytest.mark.parametrize(
+    "command,expected",
+    [
+        ("tool '${''.join(map(lambda _x: $free, [1]))}'", True),
+        ("#set $f = lambda _x: str($free)\ntool '${''.join(map(f, [1]))}'", True),
+        ("tool '${''.join(map(lambda x: x, [$free]))}'", True),
+        ("tool '${''.join(map(str, [$word]))}'", False),
+    ],
+)
+def test_map_gives_what_its_function_returns(tmp_path, command, expected):
+    compile_template(command)
+    assert (("shell-injection", "high") in rules(review(tmp_path, command))) is expected
+
+
 GROUP = """
 <conditional name="c">
   <param name="sel" type="select"><option value="a">a</option></param>

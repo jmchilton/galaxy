@@ -1658,6 +1658,12 @@ class TemplateAnalysis:
             function = node.args[0]
             if isinstance(function, ast.Name) and function.id in _STRING_FUNCTIONS:
                 mapped = stringify(mapped)
+            elif args[0].bound is not None:
+                # A lambda: what its body gives for the elements.
+                receiver, method = args[0].bound
+                mapped = self.call_bound(receiver, method, [element(a) for a in args[1:]], [], env)
+            elif args[0].helper:
+                mapped = self.call_helper(args[0].helper, [element(a) for a in args[1:]], env)
             return AV(elem=mapped)
         if name == "filter" and len(args) >= 2:
             return AV(elem=element(args[1]))
