@@ -568,6 +568,20 @@ def test_changes_a_lambda_or_comprehension_makes_to_locals_are_kept(tmp_path, co
 @pytest.mark.parametrize(
     "command,expected",
     [
+        ("#block b\ntool '$free'\n#end block b", True),
+        ("#block b\n#set $free = 'safe'\ntool '${''.join($free for _x in [1])}'\n#end block b", True),
+        ("#block outer\n#block inner\ntool '$free'\n#end block inner\n#end block outer", True),
+        ("#block b\ntool '$word'\n#end block b", False),
+    ],
+)
+def test_text_of_a_block_is_read_where_the_block_is(tmp_path, command, expected):
+    compile_template(command)
+    assert (("shell-injection", "high") in rules(review(tmp_path, command))) is expected
+
+
+@pytest.mark.parametrize(
+    "command,expected",
+    [
         ("tool '${''.join(map(lambda _x: $free, [1]))}'", True),
         ("#set $f = lambda _x: str($free)\ntool '${''.join(map(f, [1]))}'", True),
         ("tool '${''.join(map(lambda x: x, [$free]))}'", True),
