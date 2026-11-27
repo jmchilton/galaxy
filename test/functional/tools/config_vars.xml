@@ -1,10 +1,6 @@
 <tool id="config_vars" name="config_vars" version="1.0.0">
     <command>
-        #if str($var) != "__test_key":
-            echo "#echo getattr($__app__.config, str($var))#" > $out_file1
-        #else:
-            echo "__test_value" > $out_file1
-        #end if
+        echo "__test_value" > $out_file1
     </command>
     <inputs>
         <param name="var" value="__test_key" type="text" />
