@@ -1,7 +1,8 @@
 <tool id="collection_paired_test" name="collection_paired_test" version="0.1.0">
   <command>
+    #import shlex
     cat $f1.forward $f1['reverse'] >> $out1;
-    echo 'Collection name: $f1.name'
+    echo 'Collection name: '${shlex.quote(str($f1.name))}
   </command>
   <inputs>
     <param name="f1" type="data_collection" collection_type="paired" label="Input pair" />
