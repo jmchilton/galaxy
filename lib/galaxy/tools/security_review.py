@@ -263,7 +263,11 @@ class ToolSecurityReviewer:
             fresh = get_tool_source(
                 tool_source_class=type(tool_source).__name__, raw_tool_source=tool_source.to_string()
             )
-            report = review_tool_source(fresh)
+            report = review_tool_source(
+                fresh,
+                template_job_parameters=tool.template_job_parameters,
+                keeps_undeclared_job_parameters=tool.keeps_undeclared_job_parameters,
+            )
         except Exception as e:
             log.warning("Security review of tool %s version %s failed: %s", tool.id, tool.version, e)
             log.debug("Security review of tool %s failed", tool.id, exc_info=True)

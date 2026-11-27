@@ -686,6 +686,79 @@ def test_names_a_lambda_or_comprehension_binds_do_not_leak(tmp_path, command):
 
 
 @pytest.mark.parametrize(
+    "command",
+    [
+        "#if $word == 'x'\n#set $free = 'safe'\n#end if\ntool '$free'",
+        "#if $word == 'x'\n#pass\n#else\n#set $free = 'safe'\n#end if\ntool '$free'",
+        "#for $r in $rows\n#set $free = 'safe'\n#end for\ntool '$free'",
+        "#for $free in ['safe']\nx\n#end for\ntool '$free'",
+        # A second loop over the name may not run either.
+        "#for $free in ['safe']\nx\n#end for\n#for $free in ['ok']\nx\n#end for\ntool '$free'",
+        "#for $free in ['safe']\nx\n#end for\n#for $r in $rows\n#set $free = 'ok'\n#end for\ntool '$free'",
+        "#while $word == 'x'\n#set $free = 'safe'\n#break\n#end while\ntool '$free'",
+        "#try\n#set $n = int($word)\n#set $free = 'safe'\n#except\n#pass\n#end try\ntool '$free'",
+        "#def show()\n#if $word == 'x'\n#set $free = 'safe'\n#end if\n$free#slurp\n#end def\ntool '$show()'",
+        # The review does not relate two tests of the same value.
+        "#if $word == 'x'\n#set $free = 'safe'\n#end if\n#if $word == 'x'\ntool '$free'\n#end if",
+    ],
+)
+def test_set_that_may_not_have_run_leaves_the_parameter_of_its_name(tmp_path, command):
+    # A #set that did not run leaves its local unbound, and Cheetah's lookup then reads the namespace.
+    compile_template(command)
+    assert ("shell-injection", "high") in rules(review(tmp_path, command))
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "#if $word == 'x'\n#set $free = 'safe'\n#else\n#set $free = 'ok'\n#end if\ntool '$free'",
+        "#set $free = 'safe'\n#if $word == 'x'\n#set $free = 'ok'\n#end if\ntool '$free'",
+        "#if $word == 'x'\n#set $free = 'safe'\n#else\n#stop\n#end if\ntool '$free'",
+        "#for $r in $rows\n#set $free = 'safe'\n#end for\n#set $free = 'ok'\ntool '$free'",
+        # In the body of a loop its target is bound, though an earlier loop may have left it unbound.
+        "#for $label in ['a']\nx\n#end for\n#for $label in ['safe']\ntool '$label'\n#end for",
+    ],
+)
+def test_set_that_ran_on_every_path_is_the_local(tmp_path, command):
+    compile_template(command)
+    assert rules(review(tmp_path, command)) == set()
+
+
+MAYBE_UNSET = """#if $word == 'x'
+#set $NAME = 'safe'
+#end if
+tool '$NAME' '${''.join($NAME for _x in [1])}'"""
+
+
+@pytest.mark.parametrize(
+    "template_job_parameters,keeps_undeclared,read",
+    [
+        # Galaxy passes a regular tool's inputs and its template job parameters only.
+        (frozenset({"dbkey", "chromInfo"}), False, False),
+        (frozenset({"zzz"}), False, True),
+        # A data source tool keeps all its job parameters; a review that does not know the tool assumes so too.
+        (frozenset({"dbkey"}), True, True),
+        (None, False, True),
+    ],
+)
+def test_unset_local_reads_a_job_parameter_only_where_one_reaches_the_template(
+    tmp_path, template_job_parameters, keeps_undeclared, read
+):
+    path = os.path.join(tmp_path, "tool.xml")
+    with open(path, "w") as fh:
+        fh.write(
+            f"""<tool id="t" name="t" version="1" profile="24.2"><command><![CDATA[{MAYBE_UNSET.replace("NAME", "zzz")}]]></command>
+  <inputs>{INPUTS}</inputs><outputs><data name="out" format="txt"/></outputs></tool>"""
+        )
+    report = review_tool_source(
+        get_tool_source(path),
+        template_job_parameters=template_job_parameters,
+        keeps_undeclared_job_parameters=keeps_undeclared,
+    )
+    assert any(ref.key == "zzz" for f in report.findings for ref in f.refs) is read
+
+
+@pytest.mark.parametrize(
     "command,expected",
     [
         ("#block b\ntool '$free'\n#end block b", True),

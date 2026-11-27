@@ -80,7 +80,15 @@ class Model:
     specials: dict[str, Node] = field(default_factory=dict)
     # Template macros: Cheetah text the template can read in with `#include source=$name#`.
     templates: dict[str, str] = field(default_factory=dict)
+    # The job parameters besides the tool's inputs that Galaxy passes to the templates
+    # (`Tool.template_job_parameters`). None: any name, for a tool that keeps all its job parameters
+    # (a data source tool) or a review that does not know the tool's.
+    template_job_parameters: frozenset[str] | None = None
     _job_parameters: dict[str, Opaque] = field(default_factory=dict, repr=False)
+
+    def can_be_job_parameter(self, name: str) -> bool:
+        """Whether a job parameter of this name, not a tool input, reaches the templates."""
+        return self.template_job_parameters is None or name in self.template_job_parameters
 
     def job_parameter(self, name: str) -> AV:
         """A name that is not a tool input: only a job parameter of that name can give it a value.
@@ -291,12 +299,12 @@ def _has_test_param(input_source: InputSource) -> bool:
     return elem is None or elem.find("param") is not None
 
 
-def build_model(tool_source: ToolSource) -> Model:
+def build_model(tool_source: ToolSource, template_job_parameters: frozenset[str] | None = None) -> Model:
     tool_sanitize = bool(tool_source.parse_sanitize())
     root = Group("")
     for page_source in tool_source.parse_input_pages().page_sources:
         _add_inputs(root, page_source.parse_input_sources(), "", tool_sanitize)
-    model = Model(root=root, sanitize=tool_sanitize)
+    model = Model(root=root, sanitize=tool_sanitize, template_job_parameters=template_job_parameters)
 
     xml_tree: Any = getattr(tool_source, "xml_tree", None)
     if xml_tree is not None:

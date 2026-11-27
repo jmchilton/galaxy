@@ -524,6 +524,35 @@ inputs:
   label: a;b|c && d
 ```
 
+#### maybe_unset_local
+
+A `#set` that does not run leaves its local unbound, and `$label` after it is then the parameter of that name. The review reads the name as the local or the parameter, whose value is checked as usual. The job parameters that are not inputs do not reach the templates of a regular tool, so a local of any other name is the local alone.
+
+Tool `maybe_unset_local.xml`:
+
+```
+#if $mode == 'fixed'
+#set $label = 'sample'
+#end if
+echo '$label' > '$out'
+```
+
+Refused
+
+```
+inputs:
+  mode: given
+  label: a';touch harm-marker;'
+```
+
+Runs
+
+```
+inputs:
+  mode: given
+  label: a;b|c && d
+```
+
 ### `nested-interpreter`
 
 A value is written into the program of another interpreter (`bash -c`, `sed`, `perl -e`, ...) and can change what that program does.
