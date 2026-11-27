@@ -943,8 +943,23 @@ class TemplateAnalysis:
             if isinstance(arg, ast.Call) and isinstance(arg.func, ast.Name) and arg.func.id == "_filter" and arg.args:
                 return self.write_value(self.ev(arg.args[0], env), None, states, env)
             return self.write_value(self.ev(arg, env), None, states, env)
+        if self._block_call(node):
+            assert isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+            return self.inline(node.func.attr, [], states, env)
         self.ev(node, env)
         return states
+
+    def _block_call(self, node: ast.expr) -> bool:
+        """``self.name(trans=trans)``: a `#block`, whose method writes its text where the block is."""
+        return (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "self"
+            and node.func.attr in self.template.helpers
+            and not node.args
+            and [(k.arg, getattr(k.value, "id", None)) for k in node.keywords] == [("trans", "trans")]
+        )
 
     def bind(self, target: ast.expr, value: AV, env: Env, weak: bool = False) -> None:
         if isinstance(target, ast.Name):
