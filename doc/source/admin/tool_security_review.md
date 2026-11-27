@@ -74,8 +74,21 @@ message that names the rules of the findings and not their detail, for example
 - A tool patch that clears every such finding lets the tool run again; one that only makes a finding less
   severe does not, while the finding is still at or above the severity.
 - Uncheckable codes, unchecked locations and a review that fails refuse nothing; a failed review is logged.
-- Galaxy's own tools under `lib/galaxy` (setting metadata, fetching data, collection operations) are not
-  reviewed, and neither are dynamic tools, which do not load from a tool file.
+- Galaxy's own tools are not reviewed unless a tool patch applies to them: the upload tool (`upload1`) and the
+  tools Galaxy runs itself (set metadata, data fetch, history import and export). Each is matched by its real
+  path, so a copy elsewhere is reviewed. Tool patches can name only the upload tool of these. Every other tool
+  Galaxy ships is reviewed wherever Galaxy is installed: its stock tools, the datatype converters, the
+  collection operations and the sample sheet tools. Galaxy logs, at `INFO`, each of its own tools it loads and
+  does not review. Dynamic tools, which do not load from a tool file, are not reviewed either.
+- Galaxy's own tools write values Galaxy sets itself, which the review cannot tell from user values. Set
+  metadata writes the command line Galaxy builds for it as a hidden parameter (`shell-injection`, high, so it
+  would be refused at the default severity), the history tools write parameters Galaxy fills in
+  (`argument-injection`, medium), and data fetch writes the request Galaxy builds (`configfile-injection`, low).
+  The upload tool gets its outputs when Galaxy creates the job, so its template reads them by a computed name
+  (`template-reflection`, medium), and its `$paramfile` (`option-injection`, low) is a path Galaxy sets in the
+  job directory. Its file is `data_source/upload.xml` in Galaxy's bundled tools (`tools/` in a source checkout),
+  or a link to it. A Tool Shed or local tool with the same id and upload action from another path gets a
+  warning naming the bundled file.
 - The severity is read when a job is prepared, so changing it needs no new review. The cached toolbox keeps
   each tool's review on its index entry: turning the option on, or upgrading Galaxy, re-populates the index.
   A read-only tool source store built without reviews is reviewed as its tools are loaded.

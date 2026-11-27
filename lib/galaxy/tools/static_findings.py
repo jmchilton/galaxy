@@ -1,19 +1,25 @@
 """Refuse jobs of tools whose static security review, run at load on the patched source, keeps findings."""
 
 import logging
-import os
 from typing import TYPE_CHECKING
 
 from galaxy.tool_util.parser.interface import ToolSource
 from galaxy.tool_util.patches import ToolPatchDatabase
+from galaxy.tool_util.patches.engine import APPLIED
+from galaxy.tool_util.patches.model import ToolPatchInfo
 from galaxy.tool_util.security import review_tool_source
 from galaxy.tool_util.security.refusal import (
     STATIC_FINDINGS,
     StaticReview,
 )
 from galaxy.tools.patches import apply_tool_patches
-from galaxy.tools.security_refusal import ToolInputRejected
-from galaxy.util import in_directory
+from galaxy.tools.security_refusal import (
+    declares_upload_tool,
+    is_galaxy_own_tool,
+    is_galaxy_upload_tool,
+    ToolInputRejected,
+    upload_tool_lookalike_message,
+)
 from galaxy.util.path import StrPath
 from galaxy.version import VERSION
 
@@ -23,24 +29,24 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-# Galaxy's own tools (set metadata, data fetch, collection operations) are part of Galaxy and not reviewed.
-GALAXY_PACKAGE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # A stored review from another Galaxy version is redone: the analyser may have changed.
 REVIEW_VERSION: str = VERSION
 
 
-def reviews_tool(config: "GalaxyAppConfiguration", path: StrPath | None) -> bool:
-    """True when refusals are on and the tool at ``path`` is not one of Galaxy's own."""
-    if not config.tool_security_refuse_static_findings:
-        return False
-    return path is None or not in_directory(os.path.abspath(path), GALAXY_PACKAGE_DIR)
+def _patched(patch: ToolPatchInfo | None) -> bool:
+    return bool(patch and any(state.state == APPLIED for state in patch.states))
+
+
+def reviews_tool(config: "GalaxyAppConfiguration", path: StrPath | None, patch: ToolPatchInfo | None) -> bool:
+    """True when refusals are on and the tool at ``path``, with ``patch`` applied, is not one of Galaxy's own."""
+    return bool(config.tool_security_refuse_static_findings) and not is_galaxy_own_tool(path, patched=_patched(patch))
 
 
 def static_review_is_current(
-    config: "GalaxyAppConfiguration", review: StaticReview | None, path: StrPath | None
+    config: "GalaxyAppConfiguration", review: StaticReview | None, path: StrPath | None, patch: ToolPatchInfo | None
 ) -> bool:
-    """True when ``review`` is what :func:`with_static_review` would keep on the tool at ``path`` now."""
-    if not reviews_tool(config, path):
+    """True when ``review`` is what :func:`with_static_review` would keep on the tool at ``path``, patched by ``patch``."""
+    if not reviews_tool(config, path, patch):
         return review is None
     return review is not None and review.version == REVIEW_VERSION
 
@@ -49,7 +55,9 @@ def with_static_review(
     config: "GalaxyAppConfiguration", tool_source: ToolSource, path: StrPath | None, kept: StaticReview | None = None
 ) -> ToolSource:
     """Keep a review on ``tool_source`` when refusals are on: ``kept`` if current, else a new one; never raises."""
-    if not reviews_tool(config, path):
+    if not reviews_tool(config, path, tool_source.patch_state):
+        if config.tool_security_refuse_static_findings:
+            log.info("Jobs of tool %s are not refused: the static security review leaves out Galaxy's own tools", path)
         tool_source.static_review = None
     elif kept is not None and kept.version == REVIEW_VERSION:
         tool_source.static_review = kept
@@ -59,6 +67,8 @@ def with_static_review(
 
 
 def _review(config: "GalaxyAppConfiguration", tool_source: ToolSource, path: StrPath | None) -> StaticReview:
+    if declares_upload_tool(tool_source) and not is_galaxy_upload_tool(path):
+        log.warning(upload_tool_lookalike_message(path))
     try:
         review = StaticReview.of(review_tool_source(tool_source), REVIEW_VERSION)
         if rules := review.refused_rules(config.tool_security_refuse_static_findings_severity):

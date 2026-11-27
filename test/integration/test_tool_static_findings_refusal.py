@@ -123,6 +123,14 @@ class TestStaticFindingsRefusal(integration_util.IntegrationTestCase):
         assert state == "error"
         assert output["misc_info"].startswith(f"{REFUSED} nested-interpreter, and")
 
+    def test_galaxy_upload_tool_runs(self):
+        # upload1 reports template-reflection (medium), but it is Galaxy's own upload tool.
+        with self.dataset_populator.test_history() as history_id:
+            hda = self.dataset_populator.new_dataset(history_id, content="1\n", fetch_data=False)
+            self.dataset_populator.wait_for_history(history_id, assert_ok=False)
+            output = self.dataset_populator.get_history_dataset_details(history_id, dataset=hda, assert_ok=False)
+        assert output["state"] == "ok", output
+
 
 class TestStaticFindingsRefusalCachedToolbox(TestStaticFindingsRefusal):
     """The populator keeps the review on the index entry the materialized tool reads."""

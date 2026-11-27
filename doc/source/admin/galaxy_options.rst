@@ -1507,8 +1507,11 @@
     finding lets the tool run again. Refused tools still load and show
     in the tool panel; their jobs fail with the rule ids of the
     findings. Uncheckable codes, unchecked locations and a review that
-    fails refuse nothing. Galaxy's own tools under `lib/galaxy` are
-    not reviewed, and neither are dynamic tools.
+    fails refuse nothing. Galaxy's own tools are not reviewed unless a
+    tool patch applies to them: the upload tool (`upload1`) and the
+    tools Galaxy runs itself (set metadata, data fetch, history import
+    and export). Every other tool Galaxy ships is reviewed. Dynamic
+    tools are not reviewed either.
 :Default: ``false``
 :Type: bool
 

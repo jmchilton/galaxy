@@ -1,3 +1,4 @@
+import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,6 +26,7 @@ from galaxy.tool_util.security.charsets import (
 from galaxy.tool_util.security.refusal import StaticReview
 from galaxy.tool_util.unittest_utils import functional_test_tool_path
 from galaxy.tool_util.unittest_utils.tool_patches import (
+    replace_text_op,
     security_patch,
     write_collection,
 )
@@ -32,7 +34,6 @@ from galaxy.tools import static_findings
 from galaxy.tools.security_refusal import ToolInputRejected
 from galaxy.tools.static_findings import (
     check_static_findings,
-    GALAXY_PACKAGE_DIR,
     patch_and_review_tool_source,
     REVIEW_VERSION,
     static_review_is_current,
@@ -43,7 +44,8 @@ if TYPE_CHECKING:
     from galaxy.tools import Tool
 
 TOOL = functional_test_tool_path("identifier_single.xml")
-SET_METADATA_TOOL = os.path.join(GALAXY_PACKAGE_DIR, "datatypes", "set_metadata_tool.xml")
+TOOLS_DIR = os.path.dirname(static_findings.__file__)
+SET_METADATA_TOOL = os.path.join(TOOLS_DIR, os.pardir, "datatypes", "set_metadata_tool.xml")
 # nested-interpreter is high while the sanitizer lets `;` through, medium once the patch takes it out.
 AWK_TOOL = """<tool id="static_lowered" name="static_lowered" version="1.0">
     <command><![CDATA[awk 'BEGIN { print $x }' > '$out']]></command>
@@ -121,9 +123,40 @@ def test_reviews_the_patched_source_only_when_refusals_are_on(tmp_path: Path) ->
     assert review(_config(refuse=False)) is None
 
 
-def test_galaxy_own_tools_are_not_reviewed() -> None:
-    assert with_static_review(_config(), get_tool_source(SET_METADATA_TOOL), SET_METADATA_TOOL).static_review is None
-    assert static_review_is_current(_config(), None, SET_METADATA_TOOL)
+@pytest.mark.parametrize(
+    "path",
+    [
+        SET_METADATA_TOOL,
+        os.path.join(TOOLS_DIR, "data_fetch.xml"),
+        os.path.join(TOOLS_DIR, "imp_exp", "exp_history_to_archive.xml"),
+        os.path.join(TOOLS_DIR, "imp_exp", "exp_history_to_uri.xml"),
+        os.path.join(TOOLS_DIR, "imp_exp", "imp_history_from_archive.xml"),
+    ],
+    ids=os.path.basename,
+)
+def test_tools_galaxy_runs_itself_are_not_reviewed(path: str) -> None:
+    assert with_static_review(_config(severity="low"), get_tool_source(path), path).static_review is None
+    assert static_review_is_current(_config(severity="low"), None, path, None)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        # Beside data fetch, but not tools Galaxy runs itself.
+        os.path.join(TOOLS_DIR, "unzip_collection.xml"),
+        os.path.join(TOOLS_DIR, "sample_sheet_to_tabular.xml"),
+        os.path.join(TOOLS_DIR, os.pardir, "datatypes", "converters", "bam_to_bai.xml"),
+        # A stock tool through bundled, which an installed Galaxy has as a real directory.
+        os.path.join(TOOLS_DIR, "bundled", "filters", "catWrapper.xml"),
+        os.path.join(TOOLS_DIR, os.pardir, "tool_util", "security", "spec", "tools", "command_position.xml"),
+    ],
+    ids=os.path.basename,
+)
+def test_other_tools_galaxy_ships_are_reviewed(path: str) -> None:
+    review = with_static_review(_config(severity="low"), get_tool_source(path), path).static_review
+    assert review is not None and review.error is None
+    assert static_review_is_current(_config(severity="low"), review, path, None)
+    assert not static_review_is_current(_config(severity="low"), None, path, None)
 
 
 def test_failed_review_is_kept_and_refuses_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -159,3 +192,51 @@ def test_configurable_severities_are_the_findings_severities_but_info() -> None:
         tuple(schema.get_app_option("tool_security_refuse_static_findings_severity")["enum"])
         == STATIC_FINDINGS_SEVERITIES
     )
+
+
+GALAXY_UPLOAD_TOOL = os.path.join(TOOLS_DIR, "bundled", "data_source", "upload.xml")
+
+
+def test_galaxy_upload_tool_is_exempt(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO, logger=static_findings.__name__)
+    # Its $paramfile is option-injection at low, though Galaxy sets it to a path in the job directory.
+    assert (
+        with_static_review(
+            _config(severity="low"), get_tool_source(GALAXY_UPLOAD_TOOL), GALAXY_UPLOAD_TOOL
+        ).static_review
+        is None
+    )
+    assert static_review_is_current(_config(severity="low"), None, GALAXY_UPLOAD_TOOL, None)
+    assert caplog.text.count("the static security review leaves out Galaxy's own tools") == 1
+
+
+@pytest.mark.parametrize("name", ["upload.xml", "data_source/upload.xml"])
+def test_upload_tool_lookalike_is_reviewed(tmp_path: Path, name: str, caplog: pytest.LogCaptureFixture) -> None:
+    # The same id and action, from a path that is not Galaxy's: a Tool Shed or local copy.
+    caplog.set_level(logging.WARNING, logger=static_findings.__name__)
+    copy = tmp_path / name
+    copy.parent.mkdir(parents=True, exist_ok=True)
+    copy.write_text(Path(GALAXY_UPLOAD_TOOL).read_text())
+    review = with_static_review(_config(severity="low"), get_tool_source(str(copy)), copy).static_review
+    assert review is not None and "option-injection" in review.refused_rules("low")
+    assert not static_review_is_current(_config(severity="low"), None, copy, None)
+    # Said once, naming Galaxy's own upload tool.
+    warnings = [m for m in caplog.messages if "declares Galaxy's upload tool" in m]
+    assert len(warnings) == 1
+    assert os.path.realpath(GALAXY_UPLOAD_TOOL) in warnings[0] and str(copy) in warnings[0]
+
+
+def test_patched_galaxy_upload_tool_is_reviewed(tmp_path: Path) -> None:
+    # A tool patch that applies changes the template Galaxy ships: the patched source is reviewed.
+    patch = security_patch(
+        [replace_text_op("command", "'$paramfile'", "'$paramfile' && true")],
+        "ordinary_inputs",
+        "Jobs run an extra true.",
+    )
+    db = load_tool_patch_database([str(write_collection(tmp_path / "c", {"_local/upload1/1.1.7.yml": patch}))])
+    config = _config(severity="low")
+    patched = patch_and_review_tool_source(config, db, get_tool_source(GALAXY_UPLOAD_TOOL), None, GALAXY_UPLOAD_TOOL)
+    assert patched.patch_state is not None and patched.static_review is not None
+    assert "option-injection" in patched.static_review.refused_rules("low")
+    assert not static_review_is_current(config, None, GALAXY_UPLOAD_TOOL, patched.patch_state)
+    assert static_review_is_current(config, patched.static_review, GALAXY_UPLOAD_TOOL, patched.patch_state)
