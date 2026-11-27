@@ -1,6 +1,7 @@
 <tool id="identifier_single" name="identifier_single" version="1.0.0">
     <command><![CDATA[
-echo '$input1.element_identifier' > 'output1'
+#import shlex
+echo ${shlex.quote(str($input1.element_identifier))} > 'output1'
     ]]></command>
     <inputs>
         <param name="input1" type="data" label="Input 1" />
