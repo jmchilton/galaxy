@@ -810,6 +810,46 @@ rewrites_and_template_code:
       harm: true
       expect: {rejected: false, warns: [uncheckable-rewrites, uncheckable-template-code]}
 
+lambda_late_binding:
+  doc: >-
+    A lambda reads a name of the template when it is called, not when it is made. Here the template sets the
+    name again in between, to a value: the review does not follow such a lambda, and every job is refused.
+  tool: lambda_late_binding.xml
+  code: uncheckable-template-code
+  review:
+    patterns: [template-code]
+    findings:
+      - {rule: template-lambda, severity: high}
+  red:
+    - inputs: {word: "a';touch harm-marker;'"}
+      harm: true
+      expect: {rejected: true, message_contains: ["(lambda)"]}
+  green:
+    - config: {when_unsure: log}
+      inputs: {word: "a;b"}
+      harm: true
+      expect: {rejected: false, warns: [uncheckable-template-code]}
+
+lambda_changes_a_list:
+  doc: >-
+    A lambda that changes a list of the template with what its call passes in is not followed either: every
+    job is refused.
+  tool: lambda_changes_a_list.xml
+  code: uncheckable-template-code
+  review:
+    patterns: [template-code]
+    findings:
+      - {rule: template-lambda, severity: high}
+  red:
+    - inputs: {word: "a';touch harm-marker;'"}
+      harm: true
+      expect: {rejected: true, message_contains: ["(lambda)"]}
+  green:
+    - config: {when_unsure: log}
+      inputs: {word: "a;b"}
+      harm: true
+      expect: {rejected: false, warns: [uncheckable-template-code]}
+
 template_code:
   doc: A template that imports code can read text the job does not carry, so no value counts as plain.
   tool: template_code.xml
@@ -1200,6 +1240,28 @@ galaxy_url_kept:
     serious_rules: []
   green:
     - inputs: {word: a, __galaxy_url__: "a';touch harm-marker;'"}
+      harm: true
+      expect: {rejected: false}
+
+pure_lambda:
+  doc: >-
+    A lambda whose body reads only its arguments, literals and functions that compute a value from them is read
+    as what it gives for the values the template passes: here a value quoted by `json.dumps`, whose own quote
+    still closes the single quotes around it.
+  tool: pure_lambda.xml
+  code: shell-injection
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, accessor: raw, param: word, checkable: true}
+  red:
+    - inputs: {word: "a';touch harm-marker;'"}
+      harm: true
+      expect:
+        rejected: true
+        message_contains: ["the value of input 'word' contains the characters [' ;]"]
+  green:
+    - inputs: {word: "a;b|c && d"}
       harm: true
       expect: {rejected: false}
 

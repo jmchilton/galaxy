@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 
 import pytest
+from Cheetah.Template import Template
 
 from galaxy.tool_util.parser.factory import get_tool_source
 from galaxy.tool_util.security import (
@@ -646,6 +647,9 @@ def test_default_of_a_lambda_argument_is_read(tmp_path, command):
         "#set $l = ['safe']\n#silent $l.__iadd__([str($free)])\ntool '${l[1]}'",
         "#set $acc = []\n#silent list(map(acc.append, [str($free)]))\ntool '${''.join($acc)}'",
         "tool '${''.join(['a'].__iadd__([str($free)]))}'",
+        "#set $s = set()\n#silent $s.symmetric_difference_update({str($free)})\ntool '${''.join($s)}'",
+        "#set $s = set()\n#silent [s.__ixor__({str($free)}) for _ in [1]]\ntool '${''.join($s)}'",
+        "#import collections\n#set $q = collections.deque()\n#silent $q.extendleft([str($free)])\ntool '${''.join($q)}'",
     ],
 )
 def test_changes_a_lambda_or_comprehension_makes_to_locals_are_kept(tmp_path, command):
@@ -870,6 +874,171 @@ def test_text_of_a_block_is_read_where_the_block_is(tmp_path, command, expected)
 def test_map_gives_what_its_function_returns(tmp_path, command, expected):
     compile_template(command)
     assert (("shell-injection", "high") in rules(review(tmp_path, command))) is expected
+
+
+RAW = "a';touch harm-marker;'"
+
+
+def rendered_raw(command: str) -> bool:
+    """Whether Cheetah renders the raw value of `$free` into the command."""
+    namespace = {"free": RAW, "word": "word", "text": "text"}
+    return RAW in str(Template(command, searchList=[namespace]))
+
+
+LAMBDA_NOT_FOLLOWED = "command: what a lambda does was not analysed"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        # The body reads a local the template sets again before the call.
+        "#set $s = 'safe'\n#set $f = lambda: s\n#set $s = str($free)\ntool '${f()}'",
+        "#set $s = 'safe'\n#set $f = lambda: (lambda: s)()\n#set $s = str($free)\ntool '${f()}'",
+        "#set $s = 'safe'\n#set $f = lambda: [s for _x in [1]][0]\n#set $s = str($free)\ntool '${f()}'",
+        "#set $s = 'safe'\n#set $f = lambda: (lambda x=s: x)()\n#set $s = str($free)\ntool '${f()}'",
+        "#set global $g = 'safe'\n#set $f = lambda: $g\n#set global $g = str($free)\ntool '${f()}'",
+        "#set global $g = 'safe'\n#set $f = lambda: $getVar('g')\n#set global $g = str($free)\ntool '${f()}'",
+        (
+            "#def h\n#return $g\n#end def\n#set global $g = 'safe'\n#set $f = lambda: $h\n"
+            "#set global $g = str($free)\ntool '${f()}'"
+        ),
+        # It changes a list of the template's with what the call passes.
+        "#set $acc = []\n#set $f = lambda x: acc.append(x)\n#silent $f(str($free))\ntool '${''.join($acc)}'",
+        "#set $acc = []\n#silent list(map(lambda x: acc.append(x), [str($free)]))\ntool '${''.join($acc)}'",
+        # A local passed in under another name.
+        "#set $acc = []\n#set $f = lambda a: a.append(str($free))\n#silent $f($acc)\ntool '${''.join($acc)}'",
+        "#set $acc = []\n#set $f = lambda a: a.__iadd__([str($free)])\n#silent $f($acc)\ntool '${''.join($acc)}'",
+        "#set $acc = []\n#set $f = lambda x, a=acc: a.extend([x])\n#silent $f(str($free))\ntool '${''.join($acc)}'",
+        (
+            "#set $acc = []\n#set $f = lambda a: [b.append(str($free)) for b in [a]]\n#silent $f($acc)\n"
+            "tool '${''.join($acc)}'"
+        ),
+        "#set global $acc = []\n#set $f = lambda: $acc.append(str($free))\n#silent $f()\ntool '${''.join($acc)}'",
+        (
+            "#set $s = set()\n#set $f = lambda a, v: a.symmetric_difference_update({v})\n#silent $f($s, str($free))\n"
+            "tool '${''.join($s)}'"
+        ),
+        "#set $d = {'k': 'safe'}\n#set $f = lambda: [1 for d['k'] in [str($free)]]\n#silent $f()\ntool '${d['k']}'",
+    ],
+)
+def test_lambda_the_review_does_not_follow_is_code(tmp_path, command):
+    assert rendered_raw(command)
+    report = review(tmp_path, command)
+    assert ("template-lambda", "high") in rules(report, "capability")
+    assert LAMBDA_NOT_FOLLOWED in report.unanalyzed
+    assert report.unchecked_locations == {"command": "parts of it were not analysed"}
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "#set $f = lambda: (y := 1)\ntool '${f()}'",
+        "#set $f = lambda x: $x.__class__\ntool '${f(1)}'",
+        "#set $f = lambda x: x._private\ntool '${f(1)}'",
+        "#set $f = lambda x: vars()\ntool '${f(1)}'",
+        "#set $f = lambda x: getattr(x, 'real')\ntool '${f(1)}'",
+        "#set $f = lambda x: $getattr(x, 'real')\ntool '${f(1)}'",
+        "#set $f = lambda x: type(x)\ntool '${f(1)}'",
+        "#set $f = lambda x: $self\ntool '${f(1)}'",
+        "#set $f = lambda x: (yield x)\ntool '${f(1)}'",
+        # A local, an import or any import of a module can rebind a builtin.
+        "#set $str = 'x'\n#set $f = lambda x: str(x)\ntool '${f(1)}'",
+        "#from os.path import *\n#set $f = lambda x: str(x)\ntool '${f(1)}'",
+        "#from json import dumps as str\n#set $f = lambda x: str(x)\ntool '${f(1)}'",
+        "#def h($n)\n#set $f = lambda x: x + n\n${f(1)}#slurp\n#end def\ntool '$h(1)'",
+        "#attr $f = lambda x: x.append(1)\ntool",
+    ],
+)
+def test_lambda_that_reaches_more_than_its_arguments_is_code(tmp_path, command):
+    compile_template(command)
+    report = review(tmp_path, command)
+    assert ("template-lambda", "high") in rules(report, "capability")
+    assert LAMBDA_NOT_FOLLOWED in report.unanalyzed
+
+
+@pytest.mark.parametrize(
+    "command,expected",
+    [
+        # alerax
+        (
+            (
+                "#set $trees = sorted($flat, key=lambda x: str(x.element_identifier))\n#for $t in $trees\n"
+                "tool '$t.element_identifier'\n#end for"
+            ),
+            {("shell-injection", "high"), ("option-injection", "low")},
+        ),
+        # vcflib vcfselectsamples, samtools slice_bam
+        (
+            "tool ${ ' '.join( map( lambda x:'\"%s\"' % ( x ), str($text ).split(\",\") ) ) }",
+            {("argument-injection", "medium"), ("option-injection", "low")},
+        ),
+        # bowtie2 and the read group macros
+        (
+            (
+                "#import itertools\n#set $common_prefix = ''.join([c[0] for c in itertools.takewhile(lambda x: all(x[0]"
+                " == y for y in x), zip(*[$word, $text]))])\ntool '$common_prefix'"
+            ),
+            {("option-injection", "low")},
+        ),
+        # make_EAR
+        (
+            (
+                "#import json\n#set $yq = lambda value: json.dumps(value, ensure_ascii=False)\n"
+                "tool: $yq(str($text).strip())"
+            ),
+            {("argument-injection", "medium"), ("option-injection", "low")},
+        ),
+        (
+            "#set $label = 'sample'\n#set $quoted = lambda: \"'%s'\" % $label.value\necho ${quoted()}",
+            {("shell-injection", "high"), ("option-injection", "low")},
+        ),
+        ("#set $f = lambda v: $v\ntool '${f('safe')}'", set()),
+        ("#set $s = 'safe'\n#set $f = lambda x=$s: $x\ntool '${f()}'", set()),
+        ("#set $acc = []\n#set $f = lambda x=acc: len(x)\ntool '${f()}'", set()),
+        ("#set $f = lambda x: (lambda y: x + y)(1)\ntool '${f(1)}'", set()),
+        ("#set $f = lambda x: [y.strip() for y in x.split(',') if y]\ntool '${f($word)}'", set()),
+        ("#set $f = lambda x: $input\ntool '${f(1)}'", set()),
+        ("#set global $g = lambda x: str(x)\ntool '${g($word)}'", set()),
+    ],
+)
+def test_pure_lambda_is_read_as_a_function_of_its_arguments(tmp_path, command, expected):
+    compile_template(command)
+    report = review(tmp_path, command)
+    assert not any(f.rule == "template-lambda" for f in report.findings)
+    assert report.unanalyzed == []
+    assert rules(report) == expected
+
+
+def test_lambda_reading_the_application_object_is_flagged_for_that_alone(tmp_path):
+    # crossmap
+    command = (
+        'tool "${filter(lambda x: str( x[1] ) == str($word), '
+        "$__app__.tool_data_tables['liftOver'].get_fields())[0][2] }\""
+    )
+    report = review(tmp_path, command)
+    assert rules(report, "capability") == {("template-app-access", "high")}
+    assert report.unanalyzed == []
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "#import json\n#set $yq = lambda value: json.dumps(value, ensure_ascii=False)\ntool '${yq($free)}'",
+        "#set $q = lambda value: \"'%s'\" % value\ntool ${q($free)}",
+        "tool ${ ' '.join( map( lambda x:'\"%s\"' % ( x ), str($free ).split(\",\") ) ) }",
+        "#set $l = sorted([$free], key=lambda x: str(x))\ntool '${l[0]}'",
+        "#import itertools\n#set $l = ''.join(itertools.takewhile(lambda x: True, str($free)))\ntool '$l'",
+        "#set $l = list(filter(lambda x: str(x), [$free]))\ntool '${l[0]}'",
+        "#set $f = lambda p: ' '.join(map(lambda x: x, str(p).split(',')))\ntool '${f($free)}'",
+        "#set $fs = [lambda x: x]\ntool '${fs[0]($free)}'",
+    ],
+)
+def test_values_pass_through_a_pure_lambda(tmp_path, command):
+    assert rendered_raw(command)
+    report = review(tmp_path, command)
+    assert ("shell-injection", "high") in rules(report)
+    assert report.unanalyzed == []
+
 
 
 GROUP = """

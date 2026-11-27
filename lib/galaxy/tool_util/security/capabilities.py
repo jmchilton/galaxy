@@ -40,6 +40,12 @@ from .charsets import (
     MEDIUM,
     plain_text,
 )
+from .lambdas import (
+    imported_names,
+    impurity,
+    method_locals,
+    nested_lambdas,
+)
 from .model import (
     Model,
     SAFE_SPECIALS,
@@ -157,6 +163,10 @@ class PythonAudit:
         self.never_shadowed = (
             _EXEC_BUILTINS | _REFLECTION_BUILTINS | _FILE_BUILTINS | _EXEC_MODULES | _NETWORK_MODULES | _MODULE_VALUES
         ) - {"dir", "vars", "code", "http", "imp"}
+        # The names the method being walked binds, and what its lambdas can reach of the template.
+        self.method_locals: frozenset[str] = frozenset()
+        self.imported: frozenset[str] | None = frozenset()
+        self.judged_lambdas: set[int] = set()
 
     def add(self, rule: str, severity: str, message: str, expr: str, line: int | None = None) -> None:
         self.report.add(
@@ -198,10 +208,13 @@ class PythonAudit:
                                 self.global_names.add(key.value)
                     elif lookup := name_lookup(node, NAMESPACE_LOOKUPS):
                         self.namespace_reads.add(lookup[1].split(".")[0])
+        self.imported = imported_names(template.imports)
         for method in [template.main, *template.helpers.values()]:
+            self.method_locals = method_locals(method)
             for stmt in method.body:
                 self.walk(stmt, template)
             # Argument defaults and decorators run when the template class is created.
+            self.method_locals = frozenset()
             for expression in method.at_definition:
                 self.walk(expression, template)
         for stmt in template.attrs:
@@ -265,6 +278,8 @@ class PythonAudit:
                 line = template.template_line(node) or line
             if isinstance(node, ast.Store) or id(node) in seen:
                 continue
+            if template is not None and isinstance(node, ast.Lambda):
+                self.lambda_(node, line)
             if isinstance(node, ast.Call) and is_include(node.func):
                 seen.update(id(part) for part in ast.walk(node.func))
                 self.include(node, line)
@@ -297,11 +312,32 @@ class PythonAudit:
                     "template-reflection", HIGH, f"Reaches Python internals through `.{node.attr}`", node.attr, line
                 )
 
-    def add_include(self, severity: str, message: str, expr: str, line: int | None) -> None:
-        self.add("template-include", severity, message, expr, line)
-        note = f"{self.location}: what `#include` reads in was not analysed"
+    def unanalysed(self, message: str) -> None:
+        note = f"{self.location}: {message}"
         if note not in self.report.unanalyzed:
             self.report.unanalyzed.append(note)
+
+    def add_include(self, severity: str, message: str, expr: str, line: int | None) -> None:
+        self.add("template-include", severity, message, expr, line)
+        self.unanalysed("what `#include` reads in was not analysed")
+
+    def lambda_(self, node: ast.Lambda, line: int | None) -> None:
+        """A lambda of the template, judged with the lambdas in its body: pure, or code the review does not follow."""
+        if id(node) in self.judged_lambdas:
+            return
+        self.judged_lambdas.update(id(nested) for nested in nested_lambdas(node))
+        model = self.model
+        changing = frozenset(self.global_names | self.members)
+        reason = impurity(
+            node,
+            self.method_locals,
+            self.imported,
+            changing,
+            lambda name: model is not None and model.lookup(name) is not None,
+        )
+        if reason is not None:
+            self.add("template-lambda", HIGH, f"Uses a lambda the review does not follow: it {reason}", "lambda", line)
+            self.unanalysed("what a lambda does was not analysed")
 
     def include(self, call: ast.Call, line: int | None) -> None:
         """An ``#include``: a file, or text with ``source=``, that Cheetah reads in as template code (``raw``: text)."""
