@@ -240,6 +240,125 @@ def test_tool_method(app, tmp_path):
     assert review is not None and review.status == ANALYSED
 
 
+# -- Galaxy's own tools ---------------------------------------------------------------------------
+
+GALAXY_UPLOAD_TOOL = os.path.join(os.path.dirname(security_review.__file__), "bundled", "data_source", "upload.xml")
+
+
+@pytest.fixture
+def upload_app(app):
+    app.config.nginx_upload_path = None
+    return app
+
+
+def upload_job() -> Any:
+    return SimpleNamespace(job=SimpleNamespace(id=7), param_dict={}, consumes_names=False, consumes_identifiers=False)
+
+
+def test_galaxy_upload_tool_is_exempt_at_every_level(upload_app, caplog):
+    caplog.set_level(logging.INFO, logger=security_review.__name__)
+    tool = create_tool_from_source(upload_app, get_tool_source(GALAXY_UPLOAD_TOOL), config_file=GALAXY_UPLOAD_TOOL)
+    assert tool.id == "upload1"
+    assert reviewed_tool_source(tool) is None
+    for mode in (ENFORCE_CODE, ENFORCE_DATA, ENFORCE_ALL):
+        for when_unsure in (STRICT, "refuse"):
+            r = ToolSecurityReviewer(mode, when_unsure=when_unsure)
+            assert r.review(tool) is None
+            r.check_job(tool, upload_job())
+            r.check_job(tool, upload_job())
+    # Said once per reviewer and tool, not per job.
+    assert caplog.text.count("it is one of Galaxy's own tools") == 6
+
+
+TOOLS_DIR = os.path.dirname(security_review.__file__)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        os.path.join(TOOLS_DIR, os.pardir, "datatypes", "set_metadata_tool.xml"),
+        os.path.join(TOOLS_DIR, "data_fetch.xml"),
+        os.path.join(TOOLS_DIR, "imp_exp", "exp_history_to_archive.xml"),
+        os.path.join(TOOLS_DIR, "imp_exp", "exp_history_to_uri.xml"),
+        os.path.join(TOOLS_DIR, "imp_exp", "imp_history_from_archive.xml"),
+    ],
+    ids=os.path.basename,
+)
+def test_tools_galaxy_runs_itself_are_not_reviewed_at_any_level(upload_app, path):
+    # Each has a command; the job check does not check its values either.
+    tool = create_tool_from_source(upload_app, get_tool_source(path), config_file=path)
+    assert tool.command
+    assert reviewed_tool_source(tool) is None
+    r = ToolSecurityReviewer(ENFORCE_ALL, when_unsure="refuse")
+    assert r.review(tool) is None
+    r.check_job(tool, upload_job())
+
+
+def test_other_tools_galaxy_ships_beside_them_are_reviewed(upload_app):
+    path = os.path.join(TOOLS_DIR, "sample_sheet_to_tabular.xml")
+    tool = create_tool_from_source(upload_app, get_tool_source(path), config_file=path)
+    review = ToolSecurityReviewer(ENFORCE_ALL).review(tool)
+    assert review is not None and review.status == ANALYSED
+
+
+def test_galaxy_upload_tool_exemption_is_decided_once_per_tool(upload_app, monkeypatch):
+    tool = create_tool_from_source(upload_app, get_tool_source(GALAXY_UPLOAD_TOOL), config_file=GALAXY_UPLOAD_TOOL)
+    calls = []
+
+    def counting(tool):
+        calls.append(tool)
+        return reviewed_tool_source(tool)
+
+    monkeypatch.setattr(security_review, "reviewed_tool_source", counting)
+    r = ToolSecurityReviewer(ENFORCE_CODE)
+    for _ in range(3):
+        assert r.review(tool) is None
+        r.check_job(tool, upload_job())
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("galaxy_path", [True, False], ids=["galaxy", "lookalike"])
+def test_upload_tool_from_a_tool_source_store_is_judged_by_its_stored_path(upload_app, tmp_path, galaxy_path):
+    # The cached toolbox builds tools from stored text, without a config_file.
+    with open(GALAXY_UPLOAD_TOOL) as fh:
+        contents = fh.read()
+    tool = create_tool_from_source(
+        upload_app, get_tool_source(raw_tool_source=contents, tool_source_class="XmlToolSource")
+    )
+    assert tool.config_file is None
+    tool.stored_source_path = GALAXY_UPLOAD_TOOL if galaxy_path else os.path.join(tmp_path, "upload.xml")
+    r = ToolSecurityReviewer(ENFORCE_CODE)
+    if galaxy_path:
+        assert r.review(tool) is None
+        r.check_job(tool, upload_job())
+    else:
+        assert r.review(tool) is not None
+        with pytest.raises(ToolInputRejected, match="uncheckable-template-code"):
+            r.check_job(tool, upload_job())
+
+
+@pytest.mark.parametrize("name", ["upload.xml", "data_source/upload.xml"])
+def test_upload_tool_lookalike_is_reviewed(upload_app, tmp_path, name, caplog):
+    # The same id and action, from a path that is not Galaxy's, as a Tool Shed or local copy loads from.
+    caplog.set_level(logging.WARNING, logger=security_review.__name__)
+    with open(GALAXY_UPLOAD_TOOL) as fh:
+        contents = fh.read()
+    os.makedirs(os.path.dirname(os.path.join(tmp_path, name)), exist_ok=True)
+    tool = make_tool(upload_app, tmp_path, contents, name=name)
+    assert tool.id == "upload1" and tool.tool_action.__class__.__name__ == "UploadToolAction"
+    r = ToolSecurityReviewer(ENFORCE_CODE)
+    review = r.review(tool)
+    assert review is not None and review.status == ANALYSED
+    with pytest.raises(ToolInputRejected, match="uncheckable-template-code"):
+        r.check_job(tool, upload_job())
+    with pytest.raises(ToolInputRejected):
+        r.check_job(tool, upload_job())
+    # Said once per tool, naming Galaxy's own upload tool.
+    warnings = [m for m in caplog.messages if "declares Galaxy's upload tool" in m]
+    assert len(warnings) == 1
+    assert os.path.realpath(GALAXY_UPLOAD_TOOL) in warnings[0] and tool.config_file in warnings[0]
+
+
 # -- off ---------------------------------------------------------------------------------------
 
 

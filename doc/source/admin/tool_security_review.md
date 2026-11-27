@@ -90,6 +90,19 @@ A plain value has no quotes, no `$ ; & | < > \ ( ) { } [ ] % # *`, no newline or
 `-`, and none of Galaxy's sanitizer tokens such as `__gt__`. Each refused job carries
 [refusal codes](#refusal-codes).
 
+Galaxy's own tools are not reviewed: the upload tool (`upload1`) and the tools Galaxy runs itself (set
+metadata, data fetch, history import and export). Nor are tools without a command template, user-defined tools
+and expression tools. Every other tool Galaxy ships with a command template is reviewed: its stock tools
+wherever Galaxy is installed, the datatype converters and the sample sheet tools (the collection operations have
+no command). Galaxy's own tools are matched by their real path, so a copy of one elsewhere is reviewed like any
+other tool. Galaxy logs once per tool, at `INFO`, that one of its own tools is not reviewed.
+
+The upload tool is the one the default settings would otherwise refuse. Galaxy gives an upload job its outputs
+when it creates the job, so the tool cannot list them and its template reads them by a computed name
+(`$getVar('output%i' % $outnum)`), which the review cannot check. Its file is `data_source/upload.xml` in
+Galaxy's bundled tools (`tools/` in a source checkout), or a link to it. A Tool Shed or local tool that declares
+the same id and upload action from another path gets a warning naming the bundled file, once per tool.
+
 ## Spec cases
 
 The examples below are the cases of the review's declarative spec, `lib/galaxy/tool_util/security/spec/`,

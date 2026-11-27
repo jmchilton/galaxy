@@ -5432,7 +5432,11 @@
     ``~``. ``enforce_all`` also fails a job whose value can split into
     extra plain words or close its quotes. Set to ``log`` to log what
     ``enforce_all`` would fail and run the job, or ``off`` to turn off
-    the review and the checks.
+    the review and the checks. Galaxy's own tools are not reviewed at
+    any level: the upload tool (``upload1``) and the tools Galaxy runs
+    itself (set metadata, data fetch, history import and export). Nor
+    are tools without a command template, user-defined tools and
+    expression tools. Every other tool Galaxy ships is reviewed.
 :Default: ``enforce_code``
 :Type: str
 
@@ -5466,9 +5470,10 @@
     ``tool_security_review`` also fails the job, with a message that
     names the values or the reason. With ``refuse``, Galaxy fails
     every such job whatever its values. With ``log``, Galaxy only logs
-    what ``strict`` would fail and runs the job. Tools without a
-    command template, user-defined tools and expression tools are not
-    reviewed and are not affected.
+    what ``strict`` would fail and runs the job. Galaxy's own tools
+    (the upload tool and the tools Galaxy runs itself), tools without
+    a command template, user-defined tools and expression tools are
+    not reviewed and are not affected.
 :Default: ``strict``
 :Type: str
 

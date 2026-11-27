@@ -172,6 +172,23 @@ class TestToolSecurityReviewDefaults(BaseToolSecurityReviewTestCase):
                 "[uncheckable-letters-are-code] This job was not run: this Galaxy server cannot check any value for tool"
             )
 
+    def test_galaxy_upload_tool_runs(self):
+        # upload1 reads the outputs Galaxy gives its jobs by computed name, but it is Galaxy's own.
+        with self.dataset_populator.test_history() as history_id:
+            hda = self.dataset_populator.new_dataset(history_id, content="1\n", fetch_data=False)
+            self.dataset_populator.wait_for_history(history_id, assert_ok=False)
+            output = self.dataset_populator.get_history_dataset_details(history_id, dataset=hda, assert_ok=False)
+        assert output["state"] == "ok", output
+
+
+class TestToolSecurityReviewDefaultsCachedToolbox(TestToolSecurityReviewDefaults):
+    """The cached toolbox builds tools from its tool source store, without their tool file."""
+
+    @classmethod
+    def handle_galaxy_config_kwds(cls, config):
+        super().handle_galaxy_config_kwds(config)
+        config["use_cached_toolbox"] = True
+
 
 class TestToolSecurityReviewNotStrict(BaseToolSecurityReviewTestCase):
     mode = "enforce_code"
