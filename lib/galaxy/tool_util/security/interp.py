@@ -307,10 +307,13 @@ class Env:
         """Keep what nested code changed in the method's locals, other than the names it binds itself.
 
         A walrus in a comprehension binds in the method, and a list or dict of the method's can be
-        changed in place. The nested code may not run, so a local can also keep its value.
+        changed in place. The nested code may not run, so a local can also keep its value, and a name it
+        binds may stay unbound, where `$name` reads the namespace.
         """
         for name, value in inner.local.items():
             if name not in own and not _narrowing_key(name) and self.local.get(name) is not value:
+                if name not in self.local:
+                    self.hidden = self.hidden | {name}
                 self.assign(name, value, weak=True)
 
     def merge(self, others: list[Env]) -> None:
@@ -324,6 +327,7 @@ class Env:
                 self.local.pop(name, None)
                 continue
             self.local[name] = join(*(o.local.get(name) for o in envs))
+        self.hidden = frozenset().union(*(o.hidden for o in others))
 
     def assign(self, name: str, value: AV, weak: bool = False) -> None:
         self.local[name] = join(self.local.get(name), value) if weak else value
@@ -410,6 +414,16 @@ def _unwrap_str(node: ast.expr) -> ast.expr:
     ):
         node = node.args[0]
     return node
+
+
+def _walrus_targets(node: ast.AST) -> set[str]:
+    """The names a walrus binds in the scope of ``node``, outside the lambdas in it."""
+    if isinstance(node, ast.Lambda):
+        return set()
+    names = {node.target.id} if isinstance(node, ast.NamedExpr) and isinstance(node.target, ast.Name) else set()
+    for child in ast.iter_child_nodes(node):
+        names |= _walrus_targets(child)
+    return names
 
 
 def _template_path(node: ast.expr) -> str | None:
@@ -943,15 +957,14 @@ class TemplateAnalysis:
             if isinstance(arg, ast.Call) and isinstance(arg.func, ast.Name) and arg.func.id == "_filter" and arg.args:
                 return self.write_value(self.ev(arg.args[0], env), None, states, env)
             return self.write_value(self.ev(arg, env), None, states, env)
-        if self._block_call(node):
-            assert isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-            return self.inline(node.func.attr, [], states, env)
+        if block := self._block_call(node):
+            return self.inline(block, [], states, env)
         self.ev(node, env)
         return states
 
-    def _block_call(self, node: ast.expr) -> bool:
-        """``self.name(trans=trans)``: a `#block`, whose method writes its text where the block is."""
-        return (
+    def _block_call(self, node: ast.expr) -> str | None:
+        """The name of a `#block` called as ``self.name(trans=trans)``: its method writes its text in place."""
+        if (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Attribute)
             and isinstance(node.func.value, ast.Name)
@@ -959,7 +972,9 @@ class TemplateAnalysis:
             and node.func.attr in self.template.helpers
             and not node.args
             and [(k.arg, getattr(k.value, "id", None)) for k in node.keywords] == [("trans", "trans")]
-        )
+        ):
+            return node.func.attr
+        return None
 
     def bind(self, target: ast.expr, value: AV, env: Env, weak: bool = False) -> None:
         if isinstance(target, ast.Name):
@@ -1593,8 +1608,9 @@ class TemplateAnalysis:
             for name in names:
                 inner.assign(name, defaults.get(name, CLEAN))
             body = contents(self.ev(node.body, inner))
-            # What a call does to the method's locals, as if it ran here.
-            env.rejoin(inner, set(names))
+            # What a call does to the method's locals, as if it ran here, as far as it does not depend
+            # on the arguments. A walrus in the body binds in the lambda's own frame.
+            env.rejoin(inner, set(names) | _walrus_targets(node.body))
             return AV(bound=(body, joins_arguments))
         if isinstance(node, ast.NamedExpr):
             value = self.ev(node.value, env)
@@ -1716,6 +1732,7 @@ class TemplateAnalysis:
                     return join(self._namespace(variable, env), default) if root else default
                 if self.model.lookup(root) is not None or root in env.shared:
                     # getVar reads the namespace, the #set global store first, never the method's locals.
+                    # A test of `$name` may have been about a local of that name, so none applies here.
                     return join(self.resolve(variable, Env(shared=env.shared), True), default)
             return default
         if _DECODERS.match(name):
