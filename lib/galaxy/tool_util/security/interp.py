@@ -1550,11 +1550,18 @@ class TemplateAnalysis:
         if isinstance(node, ast.Starred):
             return self.ev(node.value, env)
         if isinstance(node, ast.Lambda):
-            inner = env.nested()
             arguments = node.args
+            positional = [*arguments.posonlyargs, *arguments.args]
+            # Defaults are evaluated where the lambda is; an argument the call leaves out has its default.
+            defaulted = zip(positional[len(positional) - len(arguments.defaults) :], arguments.defaults)
+            defaults = {arg.arg: self.ev(default, env) for arg, default in defaulted}
+            for arg, default in zip(arguments.kwonlyargs, arguments.kw_defaults):
+                if default is not None:
+                    defaults[arg.arg] = self.ev(default, env)
+            inner = env.nested()
             starred = [a for a in (arguments.vararg, arguments.kwarg) if a is not None]
-            for arg in [*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs, *starred]:
-                inner.assign(arg.arg, CLEAN)
+            for arg in [*positional, *arguments.kwonlyargs, *starred]:
+                inner.assign(arg.arg, defaults.get(arg.arg, CLEAN))
             return AV(bound=(contents(self.ev(node.body, inner)), joins_arguments))
         if isinstance(node, ast.NamedExpr):
             value = self.ev(node.value, env)
