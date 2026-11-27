@@ -74,22 +74,18 @@
         ## Full dataset uploads
 
         #for $count, $input in enumerate($inputs):
-            #if $input.fileselect.typeselect == "bed":
-                #for $file in $input.fileselect.inputfiles:
+            #for $file in $input.fileselect.inputfiles:
+                #if $input.fileselect.typeselect == "bed":
                     #set $filename = "data/" + $file.element_identifier + "." + str($file.ext)
                     cp $file $filename &&
                     clodius aggregate bedfile --assembly $file.metadata.dbkey $filename &&
                     mv ${filename}.beddb data/${file.element_identifier} &&
                     python higlass-server/manage.py ingest_tileset --filename data/${file.element_identifier} --filetype beddb --datatype bedlike --coordSystem $file.metadata.dbkey &&
-                #end for
-            #elif $input.fileselect.typeselect == "bigwig":
-                #for $file in $input.fileselect.inputfiles:
+                #elif $input.fileselect.typeselect == "bigwig":
                     #set $filename = "data/" + $file.element_identifier
                     cp $file $filename &&
                     python higlass-server/manage.py ingest_tileset --filename ${filename} --filetype bigwig --datatype vector --coordSystem ${file.metadata.dbkey} &&
-                #end for
-            #elif $input.fileselect.typeselect == "bedgraph":
-                #for $file in $input.fileselect.inputfiles:
+                #elif $input.fileselect.typeselect == "bedgraph":
                     #set $filename = "data/" + $file.element_identifier + "." + str($file.ext)
                     cp $file $filename &&
                     cat $filename | sort -k1,1 -k2,2n | awk '{ if (NF >= 4) print $${file.metadata.chromCol} "\t" $${file.metadata.startCol} "\t" $${file.metadata.endCol} "\t" $${input.fileselect.valuecol}}' > ${filename}.presort;
@@ -100,24 +96,18 @@
                     #end if
                     mv ${filename}.bigwig data/${file.element_identifier} &&
                     python higlass-server/manage.py ingest_tileset --filename data/${file.element_identifier} --filetype bigwig --datatype vector --coordSystem ${file.metadata.dbkey} &&
-                #end for
-            #elif $input.fileselect.typeselect == "bigbed":
-                #for $file in $input.fileselect.inputfiles:
+                #elif $input.fileselect.typeselect == "bigbed":
                     #set $filename = "data/" + $file.element_identifier + "." + str($file.ext)
                     cp $file $filename &&
                     bigBedToBed ${filename} ${file.element_identifier} &&
                     clodius aggregate bedfile --assembly $file.metadata.dbkey ${file.element_identifier} &&
                     mv ${file.element_identifier}.beddb data/${file.element_identifier} &&
                     python higlass-server/manage.py ingest_tileset --filename data/${file.element_identifier} --filetype beddb --datatype bedlike --coordSystem $file.metadata.dbkey &&
-                #end for
-            #elif $input.fileselect.typeselect == "mcool":
-                #for $file in $input.fileselect.inputfiles:
+                #elif $input.fileselect.typeselect == "mcool":
                     #set $filename = "data/" + $file.element_identifier
                     cp $file $filename &&
                     python higlass-server/manage.py ingest_tileset --filename $filename --filetype cooler --datatype matrix &&
-                #end for
-            #elif $input.fileselect.typeselect == "cool":
-                #for $file in $input.fileselect.inputfiles:
+                #elif $input.fileselect.typeselect == "cool":
                     #set $filename = "data/" + $file.element_identifier + "." + str($file.ext)
                     cp $file $filename &&
                     cooler zoomify -r $input.fileselect.zoomval -o data/${file.element_identifier} $filename &&
@@ -131,8 +121,8 @@
 
 
                     python higlass-server/manage.py ingest_tileset --filename data/${file.element_identifier} --filetype cooler --datatype matrix &&
-                #end for
-            #end if
+                #end if
+            #end for
         #end for
         tail -f /var/log/supervisor/*
     ]]>
