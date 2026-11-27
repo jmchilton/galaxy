@@ -302,6 +302,16 @@ class Env:
         """
         return Env(dict(self.local), self.shared, frozenset(name for name in self.local if not _narrowing_key(name)))
 
+    def rejoin(self, inner: Env, own: set[str]) -> None:
+        """Keep what nested code changed in the method's locals, other than the names it binds itself.
+
+        A walrus in a comprehension binds in the method, and a list or dict of the method's can be
+        changed in place. The nested code may not run, so a local can also keep its value.
+        """
+        for name, value in inner.local.items():
+            if name not in own and not _narrowing_key(name) and self.local.get(name) is not value:
+                self.assign(name, value, weak=True)
+
     def merge(self, others: list[Env]) -> None:
         names = set(self.local)
         for other in others:
@@ -1542,8 +1552,12 @@ class TemplateAnalysis:
             for condition in generator.ifs:
                 self.ev(condition, inner)
         if isinstance(node, ast.DictComp):
-            return AV(elem=join(self.ev(node.key, inner), self.ev(node.value, inner)))
-        return AV(elem=self.ev(node.elt, inner))
+            value = AV(elem=join(self.ev(node.key, inner), self.ev(node.value, inner)))
+        else:
+            value = AV(elem=self.ev(node.elt, inner))
+        targets = {n.id for g in node.generators for n in ast.walk(g.target) if isinstance(n, ast.Name)}
+        env.rejoin(inner, targets)
+        return value
 
     def _ev_rest(self, node: ast.AST, env: Env) -> AV:
         if isinstance(node, ast.Starred):
@@ -1559,9 +1573,13 @@ class TemplateAnalysis:
                     defaults[arg.arg] = self.ev(default, env)
             inner = env.nested()
             starred = [a for a in (arguments.vararg, arguments.kwarg) if a is not None]
-            for arg in [*positional, *arguments.kwonlyargs, *starred]:
-                inner.assign(arg.arg, defaults.get(arg.arg, CLEAN))
-            return AV(bound=(contents(self.ev(node.body, inner)), joins_arguments))
+            names = [arg.arg for arg in [*positional, *arguments.kwonlyargs, *starred]]
+            for name in names:
+                inner.assign(name, defaults.get(name, CLEAN))
+            body = contents(self.ev(node.body, inner))
+            # What a call does to the method's locals, as if it ran here.
+            env.rejoin(inner, set(names))
+            return AV(bound=(body, joins_arguments))
         if isinstance(node, ast.NamedExpr):
             value = self.ev(node.value, env)
             self.bind(node.target, value, env)
