@@ -1330,6 +1330,31 @@ config:
   when_unsure: log
 ```
 
+#### output_size_limit_reach
+
+Reading past the output size limit, or keeping the configuration in a variable, is still flagged.
+
+Tool `output_size_limit_reach.xml`:
+
+```
+#set $config = $__app__.config
+echo '$__app__.config.output_size_limit.__class__' > '$out' &&
+echo '$config.output_size_limit' >> '$out'
+```
+
+Refused
+
+```
+{}
+```
+
+Runs
+
+```
+config:
+  when_unsure: log
+```
+
 ### `uncheckable-letters-are-code`
 
 Letters alone can be code where the tool writes a value: the program to run, text piped to a shell that runs it (not one that runs a script file), or unquoted Perl or Ruby code.
@@ -1616,6 +1641,38 @@ user:
     spec|label: a';touch harm-marker;'
 ```
 
+#### output_size_limit_read
+
+The data source tools pass the server's output size limit, a number the admin sets, to their script. The review allows this one read of the configuration, so the job runs.
+
+Tool `output_size_limit.xml`:
+
+```
+python '$__tool_directory__/data_source.py' '$out' $__app__.config.output_size_limit
+```
+
+Runs
+
+```
+{}
+```
+
+#### output_size_limit_getvar
+
+`getVar` of the same name reads the same number, and the review allows it as it allows the read by placeholder.
+
+Tool `output_size_limit_getvar.xml`:
+
+```
+python '$__tool_directory__/data_source.py' '$out' $getVar('__app__.config.output_size_limit')
+```
+
+Runs
+
+```
+{}
+```
+
 ## Access patterns
 
 The review also reports reads it cannot follow to a value of the job. A read by name (reflection) can
@@ -1675,6 +1732,26 @@ Runs
 {}
 ```
 
+##### output_size_limit_subscript
+
+The allowance is of the attribute read alone: a subscript of the application object, here on the way to the same number, is flagged as a read of the application object. Galaxy's wrapper of the application object takes no subscript, so the tool goes that way only for a negative limit.
+
+Tool `output_size_limit_subscript.xml`:
+
+```
+#if $__app__.config.output_size_limit < 0
+python '$__tool_directory__/data_source.py' '$out' ${__app__['config'].output_size_limit}
+#else
+python '$__tool_directory__/data_source.py' '$out' 0
+#end if
+```
+
+Runs
+
+```
+{}
+```
+
 #### `user-object`
 
 Reads the user object with the sanitizer off. A preference read by its name is checked; anything else read from the user object is not.
@@ -1724,6 +1801,8 @@ datasets:
 #### `server-config`
 
 Reads the server's configuration or encodes ids (`$__app__.config`, `$__app__.security`).
+
+Refused cases with it: `output_size_limit_reach`.
 
 ##### server_config_read
 

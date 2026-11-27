@@ -1061,6 +1061,56 @@ server_config_read:
     - harm: true
       expect: {rejected: false}
 
+output_size_limit_read:
+  doc: >-
+    The data source tools pass the server's output size limit, a number the admin sets, to their script. The
+    review allows this one read of the configuration, so the job runs.
+  tool: output_size_limit.xml
+  review:
+    patterns: []
+    serious_rules: []
+  green:
+    - expect: {rejected: false}
+
+output_size_limit_reach:
+  doc: Reading past the output size limit, or keeping the configuration in a variable, is still flagged.
+  tool: output_size_limit_reach.xml
+  code: uncheckable-template-code
+  review:
+    findings:
+      - {rule: template-app-access, severity: high}
+      - {rule: template-reflection, severity: high}
+    patterns: [server-config]
+  red:
+    - expect: {rejected: true}
+  green:
+    - config: {when_unsure: log}
+      expect: {rejected: false, warns: [uncheckable-template-code]}
+
+output_size_limit_getvar:
+  doc: >-
+    `getVar` of the same name reads the same number, and the review allows it as it allows the read by
+    placeholder.
+  tool: output_size_limit_getvar.xml
+  review:
+    patterns: []
+    serious_rules: []
+  green:
+    - expect: {rejected: false}
+
+output_size_limit_subscript:
+  doc: >-
+    The allowance is of the attribute read alone: a subscript of the application object, here on the way to
+    the same number, is flagged as a read of the application object. Galaxy's wrapper of the application object
+    takes no subscript, so the tool goes that way only for a negative limit.
+  tool: output_size_limit_subscript.xml
+  review:
+    findings:
+      - {rule: template-app-access, severity: high}
+    patterns: [app-access]
+  green:
+    - expect: {rejected: false}
+
 refused_when_unsure:
   doc: >-
     An administrator can refuse every job the review cannot check instead of checking its values strictly.

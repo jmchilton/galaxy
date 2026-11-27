@@ -90,6 +90,8 @@ _REFLECTION_BUILTINS = frozenset(
     ("getattr", "setattr", "delattr", "globals", "locals", "vars", "builtin", "builtins", "__builtins__", "dir")
 )
 _FILE_BUILTINS = frozenset(("open",))
+# Exact `$__app__` reads that are harmless: numbers the admin sets, passed on by stock tools.
+_HARMLESS_APP_READS = frozenset({("config", "output_size_limit")})
 _GENERATED_SELF = frozenset(("_CHEETAH__globalSetVars", "_CHEETAH__isBuffering", "getVar", "varExists", "hasVar"))
 # Modules that act when passed around as a value (`#set $o = $os`): the call on them cannot be followed.
 _MODULE_VALUES = frozenset(("os", "sys", "builtins", "__builtins__", "builtin"))
@@ -481,6 +483,8 @@ class PythonAudit:
             self.add("template-reflection", HIGH, f"Uses `{root}`: can reach any Python object", dotted, line)
         elif root == "sys":
             self.add("template-reflection", HIGH, f"Uses `{dotted}`: reaches interpreter state", dotted, line)
+        elif root == "__app__" and tuple(rest) in _HARMLESS_APP_READS:
+            pass
         elif root == "__app__":
             self.add(
                 "template-app-access",
