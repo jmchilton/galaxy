@@ -56,6 +56,8 @@ class Value(Node):
     as_raw: AV = CLEAN
     as_element: AV | None = None
     text_like: bool = False  # unknown attributes are string methods of the raw value
+    # A select that takes only these values, each rendered as it is: options fixed in the tool, no sanitizer.
+    options: tuple[str, ...] | None = None
 
     def text(self) -> AV:
         return self.as_text

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import replace
+from functools import partial
 
 from Cheetah.Parser import ParseError
 
@@ -81,9 +82,9 @@ def _include_templates(source: str, templates: dict[str, str]) -> str:
     return source
 
 
-def _compile(source: str, location: str, report: Report) -> CompiledTemplate | None:
+def _compile(source: str, location: str, report: Report, model: Model) -> CompiledTemplate | None:
     try:
-        return compile_template(source, rewrite_template)
+        return compile_template(source, partial(rewrite_template, model=model))
     except CompileTimeExecution as e:
         report.add(
             Finding(
@@ -110,7 +111,7 @@ def _compile(source: str, location: str, report: Report) -> CompiledTemplate | N
 def _analyse(
     source: str, location: str, language: str, model: Model, report: Report, names: dict[str, set[str]]
 ) -> TemplateAnalysis | None:
-    template = _compile(_include_templates(source, model.templates), location, report)
+    template = _compile(_include_templates(source, model.templates), location, report, model)
     if template is None:
         return None
     audit = PythonAudit(report, location, model, analysed=True)

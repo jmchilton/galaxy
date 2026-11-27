@@ -7,6 +7,7 @@ its inputs, outputs, configfiles and template macros.
 
 from __future__ import annotations
 
+import re
 from dataclasses import (
     dataclass,
     field,
@@ -148,6 +149,22 @@ def _user_select(input_source: InputSource) -> str | None:
     return None
 
 
+_PLAIN_OPTION = re.compile(r"[A-Za-z][A-Za-z0-9_]*\Z")
+
+
+def _static_options(input_source: InputSource, ptype: str) -> tuple[str, ...] | None:
+    """The values of a select whose options the tool lists, when each is a plain name that its text renders
+    unchanged, joined by commas."""
+    if ptype != "select" or input_source.get("dynamic_options") or input_source.parse_dynamic_options() is not None:
+        return None
+    if input_source.parse_sanitizer_elem() is not None or (input_source.get("separator") or ",") != ",":
+        return None
+    values = tuple(value for _, value, _ in input_source.parse_static_options())
+    if not values or not all(isinstance(value, str) and _PLAIN_OPTION.match(value) for value in values):
+        return None
+    return values
+
+
 def _escapes_single_quote(sanitizer: ToolParameterSanitizer | None) -> bool:
     """The sanitizer rewrites ' to the sequence that writes a quote inside a single-quoted shell word."""
     return sanitizer is not None and sanitizer.sanitize_param("'") in ("'\"'\"'", "'\\''")
@@ -173,7 +190,7 @@ def _value(input_source: InputSource, path: str, tool_sanitize: bool) -> Node:
     if ptype in ("select", "drill_down") or ptype in _USER_SELECT_TYPES:
         reason = _user_select(input_source)
         if reason is None:
-            return Value(path, ptype)
+            return Value(path, ptype, options=_static_options(input_source, ptype))
         label = f"{reason} param '{path}'" if reason in _USER_SELECT_TYPES else f"'{path}' ({reason})"
         if ptype == "data_column":
             # Galaxy checks a column against the dataset's columns, except for an empty dataset.

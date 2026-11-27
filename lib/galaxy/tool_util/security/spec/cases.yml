@@ -350,6 +350,17 @@ known_helper:
     findings:
       - {rule: shell-injection, severity: high, accessor: raw, param: word, checkable: true}
 
+known_loop:
+  doc: >-
+    The hmmer3 tools write each output a select names with `getVar` of the selected value. Galaxy accepts only the
+    select's options, so the loop reads the parameters they name, whose values are reviewed as usual.
+  tool: known_loop.xml
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, accessor: raw, param: word, checkable: true}
+      - {rule: shell-injection, severity: high, accessor: raw, param: other, checkable: true}
+
 app_model_read:
   doc: >-
     The application object reaches any data of the server. The review flags the read but follows no value

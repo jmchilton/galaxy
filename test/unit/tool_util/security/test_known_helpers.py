@@ -54,6 +54,9 @@ SECTIONS = """
 """
 
 
+COMPUTED_GET_VAR = "Looks up a variable by a computed name with `getVar`"
+
+
 def code(report: Report) -> set[str]:
     """The rules of the findings for template code that reaches what no input carries."""
     return {f.rule for f in report.findings if f.rule in CODE_CAPABILITIES and rendered(f.location)}
@@ -102,6 +105,9 @@ def code(report: Report) -> set[str]:
         # The helper's own `$rg` is a #def or a #set global value.
         RG_PARAM + "#def rg()\n#return {'text': $free}\n#end def\ntool '${rg_param('text')}'",
         RG_PARAM + "#set global $rg = {'text': $free}\ntool '${rg_param('text')}'",
+        # The #set global store, reached other than as Cheetah reaches it.
+        RG_PARAM
+        + "#silent $self._CHEETAH__globalSetVars.update(dict.fromkeys(['text'], $free))\ntool '${rg_param('text')}'",
     ],
 )
 def test_misused_known_helper_is_reflection(tmp_path, command):
@@ -156,3 +162,59 @@ def test_helpers_nested_past_the_limit_are_not_followed(tmp_path, body):
 
 def test_known_helper_never_called_is_dropped(tmp_path):
     assert code(review(tmp_path, RG_PARAM + "tool")) == set()
+
+
+# tools-iuc hmmer3: macros.xml.
+OFORMAT = """#if $oformat:
+    #for o in str($oformat).split(','):
+        --$o '$getVar($o, 'MISSING_OUTPUT'+$o)'
+    #end for
+#end if
+"""
+
+
+def select(options: str = '<option value="tblout"/><option value="free"/>', attrs: str = "") -> str:
+    return INPUTS + f'<param name="oformat" type="select" multiple="true" {attrs}>{options}</param>'
+
+
+@pytest.mark.parametrize(
+    "options,injection",
+    [
+        ('<option value="tblout"/><option value="free"/>', True),
+        ('<option value="tblout"/><option value="word"/>', False),
+    ],
+)
+def test_loop_over_select_values_reads_each_option(tmp_path, options, injection):
+    report = review(tmp_path, OFORMAT + "tool", inputs=select(options))
+    assert code(report) == set()
+    assert (("shell-injection", "high") in rules(report)) is injection
+
+
+@pytest.mark.parametrize(
+    "command,inputs",
+    [
+        (OFORMAT.replace("$oformat", "$text"), select()),
+        (OFORMAT.replace("','", "';'"), select()),
+        (OFORMAT, select('<option value="tblout"/><option value="a-b"/>')),
+        (OFORMAT, select('<option value="tblout"/><option value="values"/>')),
+        (OFORMAT, select(attrs='separator=";"')),
+        (OFORMAT, select('<option value="tblout"/><sanitizer sanitize="false"/>')),
+        (OFORMAT, select('<options from_parameter="tool.app.datatypes_registry.upload_file_formats"/>')),
+        (OFORMAT, INPUTS + '<param name="oformat" type="data_column" data_ref="input"/>'),
+        (OFORMAT.replace("--$o", "#set $o = $free\n--$o"), select()),
+        (OFORMAT.replace("--$o", "--$o.x"), select()),
+        (OFORMAT.replace("--$o", "#set $n = o\n--$n"), select()),
+        ("#set $oformat = $free\n" + OFORMAT, select()),
+        ("#set $str = $text\n" + OFORMAT, select()),
+        ("#set global $tblout = $free\n" + OFORMAT, select()),
+        ("#silent $searchList()\n" + OFORMAT, select()),
+        ("#silent $self.searchList()\n" + OFORMAT, select()),
+        ("#silent $self._CHEETAH__globalSetVars.update(dict.fromkeys(['oformat'], 'free'))\n" + OFORMAT, select()),
+        # Cheetah's own local SL comes before the namespace.
+        (OFORMAT.replace("$oformat", "$SL"), select().replace("oformat", "SL")),
+        ("#def f()\n" + OFORMAT + "#end def\n$f()", select()),
+    ],
+)
+def test_loop_over_other_values_is_reflection(tmp_path, command, inputs):
+    report = review(tmp_path, command + "tool", inputs=inputs)
+    assert any(f.message.startswith(COMPUTED_GET_VAR) for f in report.findings)

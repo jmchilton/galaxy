@@ -20,6 +20,9 @@ The copies are made only when each name they look up is a tool input, found wher
   (:attr:`~.template.CompiledTemplate.namespace_get_vars`).
 
 Every part of the name is a plain identifier, which rules out dunders, mangled and Cheetah's private names.
+
+A `#for` over the values of a select gets the same reading: one branch per value, with the value in place of
+the loop variable (:func:`unroll_known_loops`).
 """
 
 from __future__ import annotations
@@ -33,10 +36,12 @@ from collections.abc import (
     Iterator,
 )
 from functools import lru_cache
+from typing import TYPE_CHECKING
 
 from Cheetah.Template import Template
 
 from galaxy.util.tree_dict import TreeDict
+from .nodes import Value
 from .template import (
     BODY_START,
     compiled_module,
@@ -44,6 +49,10 @@ from .template import (
     NAME_MAPPER,
     NAMESPACE_LOOKUPS,
 )
+from .values import Group
+
+if TYPE_CHECKING:
+    from .model import Model
 
 # The Cheetah source of each known helper, in every version tools-iuc has had.
 KNOWN_HELPERS = (
@@ -82,6 +91,7 @@ _LOOKED_UP = frozenset(("getVar", "varExists", "hasVar"))
 # Names of the generated code that its calls and writes go through.
 _GENERATED = frozenset(("SL", "write", "_filter", "_CHEETAH__globalSetVars", *NAME_MAPPER))
 _INCLUDE = "_handleCheetahInclude"
+_GLOBALS = "_CHEETAH__globalSetVars"
 
 # A call of a helper, the lookup of the helper it calls, and the literal text it passes.
 _Call = tuple[ast.Call, ast.Call, tuple[str, ...]]
@@ -205,7 +215,7 @@ def _rebinds(tree: ast.Module, literal: set[int]) -> bool:
     lookup_paths = {
         id(lookup.args[1])
         for node in ast.walk(tree)
-        if (lookup := _lookup(node)) and _INCLUDE not in str(constant(lookup.args[1]))
+        if (lookup := _lookup(node)) and not (_INCLUDE in (path := str(constant(lookup.args[1]))) or _GLOBALS in path)
     }
     global_keys = set()
     for node in ast.walk(tree):
@@ -240,6 +250,9 @@ def _rebinds(tree: ast.Module, literal: set[int]) -> bool:
             if looked_up.search(text):
                 return True
             if not isinstance(node, ast.Constant) and generated.search(text):
+                return True
+            # Only Cheetah's own stores and reads reach the #set global store.
+            if _GLOBALS in text:
                 return True
     return False
 
@@ -296,27 +309,34 @@ def object_names() -> frozenset[str]:
 def _namespace_get_vars(copies: Iterable[ast.FunctionDef], bound: set[str]) -> set[int] | None:
     """The getVar calls of the copies, when each name they and the copies' other lookups read is one only the
     namespace can answer for; None otherwise."""
-    found = set()
     for clone in copies:
         for node in ast.walk(clone):
-            if not isinstance(node, ast.Call):
-                continue
             lookup = _lookup(node)
             if lookup is not None and isinstance(lookup.func, ast.Name) and lookup.func.id in NAMESPACE_LOOKUPS:
                 root = str(constant(lookup.args[1])).split(".")[0]
                 if root not in _LOOKED_UP and not _unclaimed(root, bound):
                     return None
-            if _namespace_lookup(node.func, "getVar") is not None:
-                name = constant(node.args[0]) if node.args else None
-                if not isinstance(name, str):
-                    return None
-                parts = name.replace("$", "").split(".")
-                # An empty part names nothing: the lookup fails there.
-                if not all(not part or IDENTIFIER.match(part) for part in parts):
-                    return None
-                if parts[0] and not _unclaimed(parts[0], bound):
-                    return None
-                found.add(id(node))
+    return _literal_get_vars(copies, bound)
+
+
+def _literal_get_vars(nodes: Iterable[ast.AST], bound: set[str]) -> set[int] | None:
+    """The getVar calls in ``nodes``, when each looks up a literal name only the namespace can answer for;
+    None otherwise."""
+    found = set()
+    for top in nodes:
+        for node in ast.walk(top):
+            if not isinstance(node, ast.Call) or _namespace_lookup(node.func, "getVar") is None:
+                continue
+            name = constant(node.args[0]) if node.args else None
+            if not isinstance(name, str):
+                return None
+            parts = name.replace("$", "").split(".")
+            # An empty part names nothing: the lookup fails there.
+            if not all(not part or IDENTIFIER.match(part) for part in parts):
+                return None
+            if parts[0] and not _unclaimed(parts[0], bound):
+                return None
+            found.add(id(node))
     return found
 
 
@@ -349,7 +369,12 @@ def method_locals() -> frozenset[str]:
 
 def _unclaimed(name: str, bound: set[str]) -> bool:
     """A plain name that only the namespace can answer for: a tool input, a job parameter, or nothing."""
-    return bool(IDENTIFIER.match(name)) and name not in bound and name not in object_names()
+    return (
+        bool(IDENTIFIER.match(name))
+        and name not in bound
+        and name not in object_names()
+        and name not in method_locals()
+    )
 
 
 @lru_cache(maxsize=1)
@@ -438,7 +463,95 @@ def _copies(
     return copies
 
 
-def _reads_any(method: ast.FunctionDef, names: tuple[str, ...]) -> bool:
+def unroll_known_loops(tree: ast.Module, model: Model) -> set[int]:
+    """Give a ``#for`` of the template body over the values of a select one branch per value the loop variable
+    can take, with that value in its place, when getVar then looks up literal names only.
+
+    Galaxy accepts only the select's options, and ``str()`` of none selected is ``None``. The loop itself stays,
+    so the branches run in the order the values come. Returns the getVar calls of the branches.
+    """
+    found: set[int] = set()
+    classes = [node for node in tree.body if isinstance(node, ast.ClassDef)]
+    if len(classes) != 1 or not _plain_class(classes[0]) or _rebinds(tree, _literal_text(tree)):
+        return found
+    # A lookup that reaches the search list itself can put any value under a name.
+    if any(_lookup_root(node) in (object_names() | method_locals()) - _LOOKED_UP for node in ast.walk(tree)):
+        return found
+    bound = bound_names(tree)
+    for method in classes[0].body:
+        if isinstance(method, ast.FunctionDef) and method.name == "respond":
+            for loop in reversed([node for node in ast.walk(method) if isinstance(node, ast.For)]):
+                values = _loop_values(loop, model, bound)
+                branches = _branches(loop, values, bound) if values is not None else None
+                if branches is not None:
+                    get_vars, loop.body = branches
+                    found |= get_vars
+    return found
+
+
+def _lookup_root(node: ast.AST) -> str | None:
+    lookup = _lookup(node)
+    if lookup is None or not isinstance(lookup.func, ast.Name) or lookup.func.id not in NAMESPACE_LOOKUPS:
+        return None
+    return str(constant(lookup.args[1])).split(".")[0]
+
+
+def _loop_values(loop: ast.For, model: Model, bound: set[str]) -> tuple[str, ...] | None:
+    """The values the variable of `#for $v in str($select).split(',')` can take."""
+    it = loop.iter
+    if not (
+        isinstance(loop.target, ast.Name)
+        and isinstance(it, ast.Call)
+        and isinstance(it.func, ast.Attribute)
+        and it.func.attr == "split"
+        and not it.keywords
+        and len(it.args) == 1
+        and constant(it.args[0]) == ","
+        and isinstance(text := it.func.value, ast.Call)
+        and isinstance(text.func, ast.Name)
+        and text.func.id == "str"
+        and "str" not in bound
+        and not text.keywords
+        and len(text.args) == 1
+        and (path := lookup_path(text.args[0])) is not None
+        and _unclaimed(path.split(".")[0], bound)
+    ):
+        return None
+    root, *rest = path.split(".")
+    found = model.lookup(root)
+    nodes = list(found.nodes) if found is not None else []
+    for part in rest:
+        nodes = [child for node in nodes if isinstance(node, Group) for child in node.children.get(part, ())]
+    if len(nodes) != 1 or not isinstance(nodes[0], Value) or nodes[0].options is None:
+        return None
+    return (*nodes[0].options, "None")
+
+
+def _branches(loop: ast.For, values: tuple[str, ...], bound: set[str]) -> tuple[set[int], list[ast.stmt]] | None:
+    """The loop body as `if v == value: <body with value for v>` for each value, and the getVar calls in it;
+    None unless the body reads the variable only as `$v` and its getVar calls then look up literal names."""
+    assert isinstance(loop.target, ast.Name)
+    target = loop.target.id
+    body = ast.Module(body=loop.body, type_ignores=[])
+    if any(name == target for name, _ in _bindings(body, set())):
+        return None
+    branches = []
+    for value in values:
+        branch = _Substitute({target: value}).visit(copy.deepcopy(body))
+        if _reads_any(branch, (target,)):
+            return None
+        branches.append((value, branch.body))
+    get_vars = _literal_get_vars([stmt for _, stmts in branches for stmt in stmts], bound)
+    if not get_vars:
+        return None
+    chain: list[ast.stmt] = []
+    for value, stmts in reversed(branches):
+        test = ast.Compare(left=ast.Name(id=target, ctx=ast.Load()), ops=[ast.Eq()], comparators=[ast.Constant(value)])
+        chain = [ast.fix_missing_locations(ast.copy_location(ast.If(test=test, body=stmts, orelse=chain), loop))]
+    return get_vars, chain
+
+
+def _reads_any(method: ast.AST, names: tuple[str, ...]) -> bool:
     """Whether a method still reads one of ``names``, as a Python name or the first part of a lookup."""
     for node in ast.walk(method):
         if isinstance(node, ast.Name) and node.id in names:
