@@ -19,7 +19,7 @@ class StaticReview(BaseModel):
 
     severities: dict[str, str] = {}
     error: str | None = None
-    # What reviewed the tool; a stored review from another version is reviewed again.
+    # The Galaxy version that reviewed the tool.
     version: str
 
     @classmethod

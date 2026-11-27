@@ -1494,6 +1494,37 @@
 :Type: bool
 
 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+``tool_security_refuse_static_findings``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+:Description:
+    Refuse jobs of tools whose static security review (see `python -m
+    galaxy.tool_util.security`) reports a finding at or above
+    `tool_security_refuse_static_findings_severity`. Tools are
+    reviewed when they load, after their tool patches
+    (`tool_patch_paths`), so a patch that clears a finding lets the
+    tool run again. Refused tools still load and show in the tool
+    panel; their jobs fail with the rule ids of the findings.
+    Uncheckable codes, unchecked locations and a review that fails
+    refuse nothing. Galaxy's own tools under `lib/galaxy` are not
+    reviewed, and neither are dynamic tools.
+:Default: ``false``
+:Type: bool
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+``tool_security_refuse_static_findings_severity``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+:Description:
+    The lowest severity of a static security review finding that
+    refuses a tool's jobs when `tool_security_refuse_static_findings`
+    is on. Changing it takes effect without reviewing tools again.
+:Default: ``high``
+:Type: str
+
+
 ~~~~~~~~~~~~~~~~~~~~
 ``biotools_use_api``
 ~~~~~~~~~~~~~~~~~~~~

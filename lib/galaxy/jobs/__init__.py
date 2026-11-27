@@ -152,6 +152,7 @@ from galaxy.tools.parameters import (
     collect_directory_uris,
     params_to_json_internal,
 )
+from galaxy.tools.static_findings import check_static_findings
 from galaxy.util import (
     parse_xml_string,
     RWXRWXRWX,
@@ -1472,6 +1473,7 @@ class MinimalJobWrapper(HasResourceParameters):
             for container_description in self.tool.containers:
                 if rejection := allowlist.rejection(container_description.identifier):
                     raise InsufficientPermissionsException(rejection)
+        check_static_findings(self.tool, self.app.config)
 
         def get_special():
             stmt = select(model.JobExportHistoryArchive).filter_by(job=job).limit(1)

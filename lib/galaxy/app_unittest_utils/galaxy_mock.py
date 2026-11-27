@@ -238,6 +238,8 @@ class MockAppConfig(GalaxyDataTestConfig, CommonConfigurationMixin):
         self.metadata_strategy = "directory"
         self.user_defined_tool_allowed_containers = ["quay.io/biocontainers/*"]
         self.user_defined_tool_denied_containers: list[str] = []
+        self.tool_security_refuse_static_findings = False
+        self.tool_security_refuse_static_findings_severity = "high"
 
         self.user_activation_on = False
         self.new_user_dataset_access_role_default_private = True

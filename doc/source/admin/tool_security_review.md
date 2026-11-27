@@ -4,7 +4,8 @@
 user controls can leave the quotes or the argument it is written into: a text parameter, a collection element
 identifier, a dataset name or metadata element, a group tag, a dataset's content, a user preference. Nothing
 from the tool is run: the templates are compiled with Cheetah's compiler and the resulting syntax tree is
-analysed. The review is static and offline; it does not change how Galaxy runs jobs.
+analysed. The review is static and offline; it changes how Galaxy runs jobs only with
+[`tool_security_refuse_static_findings`](#refusing-tools-with-findings).
 
 To see what the review finds in tools, run
 
@@ -58,6 +59,24 @@ severe is new; one it makes less severe is not cleared. A patch regresses a tool
 it introduces a finding of any severity or adds a `NOTE` line; only `--fail-on uncleared` checks that a patch
 cleared anything. A collection that does not load stops the run. Tools are reviewed under their XML id and
 version (`_local` keys); `--guid` gives the Tool Shed guid of a single tool file to match its shed key.
+
+## Refusing tools with findings
+
+With `tool_security_refuse_static_findings: true`, Galaxy reviews each tool when it loads, after its tool
+patches (`tool_patch_paths`), and refuses the jobs of a tool whose patched source has a finding at or above
+`tool_security_refuse_static_findings_severity` (default `high`). That is the tool `--fail-on <severity>`
+fails, run on the patched tool. A refused tool still loads and is listed in the tool panel. Its jobs fail when
+they are prepared, with a message that names the rules of the findings and not their detail, for example
+`[static-findings] This job was not run: the security review of this tool reports shell-injection, ...`.
+
+- A tool patch that clears every such finding lets the tool run again; one that only makes a finding less
+  severe does not, while the finding is still at or above the severity.
+- Uncheckable codes, unchecked locations and a review that fails refuse nothing; a failed review is logged.
+- Galaxy's own tools under `lib/galaxy` (setting metadata, fetching data, collection operations) are not
+  reviewed, and neither are dynamic tools, which do not load from a tool file.
+- The severity is read when a job is prepared, so changing it needs no new review. The cached toolbox keeps
+  each tool's review on its index entry: turning the option on, or upgrading Galaxy, re-populates the index.
+  A read-only tool source store built without reviews is reviewed as its tools are loaded.
 
 ## Findings
 

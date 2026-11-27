@@ -114,6 +114,8 @@ class GalaxyAppConfigurationAttributes:
     tool_patch_paths: list[Any]
     tool_patch_reproducibility: str
     tool_patch_requirement_changes: bool
+    tool_security_refuse_static_findings: bool
+    tool_security_refuse_static_findings_severity: str
     biotools_use_api: bool
     biotools_service_cache_type: str
     biotools_service_cache_data_dir: str

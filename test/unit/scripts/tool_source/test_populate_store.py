@@ -33,6 +33,7 @@ from galaxy.tool_util.unittest_utils.tool_patches import (
     security_patch,
     write_collection,
 )
+from galaxy.tools import static_findings
 from galaxy.tools.source_store import (
     discover,
     populator,
@@ -49,6 +50,7 @@ from galaxy.tools.source_store.populator import (
     ToolFileWatcher,
 )
 from galaxy.tools.source_store.sqlalchemy import SqlAlchemyToolSourceStore
+from galaxy.tools.static_findings import REVIEW_VERSION
 
 # --- Fakes for testing ---
 
@@ -945,3 +947,82 @@ class TestToolPatches:
         cfg.tool_patch_paths = []
         tokens.append(tool_confs_token(cfg))
         assert len(set(tokens)) == 4
+
+
+class TestStaticReview:
+    """With refusals on, index entries keep the static review of the stored, patched source."""
+
+    def _setup(self, tmp_path, refuse: bool = True):
+        tools_dir = tmp_path / "tools"
+        for i in (1, 2):
+            _write_tool(tools_dir / f"stest_{i}.xml", f"stest_{i}", command=f"#import subprocess\necho stest_{i}")
+        _write_tool(tools_dir / "stest_clean.xml", "stest_clean", command="echo stest_clean")
+        _write_tool_conf(
+            tmp_path / "tool_conf.xml",
+            tools_dir,
+            '<tool file="stest_1.xml"/><tool file="stest_2.xml"/><tool file="stest_clean.xml"/>',
+        )
+        unimport = security_patch(
+            [replace_text_op("command", "#import subprocess\necho stest_2", "echo stest_2")],
+            "unusual_inputs",
+            PATCH_DOC,
+        )
+        write_collection(tmp_path / "patches", {"_local/stest_2/1.0.yml": unimport})
+        return self._config(tmp_path, refuse)
+
+    def _config(self, tmp_path, refuse: bool):
+        cfg = populate_config(tmp_path, tmp_path / "tool_conf.xml")
+        cfg.tool_patch_paths = [str(tmp_path / "patches")]
+        cfg.tool_security_refuse_static_findings = refuse
+        return cfg
+
+    def test_entries_keep_the_review_of_the_patched_source(self, tmp_path):
+        cfg = self._setup(tmp_path)
+
+        _populate_default(cfg, pattern="stest_")
+
+        _, index = _load_default_index(cfg)
+        reviews = {tool_id: index.entries[tool_id].static_review for tool_id in ("stest_1", "stest_2", "stest_clean")}
+        assert {tool_id: review and review.severities for tool_id, review in reviews.items()} == {
+            "stest_1": {"template-exec": "critical"},
+            "stest_2": {},
+            "stest_clean": {},
+        }
+        assert {review.version for review in reviews.values() if review} == {REVIEW_VERSION}
+
+    def test_entries_have_no_review_with_refusals_off(self, tmp_path):
+        cfg = self._setup(tmp_path, refuse=False)
+
+        _populate_default(cfg, pattern="stest_")
+
+        _, index = _load_default_index(cfg)
+        assert index.entries["stest_1"].static_review is None
+
+    def test_turning_refusals_on_reviews_unchanged_tools(self, tmp_path):
+        cfg = self._setup(tmp_path, refuse=False)
+        _populate_default(cfg, pattern="stest_", incremental=True)
+
+        cfg = self._config(tmp_path, refuse=True)
+        assert _populate_default(cfg, pattern="stest_", incremental=True)["unchanged"] == 0
+        _, index = _load_default_index(cfg)
+        review = index.entries["stest_1"].static_review
+        assert review is not None and review.severities == {"template-exec": "critical"}
+        assert _populate_default(cfg, pattern="stest_", incremental=True)["unchanged"] == 3
+
+    def test_stale_review_version_is_reviewed_again(self, tmp_path, monkeypatch):
+        cfg = self._setup(tmp_path)
+        _populate_default(cfg, pattern="stest_", incremental=True)
+
+        monkeypatch.setattr(static_findings, "REVIEW_VERSION", "0.0")
+        assert _populate_default(cfg, pattern="stest_", incremental=True)["unchanged"] == 0
+        _, index = _load_default_index(cfg)
+        review = index.entries["stest_1"].static_review
+        assert review is not None and review.version == "0.0"
+
+    def test_freshness_token_follows_refusals(self, tmp_path):
+        cfg = self._setup(tmp_path, refuse=False)
+        off = tool_confs_token(cfg)
+        cfg.tool_security_refuse_static_findings = True
+        on = tool_confs_token(cfg)
+        cfg.tool_security_refuse_static_findings_severity = "critical"
+        assert off != on == tool_confs_token(cfg)

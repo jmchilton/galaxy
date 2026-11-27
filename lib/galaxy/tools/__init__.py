@@ -136,6 +136,7 @@ from galaxy.tool_util.provided_metadata import (
     NullToolProvidedMetadata,
     parse_tool_provided_metadata,
 )
+from galaxy.tool_util.security.refusal import StaticReview
 from galaxy.tool_util.toolbox import (
     AbstractToolBox,
     AbstractToolTagManager,
@@ -250,9 +251,10 @@ from galaxy.tools.parameters.workflow_utils import (
     workflow_building_modes,
 )
 from galaxy.tools.parameters.wrapped_json import json_wrap
-from galaxy.tools.patches import (
-    apply_tool_patches,
-    patch_blocks_job_cache,
+from galaxy.tools.patches import patch_blocks_job_cache
+from galaxy.tools.static_findings import (
+    load_tool_source,
+    with_static_review,
 )
 from galaxy.util import (
     asbool,
@@ -848,7 +850,7 @@ class ToolBox(AbstractToolBox):
         tool_source = self._get_tool_source_from_store(config_file, tool_id=tool_id)
         if tool_source is not None:
             self._tools_loaded_from_store += 1
-            return tool_source
+            return with_static_review(self.app.config, tool_source, config_file)
 
         # Fall back to parsing from file
         try:
@@ -858,7 +860,7 @@ class ToolBox(AbstractToolBox):
                 tool_location_fetcher=self.tool_location_fetcher,
             )
             self._tools_parsed_from_file += 1
-            return apply_tool_patches(self.app.tool_patches, tool_source, tool_id, config_file)
+            return load_tool_source(self.app.config, self.app.tool_patches, tool_source, tool_id, config_file)
         except Exception as e:
             # capture and log parsing errors
             global_tool_errors.add_error(config_file, "Tool XML parsing", e)
@@ -1569,6 +1571,7 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
         """
         self.profile = parse_profile_version(tool_source)
         self.patch: ToolPatchInfo | None = tool_source.patch_state
+        self.static_review: StaticReview | None = tool_source.static_review
         # Get the UNIQUE id for the tool
         self.old_id = tool_source.parse_id()
         if guid is None:

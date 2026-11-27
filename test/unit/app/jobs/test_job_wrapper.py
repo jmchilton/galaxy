@@ -186,6 +186,7 @@ class MockTool:
         self.requires_galaxy_python_environment = False
         self.id = "mock_id"
         self.tool_type = "default"
+        self.static_review = None
         self.home_target = None
         self.tmp_target = None
         self.tool_source = Bunch(to_string=lambda: "")

@@ -49,6 +49,7 @@ from galaxy.tool_util_models.dynamic_tool_models import DynamicToolCreatePayload
 from galaxy.tools import ToolBox
 from galaxy.tools.source_store import StoredToolSource
 from galaxy.tools.source_store.sqlalchemy import SqlAlchemyToolSourceStore
+from galaxy.tools.static_findings import REVIEW_VERSION
 from galaxy.webapps.galaxy.services.tools import ToolsService
 from galaxy.workflow import modules
 
@@ -649,6 +650,29 @@ class TestToolBox(BaseToolBoxTestCase):
         assert 'echo -- "$param1"' in tool_source.to_string()
         assert tool_source.patch_state is not None
         assert [s.state for s in tool_source.patch_state.states] == ["applied"]
+
+    def test_static_review_kept_on_parsed_and_stored_sources(self):
+        self._patch_shed_v1()
+        self.app.config.tool_security_refuse_static_findings = True
+        tool = self.toolbox.get_tool(SHED_GUID_V1, exact=True)
+        assert tool.static_review is not None and tool.static_review.version == REVIEW_VERSION
+
+        store = SqlAlchemyToolSourceStore(f"sqlite:///{Path(self.test_directory) / 'store.sqlite'}")
+        store.store(
+            StoredToolSource(
+                hash="stored",
+                tool_source_class="XmlToolSource",
+                raw_source=Path(tool.config_file).read_text().replace('echo "$param1"', "#import subprocess\necho"),
+                tool_id=SHED_GUID_V1,
+                source_path=os.path.abspath(tool.config_file),
+            )
+        )
+        self.app.config.use_cached_toolbox = True
+        self.app.tool_source_store = store
+        self.app.tool_patches = None
+        stored = self.toolbox.get_expanded_tool_source(tool.config_file, tool_id=SHED_GUID_V1)
+        assert stored.static_review is not None
+        assert stored.static_review.refused_rules("critical") == ["template-exec"]
 
     def test_reload_tool_by_id_keeps_tool_patch(self):
         self._patch_shed_v1()

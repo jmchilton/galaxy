@@ -19,6 +19,7 @@ from galaxy.tool_util.patches import (
     ToolPatchCollectionsSummary,
     ToolPatchInfo,
 )
+from galaxy.tool_util.security.refusal import StaticReview
 from galaxy.tool_util.version import parse_version
 from galaxy.tools import (
     DatabaseOperationTool,
@@ -101,6 +102,8 @@ class ToolIndexEntry(BaseModel):
 
     # === Tool patches (None when no patch file matched) ===
     patch: ToolPatchInfo | None = None
+    # Static security review of the stored source (None unless tool_security_refuse_static_findings is on)
+    static_review: StaticReview | None = None
 
     # === Timestamps ===
     indexed_at: datetime | None = None

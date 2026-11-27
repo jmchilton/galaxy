@@ -31,6 +31,7 @@ from galaxy.tool_util.patches import (
     PatchState,
     ToolPatchInfo,
 )
+from galaxy.tool_util.security.refusal import StaticReview
 from galaxy.tool_util.toolbox.base import NullToolTagManager
 from galaxy.tool_util.toolbox.lineages.factory import CachedLineageMap
 from galaxy.tool_util.toolbox.panel import (
@@ -57,6 +58,7 @@ from galaxy.tools.source_store.index import (
 )
 from galaxy.tools.source_store.sqlalchemy import SqlAlchemyToolSourceStore
 from galaxy.tools.source_store.unavailable import UnavailableToolSourceStore
+from galaxy.tools.static_findings import REVIEW_VERSION
 from galaxy.util.hash_util import md5_hash_file
 
 
@@ -1676,3 +1678,16 @@ def test_to_panel_entry_reports_patches_without_materialise():
     entry = _stub(_entry(patch=PATCH_INFO)).to_panel_entry(trans=None)
     assert entry["patches"] == [state.model_dump(mode="json") for state in PATCH_INFO.states]
     assert "patches" not in _stub().to_panel_entry(trans=None)
+
+
+def test_materializing_keeps_a_current_review_and_reviews_an_entry_without_one(tmp_path):
+    box = _materializing_box()
+    box.app.config.tool_security_refuse_static_findings = True
+    stored = _shed_image_stored(str(tmp_path))
+    kept = StaticReview(severities={"shell-injection": "high"}, version=REVIEW_VERSION)
+
+    assert box._create_tool_from_stored_source(stored, entry=_entry(static_review=kept)).static_review == kept
+    reviewed = box._create_tool_from_stored_source(stored, entry=_entry()).static_review
+    assert reviewed is not None and reviewed.version == REVIEW_VERSION and reviewed != kept
+    stale = kept.model_copy(update={"version": "0.0"})
+    assert box._create_tool_from_stored_source(stored, entry=_entry(static_review=stale)).static_review == reviewed

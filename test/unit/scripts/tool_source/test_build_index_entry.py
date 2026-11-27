@@ -34,6 +34,7 @@ class _StoredStub:
 
 class _ToolSourceStub:
     patch_state = None
+    static_review = None
 
     def __init__(
         self,

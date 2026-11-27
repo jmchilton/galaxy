@@ -80,7 +80,6 @@ from galaxy.tool_util.toolbox.parser import get_toolbox_parser
 from galaxy.tools import tool_produces_real_jobs
 from galaxy.tools.biotools import get_galaxy_biotools_metadata_source
 from galaxy.tools.patches import (
-    apply_tool_patches,
     indexed_patch_is_current,
     tool_patch_database_from_config,
 )
@@ -112,6 +111,10 @@ from galaxy.tools.source_store.manifest import (
 )
 from galaxy.tools.source_store.search import MAX_TOOL_SEARCH_HELP_CHARS
 from galaxy.tools.source_store.unavailable import UnavailableToolSourceStore
+from galaxy.tools.static_findings import (
+    load_tool_source,
+    static_review_is_current,
+)
 from galaxy.util import listify
 from galaxy.util.hash_util import md5_hash_file
 from galaxy.util.properties import load_app_properties
@@ -544,6 +547,7 @@ def build_index_entry_from_source(
             source_path=stored.source_path,
             file_hash=(stored.metadata or {}).get("file_hash"),
             patch=tool_source.patch_state,
+            static_review=tool_source.static_review,
             hidden=hidden,
             require_login=require_login,
             tool_type=tool_type,
@@ -884,13 +888,14 @@ def _populate_store_inline_unlocked(
                     and old_entry.file_hash == file_hash
                     and old_entry.source_hash in stored_hashes[store_name]
                     and indexed_patch_is_current(tool_patches, old_entry, path)
+                    and static_review_is_current(config, old_entry.static_review, path)
                 ):
                     return ("unchanged", d, store_name, None, None, None)
 
             # Galaxy's tool source parser handles macro expansion (XML) and
             # YAML user-tool / CWL parsing transparently; ``to_string`` then
             # serialises whatever the source class needs to round-trip.
-            tool_source = apply_tool_patches(tool_patches, get_tool_source(config_file=path), d.guid, path)
+            tool_source = load_tool_source(config, tool_patches, get_tool_source(config_file=path), d.guid, path)
             expanded_content = tool_source.to_string()
             content_hash = compute_hash(expanded_content)
             target_store = stores[store_name]

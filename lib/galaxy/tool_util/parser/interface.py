@@ -66,6 +66,7 @@ if TYPE_CHECKING:
         ToolOutputCollection,
     )
     from galaxy.tool_util.patches.model import ToolPatchInfo
+    from galaxy.tool_util.security.refusal import StaticReview
     from galaxy.tool_util_models.yaml_parameters import YamlReferenceDataParameter
     from .stdio import (
         ToolStdioExitCode,
@@ -155,6 +156,8 @@ class ToolSource(metaclass=ABCMeta):
     language: str
     # set by galaxy.tool_util.patches when a patch file matched this tool
     patch_state: Optional["ToolPatchInfo"] = None
+    # set by galaxy.tools.static_findings when static findings refuse jobs
+    static_review: Optional["StaticReview"] = None
 
     @abstractmethod
     def parse_id(self) -> str | None:

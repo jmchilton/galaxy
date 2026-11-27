@@ -69,6 +69,10 @@ from galaxy.tools.source_store.populator import (
     populate_store_inline,
 )
 from galaxy.tools.source_store.unavailable import UnavailableToolSourceStore
+from galaxy.tools.static_findings import (
+    static_review_is_current,
+    with_static_review,
+)
 from galaxy.util.hash_util import md5_hash_file
 from galaxy.util.tool_version import (
     is_shed_guid,
@@ -1647,6 +1651,11 @@ class CachedToolBox(ToolBox):
                 )
         # The stored source is already patched; its patch state lives on the index entry.
         tool_source.patch_state = entry.patch if entry else None
+        if entry is not None and static_review_is_current(self.app.config, entry.static_review, stored.source_path):
+            tool_source.static_review = entry.static_review
+        else:
+            # A read-only store built without the review, or by another Galaxy version.
+            with_static_review(self.app.config, tool_source, stored.source_path)
         tool = create_tool_from_source(self.app, tool_source, **kwds)
         tool.stored_source_path = stored.source_path
         return tool

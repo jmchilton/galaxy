@@ -17,6 +17,7 @@ def _config(tmp_path, confs):
         data_manager_config_file = None
         shed_data_manager_config_file = None
         tool_patch_paths: list[str] = []
+        tool_security_refuse_static_findings = False
 
         def all_tool_config_files(self):
             return [str(c) for c in confs]
