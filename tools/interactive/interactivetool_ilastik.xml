@@ -15,14 +15,14 @@
     <![CDATA[
         #import shlex
         ## Element identifiers aren't sanitized, so the names made from them are shell-quoted with shlex.quote.
-        ## Check inputs have no duplicated element_identifier:
-        #set labels = [input.element_identifier for input in $infiles]
+        ## Check inputs have no duplicated element_identifier (as link names, with slashes made underscores):
+        #set labels = [str(input.element_identifier).replace('/', '_') for input in $infiles]
         #set duplicates = [label for label in labels if labels.count(label) > 1]
         #if len(duplicates) > 0:
             #set unique_duplicates = list(set(duplicates))
             echo "Cannot run ilastik because these identifiers are present more than once:" &&
             #for label in $unique_duplicates:
-                echo '  '${shlex.quote(str($label))} &&
+                echo '  '${shlex.quote($label)} &&
             #end for
             exit 1 &&
         #end if
@@ -37,7 +37,7 @@
 
         ## Link input images to current working directory
         #for input, label in zip($infiles, $labels):
-            ln -s '$input' ./${shlex.quote(str($label).replace('/', '_') + '.tif')} &&
+            ln -s '$input' ./${shlex.quote($label + '.tif')} &&
         #end for
         ## Write the bash script to run:
         #if str($input_type.existing) == "new":
