@@ -1698,8 +1698,9 @@ class TemplateAnalysis:
                 root = variable.split(".")[0]
                 if id(node) in self.template.namespace_get_vars:
                     return join(self._namespace(variable, env), default) if root else default
-                if self.model.lookup(root) is not None or root in env.local or root in env.shared:
-                    return join(self.resolve(variable, env, True), default)
+                if self.model.lookup(root) is not None or root in env.shared:
+                    # getVar reads the namespace, the #set global store first, never the method's locals.
+                    return join(self.resolve(variable, Env(shared=env.shared), True), default)
             return default
         if _DECODERS.match(name):
             text = contents(first)
