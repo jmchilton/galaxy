@@ -47,7 +47,7 @@ SECURITY: ChangeKind = "security"
 COMPAT: ChangeKind = "compat"
 PYTHON2TO3: ChangeKind = "python2to3"
 # python2to3 ops rewrite template text only: the command or one named template configfile.
-PYTHON2TO3_PATH = r"^(command|configfiles/configfile\[@name='[^'\[\]]+'\])$"
+PYTHON2TO3_PATH = r"command|configfiles/configfile\[@name='[^'\[\]]+'\]"
 NEEDED_FROM_PATTERN = r"^\d{2}\.\d+$"
 
 Occurrences = Annotated[int, Field(strict=True, gt=0)]
@@ -354,7 +354,7 @@ class PatchFile(_FileModel):
                 raise ValueError(f"op {i}: compat ops need needed_from (on the op or the file)")
             if self.op_kind(op) == PYTHON2TO3:
                 body = op.body
-                if not isinstance(body, ReplaceText) or not re.match(PYTHON2TO3_PATH, body.path):
+                if not isinstance(body, ReplaceText) or not re.fullmatch(PYTHON2TO3_PATH, body.path):
                     raise ValueError(
                         f"op {i}: python2to3 ops are replace_text on command or configfiles/configfile[@name='...']"
                     )

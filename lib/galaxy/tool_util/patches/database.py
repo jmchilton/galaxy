@@ -70,6 +70,7 @@ from .model import (
     PatchPolicy,
     PatchState,
     PatchStateName,
+    PYTHON2TO3,
     ReproducibilityLevel,
     SECURITY,
     ToolPatchCollectionsSummary,
@@ -318,7 +319,10 @@ class ToolPatchDatabase:
                 if demotion is not None:
                     states.append(state(unit.kind, ADVISORY, advisory=self._generated(demotion, unit.kind, patch, key)))
                 else:
-                    generated = self._generated(REVISION_MISMATCH, unit.kind, patch, key)
+                    # A python2to3 mismatch leaves the tool on Galaxy's runtime path: nothing for an admin to do.
+                    generated = (
+                        None if unit.kind == PYTHON2TO3 else self._generated(REVISION_MISMATCH, unit.kind, patch, key)
+                    )
                     states.append(state(unit.kind, MISMATCH, advisory=generated, detail=result.detail))
                 if advisory is not None:
                     states.append(state(unit.kind, ADVISORY, advisory=advisory))
@@ -393,8 +397,11 @@ class ToolPatchDatabase:
 
 
 def _override_usable(states: Sequence[PatchState]) -> bool:
-    """An override stands unless its security unit (or, without one, its compat unit) mismatched."""
-    mismatched = {s.kind for s in states if s.state == MISMATCH}
+    """An override stands unless its security unit (or, without one, its compat unit) mismatched.
+
+    A python2to3 mismatch never decides: the tool renders as before through Galaxy's runtime path.
+    """
+    mismatched = {s.kind for s in states if s.state == MISMATCH and s.kind != PYTHON2TO3}
     if SECURITY in {s.kind for s in states}:
         return SECURITY not in mismatched
     return not mismatched

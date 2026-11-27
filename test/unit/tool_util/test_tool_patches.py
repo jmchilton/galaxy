@@ -312,6 +312,7 @@ def probe(tmp_path: Path) -> XmlToolSource:
         pytest.param(python2to3_doc(NE_OP, galaxy_change=GALAXY_CHANGE), id="python2to3_file_galaxy_change"),
         pytest.param(python2to3_doc(text_op("Old help.", "New help.", path="help")), id="python2to3_help_text"),
         pytest.param(python2to3_doc(text_op("a", "b", path=".//command")), id="python2to3_loose_selector"),
+        pytest.param(python2to3_doc(text_op("a", "b", path="command\n")), id="python2to3_path_with_newline"),
         pytest.param(
             python2to3_doc(text_op("a", "b", path="configfiles/configfile")), id="python2to3_unnamed_configfile"
         ),
@@ -998,7 +999,8 @@ def test_python2to3_mismatch_never_blocks_security(tmp_path: Path) -> None:
     patched = load_db(write_collection(tmp_path / "c", {LOCAL_PROBE: doc})).apply_patches(tool)
     states = patch_states(patched)
     assert [(s.kind, s.state) for s in states] == [("python2to3", "mismatch"), ("security", "applied")]
-    assert states[0].advisory is not None and states[0].advisory.level == "info"
+    # the tool still renders through Galaxy's runtime path: nothing for an admin to do
+    assert states[0].advisory is None
     assert "echo '$label' >>" in command_text(patched.parse_command())
 
 
@@ -1471,6 +1473,26 @@ def test_override_keeps_its_security_fix_when_its_compat_unit_mismatches(tmp_pat
     assert {(s.kind, s.state, s.path) for s in patch_states(patched)} == {
         ("security", "applied", f"patches/{OVERRIDE_REL}"),
         ("compat", "mismatch", f"patches/{OVERRIDE_REL}"),
+    }
+    assert "cat -- '$input1'" in command_text(patched.parse_command())
+
+
+def test_override_without_security_ops_survives_a_python2to3_mismatch(tmp_path: Path) -> None:
+    tool = shed_repo_tool(tmp_path)
+    override = compat_doc(
+        {**OVERRIDE_OP, "kind": "compat"},
+        {**text_op("#if $b <> 1", "#if $b != 1"), "kind": "python2to3"},
+        kind="mixed",
+    )
+    root = write_collection(
+        tmp_path / "c", {f"{SHED_PROBE}.yml": compat_doc(text_op("absent anchor", "y")), OVERRIDE_REL: override}
+    )
+
+    patched = load_db(root).apply_patches(tool, guid=SHED_GUID)
+
+    assert {(s.kind, s.state, s.path) for s in patch_states(patched)} == {
+        ("python2to3", "mismatch", f"patches/{OVERRIDE_REL}"),
+        ("compat", "applied", f"patches/{OVERRIDE_REL}"),
     }
     assert "cat -- '$input1'" in command_text(patched.parse_command())
 
