@@ -21,7 +21,7 @@
             #set unique_duplicates = list(set(duplicates))
             echo "Cannot run ilastik because these identifiers are present more than once:" &&
             #for label in $unique_duplicates:
-                echo '  '${shlex.quote(str($label))} &&
+                echo '  '${shlex.quote($label)} &&
             #end for
             exit 1 &&
         #end if
@@ -35,8 +35,8 @@
         #end if
 
         ## Link input images to current working directory
-        #for input in $infiles:
-            ln -s '$input' ./${shlex.quote(str($input.element_identifier).replace('/', '_') + '.tif')} &&
+        #for input, label in zip($infiles, $labels):
+            ln -s '$input' ./${shlex.quote($label + '.tif')} &&
         #end for
         ## Write the bash script to run:
         #if str($input_type.existing) == "new":
