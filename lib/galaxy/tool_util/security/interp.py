@@ -1624,7 +1624,11 @@ class TemplateAnalysis:
             if isinstance(method, str) and method in _MUTATORS:
                 target = func.args[0] if isinstance(func, ast.Call) and func.args else getattr(func, "value", None)
                 if local := self._local_name(target, env) if target is not None else None:
-                    grown = join(*(a if method in ("extend", "update") else AV(elem=a) for a in args))
+                    grown = join(
+                        *(a if method in ("extend", "update") else AV(elem=a) for a in args),
+                        # `d.update(k=value)`
+                        *(AV(elem=k) for k in keywords),
+                    )
                     env.assign(local, AV(elem=element(grown, strict=True)), weak=True)
             return self.call_bound(receiver, method, args, node.args, env, keywords, node)
         if callee.helper:
