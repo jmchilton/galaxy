@@ -151,7 +151,7 @@ class ToolPatchDatabase:
         return "\0".join(map(str, parts)).encode()
 
     def digest_for(self, key: PatchKey, changeset: str | None = None) -> str | None:
-        """sha256 over the files matched for key, their codes and coverage, the policy and series; None on a miss."""
+        """sha256 over the files matched for key, their codes, the policy and series; None on a miss."""
         h = hashlib.sha256()
         matched = override_used = False
         for c in self._active:
@@ -162,8 +162,7 @@ class ToolPatchDatabase:
             matched = True
             for rel in rels:
                 h.update(f"{c.name}\0{rel}\0{c.file_sha256(rel) or ''}\0".encode())
-            coverage = ",".join(sorted(c.coverage(key)))
-            h.update(f"{c.codes_sha256}\0{coverage}\0".encode())
+            h.update(f"{c.codes_sha256}\0".encode())
             override_used = override_used or override is not None
         if not matched:
             return None
@@ -313,8 +312,7 @@ class ToolPatchDatabase:
             elif result.state == APPLIED and demotion is None:
                 assert result.tree is not None
                 tree = result.tree
-                verified = current.sha256() in c.coverage(key)
-                states.append(state(unit.kind, APPLIED, verified=verified, advisory=advisory))
+                states.append(state(unit.kind, APPLIED, advisory=advisory))
             else:
                 # Demoted or mismatched: the generated advisory, then the file's own.
                 if demotion is not None:
@@ -405,10 +403,7 @@ def _override_usable(states: Sequence[PatchState]) -> bool:
 def _log_state(state: PatchState) -> None:
     where = f"{state.collection.name}:{state.path}"
     if state.state == APPLIED:
-        if state.verified:
-            log.info("tool patches: %s %s patch applied from %s", state.key, state.kind, where)
-        else:
-            log.warning("tool patches: %s %s patch applied (unverified) from %s", state.key, state.kind, where)
+        log.info("tool patches: %s %s patch applied from %s", state.key, state.kind, where)
     elif state.state == MISMATCH:
         log.warning("tool patches: %s %s patch mismatch from %s: %s", state.key, state.kind, where, state.detail)
     elif state.state == ADVISORY:

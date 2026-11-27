@@ -928,23 +928,14 @@ def test_collection_digest_ignores_declared_digest(tmp_path: Path) -> None:
     assert summary.digest == load_db(plain).collections_summary().collections[0].digest
 
 
-@pytest.mark.parametrize("covered", [True, False])
-def test_verified_from_coverage(
-    tmp_path: Path, probe: XmlToolSource, covered: bool, caplog: pytest.LogCaptureFixture
-) -> None:
-    sha = sha256_text(probe.to_string()) if covered else "0" * 64
-    root = write_collection(
-        tmp_path / "c",
-        {LOCAL_PROBE: security_doc(QUOTE_LABEL)},
-        coverage={"_local/patch_probe/1.0+galaxy0.json": [sha]},
-    )
-    db = load_db(root)
+def test_applied_patch_logs_at_info(tmp_path: Path, probe: XmlToolSource, caplog: pytest.LogCaptureFixture) -> None:
+    root = write_collection(tmp_path / "c", {LOCAL_PROBE: security_doc(QUOTE_LABEL)})
     with caplog.at_level(logging.DEBUG, logger="galaxy.tool_util.patches"):
-        patched = db.apply_patches(probe)
+        patched = load_db(root).apply_patches(probe)
     (state,) = patch_states(patched)
-    assert state.verified is covered
+    assert state.state == "applied"
     levels = {r.levelname for r in caplog.records if "patch_probe" in r.getMessage()}
-    assert levels == ({"INFO"} if covered else {"WARNING"})
+    assert levels == {"INFO"}
 
 
 DRILL_DOWN_OLD = (
@@ -1331,17 +1322,20 @@ def test_override_keeps_its_security_fix_when_its_compat_unit_mismatches(tmp_pat
     assert "cat -- '$input1'" in command_text(patched.parse_command())
 
 
-def test_digests_follow_coverage_and_codes(tmp_path: Path) -> None:
+def test_digests_follow_codes_and_ignore_coverage(tmp_path: Path) -> None:
     root = write_collection(tmp_path / "c", {LOCAL_PROBE: security_doc(QUOTE_LABEL)})
     db = load_db(root)
-    digests = [(db.digest_for(LOCAL_KEY), db.token())]
-    write_collection(root, {}, coverage={"_local/patch_probe/1.0+galaxy0.json": ["0" * 64]})
+    plain = (db.digest_for(LOCAL_KEY), db.collections_summary().collections[0].digest, db.token())
+    # coverage/ is collection-internal provenance; Galaxy doesn't read it.
+    coverage = root / "coverage" / "_local" / "patch_probe" / "1.0+galaxy0.json"
+    coverage.parent.mkdir(parents=True)
+    coverage.write_text('{"checked": [{"expanded_sha256": "%s"}]}' % ("0" * 64))
     db = load_db(root)
-    digests.append((db.digest_for(LOCAL_KEY), db.token()))
+    assert (db.digest_for(LOCAL_KEY), db.collections_summary().collections[0].digest, db.token()) == plain
     write_collection(root, {}, codes=CODES)
     db = load_db(root)
-    digests.append((db.digest_for(LOCAL_KEY), db.token()))
-    assert len(set(digests)) == 3
+    coded = (db.digest_for(LOCAL_KEY), db.collections_summary().collections[0].digest, db.token())
+    assert all(p != c for p, c in zip(plain, coded))
 
 
 @pytest.mark.parametrize("position", ["first", "before:b"])
