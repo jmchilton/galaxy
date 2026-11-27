@@ -43,6 +43,7 @@ include src/galaxy/tool_util/security/spec/tools/known_select_value.xml
 include src/galaxy/tool_util/security/spec/tools/lambda_changes_a_list.xml
 include src/galaxy/tool_util/security/spec/tools/lambda_late_binding.xml
 include src/galaxy/tool_util/security/spec/tools/maybe_unset_local.xml
+include src/galaxy/tool_util/security/spec/tools/mutator_passed_on.xml
 include src/galaxy/tool_util/security/spec/tools/nested_scope_lambda.xml
 include src/galaxy/tool_util/security/spec/tools/nested_scope_lookup.xml
 include src/galaxy/tool_util/security/spec/tools/nested_shell.xml

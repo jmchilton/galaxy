@@ -641,6 +641,26 @@ unchecked_locations:
 codes: []
 ```
 
+### mutator_passed_on
+
+The review follows a method that changes a list where the template calls it on the list, or maps it over values. Passed on to anything else, here `filter`, what it adds is not followed, and the review lists the template as unchecked.
+
+Tool `mutator_passed_on.xml`:
+
+```
+#set $words = []
+#silent list(filter(words.append, [$word.value]))
+echo '${' '.join($words)}' > '$out'
+```
+
+Review:
+
+```
+unchecked_locations:
+  command: parts of it were not analysed
+codes: []
+```
+
 ### raw_dataset_model
 
 `$input.unsanitized.name` is the dataset's name as the user set it, without the sanitizer.
