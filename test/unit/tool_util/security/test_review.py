@@ -533,6 +533,19 @@ def test_names_a_lambda_or_generator_binds_itself(tmp_path, command):
     assert rules(review(tmp_path, command)) == set()
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "#set $f = lambda x=$free: x\ntool '${f()}'",
+        "#set $f = lambda x=$free: $x\ntool '${f()}'",
+        "#set $f = lambda *, x=$free: x\ntool '${f()}'",
+    ],
+)
+def test_default_of_a_lambda_argument_is_read(tmp_path, command):
+    compile_template(command)
+    assert ("shell-injection", "high") in rules(review(tmp_path, command))
+
+
 GROUP = """
 <conditional name="c">
   <param name="sel" type="select"><option value="a">a</option></param>
