@@ -75,25 +75,18 @@
         ## Full dataset uploads
 
         #for $count, $input in enumerate($inputs):
-            #if $input.fileselect.typeselect == "bed":
-                #for $file in $input.fileselect.inputfiles:
-                    #set $safe_name = str($file.element_identifier).replace('/', '_')
-                    #set $stem = $safe_name + "." + str($file.ext)
+            #for $file in $input.fileselect.inputfiles:
+                #set $safe_name = str($file.element_identifier).replace('/', '_')
+                #set $stem = $safe_name + "." + str($file.ext)
+                #if $input.fileselect.typeselect == "bed":
                     cp '$file' data/${shlex.quote($stem)} &&
                     clodius aggregate bedfile --assembly '$file.metadata.dbkey' data/${shlex.quote($stem)} &&
                     mv data/${shlex.quote($stem + '.beddb')} data/${shlex.quote($safe_name)} &&
                     python higlass-server/manage.py ingest_tileset --filename data/${shlex.quote($safe_name)} --filetype beddb --datatype bedlike --coordSystem '$file.metadata.dbkey' &&
-                #end for
-            #elif $input.fileselect.typeselect == "bigwig":
-                #for $file in $input.fileselect.inputfiles:
-                    #set $safe_name = str($file.element_identifier).replace('/', '_')
+                #elif $input.fileselect.typeselect == "bigwig":
                     cp '$file' data/${shlex.quote($safe_name)} &&
                     python higlass-server/manage.py ingest_tileset --filename data/${shlex.quote($safe_name)} --filetype bigwig --datatype vector --coordSystem '${file.metadata.dbkey}' &&
-                #end for
-            #elif $input.fileselect.typeselect == "bedgraph":
-                #for $file in $input.fileselect.inputfiles:
-                    #set $safe_name = str($file.element_identifier).replace('/', '_')
-                    #set $stem = $safe_name + "." + str($file.ext)
+                #elif $input.fileselect.typeselect == "bedgraph":
                     cp '$file' data/${shlex.quote($stem)} &&
                     cat data/${shlex.quote($stem)} | sort -k1,1 -k2,2n | awk '{ if (NF >= 4) print $${file.metadata.chromCol} "\t" $${file.metadata.startCol} "\t" $${file.metadata.endCol} "\t" $${input.fileselect.valuecol}}' > data/${shlex.quote($stem + '.presort')};
                     #if $file.metadata.dbkey in $existing_genomes:
@@ -103,27 +96,16 @@
                     #end if
                     mv data/${shlex.quote($stem + '.bigwig')} data/${shlex.quote($safe_name)} &&
                     python higlass-server/manage.py ingest_tileset --filename data/${shlex.quote($safe_name)} --filetype bigwig --datatype vector --coordSystem '${file.metadata.dbkey}' &&
-                #end for
-            #elif $input.fileselect.typeselect == "bigbed":
-                #for $file in $input.fileselect.inputfiles:
-                    #set $safe_name = str($file.element_identifier).replace('/', '_')
-                    #set $stem = $safe_name + "." + str($file.ext)
+                #elif $input.fileselect.typeselect == "bigbed":
                     cp '$file' data/${shlex.quote($stem)} &&
                     bigBedToBed data/${shlex.quote($stem)} ./${shlex.quote($safe_name)} &&
                     clodius aggregate bedfile --assembly '$file.metadata.dbkey' ./${shlex.quote($safe_name)} &&
                     mv ./${shlex.quote($safe_name + '.beddb')} data/${shlex.quote($safe_name)} &&
                     python higlass-server/manage.py ingest_tileset --filename data/${shlex.quote($safe_name)} --filetype beddb --datatype bedlike --coordSystem '$file.metadata.dbkey' &&
-                #end for
-            #elif $input.fileselect.typeselect == "mcool":
-                #for $file in $input.fileselect.inputfiles:
-                    #set $safe_name = str($file.element_identifier).replace('/', '_')
+                #elif $input.fileselect.typeselect == "mcool":
                     cp '$file' data/${shlex.quote($safe_name)} &&
                     python higlass-server/manage.py ingest_tileset --filename data/${shlex.quote($safe_name)} --filetype cooler --datatype matrix &&
-                #end for
-            #elif $input.fileselect.typeselect == "cool":
-                #for $file in $input.fileselect.inputfiles:
-                    #set $safe_name = str($file.element_identifier).replace('/', '_')
-                    #set $stem = $safe_name + "." + str($file.ext)
+                #elif $input.fileselect.typeselect == "cool":
                     cp '$file' data/${shlex.quote($stem)} &&
                     cooler zoomify -r '$input.fileselect.zoomval' -o data/${shlex.quote($safe_name)} data/${shlex.quote($stem)} &&
 
@@ -136,8 +118,8 @@
 
 
                     python higlass-server/manage.py ingest_tileset --filename data/${shlex.quote($safe_name)} --filetype cooler --datatype matrix &&
-                #end for
-            #end if
+                #end if
+            #end for
         #end for
         tail -f /var/log/supervisor/*
     ]]>
