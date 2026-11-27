@@ -137,6 +137,36 @@ def evaluator(app, tool: Tool, identifiers: list[str], word: str = "plain", name
 # -- reviews ---------------------------------------------------------------------------------
 
 
+MAYBE_UNSET = """<tool id="maybe_unset" name="Maybe unset" version="1.0" profile="24.0">
+  <command><![CDATA[
+#if $word == 'x'
+#set $NAME = 'safe'
+#end if
+echo '$NAME' > '$out'
+  ]]></command>
+  <inputs ATTRS><param name="word" type="text"/></inputs>
+  <outputs><data name="out" format="txt"/></outputs>
+</tool>
+"""
+
+
+@pytest.mark.parametrize(
+    "name,attrs,read",
+    [
+        # A job parameter that is not an input does not reach the templates of a regular tool.
+        ("undeclared", "", False),
+        # A data source tool keeps all its job parameters.
+        ("undeclared", ' check_values="false"', True),
+        ("__target_datatype__", "", True),
+    ],
+)
+def test_unset_local_reads_the_job_parameters_the_tool_passes_to_its_templates(app, tmp_path, name, attrs, read):
+    tool = make_tool(app, tmp_path, MAYBE_UNSET.replace("NAME", name).replace("ATTRS", attrs))
+    review = reviewer(tmp_path).review(tool)
+    assert review is not None and review.report is not None
+    assert any(ref.key == name for f in review.report.findings for ref in f.refs) is read
+
+
 def test_first_use_computes_the_review(app, tmp_path):
     review = reviewer(tmp_path).review(make_tool(app, tmp_path))
     assert review is not None and review.status == ANALYSED

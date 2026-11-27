@@ -280,7 +280,11 @@ class ToolSecurityReviewer:
             )
             if declares_upload_tool(fresh):
                 log.warning(upload_tool_lookalike_message(tool_file(tool)))
-            report = review_tool_source(fresh)
+            report = review_tool_source(
+                fresh,
+                template_job_parameters=tool.template_job_parameters,
+                keeps_undeclared_job_parameters=tool.keeps_undeclared_job_parameters,
+            )
         except Exception as e:
             log.warning("Security review of tool %s version %s failed: %s", tool.id, tool.version, e)
             log.debug("Security review of tool %s failed", tool.id, exc_info=True)
