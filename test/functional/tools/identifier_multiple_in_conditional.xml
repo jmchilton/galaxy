@@ -1,7 +1,8 @@
 <tool id="identifier_multiple_in_conditional" name="identifier_multiple_in_conditional" version="1.0.0">
     <command><![CDATA[
+#import shlex
 #for $input in $outer_cond.inner_cond.input1#
-    echo '$input.element_identifier' >> 'output1';
+    echo ${shlex.quote(str($input.element_identifier))} >> 'output1';
 #end for#
     ]]></command>
     <inputs>

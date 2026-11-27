@@ -1,7 +1,8 @@
 <tool id="identifier_collection" name="identifier_collection" version="0.1">
   <command>
+    #import shlex
     #for $input in $input1:
-      echo '$input.element_identifier' >> 'output1';
+      echo ${shlex.quote(str($input.element_identifier))} >> 'output1';
     #end for
   </command>
   <inputs>
