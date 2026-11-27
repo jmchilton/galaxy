@@ -116,7 +116,7 @@ except FileNotFoundError:
         #else:
             #import re
             #set $cleaned_name = re.sub('[^\w\-\.]', '_', str($mode.ipynb.element_identifier))
-            #if not $cleaned_name.endswith(".ipynb"'$jupyter_notebook'):
+            #if not $cleaned_name.endswith(".ipynb"):
                 #set $cleaned_name = "%s.ipynb" % $cleaned_name
             #end if
             cp '$mode.ipynb' './${cleaned_name}' &&
