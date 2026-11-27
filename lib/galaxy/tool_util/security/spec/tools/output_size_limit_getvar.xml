@@ -1,0 +1,8 @@
+<tool id="spec_output_size_limit_getvar" name="Output size limit through getVar" version="1.0" profile="24.0">
+    <description>passes the server's output size limit to a script, looked up with getVar</description>
+    <command><![CDATA[python '$__tool_directory__/data_source.py' '$out' $getVar('__app__.config.output_size_limit')]]></command>
+    <inputs/>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

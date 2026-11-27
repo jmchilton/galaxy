@@ -462,3 +462,24 @@ output_size_limit_reach:
       - {rule: template-reflection, severity: high}
     patterns: [server-config]
     codes: [uncheckable-template-code]
+
+output_size_limit_getvar:
+  doc: >-
+    `getVar` of the same name reads the same number, and the review allows it as it allows the read by
+    placeholder.
+  tool: output_size_limit_getvar.xml
+  review:
+    codes: []
+    patterns: []
+    serious_rules: []
+
+output_size_limit_subscript:
+  doc: >-
+    The allowance is of the attribute read alone: a subscript of the application object, here on the way to
+    the same number, is flagged as a read of the application object. Galaxy's wrapper of the application object
+    takes no subscript, so the tool goes that way only for a negative limit.
+  tool: output_size_limit_subscript.xml
+  review:
+    findings:
+      - {rule: template-app-access, severity: high}
+    patterns: [app-access]

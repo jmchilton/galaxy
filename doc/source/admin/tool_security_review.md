@@ -1203,6 +1203,47 @@ codes:
 - uncheckable-template-code
 ```
 
+### output_size_limit_getvar
+
+`getVar` of the same name reads the same number, and the review allows it as it allows the read by placeholder.
+
+Tool `output_size_limit_getvar.xml`:
+
+```
+python '$__tool_directory__/data_source.py' '$out' $getVar('__app__.config.output_size_limit')
+```
+
+Review:
+
+```
+serious_rules: []
+codes: []
+```
+
+### output_size_limit_subscript
+
+The allowance is of the attribute read alone: a subscript of the application object, here on the way to the same number, is flagged as a read of the application object. Galaxy's wrapper of the application object takes no subscript, so the tool goes that way only for a negative limit.
+
+Tool `output_size_limit_subscript.xml`:
+
+```
+#if $__app__.config.output_size_limit < 0
+python '$__tool_directory__/data_source.py' '$out' ${__app__['config'].output_size_limit}
+#else
+python '$__tool_directory__/data_source.py' '$out' 0
+#end if
+```
+
+Review:
+
+```
+findings:
+- rule: template-app-access
+  severity: high
+patterns:
+- app-access
+```
+
 ## Access patterns
 
 The review also reports reads it cannot follow to a value of a tool input. A read by name (reflection)
@@ -1226,7 +1267,7 @@ Cases: `raw_dataset_model`, `raw_dataset_history`.
 
 Reads Galaxy's application object beyond its configuration (`$__app__.model`, ...), which reaches any data of the server.
 
-Cases: `app_model_read`.
+Cases: `app_model_read`, `output_size_limit_subscript`.
 
 #### `user-object`
 
@@ -1370,7 +1411,7 @@ Includes a template macro of the tool, which the review reads in and analyses in
 
 Reads Galaxy's application object (`$__app__`) or the user object (`$__user__`).
 
-Cases: `user_object_unsanitized`, `output_size_limit_reach`.
+Cases: `user_object_unsanitized`, `output_size_limit_reach`, `output_size_limit_subscript`.
 
 #### `template-model-access`
 

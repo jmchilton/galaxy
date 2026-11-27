@@ -37,7 +37,9 @@ include src/galaxy/tool_util/security/spec/tools/known_select_value.xml
 include src/galaxy/tool_util/security/spec/tools/nested_shell.xml
 include src/galaxy/tool_util/security/spec/tools/output_filter_vars.xml
 include src/galaxy/tool_util/security/spec/tools/output_size_limit.xml
+include src/galaxy/tool_util/security/spec/tools/output_size_limit_getvar.xml
 include src/galaxy/tool_util/security/spec/tools/output_size_limit_reach.xml
+include src/galaxy/tool_util/security/spec/tools/output_size_limit_subscript.xml
 include src/galaxy/tool_util/security/spec/tools/pipe_to_shell_script.xml
 include src/galaxy/tool_util/security/spec/tools/pipe_to_shell.xml
 include src/galaxy/tool_util/security/spec/tools/raw_dataset_history.xml
