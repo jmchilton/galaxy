@@ -242,6 +242,8 @@ def _breakout(
 _STRING_FUNCTIONS = frozenset(("str", "unicode", "repr", "format", "basestring"))
 _CONTAINER_FUNCTIONS = frozenset(("list", "tuple", "set", "frozenset", "sorted", "reversed", "iter", "next"))
 _NONE_METHODS = frozenset(("reverse", "sort", "clear", "remove"))
+# Methods that reorder or take away the items of a list, dict, set or deque in place.
+REORDERS = frozenset("reverse sort pop popitem remove discard clear rotate __delitem__".split())
 # str methods whose result keeps the escaping of the text when their literal arguments hold no quote.
 _ESCAPE_KEEPING_METHODS = frozenset(
     ("strip", "lstrip", "rstrip", "replace", "lower", "upper", "title", "capitalize", "casefold")
@@ -1704,7 +1706,9 @@ class TemplateAnalysis:
             names = [arg.arg for arg in [*positional, *arguments.kwonlyargs, *starred]]
             for name in names:
                 inner.assign(name, defaults.get(name, CLEAN))
-            body = contents(self.ev(node.body, inner))
+            body = self.ev(node.body, inner)
+            # A lambda that gives a lambda gives something to call.
+            body = body if body.bound is not None else contents(body)
             # What a call does to the method's locals, as if it ran here, as far as it does not depend
             # on the arguments. A walrus in the body binds in the lambda's own frame.
             env.rejoin(inner, set(names) | _walrus_targets(node.body))
@@ -1750,9 +1754,11 @@ class TemplateAnalysis:
         named = {k.arg: v for k, v in zip(node.keywords, keywords) if k.arg}
         if callee.bound is not None:
             receiver, method = callee.bound
+            target = func.args[0] if isinstance(func, ast.Call) and func.args else getattr(func, "value", None)
             if isinstance(method, str) and method in MUTATORS:
-                target = func.args[0] if isinstance(func, ast.Call) and func.args else getattr(func, "value", None)
                 self._grow(target, method, args, keywords, env)
+            elif isinstance(method, str) and method in REORDERS:
+                self._unorder(target, env)
             return self.call_bound(receiver, method, args, node.args, env, keywords, node)
         if callee.helper:
             return self.call_helper(callee.helper, args, env, named)
@@ -1765,6 +1771,14 @@ class TemplateAnalysis:
             # Calling an attribute of an opaque object: the result is as trustworthy as the object.
             return join(stringify(callee), *(contents(a) for a in args))
         return join(*(contents(a) for a in args + keywords))
+
+    def _unorder(self, target: ast.expr | None, env: Env) -> None:
+        """A list of the template's that `reverse`, `sort`, `pop`, ... changes in place: its items have no known
+        position any more."""
+        if (local := self._local_name(target, env) if target is not None else None) is not None:
+            value = env.local[local]
+            if value.items is not None:
+                env.assign(local, dataclasses.replace(value, items=None, elem=element(value)))
 
     def _grow(self, target: ast.expr | None, method: str, args: list[AV], keywords: list[AV], env: Env) -> None:
         """A list, set or dict of the template's that a mutator (`append`, `update`, ...) changes in place."""
@@ -1873,6 +1887,8 @@ class TemplateAnalysis:
         if name == "json.dumps":
             container = first.elem is not None or first.items is not None
             text = contents(first) if container and not first.nodes else stringify(first)
+            # What `default=` gives for the objects JSON has no form of is written too.
+            text = join(text, *(contents(k) for k in keywords))
             extra = (_JSON_PUNCTUATION if container else frozenset('"\\')) if text.tainted else frozenset()
             introduced(text, extra, escape=True)
             return AV(chars=text.chars | extra, sources=text.sources, quoted="json")
@@ -1992,7 +2008,8 @@ class TemplateAnalysis:
         keywords = keywords or []
         if callable(method):
             if (result := method(receiver, args, keywords, arg_nodes)) is not None:
-                return self._autocall(result, env)
+                # What a lambda gives is not called again: `${f()}` writes a lambda that f returns as it is.
+                return result if method is joins_arguments else self._autocall(result, env)
             method = getattr(method, "__name__", "")
         name = method
         if name in _CLEAN_METHODS:

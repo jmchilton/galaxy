@@ -650,6 +650,9 @@ def test_default_of_a_lambda_argument_is_read(tmp_path, command):
         "#set $s = set()\n#silent $s.symmetric_difference_update({str($free)})\ntool '${''.join($s)}'",
         "#set $s = set()\n#silent [s.__ixor__({str($free)}) for _ in [1]]\ntool '${''.join($s)}'",
         "#import collections\n#set $q = collections.deque()\n#silent $q.extendleft([str($free)])\ntool '${''.join($q)}'",
+        # Reordered, the list's items have no known position.
+        "#set $l = ['safe', str($free)]\n#silent $l.reverse()\ntool '${l[0]}'",
+        "#set $l = ['safe', str($free)]\n#silent l.pop(0)\ntool '${l[0]}'",
     ],
 )
 def test_changes_a_lambda_or_comprehension_makes_to_locals_are_kept(tmp_path, command):
@@ -919,6 +922,13 @@ LAMBDA_NOT_FOLLOWED = "command: what a lambda does was not analysed"
             "tool '${''.join($s)}'"
         ),
         "#set $d = {'k': 'safe'}\n#set $f = lambda: [1 for d['k'] in [str($free)]]\n#silent $f()\ntool '${d['k']}'",
+        # `$g` of a nested lambda is a lookup: only its own frame holds the outer argument `g`.
+        "#set global $g = 'safe'\n#set $f = lambda g: (lambda: $g)()\n#set global $g = str($free)\ntool '${f('safe')}'",
+        "#def h\n#return str($free)\n#end def\n#set $f = lambda h: (lambda: $h)()\ntool '${f('safe')}'",
+        # Attributes of the frame's locals dict come before the namespace.
+        "#set global $g = 'safe'\n#set $f = lambda: $get('SL')[0]['g']\n#set global $g = str($free)\ntool '${f()}'",
+        # Reordering a list moves a value to a position the analysis read as another.
+        "#set $acc = ['safe', str($free)]\n#set $f = lambda a: a.reverse()\n#silent $f($acc)\ntool '${acc[0]}'",
     ],
 )
 def test_lambda_the_review_does_not_follow_is_code(tmp_path, command):
@@ -1031,6 +1041,16 @@ def test_lambda_reading_the_application_object_is_flagged_for_that_alone(tmp_pat
         "#set $l = list(filter(lambda x: str(x), [$free]))\ntool '${l[0]}'",
         "#set $f = lambda p: ' '.join(map(lambda x: x, str(p).split(',')))\ntool '${f($free)}'",
         "#set $fs = [lambda x: x]\ntool '${fs[0]($free)}'",
+        # A pure lambda passed on carries what it gives.
+        "#set $h = lambda: $free\n#set $g = lambda f: f()\ntool '${g(h)}'",
+        "#set $f = lambda: lambda: $free\ntool '${f()()}'",
+        "#set $d = {'a': lambda: $free}\ntool '${d['a']()}'",
+        "#import collections\ntool '${collections.defaultdict(lambda: $free)['k']}'",
+        "tool '${next(iter(lambda: $free, None))}'",
+        "#import re\ntool '${re.sub('x', lambda m: $free, 'x')}'",
+        "#import json\ntool '${json.dumps({1}, default=lambda o: $free)}'",
+        "tool '${ {}.get('k', lambda: $free)() }'",
+        "#import re\ntool '${re.sub('x', str($free).format, 'x')}'",
     ],
 )
 def test_values_pass_through_a_pure_lambda(tmp_path, command):
@@ -1078,6 +1098,19 @@ def test_values_pass_through_a_pure_lambda(tmp_path, command):
             "`.append` is called on `$a`, which is not a local of the template",
         ),
         ("#set $d = {'k': 'safe'}\n#silent [None for d['k'] in [str($free)]]", "a comprehension stores into `d['k']`"),
+        # Called on a value that is the list itself.
+        (
+            "#set $acc = []\n#silent type(acc).append(acc, str($free))",
+            "`.append` is called on `type(acc)`, which is not a local of the template",
+        ),
+        (
+            "#set $acc = []\n#silent (acc if True else []).append(str($free))",
+            "`.append` is called on `acc if True else []`, which is not a local of the template",
+        ),
+        (
+            "#import operator\n#set $acc = []\n#silent operator.iadd(acc, [str($free)])",
+            "`operator.iadd` changes its argument in place",
+        ),
     ],
 )
 def test_changes_in_place_the_review_does_not_follow(tmp_path, command, note):
@@ -1097,6 +1130,8 @@ def test_changes_in_place_the_review_does_not_follow(tmp_path, command, note):
         "#set $acc = []\n#silent [acc.append(str(x)) for x in [$free]]\ntool '${acc[0]}'",
         "#set $d = {}\n#set $d['k'] = []\n#silent $d['k'].append('x')\ntool '${d['k'][0]}'",
         "#def h($acc)\n#silent $acc.append('x')\n#end def\ntool",
+        "#set $acc = []\n#silent $map(acc.append, [str($free)])\ntool '${acc[0]}'",
+        "#set $d = {}\n#silent $d.setdefault('k', []).append('x')\ntool",
     ],
 )
 def test_changes_in_place_the_review_follows(tmp_path, command):

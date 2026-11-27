@@ -7,24 +7,29 @@ is pure. Its body reads only:
 
 * its arguments, and the names that comprehensions and lambdas in it bind;
 * literals;
-* ``$name``, which Cheetah looks up in the frame of the lambda, then in the namespace. Not the name of a
-  ``#set global`` value, a member of the template, or a name the template object, its module or Python answers
-  to first: what those give can change before the call;
+* ``$name``, which Cheetah looks up in the locals of the frame that runs it, then in the namespace: an argument
+  of the innermost lambda, or a target of the innermost comprehension, else a lookup. A lookup of a ``#set
+  global`` value, a member of the template, an attribute of the template object or of a locals dict, or a name
+  the module or Python answers to, can give what the template sets after the lambda is made;
 * the builtins and modules the analysis reads as computing a value from what they are given
   (:data:`PURE_NAMES`), where the template binds no local or import of that name.
 
-It changes nothing: no ``:=``, no method that changes its object in place (:data:`~.interp.MUTATORS`), no
-attribute that starts with ``_``, no comprehension target but names. A lambda in it follows the same rules. The
-defaults of the lambda's own arguments are evaluated where the lambda is made, as the analysis reads them, and can
-be anything.
+It changes nothing: no ``:=``, no method that adds to its object, reorders it or takes from it in place
+(:data:`~.interp.MUTATORS`, :data:`~.interp.REORDERS`), no attribute that starts with ``_``, no comprehension
+target but names. A lambda in it follows the same rules. The defaults of the lambda's own arguments are evaluated
+where the lambda is made, as the analysis reads them, and can be anything.
+
+A pure lambda passed on as a value carries what it gives: a call of whatever it reaches gives that too
+(:func:`~.values.stringify`).
 
 Any other lambda is code the review does not follow (:func:`impurity`): it can read a local the template sets
 again before the call, or change a list of the template's with what the call passes.
 
 A method that changes its object in place is followed where the template calls it on one of its own names, or
 maps it over a list (``map(l.append, values)``). Passed on in any other way, or called on a name a comprehension
-binds or on a type (``list.append($l, value)``), what it changes is not followed, nor what a comprehension stores
-into its target (:func:`unfollowed_changes`).
+binds or on any other value (``list.append($l, value)``, ``type(l).append(l, value)``), what it changes is not
+followed, nor what ``operator.iadd`` and its kin change or a comprehension stores into its target
+(:func:`unfollowed_changes`).
 """
 
 from __future__ import annotations
@@ -36,11 +41,10 @@ from collections.abc import (
 )
 from typing import Callable
 
-from Cheetah.Template import Template
-
 from .interp import (
     MUTATORS,
     PY_NAMES,
+    REORDERS,
     TEMPLATE_NAMES,
 )
 from .template import (
@@ -48,6 +52,7 @@ from .template import (
     name_lookup,
     NAME_MAPPER,
     NAMESPACE_LOOKUPS,
+    template_attributes,
 )
 
 # The names of PY_NAMES a pure lambda may use. Not those that reach objects by name or act (getattr, open,
@@ -59,8 +64,10 @@ PURE_NAMES = frozenset(
     if not name.startswith("_")
 )
 
-# What `$name` finds on the template object, before the namespace.
-_TEMPLATE_ATTRIBUTES = frozenset(dir(Template))
+# The functions of the operator module that change their first argument in place.
+_OPERATOR_CHANGES = frozenset(
+    "iadd iand iconcat ifloordiv ilshift imatmul imod imul ior ipow irshift isub itruediv ixor setitem delitem".split()
+)
 _COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)
 
 
@@ -110,7 +117,19 @@ def imported_names(imports: Iterable[ast.stmt]) -> frozenset[str] | None:
     return frozenset(names)
 
 
+def _targets(generator: ast.comprehension) -> tuple[frozenset[str], list[ast.expr]]:
+    """The names a generator of a comprehension binds, and the attributes and subscripts it stores into."""
+    nodes = list(ast.walk(generator.target))
+    names = frozenset(n.id for n in nodes if isinstance(n, ast.Name))
+    return names, [n for n in nodes if isinstance(n, (ast.Attribute, ast.Subscript))]
+
+
 class _Purity:
+    """``bound``: the names the lambda and the code in it bind, which Python names read; ``frame``: those of the
+    innermost lambda's own arguments, or of the innermost comprehension's targets, which `$name` finds in the
+    frame it runs in. Python 3.12 runs a comprehension in the frame around it, older versions do not: `$name`
+    of a name bound outside it is read as a lookup either way."""
+
     def __init__(
         self,
         locals_: frozenset[str],
@@ -123,32 +142,35 @@ class _Purity:
         self.changing = changing
         self.is_input = is_input
 
-    def lambda_(self, node: ast.Lambda, bound: frozenset[str], nested: bool) -> str | None:
+    def lambda_(self, node: ast.Lambda, bound: frozenset[str], frame: frozenset[str], nested: bool) -> str | None:
         arguments = node.args
         if nested:
             # The defaults of a lambda in the body are evaluated when the body runs.
             defaults = [*arguments.defaults, *(d for d in arguments.kw_defaults if d is not None)]
             for default in defaults:
-                if reason := self.expr(default, bound):
+                if reason := self.expr(default, bound, frame):
                     return reason
         own = [*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs, arguments.vararg, arguments.kwarg]
-        return self.expr(node.body, bound | {a.arg for a in own if a is not None})
+        names = frozenset(a.arg for a in own if a is not None)
+        return self.expr(node.body, bound | names, names)
 
-    def comprehension(self, node: ast.AST, bound: frozenset[str]) -> str | None:
+    def comprehension(self, node: ast.AST, bound: frozenset[str], frame: frozenset[str]) -> str | None:
         assert isinstance(node, _COMPREHENSIONS)
+        # The first iterable is evaluated in the frame around the comprehension.
+        own: frozenset[str] = frozenset()
         for generator in node.generators:
-            if reason := self.expr(generator.iter, bound):
+            if reason := self.expr(generator.iter, bound, own if own else frame):
                 return reason
-            for target in ast.walk(generator.target):
-                if isinstance(target, (ast.Attribute, ast.Subscript)):
-                    return f"stores into `{ast.unparse(target)}`"
-            bound = bound | {n.id for n in ast.walk(generator.target) if isinstance(n, ast.Name)}
+            names, stores = _targets(generator)
+            if stores:
+                return f"stores into `{ast.unparse(stores[0])}`"
+            bound, own = bound | names, own | names
             for condition in generator.ifs:
-                if reason := self.expr(condition, bound):
+                if reason := self.expr(condition, bound, own):
                     return reason
         parts = [node.key, node.value] if isinstance(node, ast.DictComp) else [node.elt]
         for part in parts:
-            if reason := self.expr(part, bound):
+            if reason := self.expr(part, bound, own):
                 return reason
         return None
 
@@ -161,12 +183,13 @@ class _Purity:
             return None
         return f"uses `{name}`"
 
-    def lookup(self, path: str, bound: frozenset[str]) -> str | None:
-        """`$a.b.c`: Cheetah finds `a` in the frame of the lambda, else in the namespace."""
+    def lookup(self, path: str, frame: frozenset[str]) -> str | None:
+        """`$a.b.c`: Cheetah finds `a` in the locals of the frame that runs it, else in the namespace."""
         first, *rest = path.split(".")
-        if first not in bound:
-            # The #set global store and the template object come before the namespace, its module and Python after.
-            if first in self.changing or first in _TEMPLATE_ATTRIBUTES:
+        if first not in frame:
+            # The attributes of the frame's locals, the #set global store and the template object come before
+            # the namespace, the module and Python after it.
+            if first in self.changing or first in template_attributes():
                 return f"reads `${first}`, which the template can set again before the call"
             if first in TEMPLATE_NAMES and first not in PURE_NAMES and not self.is_input(first):
                 return f"uses `${first}`"
@@ -175,19 +198,19 @@ class _Purity:
     @staticmethod
     def attributes(names: Iterable[str]) -> str | None:
         for name in names:
-            if name in MUTATORS:
+            if name in MUTATORS or name in REORDERS:
                 return f"changes a value in place with `.{name}`"
             if name.startswith("_"):
                 return f"reaches `.{name}`"
         return None
 
-    def expr(self, node: ast.AST | None, bound: frozenset[str]) -> str | None:
+    def expr(self, node: ast.AST | None, bound: frozenset[str], frame: frozenset[str]) -> str | None:
         if node is None or isinstance(node, (ast.Constant, ast.expr_context)):
             return None
         if isinstance(node, ast.Lambda):
-            return self.lambda_(node, bound, nested=True)
+            return self.lambda_(node, bound, frame, nested=True)
         if isinstance(node, _COMPREHENSIONS):
-            return self.comprehension(node, bound)
+            return self.comprehension(node, bound, frame)
         if isinstance(node, ast.NamedExpr):
             return f"binds `{ast.unparse(node.target)}` with `:=`"
         if isinstance(node, (ast.Yield, ast.YieldFrom, ast.Await)):
@@ -195,16 +218,16 @@ class _Purity:
         if isinstance(node, ast.Name):
             return self.name(node.id, bound) if isinstance(node.ctx, ast.Load) else f"binds `{node.id}`"
         if isinstance(node, ast.Attribute):
-            return self.attributes([node.attr]) or self.expr(node.value, bound)
+            return self.attributes([node.attr]) or self.expr(node.value, bound, frame)
         if lookup := name_lookup(node, NAME_MAPPER):
             function, path = lookup
             assert isinstance(node, ast.Call)
             if function in NAMESPACE_LOOKUPS:
-                return self.lookup(path, bound)
+                return self.lookup(path, frame)
             # `VFN(value, 'a.b', ...)`: attributes of a value.
-            return self.attributes(path.split(".")) or self.expr(node.args[0], bound)
+            return self.attributes(path.split(".")) or self.expr(node.args[0], bound, frame)
         for child in ast.iter_child_nodes(node):
-            if reason := self.expr(child, bound):
+            if reason := self.expr(child, bound, frame):
                 return reason
         return None
 
@@ -222,7 +245,7 @@ def impurity(
     ``changing``: the names of `#set global` values and of the template's members; ``is_input``: whether the
     namespace has a tool input of a name.
     """
-    return _Purity(locals_, imported, changing, is_input).lambda_(node, frozenset(), nested=False)
+    return _Purity(locals_, imported, changing, is_input).lambda_(node, frozenset(), frozenset(), nested=False)
 
 
 def nested_lambdas(node: ast.Lambda) -> Iterator[ast.Lambda]:
@@ -236,7 +259,9 @@ def unfollowed_changes(method: Method, locals_: frozenset[str]) -> Iterator[tupl
     """Methods that change their object in place, in a method's code, where the analysis does not follow the change.
 
     Followed: a call on a local or a `$` name (`acc.append(x)`, `$acc.append(x)`), and `map` of such a method.
-    Calls on what a name holds (`$d['k'].append(x)`) are left as the analysis reads them.
+    Calls on what a name holds (`$d['k'].append(x)`, `$d.setdefault(k, []).append(x)`) are left as the analysis
+    reads them; on any other value (`type(acc).append(acc, x)`, `(acc or []).append(x)`) they are not followed,
+    nor the functions of the operator module that change their argument (`operator.iadd(acc, [x])`).
     """
     for stmt in method.body:
         yield from _changes(stmt, locals_, frozenset())
@@ -257,6 +282,32 @@ def _receiver(node: ast.expr) -> str | None:
     return None
 
 
+def _held(node: ast.expr) -> bool:
+    """Whether a value is what a name holds: the name, an item or attribute of it, or what a method of it gives."""
+    while True:
+        if isinstance(node, ast.Name) or name_lookup(node, NAMESPACE_LOOKUPS):
+            return True
+        if isinstance(node, (ast.Attribute, ast.Subscript)):
+            node = node.value
+        elif (lookup := name_lookup(node, NAME_MAPPER)) and lookup[0] == "VFN":
+            assert isinstance(node, ast.Call)
+            node = node.args[0]
+        elif isinstance(node, ast.Call) and (
+            isinstance(node.func, ast.Attribute) or (name_lookup(node.func, NAME_MAPPER) or ("",))[0] == "VFN"
+        ):
+            node = node.func
+        else:
+            return False
+
+
+def _taken_from(function: ast.AST) -> ast.expr:
+    """What a method is taken from: `x` of `x.append` and of `VFN(x, 'append', ...)`."""
+    if isinstance(function, ast.Attribute):
+        return function.value
+    assert isinstance(function, ast.Call)
+    return function.args[0]
+
+
 def _mutator(node: ast.AST) -> str | None:
     if isinstance(node, ast.Attribute) and node.attr in MUTATORS:
         return node.attr
@@ -275,10 +326,10 @@ def _changes(node: ast.AST, locals_: frozenset[str], own: frozenset[str]) -> Ite
     if isinstance(node, _COMPREHENSIONS):
         for generator in node.generators:
             yield from _changes(generator.iter, locals_, own)
-            for target in ast.walk(generator.target):
-                if isinstance(target, (ast.Attribute, ast.Subscript)):
-                    yield target, f"a comprehension stores into `{ast.unparse(target)}`"
-            own = own | {n.id for n in ast.walk(generator.target) if isinstance(n, ast.Name)}
+            names, stores = _targets(generator)
+            for target in stores:
+                yield target, f"a comprehension stores into `{ast.unparse(target)}`"
+            own = own | names
             for condition in generator.ifs:
                 yield from _changes(condition, locals_, own)
         for part in [node.key, node.value] if isinstance(node, ast.DictComp) else [node.elt]:
@@ -286,16 +337,25 @@ def _changes(node: ast.AST, locals_: frozenset[str], own: frozenset[str]) -> Ite
         return
     called: set[int] = set()
     if isinstance(node, ast.Call):
-        mapped = isinstance(node.func, ast.Name) and node.func.id == "map" and node.args
-        for function in [node.func, *(node.args[:1] if mapped else [])]:
+        func = node.func
+        if isinstance(func, ast.Attribute) and func.attr in _OPERATOR_CHANGES:
+            if isinstance(func.value, ast.Name) and func.value.id == "operator":
+                yield node, f"`operator.{func.attr}` changes its argument in place"
+        mapped = node.args and (
+            (isinstance(func, ast.Name) and func.id == "map")
+            or (name_lookup(func, NAMESPACE_LOOKUPS) or ("", ""))[1] == "map"
+        )
+        for function in [func, *(node.args[:1] if mapped else [])]:
             name = _mutator(function)
             if name is None:
                 continue
             receiver = _receiver(function)
             if receiver is None:
-                if function is node.func:
-                    # On what a name holds: left as the analysis reads it.
+                if function is func:
                     called.add(id(function))
+                    taken = _taken_from(function)
+                    if not _held(taken):
+                        yield node, f"`.{name}` is called on `{ast.unparse(taken)}`, which is not a local of the template"
                 continue
             called.add(id(function))
             bare = receiver.lstrip("$")
@@ -306,7 +366,6 @@ def _changes(node: ast.AST, locals_: frozenset[str], own: frozenset[str]) -> Ite
     for child in ast.iter_child_nodes(node):
         if id(child) in called:
             # The method itself is judged, what it is taken from may hold more.
-            assert isinstance(child, (ast.Attribute, ast.Call))
-            yield from _changes(child.value if isinstance(child, ast.Attribute) else child.args[0], locals_, own)
+            yield from _changes(_taken_from(child), locals_, own)
             continue
         yield from _changes(child, locals_, own)
