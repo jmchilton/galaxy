@@ -43,6 +43,7 @@ from galaxy.tools.evaluation import (
     PartialToolEvaluator,
     ToolEvaluator,
 )
+from galaxy.tools.parameters.basic import FTPFileToolParameter
 from galaxy.tools.security_review import (
     OFF,
     ToolInputRejected,
@@ -186,6 +187,10 @@ class SpecJobRunner:
     def _job(self, job_case: JobCase, working_directory: str) -> model.Job:
         session = self.app.model.session
         user = self._user(job_case)
+        for param in self.tool.inputs.values():
+            if isinstance(param, FTPFileToolParameter):
+                # As a form Galaxy builds sets it: by default the directory is named after the email address.
+                param.user_ftp_dir = f"{os.path.join(self.app.config.ftp_upload_dir, user.email)}/"
         history = model.History(user=user, name="spec")
         session.add(history)
         state: dict[str, Any] = dict(job_case.inputs)

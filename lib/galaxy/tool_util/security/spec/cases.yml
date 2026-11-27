@@ -66,6 +66,14 @@ ftpfile_param_shell_injection:
       expect:
         rejected: true
         message_contains: ["the value of input 'f' contains the characters [' ;]"]
+    - doc: >-
+        Galaxy writes the file names after the user's FTP directory, which is named after the email address by
+        default.
+      user: {email: "a'$(touch harm-marker)'@example.org"}
+      inputs: {f: reads.txt}
+      harm: true
+      expect:
+        rejected: true
   green:
     - inputs: {f: "a;b|c && d"}
       expect: {rejected: false}

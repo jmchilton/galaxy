@@ -243,6 +243,15 @@ inputs:
   f: a';touch harm-marker;'
 ```
 
+Refused: Galaxy writes the file names after the user's FTP directory, which is named after the email address by default.
+
+```
+inputs:
+  f: reads.txt
+user:
+  email: a'$(touch harm-marker)'@example.org
+```
+
 Runs
 
 ```

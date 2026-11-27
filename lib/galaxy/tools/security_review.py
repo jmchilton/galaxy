@@ -90,6 +90,7 @@ from galaxy.tool_util.security.report import (
     USER_PREFERENCE,
     VULNERABILITY,
 )
+from galaxy.tools.parameters.basic import FTPFileToolParameter
 from galaxy.tools.security_refusal import (
     declares_upload_tool,
     is_galaxy_own_tool,
@@ -101,6 +102,7 @@ from galaxy.tools.wrappers import (
     DatasetCollectionWrapper,
     DatasetFilenameWrapper,
     DatasetListWrapper,
+    InputValueWrapper,
     ToolParameterValueWrapper,
 )
 
@@ -651,6 +653,9 @@ def _resolve(node: Any, path: tuple[str, ...]) -> Iterator[Any]:
 def _accessor_values(ref: SourceRef, value: Any) -> Iterator[str]:
     accessor = ref.accessor
     if accessor == TEXT:
+        yield str(value)
+    elif accessor == RAW and isinstance(value, InputValueWrapper) and isinstance(value.input, FTPFileToolParameter):
+        # Galaxy writes the file names after the user's FTP directory, unsanitized: check what it writes.
         yield str(value)
     elif accessor == RAW:
         raw = value.value if isinstance(value, ToolParameterValueWrapper) else value
