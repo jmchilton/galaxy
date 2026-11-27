@@ -138,6 +138,8 @@ class SpecJobRunner:
     def __init__(self, tool_file: str, directory: Optional[str] = None) -> None:
         self.app = MockApp()
         self.directory = directory or tempfile.mkdtemp()
+        # Galaxy runs the jobs of a tool with an ftpfile param only where an FTP directory is set.
+        self.app.config.ftp_upload_dir = self.directory
         path = tool_path(tool_file)
         self.tool: Tool = create_tool_from_source(self.app, get_tool_source(path), config_file=path)
         self._users: dict[tuple[str, str], model.User] = {}

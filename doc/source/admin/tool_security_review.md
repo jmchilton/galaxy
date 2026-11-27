@@ -81,6 +81,30 @@ inputs:
   word: a;b|c && d
 ```
 
+#### ftpfile_param_shell_injection
+
+An ftpfile param is written as the user's file names, with no sanitizer, and can close its single quotes.
+
+Tool `ftpfile_param_single_quoted.xml`:
+
+```
+cat '$f' > '$out'
+```
+
+Refused
+
+```
+inputs:
+  f: a';touch harm-marker;'
+```
+
+Runs
+
+```
+inputs:
+  f: /dev/null
+```
+
 #### element_identifier_shell_injection
 
 Element identifiers are not sanitized; one in single quotes can start a command.
@@ -1709,6 +1733,30 @@ Runs
 ```
 inputs:
   word: a';touch harm-marker;'
+```
+
+#### file_param_stays_quoted
+
+A file param is written as Galaxy writes a text param, through its sanitizer, so it cannot leave its single quotes.
+
+Tool `file_param_single_quoted.xml`:
+
+```
+cat '$f' > '$out'
+```
+
+Runs: Galaxy gives the path where it stored the uploaded file.
+
+```
+inputs:
+  f: /dev/null
+```
+
+Runs: Quotes and command characters are turned into tokens and stay inside the quotes. No file has the name that results, so `cat` fails, but nothing else runs.
+
+```
+inputs:
+  f: a';touch harm-marker;'
 ```
 
 #### dataset_name_stays_quoted

@@ -233,7 +233,7 @@ def _value(input_source: InputSource, path: str, tool_sanitize: bool) -> Node:
     lead = constraint.lead if "-" in universe and "-" not in constraint.lead else None
     word_first = constraint.word_first()
     words = word_first if "-" in universe and "-" not in word_first else None
-    if ptype in ("color", "directory_uri", "file", "ftpfile"):
+    if ptype in ("color", "directory_uri", "ftpfile"):
         # These types return the submitted value as it is: no sanitizer runs when they are rendered.
         value = AV(
             chars=universe,
@@ -243,7 +243,7 @@ def _value(input_source: InputSource, path: str, tool_sanitize: bool) -> Node:
             words=words,
         )
         return Value(path, ptype, as_text=value, as_raw=value, text_like=True)
-    # text, hidden and anything unknown.
+    # text, hidden, file (rendered by ToolParameter.to_param_dict_string, sanitized) and anything unknown.
     return Value(
         path,
         ptype,
