@@ -579,6 +579,32 @@ inputs:
   __galaxy_url__: http://localhost:8080
 ```
 
+#### getvar_request_parameter
+
+In a tool that keeps all its job parameters, `getVar` of a name no input has reads the request parameter of that name when there is one, whose value is checked as usual.
+
+Tool `getvar_request_parameter.xml`:
+
+```
+echo '$getVar("organism", "")' > '$out'
+```
+
+Refused
+
+```
+inputs:
+  word: a
+  organism: a';touch harm-marker;'
+```
+
+Runs
+
+```
+inputs:
+  word: a
+  organism: Homo sapiens
+```
+
 ### `nested-interpreter`
 
 A value is written into the program of another interpreter (`bash -c`, `sed`, `perl -e`, ...) and can change what that program does.

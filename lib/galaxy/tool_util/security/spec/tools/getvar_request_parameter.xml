@@ -1,0 +1,11 @@
+<tool id="spec_getvar_request_parameter" name="A request parameter read with getVar" version="1.0" profile="24.0">
+    <description>reads a parameter of the request by name, in a tool that keeps all its job parameters</description>
+    <options sanitize="False"/>
+    <command><![CDATA[echo '$getVar("organism", "")' > '$out']]></command>
+    <inputs check_values="false">
+        <param name="word" type="text" value="a"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

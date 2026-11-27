@@ -231,10 +231,11 @@ def _analyse(
 
 
 def _keeps_undeclared_job_parameters(tool_source: ToolSource) -> bool:
-    """`<inputs check_values="false">`: Galaxy passes the tool's request parameters as they are sent."""
-    root = getattr(tool_source, "root", None)
-    inputs = root.find("inputs") if root is not None else None
-    return inputs is not None and not string_as_bool(inputs.get("check_values", "true"))
+    """A data source tool, or `<inputs check_values="false">`: Galaxy passes the request parameters as sent."""
+    if (tool_source.parse_tool_type() or "").startswith("data_source"):
+        return True
+    input_elem = getattr(tool_source.parse_input_pages(), "input_elem", None)
+    return input_elem is not None and not string_as_bool(input_elem.get("check_values", "true"))
 
 
 def review_tool_source(

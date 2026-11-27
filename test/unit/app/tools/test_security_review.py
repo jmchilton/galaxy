@@ -15,14 +15,20 @@ import pytest
 
 from galaxy import model
 from galaxy.app_unittest_utils.galaxy_mock import MockApp
+from galaxy.app_unittest_utils.security_review_spec import SpecJobRunner
 from galaxy.tool_util.parser import get_tool_source
 from galaxy.tool_util.security import (
     review_tool_source,
+)
+from galaxy.tool_util.security.model import (
+    REPLACEABLE_SPECIALS,
+    SAFE_SPECIALS,
 )
 from galaxy.tool_util.security.report import (
     ELEMENT_IDENTIFIER,
     RAW,
 )
+from galaxy.tool_util.security.spec import JobCase
 from galaxy.tools import (
     create_tool_from_source,
     security_review,
@@ -156,6 +162,28 @@ def test_unset_local_reads_the_job_parameters_the_tool_passes_to_its_templates(a
     review = reviewer(tmp_path).review(tool)
     assert review is not None and review.report is not None
     assert any(ref.key == name for f in review.report.findings for ref in f.refs) is read
+
+
+def test_job_parameters_replace_exactly_the_galaxy_names_the_review_reads_as_job_parameters(tmp_path):
+    # REPLACEABLE_SPECIALS follows the order in which build_param_dict sets Galaxy's names and the job's
+    # parameters: a job parameter replaces a name in a tool that keeps all its job parameters only if
+    # Galaxy sets the name before the job's parameters, or never. chromInfo is the tool action's.
+    names = sorted(SAFE_SPECIALS - {"chromInfo", "__get_data_table_entry__"})
+    lines = "\n".join(f"echo {n}=${{getVar('{n}', 'ABSENT')}};" for n in names)
+    for check_values, expected in (("", set()), (' check_values="false"', REPLACEABLE_SPECIALS)):
+        path = os.path.join(tmp_path, f"tool{len(check_values)}.xml")
+        with open(path, "w") as fh:
+            fh.write(f"""<tool id="t{len(check_values)}" name="t" version="1.0" profile="24.0">
+<command><![CDATA[{lines}
+true]]></command>
+<inputs{check_values}><param name="word" type="text" value="a"/></inputs>
+<outputs><data name="out" format="txt"/></outputs>
+</tool>""")
+        runner = SpecJobRunner(path, str(tmp_path))
+        job = JobCase(inputs={"word": "w", **{n: f"MARK{i}" for i, n in enumerate(names)}}, expect={"rejected": False})
+        command = runner.run(job, mode=OFF).command_line
+        assert command is not None
+        assert {n for i, n in enumerate(names) if f"{n}=MARK{i};" in command} == expected
 
 
 def test_first_use_computes_the_review(app, tmp_path):

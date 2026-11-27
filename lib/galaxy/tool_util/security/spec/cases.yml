@@ -1074,6 +1074,27 @@ galaxy_url_replaced:
       harm: true
       expect: {rejected: false}
 
+getvar_request_parameter:
+  doc: >-
+    In a tool that keeps all its job parameters, `getVar` of a name no input has reads the request parameter
+    of that name when there is one, whose value is checked as usual.
+  tool: getvar_request_parameter.xml
+  code: shell-injection
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, key: organism, checkable: true}
+  red:
+    - inputs: {word: a, organism: "a';touch harm-marker;'"}
+      harm: true
+      expect:
+        rejected: true
+        message_contains: ["the job parameter 'organism' contains the characters [' ;]"]
+  green:
+    - inputs: {word: a, organism: "Homo sapiens"}
+      harm: true
+      expect: {rejected: false}
+
 galaxy_url_kept:
   doc: >-
     A regular tool's templates get only its inputs and the job parameters Galaxy passes them: a job

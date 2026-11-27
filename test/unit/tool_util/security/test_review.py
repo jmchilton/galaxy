@@ -25,6 +25,7 @@ from galaxy.tool_util.security.charsets import (
     regex_word_first,
     TILDE_WORD,
 )
+from galaxy.tool_util.security.model import build_model
 from galaxy.tool_util.security.template import (
     compile_template,
     CompileTimeExecution,
@@ -759,6 +760,71 @@ def test_unset_local_reads_a_job_parameter_only_where_one_reaches_the_template(
 
 
 @pytest.mark.parametrize(
+    "command",
+    [
+        # Every path and #def shares one #set global store.
+        "#if $word == 'x'\n#set global $g = $free\n#else\n#set global $g = 'safe'\n#end if\ntool '$g'",
+        # Where the #set global did not run, the name is the parameter.
+        "#if $word == 'x'\n#set global $free = 'safe'\n#end if\ntool '$free'",
+        "#for $r in $rows\n#set global $free = 'safe'\n#end for\ntool '$free'",
+        "#if $word == 'x'\n#set global $free = 'safe'\n#end if\ntool '$getVar(\"free\")'",
+        "#def show()\n$free#slurp\n#end def\ntool '$show()'\n#set global $free = 'safe'",
+    ],
+)
+def test_set_global_that_may_not_have_run_leaves_the_parameter_of_its_name(tmp_path, command):
+    compile_template(command)
+    assert ("shell-injection", "high") in rules(review(tmp_path, command))
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "#set global $free = 'safe'\ntool '$free'",
+        "#set global $free = 'safe'\n#def show()\n$free#slurp\n#end def\ntool '$show()'",
+        "#if $word == 'x'\n#set global $free = 'safe'\n#else\n#set global $free = 'ok'\n#end if\ntool '$free'",
+    ],
+)
+def test_set_global_that_ran_on_every_path_is_its_value(tmp_path, command):
+    compile_template(command)
+    assert rules(review(tmp_path, command)) == set()
+
+
+@pytest.mark.parametrize(
+    "template_job_parameters,keeps_undeclared,read",
+    [(frozenset({"dbkey"}), False, False), (frozenset({"foo"}), False, True), (frozenset(), True, True)],
+)
+def test_get_var_of_a_name_no_input_has_reads_the_job_parameter_that_reaches_the_template(
+    tmp_path, template_job_parameters, keeps_undeclared, read
+):
+    path = os.path.join(tmp_path, "tool.xml")
+    with open(path, "w") as fh:
+        fh.write("""<tool id="t" name="t" version="1" profile="24.2"><options sanitize="false"/>
+  <command><![CDATA[tool '$getVar("foo", "")']]></command>
+  <inputs><param name="word" type="text"/></inputs><outputs><data name="out" format="txt"/></outputs></tool>""")
+    report = review_tool_source(
+        get_tool_source(path),
+        template_job_parameters=template_job_parameters,
+        keeps_undeclared_job_parameters=keeps_undeclared,
+    )
+    assert (("shell-injection", "high") in rules(report)) is read
+
+
+@pytest.mark.parametrize(
+    "tool_type,check_values", [("data_source", ""), ("data_source_async", ""), ("", ' check_values="false"')]
+)
+def test_data_source_tools_keep_their_job_parameters(tmp_path, tool_type, check_values):
+    path = os.path.join(tmp_path, "tool.xml")
+    attrs = f' tool_type="{tool_type}"' if tool_type else ""
+    with open(path, "w") as fh:
+        fh.write(
+            f"""<tool id="t" name="t" version="1" profile="24.2"{attrs}><options sanitize="false"/>
+  <command><![CDATA[tool '$__galaxy_url__']]></command>
+  <inputs{check_values}><param name="word" type="text"/></inputs><outputs><data name="out" format="txt"/></outputs></tool>"""
+        )
+    assert ("shell-injection", "high") in rules(review_tool_source(get_tool_source(path)))
+
+
+@pytest.mark.parametrize(
     "name", ["__galaxy_url__", "__history_id__", "__datatypes_config__", "GALAXY_DATATYPES_CONF_FILE", "__job_resource"]
 )
 @pytest.mark.parametrize(
@@ -1301,3 +1367,14 @@ def test_marks_tell_what_a_word_starts_with(value, expected):
 def test_variable_assignments(tmp_path, command, expected):
     found = rules(review(tmp_path, command)) - {("option-injection", "low")}
     assert {r for r in found if r[0] in ("variable-name", "argument-injection")} == expected
+
+
+@pytest.mark.parametrize("template_job_parameters,expected", [(frozenset(), set()), (frozenset({"foo"}), {"foo"})])
+def test_strict_check_reads_the_job_parameters_a_template_names(tmp_path, template_job_parameters, expected):
+    path = os.path.join(tmp_path, "tool.xml")
+    with open(path, "w") as fh:
+        fh.write(f"""<tool id="t" name="t" version="1" profile="24.2"><command>tool</command>
+  <inputs>{INPUTS}</inputs><outputs><data name="out" format="txt"/></outputs></tool>""")
+    model = build_model(get_tool_source(path), template_job_parameters)
+    refs = model.sources(frozenset({"foo", "free", "__user_email__"}))
+    assert {ref.key for ref in refs if ref.accessor == "special"} - {"__user_email__"} == expected
