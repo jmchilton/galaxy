@@ -566,6 +566,39 @@ def test_changes_a_lambda_or_comprehension_makes_to_locals_are_kept(tmp_path, co
 
 
 @pytest.mark.parametrize(
+    "command",
+    [
+        # The comprehension may not run: the name stays unbound and is the parameter.
+        "#silent [(free := 'safe') for _ in []]\ntool '$free'",
+        "#silent list((free := 'safe') for _ in [])\ntool '$free'",
+        "#set global $g = $free\n#silent [(g := 'safe') for _ in []]\ntool '$g'",
+        "#if $word\n#silent [(free := 'safe') for _ in []]\n#end if\ntool '$free'",
+        # A walrus in a lambda binds in the lambda's frame.
+        "#silent (lambda: (free := 'safe'))\ntool '$free'",
+        "#silent (lambda: (free := 'safe'))()\ntool '$free'",
+        "#silent (lambda: [(free := 'safe') for _ in [1]])()\ntool '$free'",
+    ],
+)
+def test_names_a_lambda_or_comprehension_may_leave_unbound_are_parameters(tmp_path, command):
+    compile_template(command)
+    assert ("shell-injection", "high") in rules(review(tmp_path, command))
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        # A comprehension's target stays its own.
+        "#set $x = 'safe'\n#silent [x for x in [$free]]\ntool '$x'",
+        "#set $x = 'safe'\n#silent [(x := 'ok') for _ in [1]]\ntool '$x'",
+        "#set $acc = []\n#silent [acc.append('ok') for _x in [$free]]\ntool '${''.join($acc)}'",
+    ],
+)
+def test_names_a_lambda_or_comprehension_binds_do_not_leak(tmp_path, command):
+    compile_template(command)
+    assert rules(review(tmp_path, command)) == set()
+
+
+@pytest.mark.parametrize(
     "command,expected",
     [
         ("#block b\ntool '$free'\n#end block b", True),
