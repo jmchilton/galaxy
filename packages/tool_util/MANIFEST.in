@@ -28,6 +28,7 @@ include src/galaxy/tool_util/security/spec/tools/export_value.xml
 include src/galaxy/tool_util/security/spec/tools/getvar_user_name.xml
 include src/galaxy/tool_util/security/spec/tools/group_tags.xml
 include src/galaxy/tool_util/security/spec/tools/job_metadata.xml
+include src/galaxy/tool_util/security/spec/tools/known_global_list.xml
 include src/galaxy/tool_util/security/spec/tools/known_helper.xml
 include src/galaxy/tool_util/security/spec/tools/known_loop.xml
 include src/galaxy/tool_util/security/spec/tools/nested_shell.xml

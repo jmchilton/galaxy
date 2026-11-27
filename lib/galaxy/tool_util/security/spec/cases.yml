@@ -361,6 +361,16 @@ known_loop:
       - {rule: shell-injection, severity: high, accessor: raw, param: word, checkable: true}
       - {rule: shell-injection, severity: high, accessor: raw, param: other, checkable: true}
 
+known_global_list:
+  doc: >-
+    The gatk4 tools look a parameter up in each section of a list they set once, with `getVar` of the section and
+    the name. The list is fixed, so the loop reads the parameters it names, whose values are reviewed as usual.
+  tool: known_global_list.xml
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, accessor: raw, param: optional.other, checkable: true}
+
 app_model_read:
   doc: >-
     The application object reaches any data of the server. The review flags the read but follows no value

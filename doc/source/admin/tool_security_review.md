@@ -956,6 +956,35 @@ serious_rules:
 - shell-injection
 ```
 
+### known_global_list
+
+The gatk4 tools look a parameter up in each section of a list they set once, with `getVar` of the section and the name. The list is fixed, so the loop reads the parameters it names, whose values are reviewed as usual.
+
+Tool `known_global_list.xml`:
+
+```
+#set global $sections = ['', 'optional.']
+#for $sect in $sections
+    #if $varExists($sect + "other")
+        echo '${getVar($sect + "other").value}' >> '$out' &&
+    #end if
+#end for
+true
+```
+
+Review:
+
+```
+findings:
+- rule: shell-injection
+  severity: high
+  accessor: raw
+  param: optional.other
+  checkable: true
+serious_rules:
+- shell-injection
+```
+
 ### app_model_read
 
 The application object reaches any data of the server. The review flags the read but follows no value of it, and this tool writes only a count.
@@ -1126,7 +1155,7 @@ Each finding has one of these rules.
 
 A value can close the quotes around it, or is written unquoted, and start another shell command.
 
-Cases: `raw_text_shell_injection`, `element_identifier_shell_injection`, `dataset_name_stays_quoted`, `wrapped_names_stay_quoted`, `group_tags_shell_injection`, `dataset_content_shell_injection`, `user_preference_stays_quoted`, `user_preference_shell_injection`, `stray_quote`, `path_like_name`, `raw_dataset_model`, `raw_dataset_history`, `shell_runs_script_file`, `rewrites_restore_tokens`, `literal_rewrite`, `rewrites_and_template_code`, `user_object_unsanitized`, `untraced_value`, `known_helper`, `known_loop`.
+Cases: `raw_text_shell_injection`, `element_identifier_shell_injection`, `dataset_name_stays_quoted`, `wrapped_names_stay_quoted`, `group_tags_shell_injection`, `dataset_content_shell_injection`, `user_preference_stays_quoted`, `user_preference_shell_injection`, `stray_quote`, `path_like_name`, `raw_dataset_model`, `raw_dataset_history`, `shell_runs_script_file`, `rewrites_restore_tokens`, `literal_rewrite`, `rewrites_and_template_code`, `user_object_unsanitized`, `untraced_value`, `known_helper`, `known_loop`, `known_global_list`.
 
 #### `nested-interpreter`
 

@@ -1,0 +1,20 @@
+<tool id="spec_known_global_list" name="Texts read by a loop over a fixed list" version="1.0" profile="24.0">
+    <description>reads a text parameter in each section a fixed list names, as the gatk4 tools do</description>
+    <command><![CDATA[
+#set global $sections = ['', 'optional.']
+#for $sect in $sections
+    #if $varExists($sect + "other")
+        echo '${getVar($sect + "other").value}' >> '$out' &&
+    #end if
+#end for
+true
+    ]]></command>
+    <inputs>
+        <section name="optional" title="Optional">
+            <param name="other" type="text"/>
+        </section>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>
