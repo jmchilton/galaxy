@@ -1,4 +1,4 @@
-"""Render the spec cases, access patterns, rules and uncheckable codes as the Markdown section of the admin docs.
+"""Render the spec cases, access patterns, rules, uncheckable and refusal codes as the Markdown section of the admin docs.
 
 ``python -m galaxy.tool_util.security.spec.docs`` prints the section.
 """
@@ -22,7 +22,13 @@ from galaxy.tool_util.security.classify import (
     DESCRIPTIONS as UNCHECKABLE_DESCRIPTIONS,
     Uncheckable,
 )
+from galaxy.tool_util.security.codes import (
+    DESCRIPTIONS as REFUSAL_DESCRIPTIONS,
+    RefusalCode,
+)
 from galaxy.tool_util.security.spec import (
+    expected_codes,
+    JobCase,
     load_cases,
     SpecCase,
     tool_path,
@@ -41,6 +47,7 @@ def spec_cases_markdown(cases: dict[str, SpecCase]) -> str:
     lines += _patterns(cases)
     lines += _rules(cases)
     lines += _uncheckable(cases)
+    lines += _refusals(cases)
     lines.append(END)
     return "\n".join(lines) + "\n"
 
@@ -84,6 +91,23 @@ def _uncheckable(cases: dict[str, SpecCase]) -> list[str]:
     return lines + _described(groups, UNCHECKABLE_DESCRIPTIONS, cases, lambda case: case.review.codes or [])
 
 
+def _refusals(cases: dict[str, SpecCase]) -> list[str]:
+    lines = [
+        "## Refusal codes",
+        "",
+        "Every job Galaxy refuses carries one or more codes: the message of the failed job starts with them",
+        "(`[shell-injection] This job was not run: ...`), and so does the warning Galaxy logs",
+        "(`Tool security review (shell-injection): job ...`). The uncheckable codes refuse every job of a tool.",
+        "",
+    ]
+    groups = (("Codes", list(RefusalCode)),)
+    return lines + _described(groups, REFUSAL_DESCRIPTIONS, cases, _refused_codes)
+
+
+def _refused_codes(case: SpecCase) -> set[RefusalCode]:
+    return {code for job in case.red for code in expected_codes(case, job)}
+
+
 def _described(
     groups: Sequence[tuple[str, Sequence[Code]]],
     descriptions: Mapping[Code, str],
@@ -108,7 +132,16 @@ def _case(case_id: str, case: SpecCase) -> list[str]:
     if review:
         rendered = yaml.safe_dump(review, sort_keys=False, allow_unicode=True, width=1000).rstrip()
         lines += ["Review:", "", "```", rendered, "```", ""]
+    for color, jobs in (("Refused", case.red), ("Runs", case.green)):
+        for job in jobs:
+            title = f"{color}{': ' + job.doc if job.doc else ''}"
+            lines += [title, "", "```", _context(job).rstrip(), "```", ""]
     return lines
+
+
+def _context(job: JobCase) -> str:
+    context = job.model_dump(mode="json", exclude_defaults=True, exclude={"doc", "expect", "harm"})
+    return yaml.safe_dump(context, sort_keys=False, allow_unicode=True) if context else "{}\n"
 
 
 if __name__ == "__main__":

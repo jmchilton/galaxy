@@ -282,6 +282,9 @@ class MockAppConfig(GalaxyDataTestConfig, CommonConfigurationMixin):
         self.len_file_path = os.path.join("tool-data", "shared", "ucsc", "chrom")
         self.builds_file_path = os.path.join("tool-data", "shared", "ucsc", "builds.txt.sample")
 
+        # The data source tools pass this legacy setting to their script, as GalaxyAppConfiguration does.
+        self.output_size_limit = 0
+
         self.shed_tool_config_file = "config/shed_tool_conf.xml"
         self.shed_tool_config_file_set = False
         self.update_integrated_tool_panel = True

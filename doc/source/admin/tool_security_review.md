@@ -4,7 +4,8 @@
 user controls can leave the quotes or the argument it is written into: a text parameter, a collection element
 identifier, a dataset name or metadata element, a group tag, a dataset's content, a user preference. Nothing
 from the tool is run: the templates are compiled with Cheetah's compiler and the resulting syntax tree is
-analysed. The review is static and offline; it does not change how Galaxy runs jobs.
+analysed. Galaxy also checks the values of each job against the review of its tool (see
+[Checking jobs](#checking-jobs)).
 
 To see what the review finds in tools, run
 
@@ -56,18 +57,53 @@ A report also lists the parts of the templates the review could not follow, or t
 run (`unchecked_locations`), and the template code that rewrites values in ways that can bring back
 characters the sanitizer took out (`rewrites`). A finding is `checkable` when the characters of a concrete
 value decide whether it applies; the JSON report keeps the characters involved (`breakout`, `closes`,
-`requires`) as inputs for such a value-level check. `galaxy.tool_util.security.classify.classify()` adds the
-templates with a finding that is not checkable, or that read objects by name; the CLI prints this classified set
-as `uncheckable_locations`, next to the report's own `unchecked_locations`. `classify()` also gives the
-[uncheckable codes](#uncheckable-codes) of a tool whose templates the review cannot decide.
+`requires`), which the [job check](#checking-jobs) compares with a job's values.
+`galaxy.tool_util.security.classify.classify()` adds the templates with a finding that is not checkable, or
+that read objects by name; the CLI prints this classified set as `uncheckable_locations`, next to the report's
+own `unchecked_locations`. `classify()` also gives the [uncheckable codes](#uncheckable-codes) of a tool whose
+templates the review cannot decide.
+
+## Checking jobs
+
+A Galaxy process that prepares jobs reviews a tool when it prepares the tool's first job, and keeps the review
+as long as it keeps the tool. Before a job's command line is built, the values of the job are compared with the
+tool's findings. Two options in `galaxy.yml` control what happens then:
+
+- `tool_security_review` sets what a value may not do. Each level fails the jobs the one before it fails, and
+  more:
+  - `enforce_code` (the default): a value may not become code, such as starting a shell command, changing the
+    program of another interpreter or the code of a configfile, or choosing the program that is run.
+  - `enforce_data`: a value also stays the data it is meant to be. It may not name a path outside the job's
+    directory, be read as an option, split into words that are options or paths, or change the structure of a
+    data configfile. Element identifiers and dataset names that a template writes may not contain `/` or start
+    with `-` or `~`.
+  - `enforce_all`: a value also may not split into extra plain words or close its quotes.
+
+  `log` only logs a warning for what `enforce_all` would fail, and `off` turns the review and the checks off.
+
+- `tool_security_review_when_unsure`: for jobs the review cannot check, `strict` (the default) requires every
+  value the job carries to be plain, and refuses every job of a tool none of whose values can be checked (a
+  tool with an [uncheckable code](#uncheckable-codes)). `refuse` fails every such job, and `log` runs it and
+  logs what `strict` would fail.
+
+A plain value has no quotes, no `$ ; & | < > \ ( ) { } [ ] % # *`, no newline or tab, no word that starts with
+`-`, and none of Galaxy's sanitizer tokens such as `__gt__`. Each refused job carries
+[refusal codes](#refusal-codes).
 
 ## Spec cases
 
 The examples below are the cases of the review's declarative spec, `lib/galaxy/tool_util/security/spec/`,
-which ships in `galaxy-tool-util`. Each case is a synthetic tool XML file and what the review must report for it:
-findings that must match, the exact rules of its serious findings, its unchecked locations, whether it
-rewrites values, its access patterns and its uncheckable codes. Galaxy's unit tests review every spec tool and
-compare the report with its case.
+which ships in `galaxy-tool-util`. Each case is a synthetic tool XML file, what the review must report for it
+(findings that must match, the exact rules of its serious findings, its unchecked locations, whether it
+rewrites values, its access patterns and its uncheckable codes), and the jobs it refuses and runs. A job lists
+everything a template can read: parameter values (`inputs`), datasets (`name`, `content`, `metadata`,
+`tags`), collections (element identifiers), the user's preferences, and the review's settings (`config`).
+Galaxy's unit tests review every spec tool and compare the report with its case. They also run every job
+through the evaluator that prepares real jobs, in the mode of the job's `config` and in `log` mode. For the
+refused jobs that show `harm-marker`, they build the command with the review off and run it, to show that the
+value does harm without the review. They also sweep every job: with the default settings, each value a job
+sets, each of a few preferences, and the user's email and name in turn hold a value that starts a command, and
+the job must be refused or run without harm.
 
 <!-- BEGIN spec cases, generated by `python -m galaxy.tool_util.security.spec.docs` -->
 
@@ -95,6 +131,20 @@ serious_rules:
 codes: []
 ```
 
+Refused
+
+```
+inputs:
+  word: a';touch harm-marker;'
+```
+
+Runs: Command characters stay inside the quotes when no quote closes them.
+
+```
+inputs:
+  word: a;b|c && d
+```
+
 ### sanitized_text_stays_quoted
 
 The default sanitizer turns quotes into tokens, so a sanitized text value cannot leave its quotes.
@@ -112,6 +162,13 @@ serious_rules: []
 codes: []
 ```
 
+Runs
+
+```
+inputs:
+  word: a';touch harm-marker;'
+```
+
 ### file_param_stays_quoted
 
 A file param is written as Galaxy writes a text param, through its sanitizer, so it cannot leave its single quotes.
@@ -127,6 +184,20 @@ Review:
 ```
 serious_rules: []
 codes: []
+```
+
+Runs
+
+```
+inputs:
+  f: a';touch harm-marker;'
+```
+
+Runs: A file that exists, so the sweep's payloads are checked for harm.
+
+```
+inputs:
+  f: /dev/null
 ```
 
 ### ftpfile_param_shell_injection
@@ -150,6 +221,20 @@ findings:
   checkable: true
 serious_rules:
 - shell-injection
+```
+
+Refused
+
+```
+inputs:
+  f: a';touch harm-marker;'
+```
+
+Runs
+
+```
+inputs:
+  f: a;b|c && d
 ```
 
 ### element_identifier_shell_injection
@@ -176,9 +261,36 @@ serious_rules:
 - shell-injection
 ```
 
+Refused
+
+```
+collections:
+  input:
+    elements:
+    - identifier: a';touch harm-marker;'
+```
+
+Runs: Spaces, slashes and dots are common in identifiers and stay in place.
+
+```
+collections:
+  input:
+    elements:
+    - identifier: sample 1/reads.fq
+```
+
+Runs: A lone quote only splits arguments, a medium finding the check lets through; the command it builds does not parse, which is the tool's bug rather than a way out.
+
+```
+collections:
+  input:
+    elements:
+    - identifier: Bob's reads
+```
+
 ### dataset_name_stays_quoted
 
-Outside a collection, the element identifier of a dataset input is its name, which Galaxy sanitizes. The review still reports it as written as the user set it.
+Outside a collection, the element identifier of a dataset input is its name, which Galaxy sanitizes. The review counts it as written as the user set it; the job check reads it as the template does.
 
 Tool `dataset_name_identifier.xml`:
 
@@ -198,9 +310,17 @@ serious_rules:
 - shell-injection
 ```
 
+Runs
+
+```
+datasets:
+  input:
+    name: a';touch harm-marker;'
+```
+
 ### wrapped_names_stay_quoted
 
-Galaxy sanitizes dataset names and metadata read through the dataset wrapper even in a tool that turns the sanitizer off. The review still reports them as written as users set them.
+Galaxy sanitizes dataset names and metadata read through the dataset wrapper even in a tool that turns the sanitizer off. The review counts them as written as users set them; the job check reads them as the template does, so these jobs run.
 
 Tool `dataset_name_unsanitized.xml`:
 
@@ -224,6 +344,19 @@ findings:
   checkable: true
 serious_rules:
 - shell-injection
+```
+
+Runs
+
+```
+datasets:
+  input:
+    name: a';touch harm-marker;'
+    ext: tabular
+    content: "1\t2\n"
+    metadata:
+      column_names:
+      - a';touch harm-marker;'
 ```
 
 ### group_tags_shell_injection
@@ -250,9 +383,28 @@ serious_rules:
 - shell-injection
 ```
 
+Refused
+
+```
+datasets:
+  input:
+    tags:
+    - group:a';touch harm-marker;'
+```
+
+Runs: Command characters stay inside the quotes when no quote closes them.
+
+```
+datasets:
+  input:
+    tags:
+    - group:a;b
+    - name:sample1
+```
+
 ### dataset_content_shell_injection
 
-A template that reads a dataset with open() writes its content, which the review follows.
+A template that reads a dataset with open() writes its content; the check reads the file Galaxy keeps.
 
 Tool `dataset_content_first_line.xml`:
 
@@ -277,9 +429,29 @@ patterns:
 codes: []
 ```
 
+Refused
+
+```
+datasets:
+  input:
+    content: 'a'';touch harm-marker;''
+
+      '
+```
+
+Runs: Command characters stay inside the quotes when no quote closes them.
+
+```
+datasets:
+  input:
+    content: 'chr1;100|200
+
+      '
+```
+
 ### user_preference_stays_quoted
 
-Unless the tool turns the sanitizer off, Galaxy sanitizes what a template reads from the user object, preferences included. The review still reports a preference as written as the user set it.
+Unless the tool turns the sanitizer off, Galaxy sanitizes what a template reads from the user object, preferences included. The review counts a preference as written as the user set it; the job check reads it as the template does, so this job runs.
 
 Tool `user_preference.xml`:
 
@@ -297,6 +469,14 @@ findings:
   checkable: true
 serious_rules:
 - shell-injection
+```
+
+Runs
+
+```
+user:
+  preferences:
+    spec|label: a';touch harm-marker;'
 ```
 
 ### user_preference_shell_injection
@@ -327,6 +507,33 @@ patterns:
 - user-object
 ```
 
+Refused
+
+```
+user:
+  preferences:
+    spec|label: a';touch harm-marker;'
+    label: x
+```
+
+Refused
+
+```
+user:
+  preferences:
+    spec|label: x
+    label: a';touch harm-marker;'
+```
+
+Runs: Command characters stay inside the quotes when no quote closes them.
+
+```
+user:
+  preferences:
+    spec|label: a;b|c && d
+    label: a;b|c && d
+```
+
 ### stray_quote
 
 A lone quote in one value is harmless by itself, but it flips the quoting of the rest of the line, which leaves the command characters of the next value unquoted.
@@ -345,6 +552,39 @@ Review:
 ```
 serious_rules:
 - shell-injection
+```
+
+Refused
+
+```
+inputs:
+  word: x;touch harm-marker;#
+collections:
+  input:
+    elements:
+    - identifier: Bob's reads
+```
+
+Runs: The same value with no quote before it stays inside its quotes.
+
+```
+inputs:
+  word: x;touch harm-marker;#
+collections:
+  input:
+    elements:
+    - identifier: Bobs reads
+```
+
+Runs: The same lone quote next to a value without command characters.
+
+```
+inputs:
+  word: it's fine
+collections:
+  input:
+    elements:
+    - identifier: Bob's reads
 ```
 
 ### nested_shell
@@ -369,6 +609,20 @@ serious_rules:
 - nested-interpreter
 ```
 
+Refused
+
+```
+inputs:
+  word: a;touch harm-marker
+```
+
+Runs
+
+```
+inputs:
+  word: hello world
+```
+
 ### sed_program
 
 A value in a sed program can end the s command and add one that runs a shell command (`e`, GNU sed).
@@ -384,6 +638,22 @@ Review:
 ```
 serious_rules:
 - nested-interpreter
+```
+
+Refused
+
+```
+inputs:
+  word: 'y/;e touch harm-marker
+
+    s/x/'
+```
+
+Runs
+
+```
+inputs:
+  word: hello world
 ```
 
 ### configfile_python
@@ -409,6 +679,20 @@ serious_rules:
 - configfile-injection
 ```
 
+Refused
+
+```
+inputs:
+  word: ''';open(''harm-marker'',''w'');'''
+```
+
+Runs
+
+```
+inputs:
+  word: a;b "c" $d
+```
+
 ### repr_python_literal
 
 repr() of a string is a Python string literal, with the value's quotes and backslashes escaped. Written as code in a Python configfile, outside any string, it stays one string, even for a raw value.
@@ -424,6 +708,15 @@ Review:
 ```
 serious_rules: []
 codes: []
+```
+
+Runs
+
+```
+inputs:
+  raw_word: ''';open(''harm-marker'',''w'');'''
+  word: ' or exec(bytes((111,112,101,110,40,39,104,97,114,109,45,109,97,114,107,101,114,39,44,39,119,39,41)))
+    or '
 ```
 
 ### repr_inside_python_string
@@ -450,6 +743,21 @@ serious_rules:
 - configfile-injection
 ```
 
+Refused: Python code that needs no quote of its own.
+
+```
+inputs:
+  word: ' or exec(bytes((111,112,101,110,40,39,104,97,114,109,45,109,97,114,107,101,114,39,44,39,119,39,41)))
+    or '
+```
+
+Runs
+
+```
+inputs:
+  word: a b, c.d = e
+```
+
 ### json_inside_python_string
 
 json.dumps() of a string writes it between double quotes. Inside a "..." string of a Python configfile, those quotes end the string.
@@ -474,9 +782,24 @@ serious_rules:
 - configfile-injection
 ```
 
+Refused: Python code that needs no quote of its own.
+
+```
+inputs:
+  word: ' or exec(bytes((111,112,101,110,40,39,104,97,114,109,45,109,97,114,107,101,114,39,44,39,119,39,41)))
+    or '
+```
+
+Runs
+
+```
+inputs:
+  word: a b, c.d = e
+```
+
 ### path_traversal
 
-A file name the user gives is written as a path `cp` writes to. A slash in it can name a file outside the job's directory.
+A file name the user gives is written as a path `cp` writes to. With `enforce_data`, a slash in it is refused, since it can name a file outside the job's directory.
 
 Tool `copy_to_named_file.xml`:
 
@@ -495,9 +818,43 @@ findings:
   checkable: true
 ```
 
+Refused
+
+```
+inputs:
+  name: ../harm-marker
+datasets:
+  input:
+    name: reads.txt
+config:
+  mode: enforce_data
+```
+
+Runs
+
+```
+inputs:
+  name: reads.txt
+datasets:
+  input:
+    name: reads.txt
+config:
+  mode: enforce_data
+```
+
+Runs: With `enforce_code`, the default, a path is not refused.
+
+```
+inputs:
+  name: ../reads.txt
+datasets:
+  input:
+    name: reads.txt
+```
+
 ### option_injection
 
-A quoted value that starts an argument can begin with a dash, and `sort` reads it as an option.
+A quoted value that starts an argument can begin with a dash, and `sort` reads it as an option. With `enforce_data`, a leading dash is refused.
 
 Tool `sort_quoted_operand.xml`:
 
@@ -516,9 +873,43 @@ findings:
   checkable: true
 ```
 
+Refused
+
+```
+inputs:
+  file: -oharm-marker
+datasets:
+  input:
+    name: reads.txt
+config:
+  mode: enforce_data
+```
+
+Runs: A dash inside the value is not an option.
+
+```
+inputs:
+  file: reads-1.txt
+datasets:
+  input:
+    name: reads.txt
+config:
+  mode: enforce_data
+```
+
+Runs: With `enforce_code`, the default, a leading dash is not refused.
+
+```
+inputs:
+  file: -r
+datasets:
+  input:
+    name: reads.txt
+```
+
 ### argument_injection
 
-An unquoted value splits into words, and a word can be an option, a home directory, a path or a glob.
+An unquoted value splits into words. With `enforce_data`, a job is refused when a word can be an option, a home directory, a path or a glob; with `enforce_all`, also when the words are plain.
 
 Tool `sort_unquoted_operands.xml`:
 
@@ -537,9 +928,57 @@ findings:
   checkable: true
 ```
 
+Refused
+
+```
+inputs:
+  files: reads.txt -o harm-marker
+datasets:
+  input:
+    name: reads.txt
+config:
+  mode: enforce_data
+```
+
+Refused: Plain words are refused only with `enforce_all`.
+
+```
+inputs:
+  files: reads.txt reads.txt
+datasets:
+  input:
+    name: reads.txt
+config:
+  mode: enforce_all
+```
+
+Runs
+
+```
+inputs:
+  files: reads.txt reads.txt
+datasets:
+  input:
+    name: reads.txt
+config:
+  mode: enforce_data
+```
+
+Runs
+
+```
+inputs:
+  files: reads.txt
+datasets:
+  input:
+    name: reads.txt
+config:
+  mode: enforce_all
+```
+
 ### path_like_name
 
-`sort -o` writes to a file named after the element identifier. The review reports that the identifier can close its quotes.
+`sort -o` writes to a file named after the element identifier, which the review does not take for a path of its own. With `enforce_data`, an identifier or dataset name that a template writes may not contain a slash or start with a dash or a tilde.
 
 Tool `sort_to_named_file.xml`:
 
@@ -557,6 +996,44 @@ findings:
   checkable: true
 serious_rules:
 - shell-injection
+```
+
+Refused
+
+```
+datasets:
+  input:
+    name: ../harm-marker
+config:
+  mode: enforce_data
+```
+
+Refused
+
+```
+datasets:
+  input:
+    name: -reads.txt
+config:
+  mode: enforce_data
+```
+
+Runs
+
+```
+datasets:
+  input:
+    name: reads 1.txt
+config:
+  mode: enforce_data
+```
+
+Runs: With `enforce_code`, the default, a path is not refused.
+
+```
+datasets:
+  input:
+    name: ../reads.txt
 ```
 
 ### env_assignment
@@ -580,6 +1057,26 @@ findings:
   checkable: true
 ```
 
+Refused
+
+```
+inputs:
+  label: x touch harm-marker
+datasets:
+  input:
+    name: reads.txt
+```
+
+Runs
+
+```
+inputs:
+  label: x
+datasets:
+  input:
+    name: reads.txt
+```
+
 ### export_name
 
 A value that names the variable `export` sets can set BASH_ENV, PATH or LD_PRELOAD with letters alone.
@@ -599,9 +1096,31 @@ codes:
 - uncheckable-letters-are-code
 ```
 
+Refused
+
+```
+inputs:
+  name: LABEL
+datasets:
+  input:
+    name: reads.txt
+```
+
+Runs
+
+```
+inputs:
+  name: LABEL
+datasets:
+  input:
+    name: reads.txt
+config:
+  when_unsure: log
+```
+
 ### export_value
 
-bash and dash from 0.5.11 take an operand of `export` whole, older dash splits it into more assignments: an unquoted value of one that holds a space and a `=` can set another variable.
+bash and dash from 0.5.11 take an operand of `export` whole, older dash splits it into more assignments. With `enforce_data`, an unquoted value of one that holds a space and a `=` is refused.
 
 Tool `export_value.xml`:
 
@@ -620,9 +1139,33 @@ findings:
   checkable: true
 ```
 
+Refused
+
+```
+inputs:
+  label: x OTHER=1
+datasets:
+  input:
+    name: reads.txt
+config:
+  mode: enforce_data
+```
+
+Runs
+
+```
+inputs:
+  label: x y
+datasets:
+  input:
+    name: reads.txt
+config:
+  mode: enforce_data
+```
+
 ### not_analysed_strict
 
-Where the review does not follow parts of a template, it cannot tell which characters do harm there, and it lists the template as unchecked.
+Where the review does not follow parts of a template, it cannot tell which characters do harm, so every value the template reads must be plain.
 
 Tool `search_list.xml`:
 
@@ -641,9 +1184,47 @@ unchecked_locations:
 codes: []
 ```
 
+Refused
+
+```
+collections:
+  input:
+    elements:
+    - identifier: a';touch harm-marker;'
+```
+
+Refused: Even a character that is harmless where the value is written.
+
+```
+collections:
+  input:
+    elements:
+    - identifier: a;b
+```
+
+Runs
+
+```
+collections:
+  input:
+    elements:
+    - identifier: sample 1/reads.fq
+```
+
+Runs: An administrator can run such jobs and only log what the strict check refuses.
+
+```
+collections:
+  input:
+    elements:
+    - identifier: a;b
+config:
+  when_unsure: log
+```
+
 ### mutator_passed_on
 
-The review follows a method that changes a list where the template calls it on the list, or maps it over values. Passed on to anything else, here `filter`, what it adds is not followed, and the review lists the template as unchecked.
+The review follows a method that changes a list where the template calls it on the list, or maps it over values. Passed on to anything else, here `filter`, what it adds is not followed: every value the template reads must be plain.
 
 Tool `mutator_passed_on.xml`:
 
@@ -661,9 +1242,23 @@ unchecked_locations:
 codes: []
 ```
 
+Refused
+
+```
+inputs:
+  word: a';touch harm-marker;'
+```
+
+Runs
+
+```
+inputs:
+  word: sample_1
+```
+
 ### raw_dataset_model
 
-`$input.unsanitized.name` is the dataset's name as the user set it, without the sanitizer.
+`$input.unsanitized.name` is the dataset's name as the user set it, without the sanitizer: the check reads it from the model too.
 
 Tool `raw_dataset_model.xml`:
 
@@ -687,9 +1282,25 @@ patterns:
 - model-access
 ```
 
+Refused
+
+```
+datasets:
+  input:
+    name: a';touch harm-marker;'
+```
+
+Runs: Command characters stay inside the quotes when no quote closes them.
+
+```
+datasets:
+  input:
+    name: a;b|c
+```
+
 ### raw_dataset_history
 
-Beyond the dataset's own strings and metadata, the model reaches its history, its tags and the job that made it, which the review cannot trace to one value: its finding is not checkable.
+Beyond the dataset's own strings and metadata, the model reaches its history, its tags and the job that made it, which no check of the job's values sees: every job is refused.
 
 Tool `raw_dataset_history.xml`:
 
@@ -711,9 +1322,27 @@ codes:
 - uncheckable-template-code
 ```
 
+Refused
+
+```
+datasets:
+  input:
+    name: reads
+```
+
+Runs
+
+```
+datasets:
+  input:
+    name: reads
+config:
+  when_unsure: log
+```
+
 ### include_dataset
 
-`#include` of a value reads in template code from the value: here the dataset, which no sanitizer touches. Its `#` directives would run in the server, and the review does not follow them.
+`#include` of a value reads template code the job sends: here the dataset, which no sanitizer touches. Its `#` directives would run in the server; every job is refused.
 
 Tool `include_dataset.xml`:
 
@@ -737,9 +1366,31 @@ codes:
 - uncheckable-template-code
 ```
 
+Refused
+
+```
+datasets:
+  input:
+    content: 'touch harm-marker
+
+      '
+```
+
+Runs
+
+```
+datasets:
+  input:
+    content: 'echo hi
+
+      '
+config:
+  when_unsure: log
+```
+
 ### template_macro_rebound
 
-`#include source=$pre#` reads the template macro `pre` only while nothing else answers to `$pre`. Here a `#set` does, so the value is included, as template code the review does not follow.
+`#include source=$pre#` reads the template macro `pre` only while nothing else answers to `$pre`. Here a `#set` does, so the value is included: every job is refused.
 
 Tool `template_macro_rebound.xml`:
 
@@ -763,9 +1414,25 @@ codes:
 - uncheckable-template-code
 ```
 
+Refused
+
+```
+inputs:
+  word: touch harm-marker &&
+```
+
+Runs
+
+```
+inputs:
+  word: echo hi &&
+config:
+  when_unsure: log
+```
+
 ### pipe_to_shell
 
-A value in text piped to a shell is code whatever its characters, so the review lists the command as unchecked.
+A value in text piped to a shell is code whatever its characters, so every job is refused.
 
 Tool `pipe_to_shell.xml`:
 
@@ -782,9 +1449,32 @@ codes:
 - uncheckable-letters-are-code
 ```
 
+Refused
+
+```
+inputs:
+  word: a;touch harm-marker
+```
+
+Refused: Even a plain value.
+
+```
+inputs:
+  word: hello
+```
+
+Runs
+
+```
+inputs:
+  word: hello
+config:
+  when_unsure: log
+```
+
 ### shell_runs_script_file
 
-A shell given a script file reads the data piped into it as input, not as code, so the value is reviewed where it is written.
+A shell given a script file reads the data piped into it as input, not as code, so the value is checked where it is written.
 
 Tool `pipe_to_shell_script.xml`:
 
@@ -804,6 +1494,20 @@ findings:
 serious_rules:
 - shell-injection
 unchecked_locations: {}
+```
+
+Refused
+
+```
+inputs:
+  word: a';touch harm-marker;'
+```
+
+Runs: Command characters stay inside the quotes, and the script reads them as data.
+
+```
+inputs:
+  word: a;b|c $(touch harm-marker)
 ```
 
 ### command_position
@@ -830,6 +1534,22 @@ codes:
 - uncheckable-letters-are-code
 ```
 
+Refused
+
+```
+inputs:
+  program: touch harm-marker
+```
+
+Runs
+
+```
+inputs:
+  program: echo
+config:
+  when_unsure: log
+```
+
 ### rewrites_restore_tokens
 
 A template that turns the sanitizer's tokens back into quotes and redirects undoes the sanitizer.
@@ -850,9 +1570,32 @@ codes:
 - uncheckable-rewrites
 ```
 
+Refused
+
+```
+inputs:
+  word: x' >harm-marker '
+```
+
+Refused: Even a plain value.
+
+```
+inputs:
+  word: hello
+```
+
+Runs
+
+```
+inputs:
+  word: hello
+config:
+  when_unsure: log
+```
+
 ### literal_rewrite
 
-A rewrite with literal text of a value adds what it writes only to a value that holds what it replaces, so the review does not count it among the rewrites it cannot follow. Escaping the double quote of a value that a string method reads past its sanitizer leaves `$` and backticks live.
+A rewrite with literal text of a value as the job carries it adds what it writes only to a value that holds what it replaces, so the job check judges each job with it. Escaping the double quote of a value that a string method reads past its sanitizer leaves `$` and backticks live.
 
 Tool `raw_text_escaped_double_quoted.xml`:
 
@@ -875,9 +1618,37 @@ serious_rules:
 rewrites: false
 ```
 
+Refused
+
+```
+inputs:
+  word: $(touch harm-marker)
+```
+
+Refused: The job check does not follow the escaping, so a double quote with a command character is refused too.
+
+```
+inputs:
+  word: x" ; touch harm-marker ; "
+```
+
+Runs
+
+```
+inputs:
+  word: a;b|c && d's
+```
+
+Runs: A double quote alone cannot start a command.
+
+```
+inputs:
+  word: say "hi"
+```
+
 ### rewrites_and_template_code
 
-The review reports both the rewrite of a value and the template code.
+A refusal names every reason no value of the tool can be checked.
 
 Tool `rewrites_and_template_code.xml`:
 
@@ -902,9 +1673,25 @@ codes:
 - uncheckable-template-code
 ```
 
+Refused
+
+```
+inputs:
+  word: x' >harm-marker '
+```
+
+Runs
+
+```
+inputs:
+  word: hello
+config:
+  when_unsure: log
+```
+
 ### lambda_late_binding
 
-A lambda reads a name of the template when it is called, not when it is made. Here the template sets the name again in between, to a value: the review does not follow such a lambda.
+A lambda reads a name of the template when it is called, not when it is made. Here the template sets the name again in between, to a value: the review does not follow such a lambda, and every job is refused.
 
 Tool `lambda_late_binding.xml`:
 
@@ -929,9 +1716,25 @@ codes:
 - uncheckable-template-code
 ```
 
+Refused
+
+```
+inputs:
+  word: a';touch harm-marker;'
+```
+
+Runs
+
+```
+inputs:
+  word: a;b
+config:
+  when_unsure: log
+```
+
 ### lambda_changes_a_list
 
-A lambda that changes a list of the template with what its call passes in is not followed either.
+A lambda that changes a list of the template with what its call passes in is not followed either: every job is refused.
 
 Tool `lambda_changes_a_list.xml`:
 
@@ -956,9 +1759,25 @@ codes:
 - uncheckable-template-code
 ```
 
+Refused
+
+```
+inputs:
+  word: a';touch harm-marker;'
+```
+
+Runs
+
+```
+inputs:
+  word: a;b
+config:
+  when_unsure: log
+```
+
 ### template_code
 
-A template that imports code can read text no input carries, and the review does not follow it.
+A template that imports code can read text the job does not carry, so no value counts as plain.
 
 Tool `template_code.xml`:
 
@@ -980,6 +1799,22 @@ patterns:
 - template-code
 codes:
 - uncheckable-template-code
+```
+
+Refused
+
+```
+inputs:
+  word: hello
+```
+
+Runs
+
+```
+inputs:
+  word: hello
+config:
+  when_unsure: log
 ```
 
 ### server_python_command
@@ -1012,9 +1847,25 @@ codes:
 - uncheckable-template-code
 ```
 
+Refused: Refused before the template runs, even with a plain value (in log mode the template runs `head -n1 /dev/null`).
+
+```
+inputs:
+  word: /dev/null
+```
+
+Runs
+
+```
+inputs:
+  word: /dev/null
+config:
+  when_unsure: log
+```
+
 ### user_object_unsanitized
 
-With the sanitizer off, the user object is read as it is stored. A template that reads it other than by the name of one preference, here every preference in a loop, writes values the review cannot trace.
+With the sanitizer off, the user object is read as it is stored. A template that reads it other than by the name of one preference, here every preference in a loop, writes values the job check cannot trace.
 
 Tool `user_preferences_unsanitized_loop.xml`:
 
@@ -1041,9 +1892,27 @@ codes:
 - uncheckable-untraced-value
 ```
 
+Refused
+
+```
+user:
+  preferences:
+    spec|label: a';touch harm-marker;'
+```
+
+Runs
+
+```
+user:
+  preferences:
+    spec|label: Bob
+config:
+  when_unsure: log
+```
+
 ### untraced_value
 
-A preference read in a loop, by a name the template computes, cannot be traced to one preference. Galaxy sanitizes it here, but the review reports a value it cannot check.
+A preference read in a loop, by a name the template computes, cannot be traced to one preference, so no check sees its value. Galaxy sanitizes it here, but the job is refused whatever its values.
 
 Tool `user_preferences_loop.xml`:
 
@@ -1065,9 +1934,116 @@ codes:
 - uncheckable-untraced-value
 ```
 
+Refused
+
+```
+user:
+  preferences:
+    spec|label: hello
+```
+
+Runs
+
+```
+user:
+  preferences:
+    spec|label: a';touch harm-marker;'
+config:
+  when_unsure: log
+```
+
+### review_failed
+
+A tool whose review fails cannot have any job checked.
+
+Tool `raw_text_single_quoted.xml`:
+
+```
+echo '${word.value}' > '$out'
+```
+
+Refused
+
+```
+inputs:
+  word: hello
+fault: review
+```
+
+Runs
+
+```
+inputs:
+  word: hello
+config:
+  when_unsure: log
+fault: review
+```
+
+### check_failed
+
+When comparing a job's values with the review fails, every value must be plain.
+
+Tool `raw_text_single_quoted.xml`:
+
+```
+echo '${word.value}' > '$out'
+```
+
+Refused
+
+```
+inputs:
+  word: a;b
+fault: check
+```
+
+Runs
+
+```
+inputs:
+  word: hello
+fault: check
+```
+
+### strict_check_failed
+
+When the strict check itself fails, the job is refused.
+
+Tool `search_list.xml`:
+
+```
+#for $e in $input
+echo '$e.element_identifier' >> '$out';
+#end for
+echo '$searchList' > /dev/null
+```
+
+Refused
+
+```
+collections:
+  input:
+    elements:
+    - identifier: sample1
+fault: strict_check
+```
+
+Runs
+
+```
+collections:
+  input:
+    elements:
+    - identifier: sample1
+config:
+  when_unsure: log
+fault: strict_check
+```
+
 ### reflection_bypass
 
-Read by name through `getattr`, the dataset model is out of the review's sight: it can write any value without a finding about it, its history's name as well as its own. The review reports the reflection.
+Read by name through `getattr`, the dataset model is out of the review's sight: it can write any value without a finding about it, its history's name as well as its own, so every job is refused.
 
 Tool `reflection_getattr.xml`:
 
@@ -1087,9 +2063,35 @@ codes:
 - uncheckable-template-code
 ```
 
+Refused
+
+```
+datasets:
+  input:
+    name: x'; touch harm-marker; echo '
+```
+
+Refused: Even a plain name.
+
+```
+datasets:
+  input:
+    name: reads.fq
+```
+
+Runs
+
+```
+datasets:
+  input:
+    name: reads.fq
+config:
+  when_unsure: log
+```
+
 ### output_filter_vars
 
-`vars()` in an output filter reaches Python objects, but Galaxy evaluates filters when it creates the outputs: nothing it reads is written into the command, which is reviewed as usual.
+`vars()` in an output filter reaches Python objects, but Galaxy evaluates filters when it creates the outputs: nothing it reads is written into the command, which is checked as usual.
 
 Tool `output_filter_vars.xml`:
 
@@ -1105,9 +2107,16 @@ patterns:
 codes: []
 ```
 
+Runs
+
+```
+inputs:
+  label: a;b|c
+```
+
 ### getvar_user_name
 
-A name the user gives (`$getVar(str($which))`) can be any variable, which the review cannot follow: it reports the reflection.
+A name the user gives (`$getVar(str($which))`) can be any variable, which no check of the job's values sees: every job is refused.
 
 Tool `getvar_user_name.xml`:
 
@@ -1124,9 +2133,27 @@ codes:
 - uncheckable-template-code
 ```
 
+Refused
+
+```
+inputs:
+  which: label
+  label: hello
+```
+
+Runs
+
+```
+inputs:
+  which: label
+  label: hello
+config:
+  when_unsure: log
+```
+
 ### known_helper
 
-The read group helper of bwa and bowtie2 looks a parameter up with `getVar` by the name it is called with. Called with literal names only, it reads the parameters it names, whose values are reviewed as usual.
+The read group helper of bwa and bowtie2 looks a parameter up with `getVar` by the name it is called with. Called with literal names only, it reads the parameters it names, whose values are checked as usual.
 
 Tool `known_helper.xml`:
 
@@ -1154,9 +2181,23 @@ serious_rules:
 - shell-injection
 ```
 
+Refused
+
+```
+inputs:
+  word: a';touch harm-marker;'
+```
+
+Runs
+
+```
+inputs:
+  word: a;b|c && d
+```
+
 ### known_loop
 
-The hmmer3 tools write each output a select names with `getVar` of the selected value. Galaxy accepts only the select's options, so the loop reads the parameters they name, whose values are reviewed as usual.
+The hmmer3 tools write each output a select names with `getVar` of the selected value. Galaxy accepts only the select's options, so the loop reads the parameters they name, whose values are checked as usual.
 
 Tool `known_loop.xml`:
 
@@ -1185,9 +2226,31 @@ serious_rules:
 - shell-injection
 ```
 
+Refused
+
+```
+inputs:
+  fields:
+  - other
+  - word
+  word: a';touch harm-marker;'
+  other: b
+```
+
+Runs
+
+```
+inputs:
+  fields:
+  - word
+  - other
+  word: a;b|c && d
+  other: b
+```
+
 ### known_global_list
 
-The gatk4 tools look a parameter up in each section of a list they set once, with `getVar` of the section and the name. The list is fixed, so the loop reads the parameters it names, whose values are reviewed as usual.
+The gatk4 tools look a parameter up in each section of a list they set once, with `getVar` of the section and the name. The list is fixed, so the loop reads the parameters it names, whose values are checked as usual.
 
 Tool `known_global_list.xml`:
 
@@ -1214,9 +2277,25 @@ serious_rules:
 - shell-injection
 ```
 
+Refused
+
+```
+inputs:
+  optional:
+    other: a';touch harm-marker;'
+```
+
+Runs
+
+```
+inputs:
+  optional:
+    other: a;b|c && d
+```
+
 ### known_literal_list
 
-idpqonvert and llm_hub look a parameter up with `getVar` of each name in a list written in the template, changed by `replace` with fixed text. The names are fixed, so the loop reads the parameters they name, whose values are reviewed as usual.
+idpqonvert and llm_hub look a parameter up with `getVar` of each name in a list written in the template, changed by `replace` with fixed text. The names are fixed, so the loop reads the parameters they name, whose values are checked as usual.
 
 Tool `known_literal_list.xml`:
 
@@ -1246,9 +2325,27 @@ serious_rules:
 - shell-injection
 ```
 
+Refused
+
+```
+inputs:
+  scoring:
+    comet_xcorr_weight: '1'
+    ms-gf_specevalue_weight: a';touch harm-marker;'
+```
+
+Runs
+
+```
+inputs:
+  scoring:
+    comet_xcorr_weight: '1'
+    ms-gf_specevalue_weight: a;b|c && d
+```
+
 ### known_select_value
 
-infernal cmbuild writes each output a select names with `getVar` of each item of the select's value. Galaxy accepts only the select's options, as a list, or as one option, whose letters the loop then gives: the loop reads the parameters these name, whose values are reviewed as usual.
+infernal cmbuild writes each output a select names with `getVar` of each item of the select's value. Galaxy accepts only the select's options, as a list, or as one option, whose letters the loop then gives: the loop reads the parameters these name, whose values are checked as usual.
 
 Tool `known_select_value.xml`:
 
@@ -1277,9 +2374,31 @@ serious_rules:
 - shell-injection
 ```
 
+Refused
+
+```
+inputs:
+  fields:
+  - other
+  - word
+  word: a';touch harm-marker;'
+  other: b
+```
+
+Runs
+
+```
+inputs:
+  fields:
+  - word
+  - other
+  word: a;b|c && d
+  other: b
+```
+
 ### nested_scope_lookup
 
-Cheetah looks `$name` up in the frame that runs it. A generator expression, a lambda or (before Python 3.12) a comprehension runs in a frame of its own, which does not hold the template's `#set` locals: there `$label` is the parameter, whatever the template set `label` to. The review reads it as the parameter, whose value is reviewed as usual.
+Cheetah looks `$name` up in the frame that runs it. A generator expression, a lambda or (before Python 3.12) a comprehension runs in a frame of its own, which does not hold the template's `#set` locals: there `$label` is the parameter, whatever the template set `label` to. The review reads it as the parameter, whose value is checked as usual.
 
 Tool `nested_scope_lookup.xml`:
 
@@ -1299,6 +2418,20 @@ findings:
   checkable: true
 serious_rules:
 - shell-injection
+```
+
+Refused
+
+```
+inputs:
+  label: a';touch harm-marker;'
+```
+
+Runs
+
+```
+inputs:
+  label: a;b|c && d
 ```
 
 ### nested_scope_lambda
@@ -1326,9 +2459,23 @@ serious_rules:
 - shell-injection
 ```
 
+Refused
+
+```
+inputs:
+  label: a';touch harm-marker;'
+```
+
+Runs
+
+```
+inputs:
+  label: a;b|c && d
+```
+
 ### maybe_unset_local
 
-A `#set` that does not run leaves its local unbound, and `$label` after it is then the parameter of that name. The review reads the name as the local or the parameter, and reports the parameter's findings. The job parameters that are not inputs do not reach the templates of a regular tool, so a local of any other name is the local alone.
+A `#set` that does not run leaves its local unbound, and `$label` after it is then the parameter of that name. The review reads the name as the local or the parameter, whose value is checked as usual. The job parameters that are not inputs do not reach the templates of a regular tool, so a local of any other name is the local alone.
 
 Tool `maybe_unset_local.xml`:
 
@@ -1352,9 +2499,25 @@ serious_rules:
 - shell-injection
 ```
 
+Refused
+
+```
+inputs:
+  mode: given
+  label: a';touch harm-marker;'
+```
+
+Runs
+
+```
+inputs:
+  mode: given
+  label: a;b|c && d
+```
+
 ### galaxy_url_replaced
 
-A tool that keeps all its job parameters (`<inputs check_values="false">`, a data source tool, which seldom sanitizes) passes its templates the request parameters as they were sent. A parameter named like a value Galaxy sets before it adds the job's parameters (`__galaxy_url__`, `__history_id__`, `__datatypes_config__`) then replaces it, so the review reads such a name as a job parameter and reports its findings.
+A tool that keeps all its job parameters (`<inputs check_values="false">`, a data source tool, which seldom sanitizes) passes its templates the request parameters as they were sent. A parameter named like a value Galaxy sets before it adds the job's parameters (`__galaxy_url__`, `__history_id__`, `__datatypes_config__`) then replaces it, so the review reads such a name as a job parameter, whose value is checked as usual.
 
 Tool `galaxy_url_data_source.xml`:
 
@@ -1374,9 +2537,25 @@ serious_rules:
 - shell-injection
 ```
 
+Refused
+
+```
+inputs:
+  word: a
+  __galaxy_url__: a';touch harm-marker;'
+```
+
+Runs
+
+```
+inputs:
+  word: a
+  __galaxy_url__: http://localhost:8080
+```
+
 ### getvar_request_parameter
 
-In a tool that keeps all its job parameters, `getVar` of a name no input has reads the request parameter of that name when there is one, and the review reports its findings.
+In a tool that keeps all its job parameters, `getVar` of a name no input has reads the request parameter of that name when there is one, whose value is checked as usual.
 
 Tool `getvar_request_parameter.xml`:
 
@@ -1396,6 +2575,22 @@ serious_rules:
 - shell-injection
 ```
 
+Refused
+
+```
+inputs:
+  word: a
+  organism: a';touch harm-marker;'
+```
+
+Runs
+
+```
+inputs:
+  word: a
+  organism: Homo sapiens
+```
+
 ### galaxy_url_kept
 
 A regular tool's templates get only its inputs and the job parameters Galaxy passes them: a job parameter named `__galaxy_url__` does not replace Galaxy's value, which stays out of the review's sight.
@@ -1410,6 +2605,14 @@ Review:
 
 ```
 serious_rules: []
+```
+
+Runs
+
+```
+inputs:
+  word: a
+  __galaxy_url__: a';touch harm-marker;'
 ```
 
 ### pure_lambda
@@ -1437,9 +2640,23 @@ serious_rules:
 - shell-injection
 ```
 
+Refused
+
+```
+inputs:
+  word: a';touch harm-marker;'
+```
+
+Runs
+
+```
+inputs:
+  word: a;b|c && d
+```
+
 ### app_model_read
 
-The application object reaches any data of the server. The review flags the read but follows no value of it, and this tool writes only a count.
+The application object reaches any data of the server. The review flags the read but follows no value of it; this job runs because it writes a count.
 
 Tool `app_model.xml`:
 
@@ -1456,9 +2673,15 @@ patterns:
 - app-access
 ```
 
+Runs
+
+```
+{}
+```
+
 ### job_metadata_read
 
-The tool version of the job that made a dataset is set by the server, not by a user.
+The tool version of the job that made a dataset is set by the server, so the job runs.
 
 Tool `job_metadata.xml`:
 
@@ -1479,9 +2702,17 @@ patterns:
 codes: []
 ```
 
+Runs
+
+```
+datasets:
+  input:
+    name: reads.fq
+```
+
 ### server_config_read
 
-An id the server encodes is the server's value, not a user's.
+An id the server encodes is the server's value, so the job runs.
 
 Tool `server_config.xml`:
 
@@ -1495,6 +2726,52 @@ Review:
 serious_rules: []
 patterns:
 - server-config
+```
+
+Runs
+
+```
+{}
+```
+
+### refused_when_unsure
+
+An administrator can refuse every job the review cannot check instead of checking its values strictly.
+
+Tool `search_list.xml`:
+
+```
+#for $e in $input
+echo '$e.element_identifier' >> '$out';
+#end for
+echo '$searchList' > /dev/null
+```
+
+Review:
+
+```
+unchecked_locations:
+  command: parts of it were not analysed
+```
+
+Refused
+
+```
+collections:
+  input:
+    elements:
+    - identifier: sample1
+config:
+  when_unsure: refuse
+```
+
+Runs: With the default `strict`, the same job runs, since its values are plain.
+
+```
+collections:
+  input:
+    elements:
+    - identifier: sample1
 ```
 
 ### output_size_limit_read
@@ -1512,6 +2789,12 @@ Review:
 ```
 serious_rules: []
 codes: []
+```
+
+Runs
+
+```
+{}
 ```
 
 ### output_size_limit_reach
@@ -1540,6 +2823,19 @@ codes:
 - uncheckable-template-code
 ```
 
+Refused
+
+```
+{}
+```
+
+Runs
+
+```
+config:
+  when_unsure: log
+```
+
 ### output_size_limit_getvar
 
 `getVar` of the same name reads the same number, and the review allows it as it allows the read by placeholder.
@@ -1555,6 +2851,12 @@ Review:
 ```
 serious_rules: []
 codes: []
+```
+
+Runs
+
+```
+{}
 ```
 
 ### output_size_limit_subscript
@@ -1579,6 +2881,12 @@ findings:
   severity: high
 patterns:
 - app-access
+```
+
+Runs
+
+```
+{}
 ```
 
 ## Access patterns
@@ -1859,5 +3167,115 @@ Cases: `export_name`, `pipe_to_shell`, `command_position`, `server_python_comman
 The templates write a value the review cannot trace to one input or preference (the user object read in a loop, a conditional built at run time).
 
 Cases: `user_object_unsanitized`, `untraced_value`.
+
+## Refusal codes
+
+Every job Galaxy refuses carries one or more codes: the message of the failed job starts with them
+(`[shell-injection] This job was not run: ...`), and so does the warning Galaxy logs
+(`Tool security review (shell-injection): job ...`). The uncheckable codes refuse every job of a tool.
+
+### Codes
+
+#### `shell-injection`
+
+A value can close the quotes around it, or is written unquoted, and start another shell command.
+
+Cases: `raw_text_shell_injection`, `ftpfile_param_shell_injection`, `element_identifier_shell_injection`, `group_tags_shell_injection`, `dataset_content_shell_injection`, `user_preference_shell_injection`, `raw_dataset_model`, `shell_runs_script_file`, `literal_rewrite`, `known_helper`, `known_loop`, `known_global_list`, `known_literal_list`, `known_select_value`, `nested_scope_lookup`, `nested_scope_lambda`, `maybe_unset_local`, `galaxy_url_replaced`, `getvar_request_parameter`, `pure_lambda`.
+
+#### `nested-interpreter`
+
+A value is written into the program of another interpreter (`bash -c`, `sed`, `perl -e`, ...) and can change what that program does.
+
+Cases: `nested_shell`, `sed_program`.
+
+#### `configfile-injection`
+
+A value is written into a configfile that a script runs and can end its string and add code.
+
+Cases: `configfile_python`, `repr_inside_python_string`, `json_inside_python_string`.
+
+#### `stray-quote`
+
+A quote in one value is harmless by itself but flips the quoting of the rest of the line, which leaves the command characters of another value unquoted.
+
+Cases: `stray_quote`.
+
+#### `path-traversal`
+
+A value is written as a path a command writes or reads (a redirection, an argument of `cp`, `ln`, `mv`, ...) and can name a file outside the job's directory. Refused from `enforce_data` on.
+
+Cases: `path_traversal`.
+
+#### `option-injection`
+
+A value starts an argument and can begin with a dash, so the command reads it as an option. Refused from `enforce_data` on.
+
+Cases: `option_injection`.
+
+#### `argument-injection`
+
+A value is written unquoted, or can close its quotes, and can split into more words. From `enforce_data` on, a job is refused when a word can then be an option, a home directory, a path or a glob; with `enforce_all`, also when the words are plain or the value only closes its quotes.
+
+Cases: `argument_injection`, `env_assignment`, `export_value`.
+
+#### `path-like-name`
+
+An element identifier or a dataset name that a template writes contains `/` or starts with `-` or `~`. Tools use names as file names and arguments in ways the review does not follow (a program's own options, paths in R or Python), where such a name is a path or an option. Refused from `enforce_data` on.
+
+Cases: `path_like_name`.
+
+#### `not-plain-unchecked-place`
+
+The tool writes values in places the review cannot judge (parts of the template it did not follow, or values it cannot trace), and a value is not plain.
+
+Cases: `not_analysed_strict`, `mutator_passed_on`.
+
+#### `not-plain-check-error`
+
+Comparing the job's values with the review's findings failed (a bug), so the job got the strict check instead, and a value is not plain.
+
+Cases: `check_failed`.
+
+#### `uncheckable-review-failed`
+
+The review of the tool failed, so nothing is known about what its templates do.
+
+Cases: `review_failed`.
+
+#### `uncheckable-rewrites`
+
+The templates change values in ways that can bring back characters the sanitizer took out (`chr()`, a decoder, a `.replace` or `re.sub` of the sanitizer's tokens, of text that is not literal, or of a value template code changed before). A literal rewrite of a value as the job carries it is checked with each job.
+
+Cases: `rewrites_restore_tokens`, `rewrites_and_template_code`.
+
+#### `uncheckable-template-code`
+
+The templates run Python that can read text no tool input carries (imports, `open()`, `#include` of anything but a template macro, a lambda that reads more than its arguments or changes a value, `$__app__`, `getattr`, what the dataset model behind `.unsanitized` reaches).
+
+Cases: `raw_dataset_history`, `include_dataset`, `template_macro_rebound`, `rewrites_and_template_code`, `lambda_late_binding`, `lambda_changes_a_list`, `template_code`, `server_python_command`, `user_object_unsanitized`, `reflection_bypass`, `getvar_user_name`, `output_size_limit_reach`.
+
+#### `uncheckable-letters-are-code`
+
+Letters alone can be code where the tool writes a value: the program to run, text piped to a shell that runs it, or unquoted Perl or Ruby code.
+
+Cases: `export_name`, `pipe_to_shell`, `command_position`, `server_python_command`.
+
+#### `uncheckable-untraced-value`
+
+The templates write a value the review cannot trace to one input or preference (the user object read in a loop, a conditional built at run time).
+
+Cases: `user_object_unsanitized`, `untraced_value`.
+
+#### `uncheckable-strict-check-error`
+
+The strict check itself failed (a bug), so none of the job's values could be checked.
+
+Cases: `strict_check_failed`.
+
+#### `uncheckable-when-unsure`
+
+The review cannot check the job, and the server refuses every such job (`tool_security_review_when_unsure: refuse`) instead of checking its values strictly.
+
+Cases: `refused_when_unsure`.
 
 <!-- END spec cases -->

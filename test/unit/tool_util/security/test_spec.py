@@ -1,4 +1,4 @@
-"""The spec: each tool's review matches its case, the cases cover the catalogs, and bad cases fail to load."""
+"""The spec: each tool's review matches its case, the cases cover the catalogs and codes, and bad cases fail to load."""
 
 import os
 
@@ -6,6 +6,10 @@ import pytest
 from pydantic import ValidationError
 
 from galaxy.tool_util.security.classify import Uncheckable
+from galaxy.tool_util.security.codes import (
+    DESCRIPTIONS,
+    RefusalCode,
+)
 from galaxy.tool_util.security.patterns import (
     DESCRIPTIONS as PATTERN_DESCRIPTIONS,
     PatternCode,
@@ -41,7 +45,52 @@ def test_every_case_expects_something():
     for case_id, case in CASES.items():
         review = case.review
         expects = (review.serious_rules, review.unchecked_locations, review.rewrites, review.codes)
-        assert review.findings or review.patterns or any(e is not None for e in expects), case_id
+        # A case of a fault in the review or the check expects only the refusal of its red jobs.
+        faults_only = bool(case.red) and all(job.fault for job in case.red)
+        assert review.findings or review.patterns or any(e is not None for e in expects) or faults_only, case_id
+
+
+def test_every_case_has_jobs():
+    for case_id, case in CASES.items():
+        assert case.green, case_id
+        assert bool(case.red) == (case.code is not None), case_id
+        assert all(job.expect.rejected for job in case.red), case_id
+        assert not any(job.expect.rejected or job.expect.codes for job in case.green), case_id
+
+
+@pytest.mark.parametrize("code", list(RefusalCode))
+def test_every_code_has_red_and_green_jobs(code):
+    cases = [case for case in CASES.values() if case.code == code]
+    assert any(case.red for case in cases) and any(case.green for case in cases)
+    assert DESCRIPTIONS[code]
+
+
+def test_known_bypasses_are_documented_as_such():
+    for case_id, case in CASES.items():
+        assert case.known_bypass == case.doc.startswith("A known bypass."), case_id
+
+
+def test_refusal_codes():
+    # Refused jobs and logged warnings start with these.
+    assert [code.value for code in RefusalCode] == [
+        "shell-injection",
+        "nested-interpreter",
+        "configfile-injection",
+        "stray-quote",
+        "path-traversal",
+        "option-injection",
+        "argument-injection",
+        "path-like-name",
+        "not-plain-unchecked-place",
+        "not-plain-check-error",
+        "uncheckable-review-failed",
+        "uncheckable-rewrites",
+        "uncheckable-template-code",
+        "uncheckable-letters-are-code",
+        "uncheckable-untraced-value",
+        "uncheckable-strict-check-error",
+        "uncheckable-when-unsure",
+    ]
 
 
 def test_every_pattern_has_a_case():
