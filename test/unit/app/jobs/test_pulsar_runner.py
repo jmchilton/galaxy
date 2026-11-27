@@ -57,6 +57,7 @@ from galaxy.jobs.runners.pulsar import (  # type: ignore[attr-defined]
 )
 from galaxy.jobs.runners.runner_state_definitions import RUNNER_STATE_DEFINITIONS
 from galaxy.tool_util.output_checker import DETECTED_JOB_STATE
+from galaxy.tools.security_refusal import ToolInputRejected
 
 
 @dataclass
@@ -396,7 +397,12 @@ def test_host_metadata_does_not_resolve_container(config):
     assert runner._get_metadata_container(wrapper) is None
 
 
-def test_rejected_job_fails_without_resubmission():
+@pytest.mark.parametrize(
+    "refusal",
+    [InsufficientPermissionsException("Container 'busybox' is not allowed"), ToolInputRejected("Not run.", ["code"])],
+    ids=["container", "security-review"],
+)
+def test_rejected_job_fails_without_resubmission(refusal):
     runner = cast(Any, object.__new__(PulsarJobRunner))
     runner.work_queue = queue.Queue()
     client = SimpleNamespace(
@@ -411,7 +417,7 @@ def test_rejected_job_fails_without_resubmission():
     runner._job_state = lambda job, job_wrapper: SimpleNamespace()
 
     def reject(**kwargs):
-        raise InsufficientPermissionsException("Container 'busybox' is not allowed")
+        raise refusal
 
     failures = []
     job_wrapper = SimpleNamespace(
@@ -426,7 +432,7 @@ def test_rejected_job_fails_without_resubmission():
     command_line, *_ = runner._PulsarJobRunner__prepare_job(job_wrapper, None)
 
     assert command_line is None
-    assert failures == ["Container 'busybox' is not allowed"]
+    assert failures == [str(refusal)]
     assert runner.work_queue.empty()
 
 

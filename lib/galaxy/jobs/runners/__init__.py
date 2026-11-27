@@ -62,6 +62,7 @@ from galaxy.tool_util.output_checker import (
 from galaxy.tool_util.parser.stdio import StdioErrorLevel
 from galaxy.tools.expressions import ExpressionTemplateError
 from galaxy.tools.parameters.basic import ParameterValueError
+from galaxy.tools.security_refusal import ToolInputRejected
 from galaxy.util import (
     asbool,
     DATABASE_MAX_STRING_SIZE,
@@ -92,6 +93,10 @@ if TYPE_CHECKING:
 log = get_logger(__name__)
 
 STOP_SIGNAL = object()
+
+# Refusals of a job while it is prepared. They are the same on every destination: the job fails and
+# is never resubmitted.
+PREPARE_REFUSALS = (InsufficientPermissionsException, ToolInputRejected)
 
 
 JOB_RUNNER_PARAMETER_UNKNOWN_MESSAGE = "Invalid job runner parameter for this plugin: %s"
@@ -410,7 +415,7 @@ class BaseJobRunner:
                 modify_command_for_container=modify_command_for_container,
                 stream_stdout_stderr=stream_stdout_stderr,
             )
-        except (ParameterValueError, ExpressionTemplateError, InsufficientPermissionsException) as e:
+        except (ParameterValueError, ExpressionTemplateError, *PREPARE_REFUSALS) as e:
             log.info("(%s) job rejected while preparing: %s", job_id, unicodify(e))
             job_wrapper.fail(unicodify(e), exception=False)
             return False

@@ -48,7 +48,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import scoped_session
 
 from galaxy import model
-from galaxy.exceptions import InsufficientPermissionsException
 from galaxy.job_execution.compute_environment import (
     ComputeEnvironment,
     dataset_path_to_extra_path,
@@ -63,6 +62,7 @@ from galaxy.jobs.runners import (
     AsynchronousJobState,
     ContainerRequiredException,
     JobState,
+    PREPARE_REFUSALS,
 )
 from galaxy.jobs.runners.runner_state_definitions import RUNNER_STATE_DEFINITIONS
 from galaxy.model.base import check_database_connection
@@ -753,7 +753,7 @@ class PulsarJobRunner(AsynchronousJobRunner[AsynchronousJobState]):
 
             try:
                 job_prepare_ret = job_wrapper.prepare(**prepare_kwds)
-            except InsufficientPermissionsException as e:
+            except PREPARE_REFUSALS as e:
                 # The job may not run anywhere, so fail it without fail_job's resubmission rules.
                 log.info("job %d rejected while preparing: %s", job_wrapper.job_id, unicodify(e))
                 job_wrapper.fail(unicodify(e), exception=False)

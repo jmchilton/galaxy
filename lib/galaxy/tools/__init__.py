@@ -554,7 +554,8 @@ class ToolNotFoundException(Exception):
     pass
 
 
-def create_tool_from_source(app, tool_source: ToolSource, config_file: StrPath | None = None, **kwds):
+def tool_class_for_source(tool_source: ToolSource) -> type["Tool"]:
+    """The class :func:`create_tool_from_source` builds ``tool_source`` as."""
     # Allow specifying a different tool subclass to instantiate
     ToolClass: type[Tool] | None = None
     if tool_source.parse_class() == "GalaxyUserTool":
@@ -573,8 +574,12 @@ def create_tool_from_source(app, tool_source: ToolSource, config_file: StrPath |
                 raise ToolLoadError(f"Parsed unrecognized tool type ({tool_type}) from tool")
     else:
         # Normal tool
-        root = getattr(tool_source, "root", None)
         ToolClass = Tool
+    return ToolClass
+
+
+def create_tool_from_source(app, tool_source: ToolSource, config_file: StrPath | None = None, **kwds):
+    ToolClass = tool_class_for_source(tool_source)
     tool = ToolClass(config_file, tool_source, app, **kwds)
     return tool
 
@@ -1296,6 +1301,9 @@ class Tool(AbstractTool, UsesDictVisibleKeys, MaybeToolParameterBundle):
     allows_unnamed_outputs: bool
     # Job parameters that are not tool inputs and that the tool's templates read.
     template_job_parameters: frozenset[str] = TEMPLATE_JOB_PARAMETERS
+    # The file a tool the cached toolbox builds from its tool source store was stored from; such a
+    # tool has no config_file.
+    stored_source_path: str | None = None
 
     def __init__(
         self,

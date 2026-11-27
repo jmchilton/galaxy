@@ -1639,3 +1639,13 @@ def test_toolbox_waits_for_a_peer_populating_the_store(tmp_path, monkeypatch):
     assert needs_population.call_count == 1
     assert box._tool_index is not None
     assert "bowtie2" in box._tool_index.entries
+
+
+def test_materialized_tool_keeps_its_stored_source_path(tmp_path):
+    # The tool has no config_file, as before; the security reviews read the path it was stored from.
+    box = _materializing_box()
+    stored = _shed_image_stored(str(tmp_path))
+    stored.source_path = str(tmp_path / "merge.xml")
+    tool = box._create_tool_from_stored_source(stored, entry=_shed_image_entry())
+    assert tool.config_file is None
+    assert tool.stored_source_path == stored.source_path

@@ -1629,7 +1629,9 @@ class CachedToolBox(ToolBox):
                     repository_path=None,
                     tool_path=stored.tool_dir,
                 )
-        return create_tool_from_source(self.app, tool_source, **kwds)
+        tool = create_tool_from_source(self.app, tool_source, **kwds)
+        tool.stored_source_path = stored.source_path
+        return tool
 
     def invalidate_index_cache(self) -> None:
         """Drop cached tool index so the next read picks up out-of-band updates.
