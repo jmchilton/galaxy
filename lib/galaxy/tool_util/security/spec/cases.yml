@@ -18,6 +18,23 @@ sanitized_text_stays_quoted:
     codes: []
     serious_rules: []
 
+file_param_stays_quoted:
+  doc: >-
+    A file param is written as Galaxy writes a text param, through its sanitizer, so it cannot leave its
+    single quotes.
+  tool: file_param_single_quoted.xml
+  review:
+    codes: []
+    serious_rules: []
+
+ftpfile_param_shell_injection:
+  doc: An ftpfile param is written as the user's file names, with no sanitizer, and can close its single quotes.
+  tool: ftpfile_param_single_quoted.xml
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, accessor: raw, param: f, checkable: true}
+
 element_identifier_shell_injection:
   doc: Element identifiers are not sanitized; one in single quotes can start a command.
   tool: element_identifier_single_quoted.xml

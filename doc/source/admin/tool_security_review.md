@@ -112,6 +112,46 @@ serious_rules: []
 codes: []
 ```
 
+### file_param_stays_quoted
+
+A file param is written as Galaxy writes a text param, through its sanitizer, so it cannot leave its single quotes.
+
+Tool `file_param_single_quoted.xml`:
+
+```
+cat '$f' > '$out'
+```
+
+Review:
+
+```
+serious_rules: []
+codes: []
+```
+
+### ftpfile_param_shell_injection
+
+An ftpfile param is written as the user's file names, with no sanitizer, and can close its single quotes.
+
+Tool `ftpfile_param_single_quoted.xml`:
+
+```
+cat '$f' > '$out'
+```
+
+Review:
+
+```
+findings:
+- rule: shell-injection
+  severity: high
+  accessor: raw
+  param: f
+  checkable: true
+serious_rules:
+- shell-injection
+```
+
 ### element_identifier_shell_injection
 
 Element identifiers are not sanitized; one in single quotes can start a command.
@@ -1423,7 +1463,7 @@ Each finding has one of these rules.
 
 A value can close the quotes around it, or is written unquoted, and start another shell command.
 
-Cases: `raw_text_shell_injection`, `element_identifier_shell_injection`, `dataset_name_stays_quoted`, `wrapped_names_stay_quoted`, `group_tags_shell_injection`, `dataset_content_shell_injection`, `user_preference_stays_quoted`, `user_preference_shell_injection`, `stray_quote`, `path_like_name`, `raw_dataset_model`, `raw_dataset_history`, `shell_runs_script_file`, `rewrites_restore_tokens`, `literal_rewrite`, `rewrites_and_template_code`, `user_object_unsanitized`, `untraced_value`, `known_helper`, `known_loop`, `known_global_list`, `known_literal_list`, `known_select_value`, `nested_scope_lookup`, `nested_scope_lambda`.
+Cases: `raw_text_shell_injection`, `ftpfile_param_shell_injection`, `element_identifier_shell_injection`, `dataset_name_stays_quoted`, `wrapped_names_stay_quoted`, `group_tags_shell_injection`, `dataset_content_shell_injection`, `user_preference_stays_quoted`, `user_preference_shell_injection`, `stray_quote`, `path_like_name`, `raw_dataset_model`, `raw_dataset_history`, `shell_runs_script_file`, `rewrites_restore_tokens`, `literal_rewrite`, `rewrites_and_template_code`, `user_object_unsanitized`, `untraced_value`, `known_helper`, `known_loop`, `known_global_list`, `known_literal_list`, `known_select_value`, `nested_scope_lookup`, `nested_scope_lambda`.
 
 #### `nested-interpreter`
 

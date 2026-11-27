@@ -25,6 +25,8 @@ include src/galaxy/tool_util/security/spec/tools/element_identifier_single_quote
 include src/galaxy/tool_util/security/spec/tools/env_assignment.xml
 include src/galaxy/tool_util/security/spec/tools/export_name.xml
 include src/galaxy/tool_util/security/spec/tools/export_value.xml
+include src/galaxy/tool_util/security/spec/tools/file_param_single_quoted.xml
+include src/galaxy/tool_util/security/spec/tools/ftpfile_param_single_quoted.xml
 include src/galaxy/tool_util/security/spec/tools/getvar_user_name.xml
 include src/galaxy/tool_util/security/spec/tools/group_tags.xml
 include src/galaxy/tool_util/security/spec/tools/include_dataset.xml

@@ -1,0 +1,10 @@
+<tool id="spec_file_param_single_quoted" name="Uploaded file name in single quotes" version="1.0" profile="24.0">
+    <description>writes a file param in single quotes</description>
+    <command><![CDATA[cat '$f' > '$out']]></command>
+    <inputs>
+        <param name="f" type="file"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>
