@@ -1037,6 +1037,69 @@ serious_rules:
 - shell-injection
 ```
 
+### known_literal_list
+
+idpqonvert and llm_hub look a parameter up with `getVar` of each name in a list written in the template, changed by `replace` with fixed text. The names are fixed, so the loop reads the parameters they name, whose values are reviewed as usual.
+
+Tool `known_literal_list.xml`:
+
+```
+#for $engine in ["comet:xcorr", "ms-gf:specevalue"]
+    #set $name = $engine.replace(":", "_")
+    echo '${getVar("scoring." + $name + "_weight").value}' >> '$out' &&
+#end for
+true
+```
+
+Review:
+
+```
+findings:
+- rule: shell-injection
+  severity: high
+  accessor: raw
+  param: scoring.comet_xcorr_weight
+  checkable: true
+- rule: shell-injection
+  severity: high
+  accessor: raw
+  param: scoring.ms-gf_specevalue_weight
+  checkable: true
+serious_rules:
+- shell-injection
+```
+
+### known_select_value
+
+infernal cmbuild writes each output a select names with `getVar` of each item of the select's value. Galaxy accepts only the select's options, as a list, or as one option, whose letters the loop then gives: the loop reads the parameters these name, whose values are reviewed as usual.
+
+Tool `known_select_value.xml`:
+
+```
+#for j in $fields.value:
+    echo '${getVar($j).value}' >> '$out' &&
+#end for
+true
+```
+
+Review:
+
+```
+findings:
+- rule: shell-injection
+  severity: high
+  accessor: raw
+  param: word
+  checkable: true
+- rule: shell-injection
+  severity: high
+  accessor: raw
+  param: other
+  checkable: true
+serious_rules:
+- shell-injection
+```
+
 ### app_model_read
 
 The application object reaches any data of the server. The review flags the read but follows no value of it, and this tool writes only a count.
@@ -1207,7 +1270,7 @@ Each finding has one of these rules.
 
 A value can close the quotes around it, or is written unquoted, and start another shell command.
 
-Cases: `raw_text_shell_injection`, `element_identifier_shell_injection`, `dataset_name_stays_quoted`, `wrapped_names_stay_quoted`, `group_tags_shell_injection`, `dataset_content_shell_injection`, `user_preference_stays_quoted`, `user_preference_shell_injection`, `stray_quote`, `path_like_name`, `raw_dataset_model`, `raw_dataset_history`, `shell_runs_script_file`, `rewrites_restore_tokens`, `literal_rewrite`, `rewrites_and_template_code`, `user_object_unsanitized`, `untraced_value`, `known_helper`, `known_loop`, `known_global_list`.
+Cases: `raw_text_shell_injection`, `element_identifier_shell_injection`, `dataset_name_stays_quoted`, `wrapped_names_stay_quoted`, `group_tags_shell_injection`, `dataset_content_shell_injection`, `user_preference_stays_quoted`, `user_preference_shell_injection`, `stray_quote`, `path_like_name`, `raw_dataset_model`, `raw_dataset_history`, `shell_runs_script_file`, `rewrites_restore_tokens`, `literal_rewrite`, `rewrites_and_template_code`, `user_object_unsanitized`, `untraced_value`, `known_helper`, `known_loop`, `known_global_list`, `known_literal_list`, `known_select_value`.
 
 #### `nested-interpreter`
 

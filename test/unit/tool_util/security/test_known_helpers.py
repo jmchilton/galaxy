@@ -293,3 +293,114 @@ def test_loop_in_a_template_macro_over_a_list_a_macro_sets_reads_each_element(tm
 def test_loop_in_a_template_macro_over_a_list_set_otherwise_is_reflection(tmp_path, command, set_sections):
     report = review(tmp_path, command + "tool", inputs=INPUTS + SECTIONS, extra=sections_macros(set_sections))
     assert any(f.message.startswith(COMPUTED_GET_VAR) for f in report.findings)
+
+
+# galaxytools llm_hub, tools-galaxyp idpqonvert: loops over a literal list.
+LITERAL_LOOPS = [
+    "#for $n in ['text', 'NAME']\ntool '$getVar($n)'\n#end for",
+    "#for $k, $n in [('a', 'text'), ('b', 'NAME')]\ntool $k '$getVar($n, None)'\n#end for",
+    "#for $e in ['te:xt', 'NA!ME']\n#set $n = $e.replace(':', '').replace('!', '')\ntool '$getVar($n)'\n#continue\n#end for",
+]
+
+
+@pytest.mark.parametrize("command", LITERAL_LOOPS)
+@pytest.mark.parametrize("name,injection", [("free", True), ("word", False)])
+def test_loop_over_a_literal_list_reads_each_element(tmp_path, command, name, injection):
+    report = review(tmp_path, command.replace("NAME", name).replace("NA!ME", f"{name[:2]}!{name[2:]}"))
+    assert code(report) == set()
+    assert (("shell-injection", "high") in rules(report)) is injection
+
+
+def test_loop_over_a_literal_list_reads_a_section_named_with_a_dash(tmp_path):
+    inputs = (
+        INPUTS
+        + '<section name="scoring" title="s"><param name="ms-gf_w" type="text"><sanitizer sanitize="false"/></param></section>'
+    )
+    command = "#for $e in ['ms-gf:w']\n#set $n = $e.replace(':', '_')\ntool '$getVar('scoring.' + $n)'\n#end for"
+    report = review(tmp_path, command, inputs=inputs)
+    assert code(report) == set()
+    assert ("shell-injection", "high") in rules(report)
+
+
+# galaxytools llm_hub: a literal loop over two inputs, their element identifiers cleaned with re.sub.
+LLM_HUB = """#import os
+#import re
+#for $input_type, $param in [('text', 'flat'), ('image', 'input')]
+    #set context = $getVar($param, None)
+    #if $context
+        #for $i in ($context if isinstance($context, list) else [$context])
+            #set file_name = re.sub('[^\\w\\-]', '_', os.path.splitext($i.element_identifier)[0])
+            ln -s '$i' '${file_name}.txt' &&
+        #end for
+    #end if
+#end for
+tool"""
+
+
+def test_loop_over_a_literal_list_of_inputs_cleaned_with_re_sub(tmp_path):
+    report = review(tmp_path, LLM_HUB)
+    assert code(report) == set()
+    assert not report.unanalyzed
+    assert ("shell-injection", "high") not in rules(report)
+
+
+# galaxytools infernal cmbuild: a loop over the values of a multiple select.
+VALUE_LOOP = "#for j in $oformat.value:\n--$j '$getVar($j)'\n#end for\n"
+
+
+@pytest.mark.parametrize(
+    "options,injection",
+    [
+        ('<option value="tblout"/><option value="free"/>', True),
+        ('<option value="tblout"/><option value="word"/>', False),
+    ],
+)
+def test_loop_over_a_select_value_reads_each_option(tmp_path, options, injection):
+    report = review(tmp_path, VALUE_LOOP + "tool", inputs=select(options))
+    assert code(report) == set()
+    assert (("shell-injection", "high") in rules(report)) is injection
+
+
+@pytest.mark.parametrize(
+    "command,inputs",
+    [
+        ("#for $n in ['text', $free]\ntool '$getVar($n)'\n#end for", INPUTS),
+        ("#for $n in ['text', 1]\ntool '$getVar($n)'\n#end for", INPUTS),
+        ("#for $k, $n in [('a', 'text', 'b')]\ntool '$getVar($n)'\n#end for", INPUTS),
+        ("#for $k, $n in [('a', 'text'), 'bc']\ntool '$getVar($n)'\n#end for", INPUTS),
+        ("#for $e in ['text']\n#set $n = $e + $free\ntool '$getVar($n)'\n#end for", INPUTS),
+        ("#for $e in ['text']\n#set $n = $e\n#set $n = $free\ntool '$getVar($n)'\n#end for", INPUTS),
+        ("#for $e in ['text']\n#if $text\n#set $n = $e\n#end if\ntool '$getVar($n)'\n#end for", INPUTS),
+        (
+            "#for $e in ['text']\n#set $n = $e\n#if $text\n#set $n = $free\n#end if\ntool '$getVar($n)'\n#end for",
+            INPUTS,
+        ),
+        ("#for $e in ['te:xt']\n#set $n = $e.replace(':', $free)\ntool '$getVar($n)'\n#end for", INPUTS),
+        ("#for $e in ['text']\n#set $n = $e.upper()\ntool '$getVar($n)'\n#end for", INPUTS),
+        ("#for $e in ['text']\n#set $e = $free\ntool '$getVar($e)'\n#end for", INPUTS),
+        (VALUE_LOOP, INPUTS),
+        (VALUE_LOOP, select('<option value="tblout"/><sanitizer sanitize="false"/>')),
+        (VALUE_LOOP, select('<options from_parameter="tool.app.datatypes_registry.upload_file_formats"/>')),
+        (VALUE_LOOP.replace(".value", ".fields"), select()),
+        (VALUE_LOOP.replace(".value", ".value.x"), select()),
+        ("#set $oformat = $free\n" + VALUE_LOOP, select()),
+        # A letter of a single select's option is the loop variable.
+        (VALUE_LOOP, select('<option value="tblout"/><option value="join"/>')),
+        # Read before the #set: the previous element, or a job parameter `n` at first.
+        ("#for $e in ['text']\ntool '$getVar($n)'\n#set $n = $e\n#end for", INPUTS),
+        ("#for $e in ['text']\n#set $n = $e\n#for $n in [$free]\nx\n#end for\ntool '$getVar($n)'\n#end for", INPUTS),
+        ("#for $e in ['text']\n#set $n = $text.replace(':', '')\ntool '$getVar($n)'\n#end for", INPUTS),
+        # In a lambda, generator or comprehension, the lookup does not see the method's locals.
+        ("#for $n in ['word']\ntool '${''.join($getVar($n) for _x in [1])}'\n#end for", INPUTS),
+        ("#for $n in ['word']\n#set $f = lambda: $getVar($n)\ntool '${f()}'\n#end for", INPUTS),
+        ("#for $n in ['word']\ntool '${''.join([$getVar($n) for _x in [1]])}'\n#end for", INPUTS),
+        ("#for $e in ['word']\n#set $n = $e\ntool '${''.join($getVar($n) for _x in [1])}'\n#end for", INPUTS),
+        ("#set global $e = $free\n#for $e in ['word']\ntool '${''.join($getVar($e) for _x in [1])}'\n#end for", INPUTS),
+        (VALUE_LOOP.replace("'$getVar($j)'", "'${''.join($getVar($j) for _x in [1])}'"), select()),
+        (OFORMAT.replace("'$getVar($o, 'MISSING_OUTPUT'+$o)'", "'${''.join($getVar($o) for _x in [1])}'"), select()),
+    ],
+)
+def test_loop_over_values_the_review_cannot_list_is_reflection(tmp_path, command, inputs):
+    report = review(tmp_path, command + "tool", inputs=inputs)
+    assert not any("does not compile" in note for note in report.unanalyzed)
+    assert any(f.message.startswith(COMPUTED_GET_VAR) for f in report.findings)

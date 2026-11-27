@@ -31,7 +31,9 @@ include src/galaxy/tool_util/security/spec/tools/include_dataset.xml
 include src/galaxy/tool_util/security/spec/tools/job_metadata.xml
 include src/galaxy/tool_util/security/spec/tools/known_global_list.xml
 include src/galaxy/tool_util/security/spec/tools/known_helper.xml
+include src/galaxy/tool_util/security/spec/tools/known_literal_list.xml
 include src/galaxy/tool_util/security/spec/tools/known_loop.xml
+include src/galaxy/tool_util/security/spec/tools/known_select_value.xml
 include src/galaxy/tool_util/security/spec/tools/nested_shell.xml
 include src/galaxy/tool_util/security/spec/tools/output_filter_vars.xml
 include src/galaxy/tool_util/security/spec/tools/output_size_limit.xml

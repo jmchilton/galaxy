@@ -19,10 +19,12 @@ The copies are made only when each name they look up is a tool input, found wher
   name, or nothing, and the review reads these getVar calls as such
   (:attr:`~.template.CompiledTemplate.namespace_get_vars`).
 
-Every part of the name is a plain identifier, which rules out dunders, mangled and Cheetah's private names.
+Every part of the name is a plain identifier, which rules out dunders, mangled and Cheetah's private names; a
+part after the first may also have a dash, as parameter names in sections can.
 
-A `#for` over the values of a select, or over a list the template sets once, gets the same reading: one branch
-per value, with the value in place of the loop variable (:func:`unroll_known_loops`).
+A `#for` over the values of a select, over a list the template sets once, or over a list of text written in it,
+gets the same reading: one branch per value, with the value in place of the loop variables, and the text a
+branch then sets with `#set` in place of the names it sets (:func:`unroll_known_loops`).
 """
 
 from __future__ import annotations
@@ -357,6 +359,7 @@ def _bindings(tree: ast.AST, generated_code: set[int] | None = None) -> Iterator
 
 
 IDENTIFIER = re.compile(r"[A-Za-z][A-Za-z0-9_]*\Z")
+_PART = re.compile(r"[A-Za-z][A-Za-z0-9_-]*\Z")
 
 
 @lru_cache(maxsize=1)
@@ -391,8 +394,9 @@ def _literal_get_vars(nodes: Iterable[ast.AST], bound: set[str]) -> set[int] | N
             if not isinstance(name, str):
                 return None
             parts = name.replace("$", "").split(".")
-            # An empty part names nothing: the lookup fails there.
-            if not all(not part or IDENTIFIER.match(part) for part in parts):
+            # An empty part names nothing: the lookup fails there. Galaxy allows a dash in the name of a
+            # parameter in a section or conditional.
+            if not all(not part or (_PART if i else IDENTIFIER).match(part) for i, part in enumerate(parts)):
                 return None
             if parts[0] and not _unclaimed(parts[0], bound):
                 return None
@@ -524,8 +528,8 @@ def _copies(
 
 
 def unroll_known_loops(tree: ast.Module, model: Model) -> set[int]:
-    """Give a ``#for`` of the template body over the values of a select one branch per value the loop variable
-    can take, with that value in its place, when getVar then looks up literal names only.
+    """Give a ``#for`` of the template body over known values (:func:`_loop_values`) one branch per value the
+    loop variables can take, with that value in their place, when getVar then looks up literal names only.
 
     Galaxy accepts only the select's options, and ``str()`` of none selected is ``None``. The loop itself stays,
     so the branches run in the order the values come. Returns the getVar calls of the branches.
@@ -550,8 +554,9 @@ def unroll_known_loops(tree: ast.Module, model: Model) -> set[int]:
                 # Set by a statement before this one.
                 before = {name: values for name, (at, values) in lists.items() if at < index}
                 for loop in reversed([node for node in ast.walk(scope) if isinstance(node, ast.For)]):
-                    values = _loop_values(loop, model, bound, before)
-                    branches = _branches(loop, values, bound) if values is not None else None
+                    targets = _loop_targets(loop)
+                    values = _loop_values(loop, targets, model, bound, before) if targets else None
+                    branches = _branches(loop, targets, values, bound) if targets and values is not None else None
                     if branches is not None:
                         get_vars, loop.body = branches
                         found |= get_vars
@@ -646,16 +651,34 @@ def _lookup_root(node: ast.AST) -> str | None:
     return str(constant(lookup.args[1])).split(".")[0]
 
 
+def _loop_targets(loop: ast.For) -> tuple[str, ...] | None:
+    """The names of `#for $v in` or `#for $a, $b in`."""
+    if isinstance(loop.target, ast.Name):
+        return (loop.target.id,)
+    if isinstance(loop.target, ast.Tuple) and all(isinstance(name, ast.Name) for name in loop.target.elts):
+        return tuple(name.id for name in loop.target.elts if isinstance(name, ast.Name))
+    return None
+
+
 def _loop_values(
-    loop: ast.For, model: Model, bound: set[str], lists: dict[str, tuple[str, ...]]
-) -> tuple[str, ...] | None:
-    """The values the variable of `#for $v in str($select).split(',')`, or of a loop over a list ``lists``
-    holds, can take."""
+    loop: ast.For, targets: tuple[str, ...], model: Model, bound: set[str], lists: dict[str, tuple[str, ...]]
+) -> tuple[tuple[str, ...], ...] | None:
+    """The values the variables of a loop can take: over a literal list of text (or of tuples of text), the
+    values of a select (`str($select).split(',')`, `$select.value`), or a list ``lists`` holds."""
     it = loop.iter
-    if not isinstance(loop.target, ast.Name):
+    if isinstance(it, (ast.List, ast.Tuple)):
+        return _literal_values(it, len(targets))
+    if len(targets) != 1:
         return None
-    if (name := lookup_path(it)) in lists:
-        return lists[name]
+    path = lookup_path(it)
+    if path in lists:
+        return tuple((value,) for value in lists[path])
+    if path is not None and path.endswith(".value"):
+        # A multiple select's value is the list of its options, a single select's is one option, its letters.
+        options = _select_options(path[: -len(".value")], model, bound)
+        if options is None:
+            return None
+        return tuple((value,) for value in dict.fromkeys([*options, *(c for option in options for c in option)]))
     if not (
         isinstance(it, ast.Call)
         and isinstance(it.func, ast.Attribute)
@@ -670,41 +693,93 @@ def _loop_values(
         and not text.keywords
         and len(text.args) == 1
         and (path := lookup_path(text.args[0])) is not None
-        and _unclaimed(path.split(".")[0], bound)
     ):
         return None
+    options = _select_options(path, model, bound)
+    return None if options is None else tuple((value,) for value in (*options, "None"))
+
+
+def _literal_values(it: ast.List | ast.Tuple, arity: int) -> tuple[tuple[str, ...], ...] | None:
+    """The elements of a literal list of text, or of tuples of ``arity`` texts."""
+    values = []
+    for element in it.elts:
+        if arity == 1:
+            parts = [element]
+        elif isinstance(element, (ast.List, ast.Tuple)) and len(element.elts) == arity:
+            parts = element.elts
+        else:
+            return None
+        texts = [constant(part) for part in parts]
+        if not all(isinstance(text, str) for text in texts):
+            return None
+        values.append(tuple(str(text) for text in texts))
+    return tuple(values)
+
+
+def _select_options(path: str, model: Model, bound: set[str]) -> tuple[str, ...] | None:
+    """The options of the select at ``path``, when the tool lists them and only the namespace answers for it."""
     root, *rest = path.split(".")
+    if not _unclaimed(root, bound):
+        return None
     found = model.lookup(root)
     nodes = list(found.nodes) if found is not None else []
     for part in rest:
         nodes = [child for node in nodes if isinstance(node, Group) for child in node.children.get(part, ())]
-    if len(nodes) != 1 or not isinstance(nodes[0], Value) or nodes[0].options is None:
+    if len(nodes) != 1 or not isinstance(nodes[0], Value):
         return None
-    return (*nodes[0].options, "None")
+    return nodes[0].options
 
 
-def _branches(loop: ast.For, values: tuple[str, ...], bound: set[str]) -> tuple[set[int], list[ast.stmt]] | None:
-    """The loop body as `if v == value: <body with value for v>` for each value, and the getVar calls in it;
-    None unless the body reads the variable only as `$v` and its getVar calls then look up literal names."""
-    assert isinstance(loop.target, ast.Name)
-    target = loop.target.id
+def _branches(
+    loop: ast.For, targets: tuple[str, ...], values: tuple[tuple[str, ...], ...], bound: set[str]
+) -> tuple[set[int], list[ast.stmt]] | None:
+    """The loop body as `if (a, b) == values: <body with values for a, b>` for each tuple of values, and the
+    getVar calls in it; None unless the body reads the variables only as `$a` and its getVar calls then look up
+    literal names."""
     body = ast.Module(body=loop.body, type_ignores=[])
-    if any(name == target for name, _ in _bindings(body, set())):
+    if any(name in targets for name, _ in _bindings(body, set())):
         return None
     branches = []
     for value in values:
-        branch = _Substitute({target: value}).visit(copy.deepcopy(body))
-        if _reads_any(branch, (target,)):
+        branch = _Substitute(dict(zip(targets, value))).visit(copy.deepcopy(body))
+        stmts = _propagate(branch.body)
+        if _reads_any(ast.Module(body=stmts, type_ignores=[]), targets):
             return None
-        branches.append((value, branch.body))
+        branches.append((value, stmts))
     get_vars = _literal_get_vars([stmt for _, stmts in branches for stmt in stmts], bound)
     if not get_vars:
         return None
     chain: list[ast.stmt] = []
     for value, stmts in reversed(branches):
-        test = ast.Compare(left=ast.Name(id=target, ctx=ast.Load()), ops=[ast.Eq()], comparators=[ast.Constant(value)])
+        left: ast.expr = ast.Name(id=targets[0], ctx=ast.Load())
+        right: ast.expr = ast.Constant(value[0])
+        if len(targets) > 1:
+            left = ast.Tuple(elts=[ast.Name(id=name, ctx=ast.Load()) for name in targets], ctx=ast.Load())
+            right = ast.Tuple(elts=[ast.Constant(text) for text in value], ctx=ast.Load())
+        test = ast.Compare(left=left, ops=[ast.Eq()], comparators=[right])
         chain = [ast.fix_missing_locations(ast.copy_location(ast.If(test=test, body=stmts, orelse=chain), loop))]
     return get_vars, chain
+
+
+def _propagate(stmts: list[ast.stmt]) -> list[ast.stmt]:
+    """Put the text each `#set $n = 'text'` of ``stmts`` sets in place of the `$n` that follow it, up to a
+    statement that binds `n` again."""
+    known: dict[str, str] = {}
+    found = []
+    for stmt in stmts:
+        for name, _ in _bindings(stmt, set()):
+            known.pop(name, None)
+        if known:
+            stmt = _Substitute(dict(known)).visit(stmt)
+        if (
+            isinstance(stmt, ast.Assign)
+            and len(stmt.targets) == 1
+            and isinstance(target := stmt.targets[0], ast.Name)
+            and isinstance(text := constant(stmt.value), str)
+        ):
+            known[target.id] = text
+        found.append(stmt)
+    return found
 
 
 def _reads_any(method: ast.AST, names: tuple[str, ...]) -> bool:
@@ -718,10 +793,17 @@ def _reads_any(method: ast.AST, names: tuple[str, ...]) -> bool:
 
 
 class _Substitute(ast.NodeTransformer):
-    """Put literal text in place of the lookups of a helper's arguments, and join literal text that is added."""
+    """Put literal text in place of the lookups of a helper's arguments or loop variables, and join or
+    ``replace`` literal text."""
 
     def __init__(self, values: dict[str, str]):
         self.values = values
+
+    def _own_frame(self, node: ast.AST) -> ast.AST:
+        # Its lookups search its own frame, without the method's locals, then the namespace.
+        return node
+
+    visit_Lambda = visit_GeneratorExp = visit_ListComp = visit_SetComp = visit_DictComp = _own_frame
 
     def visit_Call(self, node: ast.Call) -> ast.AST:
         self.generic_visit(node)
@@ -736,6 +818,24 @@ class _Substitute(ast.NodeTransformer):
         ):
             # An argument is a local of the helper: the lookup finds it before the namespace.
             return ast.copy_location(ast.Constant(self.values[str(constant(node.args[1]))]), node)
+        # `'a:b'.replace(':', '_')`, which Cheetah compiles to `VFN('a:b', 'replace', False)(':', '_')`.
+        method = node.func
+        if (
+            isinstance(method, ast.Call)
+            and isinstance(method.func, ast.Name)
+            and method.func.id == "VFN"
+            and len(method.args) == 3
+            and not method.keywords
+            and isinstance(text := constant(method.args[0]), str)
+            and constant(method.args[1]) == "replace"
+            and constant(method.args[2]) is False
+            and len(node.args) == 2
+            and not node.keywords
+            and all(isinstance(constant(arg), str) for arg in node.args)
+        ):
+            return ast.copy_location(
+                ast.Constant(text.replace(str(constant(node.args[0])), str(constant(node.args[1])))), node
+            )
         return node
 
     def visit_BinOp(self, node: ast.BinOp) -> ast.AST:
