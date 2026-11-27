@@ -1,8 +1,9 @@
 <tool id="directory_uri" name="directory_uri" version="1.0.0">
     <command><![CDATA[
+        #import shlex
         python '$__tool_directory__/directory_uri_copy_to.py'
             --file_sources '$file_sources'
-            --directory_uri '$d_uri'
+            --directory_uri ${shlex.quote(str($d_uri))}
     ]]></command>
     <inputs>
         <param type="directory_uri" name="d_uri" label="Directory URI" />

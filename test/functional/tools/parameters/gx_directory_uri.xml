@@ -3,7 +3,8 @@
         <import>macros.xml</import>
     </macros>
     <command><![CDATA[
-        echo 'parameter: $parameter' > $output
+        #import shlex
+        echo 'parameter: '${shlex.quote(str($parameter))} > $output
     ]]></command>
     <inputs>
         <param type="directory_uri" name="parameter" />
