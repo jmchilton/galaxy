@@ -513,6 +513,16 @@ galaxy_url_replaced:
     findings:
       - {rule: shell-injection, severity: high, key: __galaxy_url__, checkable: true}
 
+getvar_request_parameter:
+  doc: >-
+    In a tool that keeps all its job parameters, `getVar` of a name no input has reads the request parameter
+    of that name when there is one, and the review reports its findings.
+  tool: getvar_request_parameter.xml
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, key: organism, checkable: true}
+
 galaxy_url_kept:
   doc: >-
     A regular tool's templates get only its inputs and the job parameters Galaxy passes them: a job

@@ -104,9 +104,11 @@ class Model:
     def job_parameter(self, name: str) -> AV:
         """A name that is not a tool input: only a job parameter of that name can give it a value.
 
-        Galaxy puts every parameter of the job into the namespace, sanitized like a text parameter.
-        A regular job only has the parameters of the tool's inputs, and the template fails where it
-        reads any other name.
+        A regular tool's templates get its inputs, the job parameters in ``template_job_parameters``
+        and the `<input>|__identifier__` names; a tool that keeps all its job parameters gets every
+        request parameter, sanitized like a text parameter. A regular job only has the parameters of
+        the tool's inputs, and the template fails where it reads any other name. The review still
+        reads an unknown name as such a parameter, which over-reports at worst.
         """
         if name not in self._job_parameters:
             chars = default_chars(self.sanitize)
@@ -123,6 +125,10 @@ class Model:
                 refs[SourceRef(SPECIAL, key=name)] = None
         if self.keeps_undeclared_job_parameters:
             for name in REPLACEABLE_SPECIALS & names:
+                refs[SourceRef(SPECIAL, key=name)] = None
+        for name in sorted(names):
+            # A job parameter of a name no input or Galaxy value holds, where one reaches the templates.
+            if name not in self.specials and self.lookup(name) is None and self.can_be_job_parameter(name):
                 refs[SourceRef(SPECIAL, key=name)] = None
         for attribute, key in USER_ACCOUNT_ATTRIBUTES.items():
             if attribute in names:

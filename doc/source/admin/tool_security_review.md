@@ -1300,6 +1300,28 @@ serious_rules:
 - shell-injection
 ```
 
+### getvar_request_parameter
+
+In a tool that keeps all its job parameters, `getVar` of a name no input has reads the request parameter of that name when there is one, and the review reports its findings.
+
+Tool `getvar_request_parameter.xml`:
+
+```
+echo '$getVar("organism", "")' > '$out'
+```
+
+Review:
+
+```
+findings:
+- rule: shell-injection
+  severity: high
+  key: organism
+  checkable: true
+serious_rules:
+- shell-injection
+```
+
 ### galaxy_url_kept
 
 A regular tool's templates get only its inputs and the job parameters Galaxy passes them: a job parameter named `__galaxy_url__` does not replace Galaxy's value, which stays out of the review's sight.
@@ -1527,7 +1549,7 @@ Each finding has one of these rules.
 
 A value can close the quotes around it, or is written unquoted, and start another shell command.
 
-Cases: `raw_text_shell_injection`, `ftpfile_param_shell_injection`, `element_identifier_shell_injection`, `dataset_name_stays_quoted`, `wrapped_names_stay_quoted`, `group_tags_shell_injection`, `dataset_content_shell_injection`, `user_preference_stays_quoted`, `user_preference_shell_injection`, `stray_quote`, `path_like_name`, `raw_dataset_model`, `raw_dataset_history`, `shell_runs_script_file`, `rewrites_restore_tokens`, `literal_rewrite`, `rewrites_and_template_code`, `user_object_unsanitized`, `untraced_value`, `known_helper`, `known_loop`, `known_global_list`, `known_literal_list`, `known_select_value`, `nested_scope_lookup`, `nested_scope_lambda`, `maybe_unset_local`, `galaxy_url_replaced`.
+Cases: `raw_text_shell_injection`, `ftpfile_param_shell_injection`, `element_identifier_shell_injection`, `dataset_name_stays_quoted`, `wrapped_names_stay_quoted`, `group_tags_shell_injection`, `dataset_content_shell_injection`, `user_preference_stays_quoted`, `user_preference_shell_injection`, `stray_quote`, `path_like_name`, `raw_dataset_model`, `raw_dataset_history`, `shell_runs_script_file`, `rewrites_restore_tokens`, `literal_rewrite`, `rewrites_and_template_code`, `user_object_unsanitized`, `untraced_value`, `known_helper`, `known_loop`, `known_global_list`, `known_literal_list`, `known_select_value`, `nested_scope_lookup`, `nested_scope_lambda`, `maybe_unset_local`, `galaxy_url_replaced`, `getvar_request_parameter`.
 
 #### `nested-interpreter`
 

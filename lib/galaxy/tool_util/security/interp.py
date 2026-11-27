@@ -299,9 +299,11 @@ class Env:
     shared: dict[str, AV] = field(default_factory=dict)  # #set global
     # Locals that a `$name` lookup may not find in the frame it runs in, where it reads the namespace.
     hidden: frozenset[str] = frozenset()
+    # `#set global` names that every path to here has set; another may still be unset on some path.
+    assured: frozenset[str] = frozenset()
 
     def copy(self) -> Env:
-        return Env(dict(self.local), self.shared, self.hidden)
+        return Env(dict(self.local), self.shared, self.hidden, self.assured)
 
     def nested(self) -> Env:
         """The env of a lambda, generator expression or comprehension, which runs in a frame of its own.
@@ -310,7 +312,12 @@ class Env:
         code binds, and the locals it reads as Python names, so for the method's other locals the lookup
         reads the namespace. Python 3.12 runs a comprehension in the method's frame, older versions do not.
         """
-        return Env(dict(self.local), self.shared, frozenset(name for name in self.local if not _narrowing_key(name)))
+        hidden = frozenset(name for name in self.local if not _narrowing_key(name))
+        return Env(dict(self.local), self.shared, hidden, self.assured)
+
+    def outside(self) -> Env:
+        """The namespace past the frame's locals: the `#set global` store, as this path has set it."""
+        return Env(shared=self.shared, assured=self.assured)
 
     def rejoin(self, inner: Env, own: set[str]) -> None:
         """Keep what nested code changed in the method's locals, other than the names it binds itself.
@@ -339,6 +346,7 @@ class Env:
         # A name one path does not bind is unbound there, where `$name` reads the namespace.
         unbound = {n for n in names if not _narrowing_key(n) and any(n not in o.local for o in others)}
         self.hidden = frozenset(unbound).union(*(o.hidden for o in others))
+        self.assured = frozenset.intersection(*(o.assured for o in others))
 
     def assign(self, name: str, value: AV, weak: bool = False) -> None:
         self.local[name] = join(self.local.get(name), value) if weak else value
@@ -428,6 +436,17 @@ def _unwrap_str(node: ast.expr) -> ast.expr:
     ):
         node = node.args[0]
     return node
+
+
+def _target_names(target: ast.expr) -> set[str]:
+    """The names an assignment to ``target`` binds: not those of an attribute or a subscript."""
+    if isinstance(target, ast.Name):
+        return {target.id}
+    if isinstance(target, ast.Starred):
+        return _target_names(target.value)
+    if isinstance(target, (ast.Tuple, ast.List)):
+        return {name for elt in target.elts for name in _target_names(elt)}
+    return set()
 
 
 def _walrus_targets(node: ast.AST) -> set[str]:
@@ -758,14 +777,14 @@ class TemplateAnalysis:
             return out
         if isinstance(stmt, (ast.For, ast.While)):
             before = dict(env.local)
-            hidden_before = env.hidden
+            hidden_before, assured_before = env.hidden, env.assured
             out = states
             current = states
             for _ in range(3):
                 if isinstance(stmt, ast.For):
                     self.bind(stmt.target, element(self.ev(stmt.iter, env)), env, weak=True)
                     # In the body the targets are bound, whatever value they had.
-                    env.hidden = env.hidden - {n.id for n in ast.walk(stmt.target) if isinstance(n, ast.Name)}
+                    env.hidden = env.hidden - _target_names(stmt.target)
                 else:
                     self.ev(stmt.test, env)
                 current = self.block(stmt.body, current, env)
@@ -777,6 +796,7 @@ class TemplateAnalysis:
             env.hidden = (
                 hidden_before | env.hidden | {k for k in env.local if k not in before and not _narrowing_key(k)}
             )
+            env.assured = assured_before
             for key, value in list(env.local.items()):
                 if value is before.get(key):
                     continue
@@ -794,7 +814,7 @@ class TemplateAnalysis:
                 # A handler starts wherever the body stopped: from before it, or from after it.
                 handler_envs = []
                 for handler in stmt.handlers:
-                    handler_env = Env(shared=env.shared)
+                    handler_env = env.outside()
                     handler_env.merge([env.copy(), body_env])
                     out = out | self.block(handler.body, states | out, handler_env)
                     handler_envs.append(handler_env)
@@ -1011,7 +1031,9 @@ class TemplateAnalysis:
             # self._CHEETAH__globalSetVars["name"] = value, from `#set global`
             key = _const(target.slice)
             if isinstance(base, ast.Attribute) and base.attr == "_CHEETAH__globalSetVars" and isinstance(key, str):
-                env.shared[key] = join(env.shared.get(key), value) if weak else value
+                # One store for every path and #def: it holds what any of them set.
+                env.shared[key] = join(env.shared.get(key), value)
+                env.assured = env.assured | {key}
                 for narrowed in _keys_of(env.local, key):
                     del env.local[narrowed]
             elif name := self._local_name(base, env):
@@ -1401,7 +1423,7 @@ class TemplateAnalysis:
     # -- helpers (#def) ------------------------------------------------------------------------
 
     def _helper_env(self, method: Method, args: list[AV], env: Env, keywords: dict[str, AV] | None = None) -> Env:
-        helper_env = Env(shared=env.shared)
+        helper_env = env.outside()
         for i, name in enumerate(method.args):
             if i < len(args):
                 helper_env.local[name] = args[i]
@@ -1471,11 +1493,16 @@ class TemplateAnalysis:
             if not self._in_namespace(first, env):
                 # Nothing of that name reaches the template: where the local is missing, the template fails.
                 return local
-            return join(local, self._resolve(path, Env(shared=env.shared), autocall, exact=False))
+            return join(local, self._resolve(path, env.outside(), autocall, exact=False))
         return self._resolve(path, env, autocall, exact)
 
     def _in_namespace(self, name: str, env: Env) -> bool:
-        """Whether Cheetah's lookup of ``name`` can find something past the frame's locals."""
+        """Whether Cheetah's lookup of ``name`` can find something past the frame's locals.
+
+        The names Galaxy sets that the model does not know (`output_file`, `paramfile`, ...) are left
+        out: their values are paths of Galaxy's or tool text. A name read outside a missing local is
+        still a job parameter where nothing else holds it, which over-reports at worst.
+        """
         return (
             name in env.shared
             or name in self.template.helpers
@@ -1504,6 +1531,9 @@ class TemplateAnalysis:
             value = env.local[first]
         elif first in env.shared:
             value = env.shared[first]
+            if first not in env.assured and self._in_namespace(first, Env()):
+                # A #set global that may not have run leaves the name to the rest of the namespace.
+                value = join(value, self._resolve(first, Env(), False, exact=False))
         elif first in self.template.helpers:
             value = AV(helper=first)
         else:
@@ -1808,7 +1838,10 @@ class TemplateAnalysis:
                 if self.model.lookup(root) is not None or root in env.shared:
                     # getVar reads the namespace, the #set global store first, never the method's locals.
                     # A test of `$name` may have been about a local of that name, so none applies here.
-                    return join(self.resolve(variable, Env(shared=env.shared), True), default)
+                    return join(self.resolve(variable, env.outside(), True), default)
+                if root and root not in self.template.helpers and self.model.can_be_job_parameter(root):
+                    # A job parameter of that name, where one reaches the templates.
+                    return join(self._namespace(variable, env), default)
             return default
         if _DECODERS.match(name):
             text = contents(first)
