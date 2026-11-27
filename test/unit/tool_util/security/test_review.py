@@ -567,10 +567,10 @@ def test_capability_evasions_found_by_review(tmp_path, command, expected):
 @pytest.mark.parametrize(
     "command",
     [
-        "#set $v = getattr($input, 'unsanitized').name\ntool '$v'",
-        "#if getattr($text, 'value')\ntool\n#end if",
+        "#set $a = 'unsanitized'\n#set $v = getattr($input, $a).name\ntool '$v'",
+        "#set $a = 'value'\n#if getattr($text, $a)\ntool\n#end if",
         "tool '${getattr($input, 'unsanitized').name}'",
-        "#for $v in getattr($c, 'values')()\ntool '$v'\n#end for",
+        "#for $v in getattr($c, 'val' + 'ues')()\ntool '$v'\n#end for",
     ],
 )
 def test_getattr_is_reflection(tmp_path, command):

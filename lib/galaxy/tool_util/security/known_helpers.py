@@ -112,7 +112,7 @@ def specialise_known_helpers(tree: ast.Module) -> set[int]:
         copies = _copies(tree, method, arguments, calls, literal)
         if copies is None:
             continue
-        get_vars = _namespace_get_vars(copies.values(), _bound(tree))
+        get_vars = _namespace_get_vars(copies.values(), bound_names(tree))
         if get_vars is None:
             continue
         namespace_get_vars |= get_vars
@@ -251,39 +251,43 @@ def _generated_code(tree: ast.Module) -> set[int]:
     }
 
 
-def _bound(tree: ast.Module) -> set[str]:
+def bound_names(tree: ast.Module) -> set[str]:
     """Every name the template binds: Python names, arguments, imports, #def and #attr names, attributes of
     ``self`` and keys of the ``#set global`` store."""
-    generated_code = _generated_code(tree)
-    names = set()
+    return {name for name, _ in _bindings(tree)}
+
+
+def _bindings(tree: ast.AST, generated_code: set[int] | None = None) -> Iterator[tuple[str, ast.AST]]:
+    """Each name ``tree`` binds, with the node that binds it."""
+    if generated_code is None:
+        generated_code = _generated_code(tree) if isinstance(tree, ast.Module) else set()
     for node in ast.walk(tree):
         if id(node) in generated_code:
             continue
         if isinstance(node, ast.Name) and not isinstance(node.ctx, ast.Load):
-            names.add(node.id)
+            yield node.id, node
         elif isinstance(node, ast.Attribute) and not isinstance(node.ctx, ast.Load):
-            names.add(node.attr)
+            yield node.attr, node
         elif isinstance(node, ast.Subscript) and not isinstance(node.ctx, ast.Load):
             if isinstance(key := constant(node.slice), str):
-                names.add(key.replace("$", "").split(".")[0])
+                yield key.replace("$", "").split(".")[0], node
         elif isinstance(node, ast.arg):
-            names.add(node.arg)
+            yield node.arg, node
         elif isinstance(node, ast.alias):
-            names.add((node.asname or node.name).split(".")[0])
+            yield (node.asname or node.name).split(".")[0], node
         elif isinstance(node, (ast.FunctionDef, ast.ClassDef)):
-            names.add(node.name)
+            yield node.name, node
         elif isinstance(node, (ast.Global, ast.Nonlocal)):
-            names.update(node.names)
+            yield from ((name, node) for name in node.names)
         elif isinstance(node, ast.ExceptHandler) and node.name:
-            names.add(node.name)
-    return names
+            yield node.name, node
 
 
-_IDENTIFIER = re.compile(r"[A-Za-z][A-Za-z0-9_]*\Z")
+IDENTIFIER = re.compile(r"[A-Za-z][A-Za-z0-9_]*\Z")
 
 
 @lru_cache(maxsize=1)
-def _object_names() -> frozenset[str]:
+def object_names() -> frozenset[str]:
     """Names a lookup finds on the #set global store, a namespace mapping or a compiled template object: their
     instance attributes too (the ``data`` of the TreeDict Galaxy retries the namespace as)."""
     return frozenset(dir(Template("x", searchList=[{}]))) | frozenset(dir({})) | frozenset(dir(TreeDict({})))
@@ -308,7 +312,7 @@ def _namespace_get_vars(copies: Iterable[ast.FunctionDef], bound: set[str]) -> s
                     return None
                 parts = name.replace("$", "").split(".")
                 # An empty part names nothing: the lookup fails there.
-                if not all(not part or _IDENTIFIER.match(part) for part in parts):
+                if not all(not part or IDENTIFIER.match(part) for part in parts):
                     return None
                 if parts[0] and not _unclaimed(parts[0], bound):
                     return None
@@ -316,9 +320,36 @@ def _namespace_get_vars(copies: Iterable[ast.FunctionDef], bound: set[str]) -> s
     return found
 
 
+def lookup_path(node: ast.AST) -> str | None:
+    """The path of `$a.b`: `VFFSL(SL, "a.b", True)`, each part a plain name."""
+    lookup = _lookup(node)
+    if (
+        lookup is None
+        or not isinstance(lookup.func, ast.Name)
+        or lookup.func.id not in NAMESPACE_LOOKUPS
+        or lookup.keywords
+        or len(lookup.args) != 3
+        or not (isinstance(lookup.args[0], ast.Name) and lookup.args[0].id == "SL")
+    ):
+        return None
+    path = str(constant(lookup.args[1]))
+    return path if all(IDENTIFIER.match(part) for part in path.split(".")) else None
+
+
+@lru_cache(maxsize=1)
+def method_locals() -> frozenset[str]:
+    """The locals Cheetah gives every template method (``SL``, ``write``, ``trans``): a lookup finds them first."""
+    names = {"self"}
+    for node in ast.walk(compiled_module("$x")):
+        if isinstance(node, ast.FunctionDef) and node.name == "respond":
+            names.update(name for name, _ in _bindings(ast.Module(body=node.body, type_ignores=[]), set()))
+            names.update(arg.arg for arg in node.args.args + node.args.kwonlyargs)
+    return frozenset(names)
+
+
 def _unclaimed(name: str, bound: set[str]) -> bool:
     """A plain name that only the namespace can answer for: a tool input, a job parameter, or nothing."""
-    return bool(_IDENTIFIER.match(name)) and name not in bound and name not in _object_names()
+    return bool(IDENTIFIER.match(name)) and name not in bound and name not in object_names()
 
 
 @lru_cache(maxsize=1)

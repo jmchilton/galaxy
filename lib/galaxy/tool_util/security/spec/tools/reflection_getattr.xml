@@ -1,7 +1,8 @@
 <tool id="spec_reflection_getattr" name="Dataset name through getattr" version="1.0" profile="24.0">
     <description>reads the unsanitized dataset model by name</description>
     <command><![CDATA[
-#set $name = getattr($input, 'unsanitized').name
+#set $attribute = 'unsanitized'
+#set $name = getattr($input, $attribute).name
 echo '${name}' > '$out'
     ]]></command>
     <inputs>
