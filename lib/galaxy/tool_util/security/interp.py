@@ -337,7 +337,9 @@ class Env:
                 self.local.pop(name, None)
                 continue
             self.local[name] = join(*(o.local.get(name) for o in envs))
-        self.hidden = frozenset().union(*(o.hidden for o in others))
+        # A name one path does not bind is unbound there, where `$name` reads the namespace.
+        unbound = {n for n in names if not _narrowing_key(n) and any(n not in o.local for o in others)}
+        self.hidden = frozenset(unbound).union(*(o.hidden for o in others))
 
     def assign(self, name: str, value: AV, weak: bool = False) -> None:
         self.local[name] = join(self.local.get(name), value) if weak else value
@@ -757,11 +759,14 @@ class TemplateAnalysis:
             return out
         if isinstance(stmt, (ast.For, ast.While)):
             before = dict(env.local)
+            hidden_before = env.hidden
             out = states
             current = states
             for _ in range(3):
                 if isinstance(stmt, ast.For):
                     self.bind(stmt.target, element(self.ev(stmt.iter, env)), env, weak=True)
+                    # In the body the targets are bound, whatever value they had.
+                    env.hidden = env.hidden - {n.id for n in ast.walk(stmt.target) if isinstance(n, ast.Name)}
                 else:
                     self.ev(stmt.test, env)
                 current = self.block(stmt.body, current, env)
@@ -769,7 +774,10 @@ class TemplateAnalysis:
                     break
                 out = current = out | current
             # The body may run zero times, or leave early (#continue, #break): after the loop a name can
-            # still have its value from before, and what an iteration narrowed does not hold.
+            # still have its value from before, or none, and what an iteration narrowed does not hold.
+            env.hidden = (
+                hidden_before | env.hidden | {k for k in env.local if k not in before and not _narrowing_key(k)}
+            )
             for key, value in list(env.local.items()):
                 if value is before.get(key):
                     continue
@@ -1457,11 +1465,26 @@ class TemplateAnalysis:
 
     def resolve(self, path: str, env: Env, autocall: bool, exact: bool = True) -> AV:
         """The value of a dotted template name; ``exact=False`` ignores what tests showed about it."""
-        if path.split(".")[0] in env.hidden:
+        first = path.split(".")[0]
+        if first in env.hidden:
             # The local, where the frame has it after all, else what the namespace holds under its name.
-            namespace = self._resolve(path, Env(shared=env.shared), autocall, exact=False)
-            return join(self._resolve(path, env, autocall, exact), namespace)
+            local = self._resolve(path, env, autocall, exact)
+            if not self._in_namespace(first, env):
+                # Nothing of that name reaches the template: where the local is missing, the template fails.
+                return local
+            return join(local, self._resolve(path, Env(shared=env.shared), autocall, exact=False))
         return self._resolve(path, env, autocall, exact)
+
+    def _in_namespace(self, name: str, env: Env) -> bool:
+        """Whether Cheetah's lookup of ``name`` can find something past the frame's locals."""
+        return (
+            name in env.shared
+            or name in self.template.helpers
+            or self.model.lookup(name) is not None
+            or name in self._imported
+            or name in TEMPLATE_NAMES
+            or self.model.can_be_job_parameter(name)
+        )
 
     def _resolve(self, path: str, env: Env, autocall: bool, exact: bool) -> AV:
         parts = path.split(".")

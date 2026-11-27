@@ -1,0 +1,19 @@
+<tool id="spec_maybe_unset_local" name="A local a #set may not have bound" version="1.0" profile="24.0">
+    <description>sets a local named like a parameter on one branch only, and reads the name after it</description>
+    <command><![CDATA[
+#if $mode == 'fixed'
+#set $label = 'sample'
+#end if
+echo '$label' > '$out'
+    ]]></command>
+    <inputs>
+        <param name="mode" type="select">
+            <option value="fixed">fixed</option>
+            <option value="given">given</option>
+        </param>
+        <param name="label" type="text"><sanitizer sanitize="false"/></param>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

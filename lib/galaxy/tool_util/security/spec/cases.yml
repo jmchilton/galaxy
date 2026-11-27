@@ -488,6 +488,18 @@ nested_scope_lambda:
     findings:
       - {rule: shell-injection, severity: high, accessor: raw, param: label, checkable: true}
 
+maybe_unset_local:
+  doc: >-
+    A `#set` that does not run leaves its local unbound, and `$label` after it is then the parameter of that
+    name. The review reads the name as the local or the parameter, and reports the parameter's findings. The job
+    parameters that are not inputs do not reach the templates of a regular tool, so a local of any other name
+    is the local alone.
+  tool: maybe_unset_local.xml
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, accessor: text, param: label, checkable: true}
+
 app_model_read:
   doc: >-
     The application object reaches any data of the server. The review flags the read but follows no value

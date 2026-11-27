@@ -1252,6 +1252,32 @@ serious_rules:
 - shell-injection
 ```
 
+### maybe_unset_local
+
+A `#set` that does not run leaves its local unbound, and `$label` after it is then the parameter of that name. The review reads the name as the local or the parameter, and reports the parameter's findings. The job parameters that are not inputs do not reach the templates of a regular tool, so a local of any other name is the local alone.
+
+Tool `maybe_unset_local.xml`:
+
+```
+#if $mode == 'fixed'
+#set $label = 'sample'
+#end if
+echo '$label' > '$out'
+```
+
+Review:
+
+```
+findings:
+- rule: shell-injection
+  severity: high
+  accessor: text
+  param: label
+  checkable: true
+serious_rules:
+- shell-injection
+```
+
 ### app_model_read
 
 The application object reaches any data of the server. The review flags the read but follows no value of it, and this tool writes only a count.
@@ -1463,7 +1489,7 @@ Each finding has one of these rules.
 
 A value can close the quotes around it, or is written unquoted, and start another shell command.
 
-Cases: `raw_text_shell_injection`, `ftpfile_param_shell_injection`, `element_identifier_shell_injection`, `dataset_name_stays_quoted`, `wrapped_names_stay_quoted`, `group_tags_shell_injection`, `dataset_content_shell_injection`, `user_preference_stays_quoted`, `user_preference_shell_injection`, `stray_quote`, `path_like_name`, `raw_dataset_model`, `raw_dataset_history`, `shell_runs_script_file`, `rewrites_restore_tokens`, `literal_rewrite`, `rewrites_and_template_code`, `user_object_unsanitized`, `untraced_value`, `known_helper`, `known_loop`, `known_global_list`, `known_literal_list`, `known_select_value`, `nested_scope_lookup`, `nested_scope_lambda`.
+Cases: `raw_text_shell_injection`, `ftpfile_param_shell_injection`, `element_identifier_shell_injection`, `dataset_name_stays_quoted`, `wrapped_names_stay_quoted`, `group_tags_shell_injection`, `dataset_content_shell_injection`, `user_preference_stays_quoted`, `user_preference_shell_injection`, `stray_quote`, `path_like_name`, `raw_dataset_model`, `raw_dataset_history`, `shell_runs_script_file`, `rewrites_restore_tokens`, `literal_rewrite`, `rewrites_and_template_code`, `user_object_unsanitized`, `untraced_value`, `known_helper`, `known_loop`, `known_global_list`, `known_literal_list`, `known_select_value`, `nested_scope_lookup`, `nested_scope_lambda`, `maybe_unset_local`.
 
 #### `nested-interpreter`
 

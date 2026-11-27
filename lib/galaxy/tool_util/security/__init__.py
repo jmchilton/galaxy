@@ -228,14 +228,23 @@ def _analyse(
     return analysis
 
 
-def review_tool_source(tool_source: ToolSource) -> Report:
+def review_tool_source(
+    tool_source: ToolSource,
+    template_job_parameters: frozenset[str] | None = None,
+    keeps_undeclared_job_parameters: bool = False,
+) -> Report:
     """The security review of a tool.
+
+    ``template_job_parameters`` are the job parameters besides the tool's inputs that Galaxy passes
+    to the tool's templates (``Tool.template_job_parameters``); None when they are not known, and
+    then a job parameter of any name can reach them, as it does for a tool that keeps the job
+    parameters that are not inputs (``Tool.keeps_undeclared_job_parameters``, a data source tool).
 
     The work on one template is bounded by the analysis' step budget: a template past it counts as
     not fully analysed.
     """
     report = Report(tool_id=tool_source.parse_id())
-    model = build_model(tool_source)
+    model = build_model(tool_source, None if keeps_undeclared_job_parameters else template_job_parameters)
     readers: dict[str, set[str]] = {}
     names: dict[str, set[str]] = {}
 
