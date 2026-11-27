@@ -984,6 +984,49 @@ patterns:
 - server-config
 ```
 
+### output_size_limit_read
+
+The data source tools pass the server's output size limit, a number the admin sets, to their script. The review allows this one read of the configuration.
+
+Tool `output_size_limit.xml`:
+
+```
+python '$__tool_directory__/data_source.py' '$out' $__app__.config.output_size_limit
+```
+
+Review:
+
+```
+serious_rules: []
+codes: []
+```
+
+### output_size_limit_reach
+
+Reading past the output size limit, or keeping the configuration in a variable, is still flagged.
+
+Tool `output_size_limit_reach.xml`:
+
+```
+#set $config = $__app__.config
+echo '$__app__.config.output_size_limit.__class__' > '$out' &&
+echo '$config.output_size_limit' >> '$out'
+```
+
+Review:
+
+```
+findings:
+- rule: template-app-access
+  severity: high
+- rule: template-reflection
+  severity: high
+patterns:
+- server-config
+codes:
+- uncheckable-template-code
+```
+
 ## Access patterns
 
 The review also reports reads it cannot follow to a value of a tool input. A read by name (reflection)
@@ -1039,7 +1082,7 @@ Cases: `job_metadata_read`.
 
 Reads the server's configuration or encodes ids (`$__app__.config`, `$__app__.security`).
 
-Cases: `server_config_read`.
+Cases: `server_config_read`, `output_size_limit_reach`.
 
 ## Rules
 
@@ -1125,6 +1168,8 @@ Imports a module; high when the module can read or change server state.
 
 Reaches objects by name (`getattr`, `getVar` with a computed name, Python or Cheetah internals).
 
+Cases: `output_size_limit_reach`.
+
 #### `template-env`
 
 Reads the server's environment (`os.environ`, `os.getenv`, ...).
@@ -1143,7 +1188,7 @@ Uses `#include` to read another file into the template.
 
 Reads Galaxy's application object (`$__app__`) or the user object (`$__user__`).
 
-Cases: `user_object_unsanitized`.
+Cases: `user_object_unsanitized`, `output_size_limit_reach`.
 
 #### `template-model-access`
 
@@ -1235,7 +1280,7 @@ Cases: `rewrites_restore_tokens`, `rewrites_and_template_code`.
 
 The templates run Python that can read text no tool input carries (imports, `open()`, `$__app__`, `getattr`, what the dataset model behind `.unsanitized` reaches).
 
-Cases: `raw_dataset_history`, `rewrites_and_template_code`, `template_code`, `server_python_command`, `user_object_unsanitized`, `reflection_bypass`, `getvar_user_name`.
+Cases: `raw_dataset_history`, `rewrites_and_template_code`, `template_code`, `server_python_command`, `user_object_unsanitized`, `reflection_bypass`, `getvar_user_name`, `output_size_limit_reach`.
 
 #### `uncheckable-letters-are-code`
 

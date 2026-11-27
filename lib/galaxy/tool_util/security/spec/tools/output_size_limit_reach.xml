@@ -1,0 +1,12 @@
+<tool id="spec_output_size_limit_reach" name="Output size limit, reaching further" version="1.0" profile="24.0">
+    <description>reads past the output size limit, or keeps the configuration</description>
+    <command><![CDATA[
+#set $config = $__app__.config
+echo '$__app__.config.output_size_limit.__class__' > '$out' &&
+echo '$config.output_size_limit' >> '$out'
+    ]]></command>
+    <inputs/>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

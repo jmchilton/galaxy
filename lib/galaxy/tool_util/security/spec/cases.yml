@@ -373,3 +373,23 @@ server_config_read:
   review:
     patterns: [server-config]
     serious_rules: []
+
+output_size_limit_read:
+  doc: >-
+    The data source tools pass the server's output size limit, a number the admin sets, to their script. The
+    review allows this one read of the configuration.
+  tool: output_size_limit.xml
+  review:
+    codes: []
+    patterns: []
+    serious_rules: []
+
+output_size_limit_reach:
+  doc: Reading past the output size limit, or keeping the configuration in a variable, is still flagged.
+  tool: output_size_limit_reach.xml
+  review:
+    findings:
+      - {rule: template-app-access, severity: high}
+      - {rule: template-reflection, severity: high}
+    patterns: [server-config]
+    codes: [uncheckable-template-code]
