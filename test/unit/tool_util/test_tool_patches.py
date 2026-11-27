@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 import yaml
+from Cheetah.Template import Template
 from lxml import etree
 from pydantic import ValidationError
 
@@ -114,6 +115,36 @@ def compat_doc(*ops: dict[str, Any], **fields: Any) -> dict[str, Any]:
 
 
 ADVISORY = {"fixed_in": "1.0+galaxy1", "vulnerable": True, "action": "upgrade", "code": "context_drift", "reason": "r"}
+
+
+PY2_TOOL = PROBE_TOOL.replace('profile="23.0"', 'profile="16.01"').replace(
+    "echo $label >> '$output1'", "echo $label >> '$output1'\n#if $a <> 1\necho a >> '$output1'\n#end if"
+)
+NE_OP = text_op("#if $a <> 1", "#if $a != 1")
+PY2TO3_DOC = "Python 2 Cheetah code is written as Python 3; every job renders the same command."
+
+
+def python2to3_doc(*ops: dict[str, Any], **fields: Any) -> dict[str, Any]:
+    doc: dict[str, Any] = {
+        "format_version": 1,
+        "kind": "python2to3",
+        "upstream": [],
+        "reproducibility": "identical",
+        "reproducibility_doc": PY2TO3_DOC,
+        "ops": list(ops),
+    }
+    doc.update(fields)
+    return {k: v for k, v in doc.items() if v is not None}
+
+
+def mixed_python2to3_doc(*ops: dict[str, Any], **fields: Any) -> dict[str, Any]:
+    """Security ops (QUOTE_LABEL unless given) plus python2to3 ops, as a mixed file."""
+    return security_doc(
+        *ops,
+        kind="mixed",
+        upstream=[{**UPSTREAM, "kind": "security"}],
+        **fields,
+    )
 
 
 def write_tool(path: Path, content: str = PROBE_TOOL) -> XmlToolSource:
@@ -275,6 +306,42 @@ def probe(tmp_path: Path) -> XmlToolSource:
             id="security_advisory_without_upstream",
         ),
         pytest.param(security_doc(QUOTE_LABEL, surprise=1), id="unknown_field"),
+        pytest.param(python2to3_doc(NE_OP, reproducibility="unusual_inputs"), id="python2to3_not_identical"),
+        pytest.param(python2to3_doc({**NE_OP, "needed_from": "26.1"}), id="python2to3_op_needed_from"),
+        pytest.param(python2to3_doc(NE_OP, needed_from="26.1"), id="python2to3_file_needed_from"),
+        pytest.param(python2to3_doc(NE_OP, galaxy_change=GALAXY_CHANGE), id="python2to3_file_galaxy_change"),
+        pytest.param(python2to3_doc(text_op("Old help.", "New help.", path="help")), id="python2to3_help_text"),
+        pytest.param(python2to3_doc(text_op("a", "b", path=".//command")), id="python2to3_loose_selector"),
+        pytest.param(
+            python2to3_doc(text_op("a", "b", path="configfiles/configfile")), id="python2to3_unnamed_configfile"
+        ),
+        pytest.param(
+            python2to3_doc(
+                {
+                    "replace_element": {
+                        "path": "command",
+                        "old": "<command/>",
+                        "new": "<command>x</command>",
+                        "occurrences": 1,
+                    }
+                }
+            ),
+            id="python2to3_element_op",
+        ),
+        pytest.param(python2to3_doc({**NE_OP, "kind": "python2to3"}, kind="mixed"), id="mixed_with_python2to3_only"),
+        pytest.param(
+            mixed_python2to3_doc({**QUOTE_LABEL, "kind": "security"}, NE_OP), id="mixed_python2to3_op_without_kind"
+        ),
+        pytest.param(
+            compat_doc(
+                {**QUOTE_LABEL, "kind": "compat"},
+                {**NE_OP, "kind": "python2to3"},
+                kind="mixed",
+                reproducibility="unusual_inputs",
+                reproducibility_reason=None,
+            ),
+            id="mixed_without_security_not_identical",
+        ),
     ],
 )
 def test_invalid_patch_files_are_rejected(doc: dict[str, Any]) -> None:
@@ -420,6 +487,27 @@ def test_unquoted_needed_from_in_yaml_is_rejected() -> None:
                 }
             ),
             id="remove_element",
+        ),
+        pytest.param(python2to3_doc(NE_OP), id="python2to3"),
+        pytest.param(python2to3_doc({**NE_OP, "kind": "python2to3"}), id="python2to3_op_kind"),
+        pytest.param(
+            python2to3_doc(text_op("#if $a <> 1", "#if $a != 1", path="configfiles/configfile[@name='script']")),
+            id="python2to3_configfile",
+        ),
+        pytest.param(
+            python2to3_doc(NE_OP, upstream=[{**UPSTREAM, "kind": "python2to3"}]), id="python2to3_with_upstream_pr"
+        ),
+        pytest.param(
+            mixed_python2to3_doc({**QUOTE_LABEL, "kind": "security"}, {**NE_OP, "kind": "python2to3"}),
+            id="mixed_security_python2to3",
+        ),
+        pytest.param(
+            compat_doc(
+                {**QUOTE_LABEL, "kind": "compat"},
+                {**NE_OP, "kind": "python2to3"},
+                kind="mixed",
+            ),
+            id="mixed_compat_python2to3",
         ),
     ],
 )
@@ -867,6 +955,63 @@ def test_mixed_file_evaluates_kinds_separately(tmp_path: Path, probe: XmlToolSou
     patched = load_db(write_collection(tmp_path / "c", {LOCAL_PROBE: doc})).apply_patches(probe)
     assert [(s.kind, s.state) for s in patch_states(patched)] == [("security", "applied"), ("compat", "mismatch")]
     assert "echo '$label' >>" in command_text(patched.parse_command())
+
+
+def compiles_on_python3(command: str | None) -> bool:
+    try:
+        Template.compile(source=command or "")
+        return True
+    except Exception:
+        return False
+
+
+def test_python2to3_file_applies_and_compiles_on_python3(tmp_path: Path) -> None:
+    tool = write_tool(tmp_path / "py2.xml", PY2_TOOL)
+    assert not compiles_on_python3(tool.parse_command())
+    patched = load_db(write_collection(tmp_path / "c", {LOCAL_PROBE: python2to3_doc(NE_OP)})).apply_patches(tool)
+    (state,) = patch_states(patched)
+    assert (state.kind, state.state, state.reproducibility, state.reproducibility_doc) == (
+        "python2to3",
+        "applied",
+        "identical",
+        PY2TO3_DOC,
+    )
+    assert "#if $a != 1" in command_text(patched.parse_command())
+    assert compiles_on_python3(patched.parse_command())
+    assert patched.parse_profile() == "16.01"
+
+
+def test_python2to3_unit_applies_before_security(tmp_path: Path) -> None:
+    tool = write_tool(tmp_path / "py2.xml", PY2_TOOL)
+    doc = mixed_python2to3_doc({**QUOTE_LABEL, "kind": "security"}, {**NE_OP, "kind": "python2to3"})
+    patched = load_db(write_collection(tmp_path / "c", {LOCAL_PROBE: doc})).apply_patches(tool)
+    assert [(s.kind, s.state) for s in patch_states(patched)] == [("python2to3", "applied"), ("security", "applied")]
+    command = command_text(patched.parse_command())
+    assert "echo '$label' >>" in command and "#if $a != 1" in command
+
+
+def test_python2to3_mismatch_never_blocks_security(tmp_path: Path) -> None:
+    tool = write_tool(tmp_path / "py2.xml", PY2_TOOL)
+    doc = mixed_python2to3_doc(
+        {**QUOTE_LABEL, "kind": "security"}, {**text_op("#if $b <> 1", "#if $b != 1"), "kind": "python2to3"}
+    )
+    patched = load_db(write_collection(tmp_path / "c", {LOCAL_PROBE: doc})).apply_patches(tool)
+    states = patch_states(patched)
+    assert [(s.kind, s.state) for s in states] == [("python2to3", "mismatch"), ("security", "applied")]
+    assert states[0].advisory is not None and states[0].advisory.level == "info"
+    assert "echo '$label' >>" in command_text(patched.parse_command())
+
+
+def test_python2to3_applies_under_the_strictest_cap(tmp_path: Path) -> None:
+    tool = write_tool(tmp_path / "py2.xml", PY2_TOOL)
+    doc = mixed_python2to3_doc({**QUOTE_LABEL, "kind": "security"}, {**NE_OP, "kind": "python2to3"})
+    db = load_db(write_collection(tmp_path / "c", {LOCAL_PROBE: doc}), reproducibility="identical")
+    patched = db.apply_patches(tool)
+    states = patch_states(patched)
+    assert [(s.kind, s.state) for s in states] == [("python2to3", "applied"), ("security", "advisory")]
+    assert (states[0].reproducibility, states[0].reproducibility_doc) == ("identical", None)
+    command = command_text(patched.parse_command())
+    assert "#if $a != 1" in command and "echo $label >>" in command
 
 
 def test_reproducibility_cap_demotes_to_advisory(tmp_path: Path, probe: XmlToolSource) -> None:

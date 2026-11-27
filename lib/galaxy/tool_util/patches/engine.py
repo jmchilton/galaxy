@@ -320,7 +320,7 @@ class PatchUnit:
 
 
 def plan_units(patch_file: PatchFile, galaxy_series: str | None) -> list[PatchUnit]:
-    """Security ops first, then compat ops; ops gated out by needed_from are dropped."""
+    """python2to3 ops, then security ops, then compat ops (CHANGE_KINDS order); ops gated out by needed_from are dropped."""
     units = []
     for kind in CHANGE_KINDS:
         ops = patch_file.ops_of_kind(kind)
