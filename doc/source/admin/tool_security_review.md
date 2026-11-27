@@ -1100,6 +1100,55 @@ serious_rules:
 - shell-injection
 ```
 
+### nested_scope_lookup
+
+Cheetah looks `$name` up in the frame that runs it. A generator expression, a lambda or (before Python 3.12) a comprehension runs in a frame of its own, which does not hold the template's `#set` locals: there `$label` is the parameter, whatever the template set `label` to. The review reads it as the parameter, whose value is reviewed as usual.
+
+Tool `nested_scope_lookup.xml`:
+
+```
+#set $label = 'sample'
+echo '${"".join(str($label.value) for _x in [1])}' > '$out'
+```
+
+Review:
+
+```
+findings:
+- rule: shell-injection
+  severity: high
+  accessor: raw
+  param: label
+  checkable: true
+serious_rules:
+- shell-injection
+```
+
+### nested_scope_lambda
+
+A lambda's body runs in the lambda's own frame too: `$label` there is the parameter, not the `#set` local.
+
+Tool `nested_scope_lambda.xml`:
+
+```
+#set $label = 'sample'
+#set $quoted = lambda: "'%s'" % $label.value
+echo ${quoted()} > '$out'
+```
+
+Review:
+
+```
+findings:
+- rule: shell-injection
+  severity: high
+  accessor: raw
+  param: label
+  checkable: true
+serious_rules:
+- shell-injection
+```
+
 ### app_model_read
 
 The application object reaches any data of the server. The review flags the read but follows no value of it, and this tool writes only a count.
@@ -1311,7 +1360,7 @@ Each finding has one of these rules.
 
 A value can close the quotes around it, or is written unquoted, and start another shell command.
 
-Cases: `raw_text_shell_injection`, `element_identifier_shell_injection`, `dataset_name_stays_quoted`, `wrapped_names_stay_quoted`, `group_tags_shell_injection`, `dataset_content_shell_injection`, `user_preference_stays_quoted`, `user_preference_shell_injection`, `stray_quote`, `path_like_name`, `raw_dataset_model`, `raw_dataset_history`, `shell_runs_script_file`, `rewrites_restore_tokens`, `literal_rewrite`, `rewrites_and_template_code`, `user_object_unsanitized`, `untraced_value`, `known_helper`, `known_loop`, `known_global_list`, `known_literal_list`, `known_select_value`.
+Cases: `raw_text_shell_injection`, `element_identifier_shell_injection`, `dataset_name_stays_quoted`, `wrapped_names_stay_quoted`, `group_tags_shell_injection`, `dataset_content_shell_injection`, `user_preference_stays_quoted`, `user_preference_shell_injection`, `stray_quote`, `path_like_name`, `raw_dataset_model`, `raw_dataset_history`, `shell_runs_script_file`, `rewrites_restore_tokens`, `literal_rewrite`, `rewrites_and_template_code`, `user_object_unsanitized`, `untraced_value`, `known_helper`, `known_loop`, `known_global_list`, `known_literal_list`, `known_select_value`, `nested_scope_lookup`, `nested_scope_lambda`.
 
 #### `nested-interpreter`
 

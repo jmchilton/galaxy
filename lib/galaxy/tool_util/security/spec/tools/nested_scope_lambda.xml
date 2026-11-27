@@ -1,0 +1,14 @@
+<tool id="spec_nested_scope_lambda" name="A name read in a lambda" version="1.0" profile="24.0">
+    <description>sets a local named like a parameter and reads the name in a lambda</description>
+    <command><![CDATA[
+#set $label = 'sample'
+#set $quoted = lambda: "'%s'" % $label.value
+echo ${quoted()} > '$out'
+    ]]></command>
+    <inputs>
+        <param name="label" type="text"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

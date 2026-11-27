@@ -287,9 +287,20 @@ def _keys_of(local: dict[str, AV], name: str) -> list[str]:
 class Env:
     local: dict[str, AV] = field(default_factory=dict)
     shared: dict[str, AV] = field(default_factory=dict)  # #set global
+    # Locals that a `$name` lookup may not find in the frame it runs in, where it reads the namespace.
+    hidden: frozenset[str] = frozenset()
 
     def copy(self) -> Env:
-        return Env(dict(self.local), self.shared)
+        return Env(dict(self.local), self.shared, self.hidden)
+
+    def nested(self) -> Env:
+        """The env of a lambda, generator expression or comprehension, which runs in a frame of its own.
+
+        Cheetah looks `$name` up in the locals of the running frame. That frame holds what the nested
+        code binds, and the locals it reads as Python names, so for the method's other locals the lookup
+        reads the namespace. Python 3.12 runs a comprehension in the method's frame, older versions do not.
+        """
+        return Env(dict(self.local), self.shared, frozenset(name for name in self.local if not _narrowing_key(name)))
 
     def merge(self, others: list[Env]) -> None:
         names = set(self.local)
@@ -305,6 +316,8 @@ class Env:
 
     def assign(self, name: str, value: AV, weak: bool = False) -> None:
         self.local[name] = join(self.local.get(name), value) if weak else value
+        if not weak:
+            self.hidden = self.hidden - {name}
         # What a test showed about the old value, or its attributes, does not hold for the new one.
         for key in _keys_of(self.local, name):
             del self.local[key]
@@ -1365,6 +1378,13 @@ class TemplateAnalysis:
 
     def resolve(self, path: str, env: Env, autocall: bool, exact: bool = True) -> AV:
         """The value of a dotted template name; ``exact=False`` ignores what tests showed about it."""
+        if path.split(".")[0] in env.hidden:
+            # The local, where the frame has it after all, else what the namespace holds under its name.
+            namespace = self._resolve(path, Env(shared=env.shared), autocall, exact=False)
+            return join(self._resolve(path, env, autocall, exact), namespace)
+        return self._resolve(path, env, autocall, exact)
+
+    def _resolve(self, path: str, env: Env, autocall: bool, exact: bool) -> AV:
         parts = path.split(".")
         narrowed = env.local.get(NARROWED + path) if exact else None
         if narrowed is not None:
@@ -1513,9 +1533,12 @@ class TemplateAnalysis:
         return self._ev_rest(node, env)
 
     def _comprehension(self, node: ast.ListComp | ast.SetComp | ast.GeneratorExp | ast.DictComp, env: Env) -> AV:
-        inner = env.copy()
+        # The first iterable is evaluated where the comprehension is, the rest in its own frame.
+        first = element(self.ev(node.generators[0].iter, env))
+        inner = env.nested()
         for generator in node.generators:
-            self.bind(generator.target, element(self.ev(generator.iter, inner)), inner)
+            iterated = first if generator is node.generators[0] else element(self.ev(generator.iter, inner))
+            self.bind(generator.target, iterated, inner)
             for condition in generator.ifs:
                 self.ev(condition, inner)
         if isinstance(node, ast.DictComp):
@@ -1526,9 +1549,11 @@ class TemplateAnalysis:
         if isinstance(node, ast.Starred):
             return self.ev(node.value, env)
         if isinstance(node, ast.Lambda):
-            inner = env.copy()
-            for arg in [*node.args.args, *node.args.kwonlyargs]:
-                inner.local[arg.arg] = CLEAN
+            inner = env.nested()
+            arguments = node.args
+            starred = [a for a in (arguments.vararg, arguments.kwarg) if a is not None]
+            for arg in [*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs, *starred]:
+                inner.assign(arg.arg, CLEAN)
             return AV(bound=(contents(self.ev(node.body, inner)), joins_arguments))
         if isinstance(node, ast.NamedExpr):
             value = self.ev(node.value, env)

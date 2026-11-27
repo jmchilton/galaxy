@@ -34,6 +34,8 @@ include src/galaxy/tool_util/security/spec/tools/known_helper.xml
 include src/galaxy/tool_util/security/spec/tools/known_literal_list.xml
 include src/galaxy/tool_util/security/spec/tools/known_loop.xml
 include src/galaxy/tool_util/security/spec/tools/known_select_value.xml
+include src/galaxy/tool_util/security/spec/tools/nested_scope_lambda.xml
+include src/galaxy/tool_util/security/spec/tools/nested_scope_lookup.xml
 include src/galaxy/tool_util/security/spec/tools/nested_shell.xml
 include src/galaxy/tool_util/security/spec/tools/output_filter_vars.xml
 include src/galaxy/tool_util/security/spec/tools/output_size_limit.xml
