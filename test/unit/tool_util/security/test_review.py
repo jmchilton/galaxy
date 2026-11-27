@@ -630,6 +630,21 @@ def test_default_of_a_lambda_argument_is_read(tmp_path, command):
 
 
 @pytest.mark.parametrize(
+    "command",
+    [
+        "#set $y = 'safe'\n#silent [(y := str($free)) for _ in [1]]\ntool '$y'",
+        "#set $acc = []\n#silent [acc.append(str($free)) for _x in [1]]\ntool '${''.join($acc)}'",
+        "#set $acc = []\n#silent list(acc.append(str($free)) for _x in [1])\ntool '${''.join($acc)}'",
+        "#set $acc = []\n#set $f = lambda: acc.append(str($free))\n#silent $f()\ntool '${''.join($acc)}'",
+        "#set $d = {}\n#silent [d.update({'k': str($free)}) for _x in [1]]\ntool '${d['k']}'",
+    ],
+)
+def test_changes_a_lambda_or_comprehension_makes_to_locals_are_kept(tmp_path, command):
+    compile_template(command)
+    assert ("shell-injection", "high") in rules(review(tmp_path, command))
+
+
+@pytest.mark.parametrize(
     "command,expected",
     [
         ("tool '${''.join(map(lambda _x: $free, [1]))}'", True),
