@@ -29,10 +29,6 @@ from .classify import (
     classify,
     Uncheckable,
 )
-from .judge import (
-    AnthropicJudge,
-    judge_report,
-)
 from .report import (
     Finding,
     Report,
@@ -91,7 +87,6 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     threshold = SEVERITIES.index(args.min_severity)
     fail_on = FailOn.parse(args.fail_on)
-    judge = AnthropicJudge() if args.judge else None
     reports: dict[str, dict[str, Any]] = {}
     failed = False
     for path, result in _reviews(args.tools):
@@ -102,8 +97,6 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"{path}\n  ERROR    {result.error}")
             continue
         report = result.report
-        if judge is not None:
-            judge_report(result.tool_source, report, judge)
         tool_version = result.tool_source.parse_version()
         classification = classify(report)
         reports[path] = {
@@ -137,15 +130,9 @@ def _parser() -> argparse.ArgumentParser:
         action="append",
         choices=(*SEVERITIES, UNCHECKABLE, UNCHECKED),
         default=[],
-        help="exit 1 when any finding, vulnerability or capability, is at or above this severity (--judge verdicts"
-        f" do not change this); with '{UNCHECKABLE}' when a tool has an uncheckable code; with '{UNCHECKED}' when a"
-        " tool has an unchecked location (uncheckable_locations), templates the review did not analyse included;"
-        " repeatable",
-    )
-    parser.add_argument(
-        "--judge",
-        action="store_true",
-        help="ask Claude whether each vulnerability of medium severity or above is real (needs Anthropic credentials)",
+        help="exit 1 when any finding, vulnerability or capability, is at or above this severity; with"
+        f" '{UNCHECKABLE}' when a tool has an uncheckable code; with '{UNCHECKED}' when a tool has an unchecked"
+        " location (uncheckable_locations), templates the review did not analyse included; repeatable",
     )
     return parser
 
@@ -214,10 +201,6 @@ def _print_report(
         if SEVERITIES.index(finding.severity) < threshold:
             continue
         print(f"  {finding.severity.upper():8} {finding.rule:22} {_where(finding):18} {finding.message}")
-        if finding.assessment:
-            verdict, reason = finding.assessment["verdict"], finding.assessment["reason"]
-            attack = f" Value: {finding.assessment['attack']}" if finding.assessment.get("attack") else ""
-            print(f"           model says {verdict}: {reason}{attack}")
     for note in report.unanalyzed:
         print(f"  NOTE     {note}")
     for location, why in classification.unchecked_locations.items():

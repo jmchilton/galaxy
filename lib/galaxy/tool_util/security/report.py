@@ -128,8 +128,6 @@ class Finding:
     chars: str | None = None
     # Further template lines where the same value lands in the same kind of place.
     more_lines: tuple[int, ...] = ()
-    # A language model's second opinion (see judge.py). Advisory: it never changes rule or severity.
-    assessment: dict[str, Any] | None = None
     # Every source of the value (`source` shows the first three), and the characters at least one of
     # which a value must contain to leave the place it is written. Empty when no character decides it,
     # as for a value that chooses the program to run.
@@ -228,9 +226,6 @@ class Report:
         found = self.rewrites.setdefault(location, [])
         if name not in found:
             found.append(name)
-
-    def assess(self, finding: Finding, assessment: dict[str, Any]) -> None:
-        self.findings = [replace(f, assessment=assessment) if f is finding else f for f in self.findings]
 
     def sorted(self) -> list[Finding]:
         return sorted(

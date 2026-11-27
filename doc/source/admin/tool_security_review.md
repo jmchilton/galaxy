@@ -30,15 +30,13 @@ given several times:
 
 - `--fail-on <severity>` (for example `high`) fails on any finding of that severity or above, vulnerability
   or capability alike: a tool whose templates run Python in the Galaxy process (`template-exec`, critical)
-  fails `--fail-on critical`. `--judge` verdicts do not change which findings count.
+  fails `--fail-on critical`.
 - `--fail-on uncheckable` fails on a tool with an uncheckable code.
 - `--fail-on unchecked` fails on a tool with any classified unchecked location (`uncheckable_locations`). That
   includes templates the review did not analyse, such as one that does not compile, which have no
   uncheckable code and so pass `--fail-on uncheckable`.
 
-`--judge` asks Claude whether each vulnerability finding of medium severity or above is real
-(it needs the `anthropic` package and credentials). `pip install galaxy-tool-util` installs the review, its CLI and the spec
-cases below; `anthropic` is needed only for `--judge`.
+`pip install galaxy-tool-util` installs the review, its CLI and the spec cases below.
 
 ## Findings
 
