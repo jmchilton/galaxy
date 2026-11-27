@@ -1,7 +1,6 @@
-"""A patch collection directory: path-keyed index, lazy parsing, digests, codes and coverage."""
+"""A patch collection directory: path-keyed index, lazy parsing, digests and codes."""
 
 import hashlib
-import json
 import logging
 import os
 import re
@@ -21,10 +20,8 @@ from pydantic import (
 
 from .keys import (
     decode_segment,
-    encode_segment,
     is_canonical_segment,
     is_shed_key,
-    key_string,
     LOCAL,
     PatchKey,
 )
@@ -120,7 +117,6 @@ class PatchCollection:
         self._lock = threading.Lock()
         self._sha256: dict[str, str | None] = {}
         self._loaded: dict[str, LoadedPatch | None] = {}
-        self._coverage: dict[PatchKey, frozenset[str]] = {}
         self._digest: str | None = None
         self._walk()
 
@@ -319,45 +315,14 @@ class PatchCollection:
     def code(self, code: str) -> CodeEntry | None:
         return self._codes.get(code) if self._codes else None
 
-    def coverage(self, key: PatchKey) -> frozenset[str]:
-        """Expanded sha256 values CI checked for this key."""
-        with self._lock:
-            if key not in self._coverage:
-                self._coverage[key] = self._read_coverage(key)
-            return self._coverage[key]
-
-    def _read_coverage(self, key: PatchKey) -> frozenset[str]:
-        rel = "/".join(encode_segment(segment) for segment in key) + ".json"
-        path = os.path.join(self.root, "coverage", *rel.split("/"))
-        if not os.path.exists(path):
-            return frozenset()
-        try:
-            with open(path) as f:
-                checked = json.load(f).get("checked") or []
-            return frozenset(c["expanded_sha256"] for c in checked if isinstance(c.get("expanded_sha256"), str))
-        except (OSError, ValueError, AttributeError, TypeError) as e:
-            log.warning("tool patches: %s: unreadable coverage for %s: %s", self.name, key_string(key), e)
-            return frozenset()
-
     @property
     def digest(self) -> str:
-        """sha256 over every patch file (path, NUL, resolved content sha256), ``codes.yml`` and ``coverage/``."""
+        """sha256 over every patch file (path, NUL, resolved content sha256) and ``codes.yml``."""
         if self._digest is None:
             h = hashlib.sha256()
             for rel in self.paths():
                 sha256 = self.file_sha256(rel)
                 h.update(rel.encode("utf-8") + b"\0" + (bytes.fromhex(sha256) if sha256 else b""))
             h.update(b"\0codes.yml\0" + self.codes_sha256.encode("ascii"))
-            for rel in self._coverage_paths():
-                h.update(f"\0coverage/{rel}\0{_file_sha256(os.path.join(self.root, 'coverage', rel)) or ''}".encode())
             self._digest = h.hexdigest()
         return self._digest
-
-    def _coverage_paths(self) -> list[str]:
-        coverage_root = os.path.join(self.root, "coverage")
-        return sorted(
-            os.path.relpath(os.path.join(dirpath, name), coverage_root)
-            for dirpath, _, names in os.walk(coverage_root)
-            for name in names
-            if name.endswith(".json")
-        )

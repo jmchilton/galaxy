@@ -425,7 +425,6 @@ class PatchState(BaseModel):
     reproducibility_doc: str | None = None
     changes_requirements: bool = False
     advisory: AdvisoryInfo | None = None
-    verified: bool | None = None
     detail: str | None = None
 
 
