@@ -89,7 +89,11 @@ class _BudgetExceeded(Exception):
     pass
 
 
-_MUTATORS = frozenset(("append", "extend", "add", "insert", "update", "setdefault", "appendleft", "__setitem__"))
+_MUTATORS = frozenset(
+    ("append", "extend", "add", "insert", "update", "setdefault", "appendleft", "__setitem__", "__iadd__", "__ior__")
+)
+# Mutators whose argument is a collection of the new items.
+_EXTENDERS = frozenset(("extend", "update", "__iadd__", "__ior__"))
 _CLEAN_FUNCTIONS = frozenset(
     (
         "int float len bool abs round ord hex oct bin sum any all isinstance hasattr callable id hash range"
@@ -1655,13 +1659,7 @@ class TemplateAnalysis:
             receiver, method = callee.bound
             if isinstance(method, str) and method in _MUTATORS:
                 target = func.args[0] if isinstance(func, ast.Call) and func.args else getattr(func, "value", None)
-                if local := self._local_name(target, env) if target is not None else None:
-                    grown = join(
-                        *(a if method in ("extend", "update") else AV(elem=a) for a in args),
-                        # `d.update(k=value)`
-                        *(AV(elem=k) for k in keywords),
-                    )
-                    env.assign(local, AV(elem=element(grown, strict=True)), weak=True)
+                self._grow(target, method, args, keywords, env)
             return self.call_bound(receiver, method, args, node.args, env, keywords, node)
         if callee.helper:
             return self.call_helper(callee.helper, args, env, named)
@@ -1674,6 +1672,16 @@ class TemplateAnalysis:
             # Calling an attribute of an opaque object: the result is as trustworthy as the object.
             return join(stringify(callee), *(contents(a) for a in args))
         return join(*(contents(a) for a in args + keywords))
+
+    def _grow(self, target: ast.expr | None, method: str, args: list[AV], keywords: list[AV], env: Env) -> None:
+        """A list, set or dict of the template's that a mutator (`append`, `update`, ...) changes in place."""
+        if local := self._local_name(target, env) if target is not None else None:
+            grown = join(
+                *(a if method in _EXTENDERS else AV(elem=a) for a in args),
+                # `d.update(k=value)`
+                *(AV(elem=k) for k in keywords),
+            )
+            env.assign(local, AV(elem=element(grown, strict=True)), weak=True)
 
     def call_python(self, name: str, args: list[AV], keywords: list[AV], node: ast.Call, env: Env) -> AV:
         first = args[0] if args else CLEAN
@@ -1712,9 +1720,13 @@ class TemplateAnalysis:
             if isinstance(function, ast.Name) and function.id in _STRING_FUNCTIONS:
                 mapped = stringify(mapped)
             elif args[0].bound is not None:
-                # A lambda: what its body gives for the elements.
+                # A lambda or a method: what it gives for the elements.
                 receiver, method = args[0].bound
-                mapped = self.call_bound(receiver, method, [element(a) for a in args[1:]], [], env)
+                items = [element(a) for a in args[1:]]
+                if isinstance(method, str) and method in _MUTATORS and isinstance(function, ast.Attribute):
+                    # `map($l.append, values)`
+                    self._grow(function.value, method, items, [], env)
+                mapped = self.call_bound(receiver, method, items, [], env)
             elif args[0].helper:
                 mapped = self.call_helper(args[0].helper, [element(a) for a in args[1:]], env)
             return AV(elem=mapped)
@@ -1899,6 +1911,9 @@ class TemplateAnalysis:
             if name in ("keys", "values", "items"):
                 item = element(receiver)
                 return AV(elem=AV(items=(item, item)) if name == "items" else item)
+            if name in ("__iadd__", "__ior__"):
+                # The receiver itself, grown.
+                return join(receiver, *args)
             if name in _MUTATORS:
                 return CLEAN
             return receiver
