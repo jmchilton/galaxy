@@ -1,7 +1,8 @@
 <tool id="collection_record_test_two_files" name="collection_record_test_two_files" version="0.1.0">
   <command>
+    #import shlex
     cat $f1.parent $f1['child'] >> $out1;
-    echo 'Collection name: $f1.name'
+    echo 'Collection name: '${shlex.quote(str($f1.name))}
   </command>
   <inputs>
     <param name="f1" type="data_collection" collection_type="record" label="Input collection" />
