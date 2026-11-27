@@ -1050,6 +1050,42 @@ maybe_unset_local:
       harm: true
       expect: {rejected: false}
 
+galaxy_url_replaced:
+  doc: >-
+    A tool that keeps all its job parameters (`<inputs check_values="false">`, a data source tool, which
+    seldom sanitizes) passes
+    its templates the request parameters as they were sent. A parameter named like a value Galaxy sets
+    before it adds the job's parameters (`__galaxy_url__`, `__history_id__`, `__datatypes_config__`) then
+    replaces it, so the review reads such a name as a job parameter, whose value is checked as usual.
+  tool: galaxy_url_data_source.xml
+  code: shell-injection
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, key: __galaxy_url__, checkable: true}
+  red:
+    - inputs: {word: a, __galaxy_url__: "a';touch harm-marker;'"}
+      harm: true
+      expect:
+        rejected: true
+        message_contains: ["the job parameter '__galaxy_url__' contains the characters [' ;]"]
+  green:
+    - inputs: {word: a, __galaxy_url__: "http://localhost:8080"}
+      harm: true
+      expect: {rejected: false}
+
+galaxy_url_kept:
+  doc: >-
+    A regular tool's templates get only its inputs and the job parameters Galaxy passes them: a job
+    parameter named `__galaxy_url__` does not replace Galaxy's value, which stays out of the review's sight.
+  tool: galaxy_url_regular.xml
+  review:
+    serious_rules: []
+  green:
+    - inputs: {word: a, __galaxy_url__: "a';touch harm-marker;'"}
+      harm: true
+      expect: {rejected: false}
+
 app_model_read:
   doc: >-
     The application object reaches any data of the server. The review flags the read but follows no value

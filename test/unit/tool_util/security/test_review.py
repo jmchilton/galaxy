@@ -759,6 +759,26 @@ def test_unset_local_reads_a_job_parameter_only_where_one_reaches_the_template(
 
 
 @pytest.mark.parametrize(
+    "name", ["__galaxy_url__", "__history_id__", "__datatypes_config__", "GALAXY_DATATYPES_CONF_FILE", "__job_resource"]
+)
+@pytest.mark.parametrize(
+    "check_values,keeps,read", [("", None, False), (' check_values="false"', None, True), ("", True, True)]
+)
+def test_galaxy_names_a_job_parameter_replaces_in_a_tool_that_keeps_them_all(tmp_path, name, check_values, keeps, read):
+    path = os.path.join(tmp_path, "tool.xml")
+    with open(path, "w") as fh:
+        fh.write(
+            f"""<tool id="t" name="t" version="1" profile="24.2"><options sanitize="false"/>
+  <command><![CDATA[tool '${name}' && cat ${{open($__tool_directory__ + '/x').read()}} ${{open(${name} + '/x').read()}}]]></command>
+  <inputs{check_values}><param name="word" type="text"/></inputs><outputs><data name="out" format="txt"/></outputs></tool>"""
+        )
+    report = review_tool_source(get_tool_source(path), keeps_undeclared_job_parameters=keeps)
+    assert (("shell-injection", "high") in rules(report)) is read
+    # A file under a directory of Galaxy is not a read of the job's data; one the job names is.
+    assert any("content of a file" in (f.source or "") for f in report.findings) is read
+
+
+@pytest.mark.parametrize(
     "command,expected",
     [
         ("#block b\ntool '$free'\n#end block b", True),

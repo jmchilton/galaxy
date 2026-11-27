@@ -553,6 +553,32 @@ inputs:
   label: a;b|c && d
 ```
 
+#### galaxy_url_replaced
+
+A tool that keeps all its job parameters (`<inputs check_values="false">`, a data source tool, which seldom sanitizes) passes its templates the request parameters as they were sent. A parameter named like a value Galaxy sets before it adds the job's parameters (`__galaxy_url__`, `__history_id__`, `__datatypes_config__`) then replaces it, so the review reads such a name as a job parameter, whose value is checked as usual.
+
+Tool `galaxy_url_data_source.xml`:
+
+```
+echo '$__galaxy_url__' > '$out'
+```
+
+Refused
+
+```
+inputs:
+  word: a
+  __galaxy_url__: a';touch harm-marker;'
+```
+
+Runs
+
+```
+inputs:
+  word: a
+  __galaxy_url__: http://localhost:8080
+```
+
 ### `nested-interpreter`
 
 A value is written into the program of another interpreter (`bash -c`, `sed`, `perl -e`, ...) and can change what that program does.
@@ -1668,6 +1694,24 @@ Runs
 user:
   preferences:
     spec|label: a';touch harm-marker;'
+```
+
+#### galaxy_url_kept
+
+A regular tool's templates get only its inputs and the job parameters Galaxy passes them: a job parameter named `__galaxy_url__` does not replace Galaxy's value, which stays out of the review's sight.
+
+Tool `galaxy_url_regular.xml`:
+
+```
+echo '$__galaxy_url__' > '$out'
+```
+
+Runs
+
+```
+inputs:
+  word: a
+  __galaxy_url__: a';touch harm-marker;'
 ```
 
 #### output_size_limit_read

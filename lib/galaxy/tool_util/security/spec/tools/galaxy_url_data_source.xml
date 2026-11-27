@@ -1,0 +1,11 @@
+<tool id="spec_galaxy_url_data_source" name="Galaxy's URL in a tool that keeps all its job parameters" version="1.0" profile="24.0">
+    <description>writes the URL Galaxy sets in the namespace</description>
+    <options sanitize="False"/>
+    <command><![CDATA[echo '$__galaxy_url__' > '$out']]></command>
+    <inputs check_values="false">
+        <param name="word" type="text" value="a"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

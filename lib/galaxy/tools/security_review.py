@@ -741,7 +741,7 @@ _ACCOUNT_DESCRIPTIONS = {
 
 def _describe(ref: SourceRef) -> str:
     if ref.accessor == SPECIAL:
-        return _ACCOUNT_DESCRIPTIONS.get(ref.key or "", f"the account value {ref.key}")
+        return _ACCOUNT_DESCRIPTIONS.get(ref.key or "", f"the job parameter '{ref.key}'")
     if ref.accessor == USER_PREFERENCE:
         return f"your preference '{ref.key}'"
     if ref.accessor in (DATASET_ATTRIBUTE, RAW_DATASET_ATTRIBUTE):
