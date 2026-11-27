@@ -566,6 +566,8 @@ def test_charsets():
         ("tool '${getVar('$free', '')}'", ("shell-injection", "high")),
         # getVar reads #set global values, never #set locals.
         ("#set global $g = $free\ntool '${getVar('g')}'", ("shell-injection", "high")),
+        ("#set $free = 'safe'\ntool '${getVar('free')}'", ("shell-injection", "high")),
+        ("#set $free = 'safe'\ntool '$getVar('free', '')'", ("shell-injection", "high")),
     ],
 )
 def test_escaping_values_found_by_review(tmp_path, command, expected):
