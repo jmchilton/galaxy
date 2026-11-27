@@ -1,0 +1,17 @@
+<tool id="spec_repr_python_literal" name="repr() of text in Python code" version="1.0" profile="24.0">
+    <description>writes repr() of text values as Python code in a configfile</description>
+    <command><![CDATA[python3 '$script' > '$out']]></command>
+    <configfiles>
+        <configfile name="script"><![CDATA[raw = ${repr($raw_word.value)}
+word = ${repr(str($word))}
+print(raw, word)
+]]></configfile>
+    </configfiles>
+    <inputs>
+        <param name="raw_word" type="text"/>
+        <param name="word" type="text"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

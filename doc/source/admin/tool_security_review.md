@@ -369,6 +369,71 @@ serious_rules:
 - configfile-injection
 ```
 
+### repr_python_literal
+
+repr() of a string is a Python string literal, with the value's quotes and backslashes escaped. Written as code in a Python configfile, outside any string, it stays one string, even for a raw value.
+
+Tool `repr_python_literal.xml`:
+
+```
+python3 '$script' > '$out'
+```
+
+Review:
+
+```
+serious_rules: []
+codes: []
+```
+
+### repr_inside_python_string
+
+Inside a string, the quotes repr() writes end that string, so even a sanitized value that has no quote of its own is then Python code.
+
+Tool `repr_inside_python_string.xml`:
+
+```
+python3 '$script' > '$out'
+```
+
+Review:
+
+```
+findings:
+- rule: configfile-injection
+  severity: high
+  location: configfile:script
+  accessor: text
+  param: word
+  checkable: true
+serious_rules:
+- configfile-injection
+```
+
+### json_inside_python_string
+
+json.dumps() of a string writes it between double quotes. Inside a "..." string of a Python configfile, those quotes end the string.
+
+Tool `json_inside_python_string.xml`:
+
+```
+python3 '$script' > '$out'
+```
+
+Review:
+
+```
+findings:
+- rule: configfile-injection
+  severity: high
+  location: configfile:script
+  accessor: text
+  param: word
+  checkable: true
+serious_rules:
+- configfile-injection
+```
+
 ### path_traversal
 
 A file name the user gives is written as a path `cp` writes to. A slash in it can name a file outside the job's directory.
@@ -1370,7 +1435,7 @@ Cases: `nested_shell`, `sed_program`.
 
 A value is written into a configfile that a script runs and can end its string and add code.
 
-Cases: `configfile_python`.
+Cases: `configfile_python`, `repr_inside_python_string`, `json_inside_python_string`.
 
 #### `command-position`
 

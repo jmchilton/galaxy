@@ -29,6 +29,7 @@ include src/galaxy/tool_util/security/spec/tools/getvar_user_name.xml
 include src/galaxy/tool_util/security/spec/tools/group_tags.xml
 include src/galaxy/tool_util/security/spec/tools/include_dataset.xml
 include src/galaxy/tool_util/security/spec/tools/job_metadata.xml
+include src/galaxy/tool_util/security/spec/tools/json_inside_python_string.xml
 include src/galaxy/tool_util/security/spec/tools/known_global_list.xml
 include src/galaxy/tool_util/security/spec/tools/known_helper.xml
 include src/galaxy/tool_util/security/spec/tools/known_literal_list.xml
@@ -49,6 +50,8 @@ include src/galaxy/tool_util/security/spec/tools/raw_dataset_model.xml
 include src/galaxy/tool_util/security/spec/tools/raw_text_escaped_double_quoted.xml
 include src/galaxy/tool_util/security/spec/tools/raw_text_single_quoted.xml
 include src/galaxy/tool_util/security/spec/tools/reflection_getattr.xml
+include src/galaxy/tool_util/security/spec/tools/repr_inside_python_string.xml
+include src/galaxy/tool_util/security/spec/tools/repr_python_literal.xml
 include src/galaxy/tool_util/security/spec/tools/rewrites_and_template_code.xml
 include src/galaxy/tool_util/security/spec/tools/rewrites_restore_tokens.xml
 include src/galaxy/tool_util/security/spec/tools/sanitized_text_single_quoted.xml

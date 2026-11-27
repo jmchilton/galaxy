@@ -118,6 +118,37 @@ configfile_python:
     findings:
       - {rule: configfile-injection, location: "configfile:script", accessor: raw, param: word, checkable: true}
 
+repr_python_literal:
+  doc: >-
+    repr() of a string is a Python string literal, with the value's quotes and backslashes escaped. Written as
+    code in a Python configfile, outside any string, it stays one string, even for a raw value.
+  tool: repr_python_literal.xml
+  review:
+    codes: []
+    serious_rules: []
+
+repr_inside_python_string:
+  doc: >-
+    Inside a string, the quotes repr() writes end that string, so even a sanitized value that has no quote of
+    its own is then Python code.
+  tool: repr_inside_python_string.xml
+  review:
+    serious_rules: [configfile-injection]
+    findings:
+      - {rule: configfile-injection, severity: high, location: "configfile:script", accessor: text, param: word,
+         checkable: true}
+
+json_inside_python_string:
+  doc: >-
+    json.dumps() of a string writes it between double quotes. Inside a "..." string of a Python configfile,
+    those quotes end the string.
+  tool: json_inside_python_string.xml
+  review:
+    serious_rules: [configfile-injection]
+    findings:
+      - {rule: configfile-injection, severity: high, location: "configfile:script", accessor: text, param: word,
+         checkable: true}
+
 path_traversal:
   doc: >-
     A file name the user gives is written as a path `cp` writes to. A slash in it can name a file outside the

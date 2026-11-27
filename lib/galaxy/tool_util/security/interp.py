@@ -114,13 +114,20 @@ _ENCODERS = re.compile(
 )
 # What json.dumps writes around the strings of a list or a dict.
 _JSON_PUNCTUATION: charsets.Chars = frozenset('"\\[]{},: ')
+# What repr() writes around or into a string: its quotes, and the backslashes of its escapes.
+_PYSTR_QUOTING: charsets.Chars = frozenset("'\"\\")
 # What escaping a value for a syntax writes around or into it, whatever the value holds.
 _ESCAPING_ADDS: dict[str, charsets.Chars] = {
     # shlex.quote("a'b") is 'a'"'"'b'.
     "shlex": frozenset("'\""),
     "json": _JSON_PUNCTUATION,
     "pyrepr": REPR_PUNCTUATION,
+    "pystr": _PYSTR_QUOTING,
 }
+# repr() of a list or of a string writes a Python literal.
+_PYTHON_LITERALS = frozenset(("pyrepr", "pystr"))
+# Escapings that write a string literal of their own, with the value's quotes and backslashes escaped.
+_LITERALS = _PYTHON_LITERALS | {"json"}
 
 
 def _literal_chars(value: AV) -> charsets.Chars:
@@ -350,6 +357,9 @@ class _Text:
     escaped: str = ""  # as ShellState.escaped
     evaluated: bool = False  # the current string is code the script runs: eval('...'), parse(text = '...')
     fstring: bool = False  # the current string is a Python f-string: {...} in it is code
+    # Outside strings: a string that starts here is one the script runs, or an f-string.
+    opens_evaluated: bool = False
+    opens_fstring: bool = False
 
 
 # What opens a string that the script itself runs as code, by configfile language: the text before the quote.
@@ -1012,6 +1022,7 @@ class TemplateAnalysis:
     @staticmethod
     def _feed_text(state: _Text, text: str, language: str = "") -> _Text:
         quote, esc, escaped, evaluated, fstring = state.quote, state.esc, state.escaped, state.evaluated, state.fstring
+        opens_evaluated, opens_fstring = state.opens_evaluated, state.opens_fstring
         opener = _EVALUATED_STRING.get(language)
         code = ""  # program text of this chunk before the current position, outside strings
         for c in text:
@@ -1034,7 +1045,12 @@ class TemplateAnalysis:
                 fstring = language == "python" and bool(_FSTRING_PREFIX.search(code[-3:]))
             if not quote:
                 code = "" if c == "\n" else code + c
-        return _Text(quote, esc, escaped, evaluated, fstring)
+        if quote:
+            opens_evaluated = opens_fstring = False
+        elif text:
+            opens_evaluated = bool(opener and opener.search(code[-40:]))
+            opens_fstring = language == "python" and bool(_FSTRING_PREFIX.search(code[-3:]))
+        return _Text(quote, esc, escaped, evaluated, fstring, opens_evaluated, opens_fstring)
 
     def write_placeholder(self, node: ast.expr | None, raw_expr: str | None, states: States, env: Env) -> States:
         if isinstance(node, ast.Call) and not self._capture:
@@ -1084,11 +1100,16 @@ class TemplateAnalysis:
             after_config: set[_Text] = set()
             for state in states:
                 escaped = bool(state.quote) and state.escaped == state.quote
-                self.judge_config(text, state.quote, raw_expr, escaped, state.evaluated, state.fstring)
+                evaluated, fstring = state.evaluated, state.fstring
+                if not state.quote and text.quoted in _LITERALS:
+                    # json.dumps() or repr() writes a string of its own: one the code before it runs, or an
+                    # f-string.
+                    evaluated, fstring = state.opens_evaluated, state.opens_fstring
+                self.judge_config(text, state.quote, raw_expr, escaped, evaluated, fstring)
                 self._record_escape_closer(text, (state.quote,))
                 if self._can_escape_config_quote(text, state.quote):
                     self._record_closers(text, frozenset("\\"))
-                    state = _Text(state.quote, state.esc, state.quote, state.evaluated, state.fstring)
+                    state = dataclasses.replace(state, escaped=state.quote)
                 after_config.add(state)
             return frozenset(after_config)
         out = set()
@@ -1117,7 +1138,7 @@ class TemplateAnalysis:
         """The value can end in a backslash that escapes the closing quote of a string in a program."""
         if not quote or "\\" not in text.chars or self.language not in shell.CODE_LANGUAGES:
             return False
-        if text.quoted == "json" or (text.quoted == "pyrepr" and self.language == "python"):
+        if text.quoted == "json" or (text.quoted in _PYTHON_LITERALS and self.language == "python"):
             return False
         # In sh only double quotes treat a backslash as an escape.
         return self.language != "sh" or quote == '"'
@@ -1253,7 +1274,11 @@ class TemplateAnalysis:
                     frozenset("{"),
                 ),
                 text,
-                f"inside an f-string {quote}...{quote} of a python script",
+                (
+                    f"inside an f-string {quote}...{quote} of a python script"
+                    if quote
+                    else "as an f-string of a python script"
+                ),
                 raw_expr,
             )
         if evaluated and self.language in shell.CODE_LANGUAGES:
@@ -1263,13 +1288,23 @@ class TemplateAnalysis:
                 self.finding(
                     verdict._replace(rule="configfile-injection", why=f"{verdict.why} when it runs the string"),
                     text,
-                    f"inside a {quote}...{quote} string that the {self.language} script evaluates as code",
+                    (
+                        f"inside a {quote}...{quote} string that the {self.language} script evaluates as code"
+                        if quote
+                        else f"as a string that the {self.language} script evaluates as code"
+                    ),
                     raw_expr,
                 )
                 return
-        if text.quoted == "json" or (text.quoted == "pyrepr" and self.language == "python"):
-            # Escaped by json.dumps, or a Python list written into Python code.
+        if not quote and (text.quoted == "json" or (text.quoted in _PYTHON_LITERALS and self.language == "python")):
+            # A literal written as code: JSON from json.dumps, or a Python list or string from repr().
             return
+        if quote and text.quoted in _LITERALS:
+            # json.dumps() and repr() escape the value's backslashes: it cannot escape the closing quote.
+            chars = chars - {"\\"}
+        if quote and text.quoted == "pystr":
+            # Inside a string, the quotes repr() writes end it: ', and " for a value with a '.
+            chars = chars | (frozenset("'\"") if "'" in chars else frozenset("'"))
         if escaped and self.language in shell.CODE_LANGUAGES:
             # The earlier value escaped the closing quote of its string; the quote that opens this
             # value's string closes it instead, so this value is program text.
@@ -1511,7 +1546,8 @@ class TemplateAnalysis:
             if base.nodes and isinstance(index, str):
                 return attribute(base, index)
             if isinstance(node.slice, ast.Slice) and base.elem is None and base.items is None and not base.nodes:
-                return base
+                # A slice can cut off the quotes or the escapes of an escaping.
+                return dataclasses.replace(base, quoted="")
             return element(base)
         if isinstance(node, ast.BinOp):
             left, right = self.ev(node.left, env), self.ev(node.right, env)
@@ -1700,8 +1736,14 @@ class TemplateAnalysis:
             text = stringify(first)
             if name == "repr":
                 # repr() puts the string between quotes and escapes backslashes and that quote.
-                introduced(text, frozenset("'\"\\"), escape=True)
-                return dataclasses.replace(text, verbatim=False)
+                introduced(text, _PYSTR_QUOTING, escape=True)
+                if not text.tainted or text.quoted == "pyrepr":
+                    return dataclasses.replace(text, verbatim=False)
+                if text.parts is not None or text.alts:
+                    # One string: repr() escapes the quotes of its literal text as it does the value's.
+                    text = AV(chars=text.chars | _literal_chars(text), sources=text.sources, whole=False)
+                # A Python string literal of the value.
+                return dataclasses.replace(text, verbatim=False, quoted="pystr")
             if name == "format" and len(node.args) > 1:
                 spec = _const(node.args[1])
                 self._introduce(text, charsets.probe(spec) if isinstance(spec, str) else charsets.PROBE)

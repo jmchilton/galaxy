@@ -1,0 +1,15 @@
+<tool id="spec_repr_inside_python_string" name="repr() of text in a Python string" version="1.0" profile="24.0">
+    <description>writes repr() of a text value inside a string of a Python configfile</description>
+    <command><![CDATA[python3 '$script' > '$out']]></command>
+    <configfiles>
+        <configfile name="script"><![CDATA[word = '${repr(str($word))}'
+print(word)
+]]></configfile>
+    </configfiles>
+    <inputs>
+        <param name="word" type="text"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

@@ -121,6 +121,46 @@ def test_breakout(tmp_path, command, breakout, requires):
     assert finding.checkable
 
 
+def python_script_findings(tmp_path, script: str) -> list[Finding]:
+    report = review(tmp_path, "python3 '$script'", CONFIG.format(f"<![CDATA[{script}\n]]>"))
+    return [f for f in report.findings if f.location == "configfile:script"]
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        # repr() and json.dumps() write a literal: as Python code outside a string it stays one string.
+        "x = ${repr($free)}",
+        "x = ${repr('a' + $free)}",
+        "#import json\nx = ${json.dumps($free)}",
+        # json.dumps() writes no single quote, and escapes the backslash that could escape one.
+        "#import json\nx = '${json.dumps(str($text))}'",
+    ],
+)
+def test_literal_in_python_configfile_stays_one_string(tmp_path, script):
+    assert python_script_findings(tmp_path, script) == []
+
+
+@pytest.mark.parametrize(
+    "script,breakout,context",
+    [
+        # Inside a string their quotes end it; the value then has to bring the code.
+        ("x = '${repr(str($text))}'", frozenset("()"), "inside a '...' string of a python script"),
+        ("x = '${repr(' ' + str($text))}'", frozenset("()"), "inside a '...' string of a python script"),
+        ('#import json\nx = "${json.dumps(str($text))}"', frozenset("()"), 'inside a "..." string of a python script'),
+        # A slice cuts off repr()'s quotes.
+        ("x = ${repr($free)[1:-1]}", frozenset("();`"), "outside any string of a python script"),
+        # The code before the literal runs it, or makes it an f-string.
+        ("x = eval(${repr(str($text))})", frozenset("()"), "as a string that the python script evaluates as code"),
+        ("x = f${repr($free)}", frozenset("{"), "as an f-string of a python script"),
+    ],
+)
+def test_literal_in_python_configfile_breakout(tmp_path, script, breakout, context):
+    (finding,) = [f for f in python_script_findings(tmp_path, script) if f.severity == HIGH]
+    assert (finding.breakout, finding.requires, finding.context) == (breakout, frozenset(), context)
+    assert finding.checkable
+
+
 def nested(report: Report):
     (finding,) = [f for f in report.findings if f.rule == "nested-interpreter" and f.severity == HIGH]
     return finding
