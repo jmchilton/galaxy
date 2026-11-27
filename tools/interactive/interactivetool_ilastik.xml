@@ -34,8 +34,8 @@
         #end if
 
         ## Link input images to current working directory
-        #for input in $infiles:
-            ln -s '$input' ./'$input.element_identifier'.tif &&
+        #for input, label in zip($infiles, $labels):
+            ln -s '$input' ./'$label'.tif &&
         #end for
         ## Write the bash script to run:
         #if str($input_type.existing) == "new":
