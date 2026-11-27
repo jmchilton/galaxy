@@ -42,8 +42,8 @@ DESCRIPTIONS = {
     " out (`chr()`, a decoder, a `.replace` or `re.sub` of the sanitizer's tokens, of text that is not literal, or"
     " of a value template code changed before).",
     Uncheckable.TEMPLATE_CODE: "The templates run Python that can read text no tool input carries (imports,"
-    " `open()`, `#include` of anything but a template macro, `$__app__`, `getattr`, what the dataset model behind"
-    " `.unsanitized` reaches).",
+    " `open()`, `#include` of anything but a template macro, a lambda that reads more than its arguments or changes"
+    " a value, `$__app__`, `getattr`, what the dataset model behind `.unsanitized` reaches).",
     Uncheckable.LETTERS_ARE_CODE: "Letters alone can be code where the tool writes a value: the program to run,"
     " text piped to a shell that runs it, or unquoted Perl or Ruby code.",
     Uncheckable.UNTRACED_VALUE: "The templates write a value the review cannot trace to one input or preference"

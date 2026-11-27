@@ -40,6 +40,8 @@ include src/galaxy/tool_util/security/spec/tools/known_helper.xml
 include src/galaxy/tool_util/security/spec/tools/known_literal_list.xml
 include src/galaxy/tool_util/security/spec/tools/known_loop.xml
 include src/galaxy/tool_util/security/spec/tools/known_select_value.xml
+include src/galaxy/tool_util/security/spec/tools/lambda_changes_a_list.xml
+include src/galaxy/tool_util/security/spec/tools/lambda_late_binding.xml
 include src/galaxy/tool_util/security/spec/tools/maybe_unset_local.xml
 include src/galaxy/tool_util/security/spec/tools/nested_scope_lambda.xml
 include src/galaxy/tool_util/security/spec/tools/nested_scope_lookup.xml
@@ -51,6 +53,7 @@ include src/galaxy/tool_util/security/spec/tools/output_size_limit_reach.xml
 include src/galaxy/tool_util/security/spec/tools/output_size_limit_subscript.xml
 include src/galaxy/tool_util/security/spec/tools/pipe_to_shell_script.xml
 include src/galaxy/tool_util/security/spec/tools/pipe_to_shell.xml
+include src/galaxy/tool_util/security/spec/tools/pure_lambda.xml
 include src/galaxy/tool_util/security/spec/tools/raw_dataset_history.xml
 include src/galaxy/tool_util/security/spec/tools/raw_dataset_model.xml
 include src/galaxy/tool_util/security/spec/tools/raw_text_escaped_double_quoted.xml

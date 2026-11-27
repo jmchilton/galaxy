@@ -882,6 +882,60 @@ codes:
 - uncheckable-template-code
 ```
 
+### lambda_late_binding
+
+A lambda reads a name of the template when it is called, not when it is made. Here the template sets the name again in between, to a value: the review does not follow such a lambda.
+
+Tool `lambda_late_binding.xml`:
+
+```
+#set $label = 'sample'
+#set $quoted = lambda: "'%s'" % label
+#set $label = $word.value
+echo ${quoted()} > '$out'
+```
+
+Review:
+
+```
+findings:
+- rule: template-lambda
+  severity: high
+unchecked_locations:
+  command: parts of it were not analysed
+patterns:
+- template-code
+codes:
+- uncheckable-template-code
+```
+
+### lambda_changes_a_list
+
+A lambda that changes a list of the template with what its call passes in is not followed either.
+
+Tool `lambda_changes_a_list.xml`:
+
+```
+#set $words = []
+#set $add = lambda value: words.append(value)
+#silent $add($word.value)
+echo '${' '.join($words)}' > '$out'
+```
+
+Review:
+
+```
+findings:
+- rule: template-lambda
+  severity: high
+unchecked_locations:
+  command: parts of it were not analysed
+patterns:
+- template-code
+codes:
+- uncheckable-template-code
+```
+
 ### template_code
 
 A template that imports code can read text no input carries, and the review does not follow it.
@@ -1338,6 +1392,31 @@ Review:
 serious_rules: []
 ```
 
+### pure_lambda
+
+A lambda whose body reads only its arguments, literals and functions that compute a value from them is read as what it gives for the values the template passes: here a value quoted by `json.dumps`, whose own quote still closes the single quotes around it.
+
+Tool `pure_lambda.xml`:
+
+```
+#import json
+#set $quoted = lambda value: json.dumps(value)
+echo '${quoted($word.value)}' > '$out'
+```
+
+Review:
+
+```
+findings:
+- rule: shell-injection
+  severity: high
+  accessor: raw
+  param: word
+  checkable: true
+serious_rules:
+- shell-injection
+```
+
 ### app_model_read
 
 The application object reaches any data of the server. The review flags the read but follows no value of it, and this tool writes only a count.
@@ -1521,9 +1600,9 @@ Cases: `dataset_content_shell_injection`.
 
 #### `template-code`
 
-Runs Python the review cannot follow (`exec`, `compile`, imports of modules that start processes or open connections, `#include` of anything but a template macro).
+Runs Python the review cannot follow (`exec`, `compile`, imports of modules that start processes or open connections, `#include` of anything but a template macro, a lambda that reads more than its arguments or changes a value).
 
-Cases: `include_dataset`, `template_macro_rebound`, `rewrites_and_template_code`, `template_code`, `server_python_command`.
+Cases: `include_dataset`, `template_macro_rebound`, `rewrites_and_template_code`, `lambda_late_binding`, `lambda_changes_a_list`, `template_code`, `server_python_command`.
 
 ### Reads of values the server sets
 
@@ -1549,7 +1628,7 @@ Each finding has one of these rules.
 
 A value can close the quotes around it, or is written unquoted, and start another shell command.
 
-Cases: `raw_text_shell_injection`, `ftpfile_param_shell_injection`, `element_identifier_shell_injection`, `dataset_name_stays_quoted`, `wrapped_names_stay_quoted`, `group_tags_shell_injection`, `dataset_content_shell_injection`, `user_preference_stays_quoted`, `user_preference_shell_injection`, `stray_quote`, `path_like_name`, `raw_dataset_model`, `raw_dataset_history`, `shell_runs_script_file`, `rewrites_restore_tokens`, `literal_rewrite`, `rewrites_and_template_code`, `user_object_unsanitized`, `untraced_value`, `known_helper`, `known_loop`, `known_global_list`, `known_literal_list`, `known_select_value`, `nested_scope_lookup`, `nested_scope_lambda`, `maybe_unset_local`, `galaxy_url_replaced`, `getvar_request_parameter`.
+Cases: `raw_text_shell_injection`, `ftpfile_param_shell_injection`, `element_identifier_shell_injection`, `dataset_name_stays_quoted`, `wrapped_names_stay_quoted`, `group_tags_shell_injection`, `dataset_content_shell_injection`, `user_preference_stays_quoted`, `user_preference_shell_injection`, `stray_quote`, `path_like_name`, `raw_dataset_model`, `raw_dataset_history`, `shell_runs_script_file`, `rewrites_restore_tokens`, `literal_rewrite`, `rewrites_and_template_code`, `user_object_unsanitized`, `untraced_value`, `known_helper`, `known_loop`, `known_global_list`, `known_literal_list`, `known_select_value`, `nested_scope_lookup`, `nested_scope_lambda`, `maybe_unset_local`, `galaxy_url_replaced`, `getvar_request_parameter`, `pure_lambda`.
 
 #### `nested-interpreter`
 
@@ -1645,6 +1724,12 @@ Cases: `include_dataset`, `template_macro_rebound`.
 
 Includes a template macro of the tool, which the review reads in and analyses in place.
 
+#### `template-lambda`
+
+Uses a lambda that reads more than its arguments or changes a value: what it renders when called is not what the review reads where it is made, so the review does not follow it.
+
+Cases: `lambda_late_binding`, `lambda_changes_a_list`.
+
 #### `template-app-access`
 
 Reads Galaxy's application object (`$__app__`) or the user object (`$__user__`).
@@ -1739,9 +1824,9 @@ Cases: `rewrites_restore_tokens`, `rewrites_and_template_code`.
 
 #### `uncheckable-template-code`
 
-The templates run Python that can read text no tool input carries (imports, `open()`, `#include` of anything but a template macro, `$__app__`, `getattr`, what the dataset model behind `.unsanitized` reaches).
+The templates run Python that can read text no tool input carries (imports, `open()`, `#include` of anything but a template macro, a lambda that reads more than its arguments or changes a value, `$__app__`, `getattr`, what the dataset model behind `.unsanitized` reaches).
 
-Cases: `raw_dataset_history`, `include_dataset`, `template_macro_rebound`, `rewrites_and_template_code`, `template_code`, `server_python_command`, `user_object_unsanitized`, `reflection_bypass`, `getvar_user_name`, `output_size_limit_reach`.
+Cases: `raw_dataset_history`, `include_dataset`, `template_macro_rebound`, `rewrites_and_template_code`, `lambda_late_binding`, `lambda_changes_a_list`, `template_code`, `server_python_command`, `user_object_unsanitized`, `reflection_bypass`, `getvar_user_name`, `output_size_limit_reach`.
 
 #### `uncheckable-letters-are-code`
 

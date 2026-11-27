@@ -87,11 +87,16 @@ class _BudgetExceeded(Exception):
     pass
 
 
-_MUTATORS = frozenset(
-    ("append", "extend", "add", "insert", "update", "setdefault", "appendleft", "__setitem__", "__iadd__", "__ior__")
+MUTATORS = frozenset(
+    (
+        "append extend add insert update setdefault appendleft extendleft symmetric_difference_update __setitem__"
+        " __iadd__ __ior__ __ixor__"
+    ).split()
 )
 # Mutators whose argument is a collection of the new items.
-_EXTENDERS = frozenset(("extend", "update", "__iadd__", "__ior__"))
+_EXTENDERS = frozenset(
+    ("extend", "update", "extendleft", "symmetric_difference_update", "__iadd__", "__ior__", "__ixor__")
+)
 _CLEAN_FUNCTIONS = frozenset(
     (
         "int float len bool abs round ord hex oct bin sum any all isinstance hasattr callable id hash range"
@@ -1744,7 +1749,7 @@ class TemplateAnalysis:
         named = {k.arg: v for k, v in zip(node.keywords, keywords) if k.arg}
         if callee.bound is not None:
             receiver, method = callee.bound
-            if isinstance(method, str) and method in _MUTATORS:
+            if isinstance(method, str) and method in MUTATORS:
                 target = func.args[0] if isinstance(func, ast.Call) and func.args else getattr(func, "value", None)
                 self._grow(target, method, args, keywords, env)
             return self.call_bound(receiver, method, args, node.args, env, keywords, node)
@@ -1816,7 +1821,7 @@ class TemplateAnalysis:
                 # A lambda or a method: what it gives for the elements.
                 receiver, method = args[0].bound
                 items = [element(a) for a in args[1:]]
-                if isinstance(method, str) and method in _MUTATORS and isinstance(function, ast.Attribute):
+                if isinstance(method, str) and method in MUTATORS and isinstance(function, ast.Attribute):
                     # `map($l.append, values)`
                     self._grow(function.value, method, items, [], env)
                 mapped = self.call_bound(receiver, method, items, [], env)
@@ -2006,10 +2011,10 @@ class TemplateAnalysis:
             if name in ("keys", "values", "items"):
                 item = element(receiver)
                 return AV(elem=AV(items=(item, item)) if name == "items" else item)
-            if name in ("__iadd__", "__ior__"):
+            if name in ("__iadd__", "__ior__", "__ixor__"):
                 # The receiver itself, grown.
                 return join(receiver, *args)
-            if name in _MUTATORS:
+            if name in MUTATORS:
                 return CLEAN
             return receiver
         if name in GROUP_DICT_METHODS and receiver.nodes and all(isinstance(n, Group) for n in receiver.nodes):

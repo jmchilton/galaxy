@@ -24,6 +24,7 @@ class Rule(StrEnum):
     TEMPLATE_FILE_IO = "template-file-io"
     TEMPLATE_INCLUDE = "template-include"
     TEMPLATE_MACRO = "template-macro"
+    TEMPLATE_LAMBDA = "template-lambda"
     TEMPLATE_APP_ACCESS = "template-app-access"
     TEMPLATE_MODEL_ACCESS = "template-model-access"
     # Capabilities of the command the job runs.
@@ -90,6 +91,8 @@ DESCRIPTIONS = {
     Rule.TEMPLATE_INCLUDE: "Uses `#include` of anything but a template macro (a file, fixed text, a value): reads"
     " in template code the review does not follow.",
     Rule.TEMPLATE_MACRO: "Includes a template macro of the tool, which the review reads in and analyses in place.",
+    Rule.TEMPLATE_LAMBDA: "Uses a lambda that reads more than its arguments or changes a value: what it renders"
+    " when called is not what the review reads where it is made, so the review does not follow it.",
     Rule.TEMPLATE_APP_ACCESS: "Reads Galaxy's application object (`$__app__`) or the user object (`$__user__`).",
     Rule.TEMPLATE_MODEL_ACCESS: "Reaches Galaxy's database objects (`.unsanitized`, `.dataset`, `.creating_job`,"
     " ...).",
