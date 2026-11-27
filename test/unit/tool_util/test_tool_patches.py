@@ -35,9 +35,7 @@ from galaxy.tool_util.patches.engine import (
 )
 from galaxy.tool_util.patches.hg import read_working_parent
 from galaxy.tool_util.patches.keys import (
-    decode_segment,
-    encode_segment,
-    is_canonical_segment,
+    is_valid_segment,
     key_from_ids,
     patch_key,
 )
@@ -613,25 +611,14 @@ def test_ops_outside_inputs_skip_the_parameter_model(probe: XmlToolSource, monke
 # --- keys ---
 
 
-@pytest.mark.parametrize(
-    "raw,encoded",
-    [
-        ("1.4.5+Galaxy2", "1.4.5+!galaxy2"),
-        ("EMBOSS: sirna89", "!e!m!b!o!s!s%3A%20sirna89"),
-        ("plain_id-1.0", "plain_id-1.0"),
-        ("a!b%c/d", "a%21b%25c%2Fd"),
-        ("é", "%C3%A9"),
-    ],
-)
-def test_segment_encoding(raw: str, encoded: str) -> None:
-    assert encode_segment(raw) == encoded
-    assert decode_segment(encoded) == raw
-    assert is_canonical_segment(encoded)
+@pytest.mark.parametrize("segment", ["1.4.5+Galaxy2", "dada2_filterAndTrim", "EMBOSS: sirna89", "a!b%c", "é", "x.y"])
+def test_segments_are_stored_verbatim(segment: str) -> None:
+    assert is_valid_segment(segment)
 
 
-@pytest.mark.parametrize("segment", ["Abc", "%3a", "!E", "%41", "a b", "", ".", "..", "%2", "!"])
-def test_non_canonical_segments(segment: str) -> None:
-    assert not is_canonical_segment(segment)
+@pytest.mark.parametrize("segment", ["", ".", "..", ".hidden"])
+def test_invalid_segments(segment: str) -> None:
+    assert not is_valid_segment(segment)
 
 
 def test_patch_key_from_shed_guid_drops_host(probe: XmlToolSource) -> None:
@@ -794,12 +781,31 @@ def test_collection_fix_without_upstream_applies(tmp_path: Path, probe: XmlToolS
     assert "collection_fix" not in state.model_dump()
 
 
-def test_encoded_key_matches(tmp_path: Path) -> None:
-    tool = write_tool(tmp_path / "t.xml", PROBE_TOOL.replace('id="patch_probe"', 'id="Patch_Probe"'))
-    rel = "_local/!patch_!probe/1.0+galaxy0.yml"
-    assert states_of(
-        load_db(write_collection(tmp_path / "c", {rel: security_doc(QUOTE_LABEL)})).apply_patches(tool)
-    ) == ["applied"]
+MIXED_CASE_TOOL = PROBE_TOOL.replace('id="patch_probe"', 'id="Patch_Probe"')
+
+
+@pytest.mark.parametrize(
+    "rel,states",
+    [
+        ("_local/Patch_Probe/1.0+galaxy0.yml", ["applied"]),
+        ("_local/patch_probe/1.0+galaxy0.yml", None),
+        ("_local/!patch_!probe/1.0+galaxy0.yml", None),
+    ],
+    ids=["verbatim", "other_case", "go_encoded"],
+)
+def test_mixed_case_key_matches_verbatim_and_exactly(tmp_path: Path, rel: str, states: list[str] | None) -> None:
+    tool = write_tool(tmp_path / "t.xml", MIXED_CASE_TOOL)
+    patched = load_db(write_collection(tmp_path / "c", {rel: security_doc(QUOTE_LABEL)})).apply_patches(tool)
+    assert (states_of(patched) if states else patched.patch_state) == states
+
+
+def test_mixed_case_shed_key_matches_verbatim(tmp_path: Path) -> None:
+    tool = write_tool(tmp_path / "t.xml", MIXED_CASE_TOOL)
+    key = "Owner1/repo_A/Patch_Probe/1.0+galaxy0"
+    guid = f"toolshed.example.org/repos/{key}"
+    root = write_collection(tmp_path / "c", {f"{key}.yml": security_doc(QUOTE_LABEL)})
+    (state,) = patch_states(load_db(root).apply_patches(tool, guid=guid))
+    assert (state.state, state.key) == ("applied", key)
 
 
 def test_patching_twice_equals_once(tmp_path: Path, probe: XmlToolSource) -> None:
@@ -1098,21 +1104,23 @@ def test_invalid_file_loads_tool_unpatched(
     assert any(LOCAL_PROBE in r.getMessage() for r in caplog.records if r.levelno == logging.ERROR)
 
 
-def test_walk_refuses_non_canonical_and_bundled_keys(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+def test_walk_refuses_hidden_and_bundled_keys(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     doc = security_doc(QUOTE_LABEL)
     files = {
         "Owner1/repo_a/patch_probe/1.0.yml": doc,
-        "_local/!c!o!n!v!e!r!t!e!r_bed_to_gff/1.0.yml": doc,
+        "_local/CONVERTER_bed_to_gff/1.0.yml": doc,
         "_local/__x/1.0.yml": doc,
+        "_local/.hidden/1.0.yml": doc,
         "_local/patch_probe/1.0+galaxy0.yaml": doc,
         LOCAL_PROBE: doc,
     }
     root = write_collection(tmp_path / "c", files)
     with caplog.at_level(logging.ERROR, logger="galaxy.tool_util.patches"):
         db = load_db(root)
-    assert db.digest_for(("Owner1", "repo_a", "patch_probe", "1.0")) is None
+    assert db.digest_for(("Owner1", "repo_a", "patch_probe", "1.0")) is not None
     assert db.digest_for(("_local", "CONVERTER_bed_to_gff", "1.0")) is None
     assert db.digest_for(("_local", "__x", "1.0")) is None
+    assert db.digest_for(("_local", ".hidden", "1.0")) is None
     assert db.digest_for(LOCAL_KEY) is not None
     assert len([r for r in caplog.records if r.levelno >= logging.ERROR]) == 3
 

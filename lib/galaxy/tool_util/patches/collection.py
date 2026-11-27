@@ -19,9 +19,8 @@ from pydantic import (
 )
 
 from .keys import (
-    decode_segment,
-    is_canonical_segment,
     is_shed_key,
+    is_valid_segment,
     LOCAL,
     PatchKey,
 )
@@ -137,12 +136,13 @@ class PatchCollection:
     def _refuse(self, path: str, reason: str) -> None:
         log.error("tool patches: %s: refusing %s: %s", self.name, os.path.relpath(path, self.root), reason)
 
-    def _decode(self, entry: os.DirEntry[str], name: str | None = None) -> str | None:
+    def _segment(self, entry: os.DirEntry[str], name: str | None = None) -> str | None:
+        """The key segment a directory or file name stands for: the name itself, as stored."""
         segment = entry.name if name is None else name
-        if not is_canonical_segment(segment):
-            self._refuse(entry.path, f"{segment!r} is not a canonical encoded segment")
+        if not is_valid_segment(segment):
+            self._refuse(entry.path, f"{segment!r} is not a key segment")
             return None
-        return decode_segment(segment)
+        return segment
 
     def _dirs(self, path: str) -> list[os.DirEntry[str]]:
         out = []
@@ -181,7 +181,7 @@ class PatchCollection:
         if not entry.name.endswith(PATCH_SUFFIX):
             log.debug("tool patches: ignoring %s", entry.path)
             return
-        version = self._decode(entry, entry.name[: -len(PATCH_SUFFIX)])
+        version = self._segment(entry, entry.name[: -len(PATCH_SUFFIX)])
         if version is not None and (rel := self._register(entry)):
             self._files[(*prefix, version)] = rel
 
@@ -202,12 +202,12 @@ class PatchCollection:
         for owner in self._dirs(patches):
             if owner.name == LOCAL:
                 self._walk_local(owner)
-            elif (owner_name := self._decode(owner)) is not None:
+            elif (owner_name := self._segment(owner)) is not None:
                 self._walk_shed_owner(owner_name, owner)
 
     def _walk_local(self, owner: os.DirEntry[str]) -> None:
         for tool in self._dirs(owner.path):
-            tool_id = self._decode(tool)
+            tool_id = self._segment(tool)
             if tool_id is None:
                 continue
             if tool_id.startswith(REFUSED_LOCAL_PREFIXES):
@@ -217,11 +217,11 @@ class PatchCollection:
 
     def _walk_shed_owner(self, owner_name: str, owner: os.DirEntry[str]) -> None:
         for repo in self._dirs(owner.path):
-            repo_name = self._decode(repo)
+            repo_name = self._segment(repo)
             if repo_name is None:
                 continue
             for tool in self._dirs(repo.path):
-                tool_id = self._decode(tool)
+                tool_id = self._segment(tool)
                 if tool_id is not None:
                     self._walk_tool((owner_name, repo_name, tool_id), tool)
 
@@ -232,7 +232,7 @@ class PatchCollection:
                 self._add_version_file(prefix, entry)
             elif not is_shed_key(prefix):
                 self._refuse(entry.path, "per-changeset overrides need a Tool Shed key")
-            elif (version := self._decode(entry)) is not None:
+            elif (version := self._segment(entry)) is not None:
                 self._add_overrides((*prefix, version), entry)
 
     # --- lookup ---
