@@ -558,6 +558,10 @@ def test_default_of_a_lambda_argument_is_read(tmp_path, command):
         "#set $d = {}\n#silent [d.update({'k': str($free)}) for _x in [1]]\ntool '${d['k']}'",
         "#set $d = {}\n#silent [d.update(k=str($free)) for _x in [1]]\ntool '${d['k']}'",
         "#set $d = {}\n#silent $d.update(k=str($free))\ntool '${d['k']}'",
+        "#set $l = ['safe']\n#silent [l.__iadd__([str($free)]) for _ in [1]]\ntool '${l[1]}'",
+        "#set $l = ['safe']\n#silent $l.__iadd__([str($free)])\ntool '${l[1]}'",
+        "#set $acc = []\n#silent list(map(acc.append, [str($free)]))\ntool '${''.join($acc)}'",
+        "tool '${''.join(['a'].__iadd__([str($free)]))}'",
     ],
 )
 def test_changes_a_lambda_or_comprehension_makes_to_locals_are_kept(tmp_path, command):
