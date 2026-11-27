@@ -572,6 +572,50 @@ def test_escaping_values_found_by_review(tmp_path, command, expected):
     assert expected in rules(review(tmp_path, command))
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "#set $free = 'safe'\ntool '${''.join($free for _x in [1])}'",
+        "#set $free = 'safe'\n#set $f = lambda: $free\ntool '${f()}'",
+        "#set $free = 'safe'\n#set $f = lambda: (lambda: $free)()\ntool '${f()}'",
+        # Python 3.12 runs a comprehension in the method's frame, older versions do not.
+        "#set $free = 'safe'\ntool '${''.join([$free for _x in [1]])}'",
+        "#set $free = 'safe'\ntool '${''.join({$free for _x in [1]})}'",
+        "#set $free = 'safe'\ntool '${''.join({$free: 1 for _x in [1]})}'",
+        "#for $free in ['safe']\ntool '${''.join($free for _x in [1])}'\n#end for",
+        # The #set global store comes first in the namespace.
+        "#set global $g = $free\n#set $g = 'safe'\ntool '${''.join($g for _x in [1])}'",
+        "#set $free = 'safe'\n#set $acc = []\n#silent $acc.extend($free for _x in [1])\ntool '${''.join($acc)}'",
+        # The arguments of a #def are locals of its method.
+        "#def show($free)\n${''.join($free for _x in [1])}#slurp\n#end def\ntool '$show('safe')'",
+        "#def show()\n#set $free = 'safe'\n${''.join($free for _x in [1])}#slurp\n#end def\ntool '$show()'",
+    ],
+)
+def test_names_read_inside_lambdas_and_generators_are_parameters(tmp_path, command):
+    # Cheetah looks a name up in the frame that runs it: a lambda, a generator expression or a
+    # comprehension does not hold the method's locals, so the name is the parameter of that name.
+    compile_template(command)
+    assert ("shell-injection", "high") in rules(review(tmp_path, command))
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "#set $f = lambda v: $v\ntool '${f('safe')}'",
+        "tool '${''.join($x for x in ['safe'])}'",
+        "#set global $g = 'safe'\ntool '${''.join($g for _x in [1])}'",
+        # The first iterable of a generator expression is evaluated where the expression is.
+        "#set $l = ['safe']\ntool '${''.join(x for x in $l)}'",
+        # A Python name is a closure over the method's local.
+        "#set $s = 'safe'\ntool '${''.join(s for _x in [1])}'",
+        "#set $s = 'safe'\n#set $f = lambda x=$s: $x\ntool '${f()}'",
+    ],
+)
+def test_names_a_lambda_or_generator_binds_itself(tmp_path, command):
+    compile_template(command)
+    assert rules(review(tmp_path, command)) == set()
+
+
 GROUP = """
 <conditional name="c">
   <param name="sel" type="select"><option value="a">a</option></param>

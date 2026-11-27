@@ -473,6 +473,57 @@ inputs:
   other: b
 ```
 
+#### nested_scope_lookup
+
+Cheetah looks `$name` up in the frame that runs it. A generator expression, a lambda or (before Python 3.12) a comprehension runs in a frame of its own, which does not hold the template's `#set` locals: there `$label` is the parameter, whatever the template set `label` to. The review reads it as the parameter, whose value is checked as usual.
+
+Tool `nested_scope_lookup.xml`:
+
+```
+#set $label = 'sample'
+echo '${"".join(str($label.value) for _x in [1])}' > '$out'
+```
+
+Refused
+
+```
+inputs:
+  label: a';touch harm-marker;'
+```
+
+Runs
+
+```
+inputs:
+  label: a;b|c && d
+```
+
+#### nested_scope_lambda
+
+A lambda's body runs in the lambda's own frame too: `$label` there is the parameter, not the `#set` local.
+
+Tool `nested_scope_lambda.xml`:
+
+```
+#set $label = 'sample'
+#set $quoted = lambda: "'%s'" % $label.value
+echo ${quoted()} > '$out'
+```
+
+Refused
+
+```
+inputs:
+  label: a';touch harm-marker;'
+```
+
+Runs
+
+```
+inputs:
+  label: a;b|c && d
+```
+
 ### `nested-interpreter`
 
 A value is written into the program of another interpreter (`bash -c`, `sed`, `perl -e`, ...) and can change what that program does.

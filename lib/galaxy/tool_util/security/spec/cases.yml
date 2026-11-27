@@ -984,6 +984,49 @@ known_select_value:
       harm: true
       expect: {rejected: false}
 
+nested_scope_lookup:
+  doc: >-
+    Cheetah looks `$name` up in the frame that runs it. A generator expression, a lambda or (before Python
+    3.12) a comprehension runs in a frame of its own, which does not hold the template's `#set` locals: there
+    `$label` is the parameter, whatever the template set `label` to. The review reads it as the parameter,
+    whose value is checked as usual.
+  tool: nested_scope_lookup.xml
+  code: shell-injection
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, accessor: raw, param: label, checkable: true}
+  red:
+    - inputs: {label: "a';touch harm-marker;'"}
+      harm: true
+      expect:
+        rejected: true
+        message_contains: ["the value of input 'label' contains the characters [' ;]"]
+  green:
+    - inputs: {label: "a;b|c && d"}
+      harm: true
+      expect: {rejected: false}
+
+nested_scope_lambda:
+  doc: >-
+    A lambda's body runs in the lambda's own frame too: `$label` there is the parameter, not the `#set` local.
+  tool: nested_scope_lambda.xml
+  code: shell-injection
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, accessor: raw, param: label, checkable: true}
+  red:
+    - inputs: {label: "a';touch harm-marker;'"}
+      harm: true
+      expect:
+        rejected: true
+        message_contains: ["the value of input 'label' contains the characters [' ;]"]
+  green:
+    - inputs: {label: "a;b|c && d"}
+      harm: true
+      expect: {rejected: false}
+
 app_model_read:
   doc: >-
     The application object reaches any data of the server. The review flags the read but follows no value
