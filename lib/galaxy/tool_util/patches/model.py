@@ -1,5 +1,6 @@
 """Pydantic models for tool patch files and the runtime patch state."""
 
+import re
 from typing import (
     Annotated,
     Any,
@@ -30,8 +31,9 @@ from .xmlutil import (
     targets_root_identity,
 )
 
-ChangeKind = Literal["security", "compat"]
-FileKind = Literal["security", "compat", "mixed"]
+# In the order the units apply: python2to3 converts the Cheetah code first, so security and compat ops see Python 3.
+ChangeKind = Literal["python2to3", "security", "compat"]
+FileKind = Literal["python2to3", "security", "compat", "mixed"]
 ReproducibilityLevel = Literal["identical", "rejects_inputs", "unusual_inputs", "ordinary_inputs"]
 AdvisoryAction = Literal["upgrade", "update_revision", "info", "enable_policy"]
 FileAdvisoryAction = Literal["upgrade", "update_revision", "info"]
@@ -43,6 +45,9 @@ REPRODUCIBILITY_LEVELS: tuple[ReproducibilityLevel, ...] = get_args(Reproducibil
 CHANGE_KINDS: tuple[ChangeKind, ...] = get_args(ChangeKind)
 SECURITY: ChangeKind = "security"
 COMPAT: ChangeKind = "compat"
+PYTHON2TO3: ChangeKind = "python2to3"
+# python2to3 ops rewrite template text only: the command or one named template configfile.
+PYTHON2TO3_PATH = r"^(command|configfiles/configfile\[@name='[^'\[\]]+'\])$"
 NEEDED_FROM_PATTERN = r"^\d{2}\.\d+$"
 
 Occurrences = Annotated[int, Field(strict=True, gt=0)]
@@ -313,8 +318,14 @@ class PatchFile(_FileModel):
         return [op for op in self.ops or [] if self.op_kind(op) == kind]
 
     def policy_governs(self, kind: ChangeKind) -> bool:
-        """True when reproducibility and changes_requirements describe ops of this kind."""
-        return self.kind != "mixed" or kind == SECURITY
+        """True when reproducibility and changes_requirements describe ops of this kind.
+
+        In a mixed file they describe the security ops; compat and python2to3 ops are identical. A mixed file
+        without security ops is identical throughout.
+        """
+        if self.kind != "mixed":
+            return True
+        return kind == SECURITY or not self.ops_of_kind(SECURITY)
 
     def policy_ops(self) -> list[PatchOp]:
         """Ops that reproducibility and changes_requirements describe."""
@@ -332,15 +343,21 @@ class PatchFile(_FileModel):
                 raise ValueError("every upstream entry in a mixed file needs kind")
             if self.advisory is not None and self.advisory.kind is None:
                 raise ValueError("the advisory in a mixed file needs kind")
-            if {self.op_kind(op) for op in ops} != set(CHANGE_KINDS):
-                raise ValueError("a mixed file needs both security and compat ops")
+            if len({self.op_kind(op) for op in ops}) < 2:
+                raise ValueError("a mixed file needs ops of at least two kinds")
         elif any(op.kind not in (None, self.kind) for op in ops):
             raise ValueError(f"op kind must equal the file kind {self.kind!r}")
         for i, op in enumerate(ops):
-            if self.op_kind(op) == SECURITY and op.needed_from is not None:
-                raise ValueError(f"op {i}: security ops never have needed_from")
+            if self.op_kind(op) != COMPAT and op.needed_from is not None:
+                raise ValueError(f"op {i}: only compat ops have needed_from")
             if self.op_kind(op) == COMPAT and self.op_needed_from(op) is None:
                 raise ValueError(f"op {i}: compat ops need needed_from (on the op or the file)")
+            if self.op_kind(op) == PYTHON2TO3:
+                body = op.body
+                if not isinstance(body, ReplaceText) or not re.match(PYTHON2TO3_PATH, body.path):
+                    raise ValueError(
+                        f"op {i}: python2to3 ops are replace_text on command or configfiles/configfile[@name='...']"
+                    )
         has_compat = bool(self.ops_of_kind(COMPAT))
         if self.needed_from is not None and not has_compat:
             raise ValueError("needed_from is only for files with compat ops")
@@ -370,14 +387,17 @@ class PatchFile(_FileModel):
             raise ValueError("reproducibility_doc is required with ops")
         if self.reproducibility_reason is not None and not self.reproducibility_reason.strip():
             raise ValueError("reproducibility_reason must be non-empty when present")
-        if self.kind == COMPAT and self.reproducibility != "identical":
-            raise ValueError("compat ops must be reproducibility: identical")
+        if not self.ops_of_kind(SECURITY) and self.reproducibility != "identical":
+            what = "a mixed file without security ops" if self.kind == "mixed" else f"{self.kind} ops"
+            raise ValueError(f"{what} must be reproducibility: identical")
         if self.kind == "mixed" and any(op_touches_requirements(op.body) for op in self.ops_of_kind(COMPAT)):
             raise ValueError("compat ops in a mixed file can't touch requirements")
         bodies = [op.body for op in self.policy_ops()]
         touches = any(op_touches_requirements(b) for b in bodies)
         if touches != self.changes_requirements:
             raise ValueError(f"changes_requirements must be {touches} for these ops")
+        if self.kind == PYTHON2TO3:
+            return  # identical by construction (the collection proves it), not by op targets
         proposed = propose_level(bodies)
         if level_index(self.reproducibility) < level_index(proposed) and not self.reproducibility_reason:
             raise ValueError(f"reproducibility below the proposed {proposed!r} needs reproducibility_reason")
