@@ -15,6 +15,7 @@ from galaxy.tool_util.security import (
 from galaxy.tool_util.security.charsets import (
     DASH_WORD,
     DEFAULT_SANITIZED,
+    ESCAPE,
     LEADING_DASH,
     literal_rewrite,
     marks,
@@ -1506,6 +1507,38 @@ def test_value_in_a_string_the_script_evaluates(tmp_path, command, content, expe
     assert found - {("configfile-injection", "low")} == expected
 
 
+@pytest.mark.parametrize(
+    "content,expected",
+    [
+        # The shell that runs the string splits the value into words; a raw value can start a command.
+        ("import os\nos.system('tool $text')", {("configfile-injection", "medium")}),
+        ("import os\nos.system('tool $expr_no_quote')", {("configfile-injection", "high")}),
+        ("import subprocess\nsubprocess.run('tool $text', shell=True)", {("configfile-injection", "medium")}),
+        ("import os\nos.popen('tool $text').read()", {("configfile-injection", "medium")}),
+        ("import subprocess\nsubprocess.getoutput('tool $text')", {("configfile-injection", "medium")}),
+        ("import os\nos.system(f'tool $text')", {("configfile-injection", "medium")}),
+        ("import os\nos.system(\n    'tool $text')", {("configfile-injection", "medium")}),
+        ("import subprocess\nsubprocess.run(args='tool $text', shell=True)", {("configfile-injection", "medium")}),
+        # Inside the shell's quotes, as the string's own text and its escapes give them.
+        ("import os\nos.system(\"tool '$no_dq'\")", {("configfile-injection", "high")}),
+        ("import os\nos.system('tool \\'$text\\'')", set()),
+        ('import os\nos.system("tool \'\\x27$text")', {("configfile-injection", "medium")}),
+        # A raw string writes its backslashes: the shell reads them.
+        ("import os\nos.system(r'tool \\'$text\\'')", {("configfile-injection", "medium")}),
+        # A backslash in the value is an escape of the string, which writes any character.
+        ("import os\nos.system('tool \\'$expr_no_quote\\'')", {("configfile-injection", "high")}),
+        ("import os\nos.system('tool \"$expr_no_quote\"')", {("configfile-injection", "high")}),
+        ("import os\nos.system('tool \"$letters\"')", set()),
+        # A list of arguments runs no shell, nor does a string the script only prints.
+        ("import subprocess\nsubprocess.run(['tool', '$text'])", set()),
+        ("print('tool $text')", set()),
+    ],
+)
+def test_value_in_a_string_a_shell_runs(tmp_path, content, expected):
+    found = rules(review(tmp_path, "python '$script'", CONFIG.format(f"<![CDATA[{content}]]>")))
+    assert found - {("configfile-injection", "low")} == expected
+
+
 def test_braces_in_an_f_string_are_code(tmp_path):
     braces = (
         '<inputs><param name="p" type="text"><sanitizer><valid initial="string.printable">'
@@ -1609,6 +1642,9 @@ def test_inline_code_of_other_interpreters(tmp_path, interpreter):
         ("a-b c-d", set()),
         ("x ~/y", {TILDE_WORD}),
         ("a~b", set()),
+        # A backslash that escapes a character of the value; a last one escapes the template's.
+        ("a\\x3b", {ESCAPE}),
+        ("a\\", set()),
     ],
 )
 def test_marks_tell_what_a_word_starts_with(value, expected):

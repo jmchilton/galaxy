@@ -1,0 +1,14 @@
+<tool id="spec_python_print_string" name="Text in a printed string of a Python configfile" version="1.0" profile="24.0">
+    <description>writes a text value into a string a Python configfile prints</description>
+    <command><![CDATA[python3 '$script' > '$out']]></command>
+    <configfiles>
+        <configfile name="script"><![CDATA[print('sort /dev/null ${p}')
+]]></configfile>
+    </configfiles>
+    <inputs>
+        <param name="p" type="text"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

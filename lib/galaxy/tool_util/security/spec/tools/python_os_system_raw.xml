@@ -1,0 +1,17 @@
+<tool id="spec_python_os_system_raw" name="Raw text without quotes in a shell command of a Python configfile" version="1.0" profile="24.0">
+    <description>writes a text value past its sanitizer, which a validator keeps free of single quotes, into the command a Python configfile runs with os.system()</description>
+    <command><![CDATA[python3 '$script' > '$out']]></command>
+    <configfiles>
+        <configfile name="script"><![CDATA[import os
+os.system('echo ${p.value}')
+]]></configfile>
+    </configfiles>
+    <inputs>
+        <param name="p" type="text">
+            <validator type="regex" message="No single quotes">^[^']*$</validator>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

@@ -85,15 +85,18 @@ def stricter(a: str | None, b: str | None) -> str | None:
 
 
 # Marks the job check adds to the characters of a value for what no single character tells: a word
-# of it can be read as an option or expands to a home directory. A quote before the dash is removed
-# by the shell (`'$x'` with `a' '-rf`).
+# of it can be read as an option or expands to a home directory, or a backslash in it escapes the character
+# after it (in a string of a program, `\x3b` writes `;`). A quote before the dash is removed by the shell
+# (`'$x'` with `a' '-rf`).
 LEADING_DASH = "a leading -"
 DASH_WORD = "a word starting with -"
 TILDE_WORD = "a word starting with ~"
+ESCAPE = "a backslash before a character"
 # Leading whitespace too: a template can strip it.
 _LEADING_DASH = re.compile(r"""^\s*['"]*-""")
 _DASH_WORD = re.compile(r"""(?:^|\s)['"]*-""")
 _TILDE_WORD = re.compile(r"(?:^|\s)~")
+_ESCAPE = re.compile(r"\\.", re.DOTALL)
 # Where a value splits into words or closes its quotes, what it must also hold to stop being data:
 # a word that is an option or a home directory, a path, a glob or a brace expansion.
 DATA_HARM: Chars = frozenset((DASH_WORD, TILDE_WORD, "/", "*", "?", "[", "{"))
@@ -108,6 +111,8 @@ def marks(value: str) -> frozenset[str]:
         found.add(DASH_WORD)
     if _TILDE_WORD.search(value):
         found.add(TILDE_WORD)
+    if _ESCAPE.search(value):
+        found.add(ESCAPE)
     return frozenset(found)
 
 

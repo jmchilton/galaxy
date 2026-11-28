@@ -1,0 +1,17 @@
+<tool id="spec_python_os_system_escapes" name="Raw text with backslashes in a shell command of a Python configfile" version="1.0" profile="24.0">
+    <description>writes a raw text value, which a validator keeps to letters, digits, spaces and backslashes, inside single quotes of the command a Python configfile runs with os.system()</description>
+    <command><![CDATA[python3 '$script' > '$out']]></command>
+    <configfiles>
+        <configfile name="script"><![CDATA[import os
+os.system("echo '${p.value}'")
+]]></configfile>
+    </configfiles>
+    <inputs>
+        <param name="p" type="text">
+            <validator type="regex" message="Letters, digits, spaces and backslashes">^[A-Za-z0-9\\ ]*$</validator>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

@@ -17,7 +17,6 @@ from dataclasses import (
 )
 from typing import (
     Any,
-    Callable,
     FrozenSet,
 )
 
@@ -206,6 +205,17 @@ def _ansi_quoted(chars: charsets.Chars, script: bool = False) -> Verdict | None:
     return verdict
 
 
+def _quoting_verdict(quote: str, chars: charsets.Chars, words: charsets.Chars | None, script: bool) -> Verdict | None:
+    """What a value can do in the shell where it is written unquoted (``quote`` empty) or inside ``quote``."""
+    if quote == "'":
+        return charsets.single_quoted(chars, script)
+    if quote == '"':
+        return charsets.double_quoted(chars, script)
+    if quote == shell.ANSI:
+        return _ansi_quoted(chars, script)
+    return charsets.unquoted(chars, words, script)
+
+
 def _verdict_breakout(verdict: Verdict) -> charsets.Chars:
     return verdict.chars if verdict.breakout is None else verdict.breakout
 
@@ -374,6 +384,9 @@ class _Text:
     escaped: str = ""  # as ShellState.escaped
     evaluated: bool = False  # the current string is code the script runs: eval('...'), parse(text = '...')
     fstring: bool = False  # the current string is a Python f-string: {...} in it is code
+    # The current string is a command a shell runs (os.system('...')): the shell's state in it.
+    command: shell.ShellState | None = None
+    raw: bool = False  # the current string is a raw Python string: a backslash in it escapes nothing
     # Outside strings: a string that starts here is one the script runs, or an f-string.
     opens_evaluated: bool = False
     opens_fstring: bool = False
@@ -388,6 +401,32 @@ _EVALUATED_STRING = {
 }
 
 _FSTRING_PREFIX = re.compile(r"(?<![\w.])([fF][rR]?|[rR][fF])$")
+_RAW_PREFIX = re.compile(r"(?<![\w.])([rR][bBfF]?|[bBfF][rR])$")
+# What opens a Python string that a shell runs as a command, the text before the quote. subprocess runs a
+# string as the program unless shell=True follows it, and a string with more than the program in it only then.
+_SHELL_SINK = re.compile(
+    r"(?<![\w.])(os\.(system|popen)|commands\.(getoutput|getstatusoutput)"
+    r"|subprocess\.(getoutput|getstatusoutput|run|call|check_call|check_output|Popen))"
+    r"\s*\(\s*(args\s*=\s*)?[rRbBuUfF]{0,2}$"
+)
+_PYTHON_ESCAPE = re.compile(r"\\(x[0-9a-fA-F]{2}|[0-7]{1,3}|.)", re.DOTALL)
+# What the escapes of a Python string write; any other backslash stays.
+_PYTHON_ESCAPES = {"\\": "\\", "'": "'", '"': '"', "n": "\n", "t": "\t", "r": "\r", "\n": ""}
+
+
+def _python_unescape(text: str) -> str:
+    """The text a non-raw Python string literal writes for ``text``, its content."""
+
+    def unescape(match: re.Match[str]) -> str:
+        escape = match.group(1)
+        if escape[0] == "x" and len(escape) == 3:
+            return chr(int(escape[1:], 16))
+        if escape[0] in "01234567":
+            return chr(int(escape, 8))
+        return _PYTHON_ESCAPES.get(escape, match.group(0))
+
+    return _PYTHON_ESCAPE.sub(unescape, text)
+
 
 States = FrozenSet[Any]
 _COLLECTOR = "_captureCollector_"
@@ -1060,8 +1099,10 @@ class TemplateAnalysis:
     def _feed_text(state: _Text, text: str, language: str = "") -> _Text:
         quote, esc, escaped, evaluated, fstring = state.quote, state.esc, state.escaped, state.evaluated, state.fstring
         opens_evaluated, opens_fstring = state.opens_evaluated, state.opens_fstring
+        command, raw = state.command, state.raw
         opener = _EVALUATED_STRING.get(language)
         code = ""  # program text of this chunk before the current position, outside strings
+        written = ""  # the text of the current string of a command in this chunk, its escapes as written
         for c in text:
             if c == "\n" and not esc:
                 # Only a value on the same line is taken to follow the escaped quote: a Python string
@@ -1070,24 +1111,34 @@ class TemplateAnalysis:
                 escaped = ""
             if esc:
                 esc = False
+                if quote and command is not None:
+                    written += "\\" + c
             elif c == "\\":
                 esc = True
             elif quote:
                 if c == quote or c == "\n":
                     quote = ""
                     evaluated = fstring = False
+                    command, written = None, ""
+                elif command is not None:
+                    written += c
             elif c in "'\"":
                 quote = c
                 evaluated = bool(opener and opener.search(code[-40:]))
                 fstring = language == "python" and bool(_FSTRING_PREFIX.search(code[-3:]))
+                command = shell.SCRIPT if language == "python" and _SHELL_SINK.search(code[-60:]) else None
+                raw = language == "python" and bool(_RAW_PREFIX.search(code[-3:]))
             if not quote:
-                code = "" if c == "\n" else code + c
+                # A call's arguments can start on the next line.
+                code = "" if c == "\n" and not code.rstrip().endswith("(") else code + c
+        if command is not None and written:
+            command = shell.feed(command, written if raw else _python_unescape(written))
         if quote:
             opens_evaluated = opens_fstring = False
         elif text:
             opens_evaluated = bool(opener and opener.search(code[-40:]))
             opens_fstring = language == "python" and bool(_FSTRING_PREFIX.search(code[-3:]))
-        return _Text(quote, esc, escaped, evaluated, fstring, opens_evaluated, opens_fstring)
+        return _Text(quote, esc, escaped, evaluated, fstring, command, raw, opens_evaluated, opens_fstring)
 
     def write_placeholder(self, node: ast.expr | None, raw_expr: str | None, states: States, env: Env) -> States:
         if isinstance(node, ast.Call) and not self._capture:
@@ -1132,17 +1183,22 @@ class TemplateAnalysis:
                     states = self.write_value(part, raw_expr, states, env)
             return states
         if self.language != "shell":
-            if not text.tainted:
-                return states
             after_config: set[_Text] = set()
             for state in states:
+                command = None
+                if state.command is not None:
+                    command, after_value = shell.placeholder(state.command)
+                    state = dataclasses.replace(state, command=after_value)
+                if not text.tainted:
+                    after_config.add(state)
+                    continue
                 escaped = bool(state.quote) and state.escaped == state.quote
                 evaluated, fstring = state.evaluated, state.fstring
                 if not state.quote and text.quoted in _LITERALS:
                     # json.dumps() or repr() writes a string of its own: one the code before it runs, or an
                     # f-string.
                     evaluated, fstring = state.opens_evaluated, state.opens_fstring
-                self.judge_config(text, state.quote, raw_expr, escaped, evaluated, fstring)
+                self.judge_config(text, state.quote, raw_expr, escaped, evaluated, fstring, command, state.raw)
                 self._record_escape_closer(text, (state.quote,))
                 if self._can_escape_config_quote(text, state.quote):
                     self._record_closers(text, frozenset("\\"))
@@ -1239,17 +1295,10 @@ class TemplateAnalysis:
                 outer = chars - {'"', "\\"}
             if not context.lang:
                 chars = outer
-            lexical: dict[str, Callable[[charsets.Chars], Verdict | None]] = {
-                "": lambda c: charsets.unquoted(c, text.words, script),
-                "'": lambda c: charsets.single_quoted(c, script),
-                '"': lambda c: charsets.double_quoted(c, script),
-                # In $'...' a backslash can escape the closing quote, which is as good as a quote.
-                shell.ANSI: lambda c: _ansi_quoted(c, script),
-            }
-            if verdict := lexical[context.quote](outer):
+            if verdict := _quoting_verdict(context.quote, outer, text.words, script):
                 verdicts.append(verdict)
             if context.lang == "sh":
-                if verdict := lexical[context.inner](chars):
+                if verdict := _quoting_verdict(context.inner, chars, text.words, script):
                     verdicts.append(
                         verdict._replace(rule="nested-interpreter", why=f"in the nested shell, {verdict.why}")
                     )
@@ -1294,10 +1343,14 @@ class TemplateAnalysis:
         escaped: bool = False,
         evaluated: bool = False,
         fstring: bool = False,
+        command: shell.Context | None = None,
+        raw_string: bool = False,
     ) -> None:
         """``escaped``: an earlier user value in the same kind of string can end in a backslash.
         ``evaluated``: the string is code that the script runs (``eval('...')``).
-        ``fstring``: the string is a Python f-string."""
+        ``fstring``: the string is a Python f-string.
+        ``command``: the string is a command a shell runs (``os.system('...')``), the value's place in it.
+        ``raw_string``: the string is a raw Python string, where a backslash escapes nothing."""
         chars = text.chars
         if fstring and "{" in chars and text.quoted != "json":
             # {...} in an f-string is an expression; with parentheses it can call anything.
@@ -1342,6 +1395,24 @@ class TemplateAnalysis:
         if quote and text.quoted == "pystr":
             # Inside a string, the quotes repr() writes end it: ', and " for a value with a '.
             chars = chars | (frozenset("'\"") if "'" in chars else frozenset("'"))
+        if command is not None and not command.comment and not (text.quoted == "shlex" and not command.quote):
+            # The string keeps the value inside it; the shell that runs the string then reads it.
+            # An escape the value brings into the string (\x3b) writes any character there.
+            escapes = "\\" in chars and not raw_string
+            read, words = (chars | charsets.PROBE, None) if escapes else (chars, text.words)
+            if verdict := _quoting_verdict(command.quote, read, words, False):
+                if escapes:
+                    verdict = verdict._replace(
+                        breakout=_verdict_breakout(verdict) | {charsets.ESCAPE},
+                        requires=verdict.requires | {charsets.ESCAPE} if verdict.requires else verdict.requires,
+                    )
+                self.finding(
+                    verdict._replace(rule="configfile-injection", why=f"{verdict.why} in the shell that runs it"),
+                    text,
+                    f"inside a {quote}...{quote} string that the {self.language} script runs in a shell,"
+                    f" {command.describe()}",
+                    raw_expr,
+                )
         if escaped and self.language in shell.CODE_LANGUAGES:
             # The earlier value escaped the closing quote of its string; the quote that opens this
             # value's string closes it instead, so this value is program text.

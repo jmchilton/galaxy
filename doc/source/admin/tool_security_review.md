@@ -785,6 +785,89 @@ inputs:
   word: ' or '
 ```
 
+#### python_os_system_is_shell
+
+A string of a Python configfile that `os.system()` runs is a shell command. A sanitized value cannot end the Python string, but the shell splits it into words, which can be options.
+
+Tool `python_os_system.xml`:
+
+```
+python3 '$script' > '$out'
+```
+
+Refused
+
+```
+inputs:
+  p: -o harm-marker
+config:
+  mode: enforce_data
+```
+
+Runs
+
+```
+inputs:
+  p: words
+config:
+  mode: enforce_data
+```
+
+#### python_os_system_raw_value
+
+A raw value that a validator keeps free of single quotes cannot end the Python string `os.system()` runs, but the shell that runs the string runs the commands the value adds.
+
+Tool `python_os_system_raw.xml`:
+
+```
+python3 '$script' > '$out'
+```
+
+Refused
+
+```
+inputs:
+  p: a; touch harm-marker
+```
+
+Refused
+
+```
+inputs:
+  p: $(touch harm-marker)
+```
+
+Runs: Words the shell splits are refused only from `enforce_data` on.
+
+```
+inputs:
+  p: hello world
+```
+
+#### python_os_system_escapes
+
+A backslash in a value written into a Python string is an escape of that string, which can write any character, a quote or `;` too, into the command `os.system()` gives the shell.
+
+Tool `python_os_system_escapes.xml`:
+
+```
+python3 '$script' > '$out'
+```
+
+Refused
+
+```
+inputs:
+  p: x\x27\x3btouch harm\x2dmarker\x3b\x27
+```
+
+Runs: Without a backslash the value stays inside the shell's single quotes.
+
+```
+inputs:
+  p: hello world
+```
+
 ### `stray-quote`
 
 A quote in one value is harmless by itself but flips the quoting of the rest of the line, which leaves the command characters of another value unquoted.
@@ -1944,6 +2027,25 @@ Runs: Quotes and backslashes in the value stay inside the string repr() writes.
 inputs:
   raw_word: a\'); open('harm-marker', 'w'); ('
   word: a'); open('harm-marker', 'w'); ('
+```
+
+#### python_print_is_not_shell
+
+The same value in a string the Python configfile prints stays a string.
+
+Tool `python_print_string.xml`:
+
+```
+python3 '$script' > '$out'
+```
+
+Runs
+
+```
+inputs:
+  p: -o harm-marker
+config:
+  mode: enforce_all
 ```
 
 #### galaxy_url_kept

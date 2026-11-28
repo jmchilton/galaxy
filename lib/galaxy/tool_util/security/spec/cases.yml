@@ -372,6 +372,92 @@ json_inside_python_string:
       harm: true
       expect: {rejected: false}
 
+python_os_system_is_shell:
+  doc: >-
+    A string of a Python configfile that `os.system()` runs is a shell command. A sanitized value cannot end the
+    Python string, but the shell splits it into words, which can be options.
+  tool: python_os_system.xml
+  code: configfile-injection
+  review:
+    serious_rules: []
+    findings:
+      - {rule: configfile-injection, severity: medium, location: "configfile:script", accessor: text, param: p,
+         checkable: true}
+  red:
+    - config: {mode: enforce_data}
+      inputs: {p: "-o harm-marker"}
+      harm: true
+      expect:
+        rejected: true
+        message_contains: ["the value of input 'p' contains the characters [space a word starting with -]"]
+  green:
+    - config: {mode: enforce_data}
+      inputs: {p: words}
+      harm: true
+      expect: {rejected: false}
+
+python_print_is_not_shell:
+  doc: The same value in a string the Python configfile prints stays a string.
+  tool: python_print_string.xml
+  review:
+    serious_rules: []
+    absent:
+      - {rule: configfile-injection, param: p}
+  green:
+    - config: {mode: enforce_all}
+      inputs: {p: "-o harm-marker"}
+      harm: true
+      expect: {rejected: false}
+
+python_os_system_raw_value:
+  doc: >-
+    A raw value that a validator keeps free of single quotes cannot end the Python string `os.system()` runs, but
+    the shell that runs the string runs the commands the value adds.
+  tool: python_os_system_raw.xml
+  code: configfile-injection
+  review:
+    serious_rules: [configfile-injection]
+    findings:
+      - {rule: configfile-injection, severity: high, location: "configfile:script", accessor: raw, param: p,
+         checkable: true}
+  red:
+    - inputs: {p: "a; touch harm-marker"}
+      harm: true
+      expect:
+        rejected: true
+        message_contains: ["the value of input 'p' contains the characters [;]"]
+    - inputs: {p: "$(touch harm-marker)"}
+      harm: true
+      expect: {rejected: true}
+  green:
+    - doc: Words the shell splits are refused only from `enforce_data` on.
+      inputs: {p: "hello world"}
+      harm: true
+      expect: {rejected: false}
+
+python_os_system_escapes:
+  doc: >-
+    A backslash in a value written into a Python string is an escape of that string, which can write any
+    character, a quote or `;` too, into the command `os.system()` gives the shell.
+  tool: python_os_system_escapes.xml
+  code: configfile-injection
+  review:
+    serious_rules: [configfile-injection]
+    findings:
+      - {rule: configfile-injection, severity: high, location: "configfile:script", accessor: raw, param: p,
+         checkable: true}
+  red:
+    - inputs: {p: 'x\x27\x3btouch harm\x2dmarker\x3b\x27'}
+      harm: true
+      expect:
+        rejected: true
+        message_contains: ["the value of input 'p' contains the characters [a backslash before a character]"]
+  green:
+    - doc: Without a backslash the value stays inside the shell's single quotes.
+      inputs: {p: "hello world"}
+      harm: true
+      expect: {rejected: false}
+
 path_traversal:
   doc: >-
     A file name the user gives is written as a path `cp` writes to. With `enforce_data`, a slash in it is refused,
