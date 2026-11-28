@@ -1,9 +1,9 @@
 <tool id="identifier_multiple_in_repeat" name="identifier_multiple_in_repeat" version="1.0.0">
     <command><![CDATA[
-#import shlex
+#import re
 #for $repeat_instance in $the_repeat#
     #for $input in $repeat_instance.the_data.input1#
-        echo ${shlex.quote(str($input.element_identifier))} >> 'output1';
+        echo '${re.sub('^[-.]|[^\\w .-]', '_', str($input.element_identifier))}' >> 'output1';
     #end for#
 #end for#
     ]]></command>

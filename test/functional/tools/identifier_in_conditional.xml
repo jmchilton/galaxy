@@ -1,16 +1,16 @@
 <tool id="identifier_in_conditional" name="identifier_in_conditional" version="1.0.0">
     <command><![CDATA[
-#import shlex
+#import re
 ## note access to input1 is supposed to work
 ## - qualified ($outer_cond.input1)
 ## - and unqualified ($input1)
 ## both are tested here but the latter should be avoided
 #if str($outer_cond.multi_input) == 'true':
     #for $input in $outer_cond.input1#
-        echo ${shlex.quote(str($input.element_identifier))} >> 'output1';
+        echo '${re.sub('^[-.]|[^\\w .-]', '_', str($input.element_identifier))}' >> 'output1';
     #end for#
 #else
-    echo ${shlex.quote(str($input1.element_identifier))} >> 'output1';
+    echo '${re.sub('^[-.]|[^\\w .-]', '_', str($input1.element_identifier))}' >> 'output1';
 #end if
     ]]></command>
     <inputs>
