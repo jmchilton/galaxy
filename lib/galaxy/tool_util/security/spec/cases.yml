@@ -71,6 +71,57 @@ ftpfile_param_shell_injection:
       harm: true
       expect: {rejected: false}
 
+color_param_validated:
+  doc: >-
+    Galaxy renders a color param only when it is a colour name, bare hex or `#RRGGBB`, which cannot leave its
+    double quotes or begin with a dash.
+  tool: color_param_double_quoted.xml
+  review:
+    serious_rules: []
+    absent:
+      - {rule: shell-injection, param: col}
+      - {rule: option-injection, param: col}
+  green:
+    - inputs: {col: "#ff0000"}
+      harm: true
+      expect: {rejected: false}
+    - config: {mode: enforce_all}
+      inputs: {col: grey}
+      expect: {rejected: false}
+
+color_rgb_unquoted_splits:
+  doc: With `rgb="true"`, a colour renders as a tuple such as `(255, 0, 0)`, whose spaces split it unquoted.
+  tool: color_rgb_unquoted.xml
+  code: argument-injection
+  review:
+    serious_rules: []
+    findings:
+      - {rule: argument-injection, severity: medium, accessor: text, param: col, checkable: true}
+  red:
+    - config: {mode: enforce_all}
+      inputs: {col: "#ff0000"}
+      expect:
+        rejected: true
+        message_contains: ["the value of input 'col' contains the characters [space ( )]"]
+  green:
+    - doc: The words hold only digits, commas and parentheses, which `enforce_code` lets through.
+      inputs: {col: "#ff0000"}
+      expect: {rejected: false}
+
+color_value_validated:
+  doc: >-
+    `.value` of a color param is the value as it was sent, which Galaxy checks as it evaluates the job, however
+    the value reached it.
+  tool: color_value_double_quoted.xml
+  review:
+    serious_rules: []
+    absent:
+      - {rule: shell-injection, param: col}
+  green:
+    - inputs: {col: "#FF0000"}
+      harm: true
+      expect: {rejected: false}
+
 element_identifier_shell_injection:
   doc: Element identifiers are not sanitized; one in single quotes can start a command.
   tool: element_identifier_single_quoted.xml

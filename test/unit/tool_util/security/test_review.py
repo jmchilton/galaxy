@@ -106,6 +106,7 @@ def review(
     extra: str = "",
     tool_attrs: str = "",
     inputs: str = "",
+    colors_validated: bool = True,
 ) -> Report:
     path = os.path.join(tmp_path, "tool.xml")
     with open(path, "w") as fh:
@@ -116,7 +117,7 @@ def review(
   <outputs><data name="out" format="txt"/></outputs>
   {extra}
 </tool>""")
-    return review_tool_source(get_tool_source(path))
+    return review_tool_source(get_tool_source(path), colors_validated=colors_validated)
 
 
 def rules(report: Report, kind: str = "vulnerability") -> set[tuple[str, str]]:
@@ -380,6 +381,21 @@ def test_options_sanitize_false_removes_all_sanitization(tmp_path):
         "text param 'text'",
         "name of dataset 'input'",
     }
+
+
+@pytest.mark.parametrize(
+    "command,colors_validated,expected",
+    [
+        ('tool "$col" "$col.value"', True, set()),
+        ('tool "$col" "$col.value"', False, {("shell-injection", "high")}),
+        # Unquoted, the `#` of a colour comments out the rest of the line.
+        ("tool $col > '$out'", True, {("argument-injection", "medium")}),
+    ],
+)
+def test_color_param_where_galaxy_checks_colours(tmp_path, command, colors_validated, expected):
+    color = '<param name="col" type="color" value="#000000"/>'
+    report = review(tmp_path, command, inputs=color, colors_validated=colors_validated)
+    assert {rule for rule in rules(report) if rule != ("option-injection", "low")} == expected
 
 
 def test_python_built_command_keeps_quoting(tmp_path):

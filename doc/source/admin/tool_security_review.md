@@ -1066,6 +1066,32 @@ datasets:
 
 A value is written unquoted, or can close its quotes, and can split into more words. From `enforce_data` on, a job is refused when a word can then be an option, a home directory, a path or a glob; with `enforce_all`, also when the words are plain or the value only closes its quotes.
 
+#### color_rgb_unquoted_splits
+
+With `rgb="true"`, a colour renders as a tuple such as `(255, 0, 0)`, whose spaces split it unquoted.
+
+Tool `color_rgb_unquoted.xml`:
+
+```
+echo $col > '$out'
+```
+
+Refused
+
+```
+inputs:
+  col: '#ff0000'
+config:
+  mode: enforce_all
+```
+
+Runs: The words hold only digits, commas and parentheses, which `enforce_code` lets through.
+
+```
+inputs:
+  col: '#ff0000'
+```
+
 #### repr_closes_shell_single_quotes
 
 repr() writes its own quotes, which end the shell's single quotes around it: the value is then unquoted, and the shell splits it into words. With `enforce_data`, a word that can be an option is refused.
@@ -2127,6 +2153,49 @@ Runs: Quotes and command characters are turned into tokens and stay inside the q
 ```
 inputs:
   f: a';touch harm-marker;'
+```
+
+#### color_param_validated
+
+Galaxy renders a color param only when it is a colour name, bare hex or `#RRGGBB`, which cannot leave its double quotes or begin with a dash.
+
+Tool `color_param_double_quoted.xml`:
+
+```
+echo "$col" > '$out'
+```
+
+Runs
+
+```
+inputs:
+  col: '#ff0000'
+```
+
+Runs
+
+```
+inputs:
+  col: grey
+config:
+  mode: enforce_all
+```
+
+#### color_value_validated
+
+`.value` of a color param is the value as it was sent, which Galaxy checks as it evaluates the job, however the value reached it.
+
+Tool `color_value_double_quoted.xml`:
+
+```
+echo "$col.value" > '$out'
+```
+
+Runs
+
+```
+inputs:
+  col: '#FF0000'
 ```
 
 #### dataset_name_stays_quoted

@@ -1,0 +1,10 @@
+<tool id="spec_color_rgb_unquoted" name="RGB colour unquoted" version="1.0" profile="24.0">
+    <description>writes the rgb form of a color param unquoted</description>
+    <command><![CDATA[echo $col > '$out']]></command>
+    <inputs>
+        <param name="col" type="color" value="#000000" rgb="true"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

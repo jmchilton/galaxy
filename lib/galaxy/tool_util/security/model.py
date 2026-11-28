@@ -77,6 +77,11 @@ _USER_SPECIALS = "__user_email__ userEmail __user_name__ dbkey".split()
 # Select-like parameter types whose values come from the user's data.
 _USER_SELECT_TYPES = frozenset(("data_column", "group_tag", "genomebuild"))
 
+# What a color param holds where Galaxy checks colour values: a name, bare hex or #RRGGBB; with rgb="true"
+# it renders as a tuple such as (255, 0, 0).
+_COLOR_CHARS: Chars = frozenset("#")
+_RGB_COLOR_CHARS: Chars = frozenset("(), ")
+
 
 @dataclass
 class Model:
@@ -199,10 +204,12 @@ def _escapes_single_quote(sanitizer: ToolParameterSanitizer | None) -> bool:
     return sanitizer is not None and sanitizer.sanitize_param("'") in ("'\"'\"'", "'\\''")
 
 
-def _value(input_source: InputSource, path: str, tool_sanitize: bool, wrapped: bool = True) -> Node:
+def _value(
+    input_source: InputSource, path: str, tool_sanitize: bool, wrapped: bool = True, colors_validated: bool = True
+) -> Node:
     """``wrapped``: Galaxy writes the param through its parameter wrapper. Without one (a tool that does not
     check its values) the value is a string the default sanitizer cleans: the param's own sanitizer and
-    attributes such as `.value` belong to the wrapper."""
+    attributes such as `.value` belong to the wrapper. ``colors_validated``: see :func:`build_model`."""
     ptype = input_source.get("type") or "text"
     if ptype in ("data", "hidden_data"):
         return Data(path, multiple=input_source.get_bool("multiple", False), sanitize=tool_sanitize)
@@ -237,6 +244,18 @@ def _value(input_source: InputSource, path: str, tool_sanitize: bool, wrapped: b
     lead = constraint.lead if "-" in universe and "-" not in constraint.lead else None
     word_first = constraint.word_first()
     words = word_first if "-" in universe and "-" not in word_first else None
+    if ptype == "color" and wrapped and colors_validated:
+        # The job's evaluation checks the value, and rendering it checks it again.
+        checked = universe & _COLOR_CHARS
+        text = AV(
+            chars=_RGB_COLOR_CHARS if input_source.get_bool("rgb", False) else checked,
+            sources=frozenset((source(f"color param '{path}'", TEXT, path),)),
+            verbatim=True,
+        )
+        raw = AV(
+            chars=checked, sources=frozenset((source(f"value of color param '{path}'", RAW, path),)), verbatim=True
+        )
+        return Value(path, ptype, as_text=text, as_raw=raw, text_like=True)
     if ptype in ("color", "directory_uri", "ftpfile") and wrapped:
         # These types return the submitted value as it is: no sanitizer runs when they are rendered.
         value = AV(
@@ -267,7 +286,12 @@ def _value(input_source: InputSource, path: str, tool_sanitize: bool, wrapped: b
 
 
 def _add_inputs(
-    group: Group, input_sources: list[InputSource], prefix: str, tool_sanitize: bool, wrapped: bool
+    group: Group,
+    input_sources: list[InputSource],
+    prefix: str,
+    tool_sanitize: bool,
+    wrapped: bool,
+    colors_validated: bool,
 ) -> None:
     for input_source in input_sources:
         input_type = input_source.parse_input_type()
@@ -285,6 +309,7 @@ def _add_inputs(
                 f"{path}.",
                 tool_sanitize,
                 wrapped,
+                colors_validated,
             )
             group.add(name, Repeat(path, item))
         elif input_type == "section":
@@ -295,6 +320,7 @@ def _add_inputs(
                 f"{path}.",
                 tool_sanitize,
                 wrapped,
+                colors_validated,
             )
             group.add(name, section)
         elif input_type == "conditional" and not _has_test_param(input_source):
@@ -303,12 +329,14 @@ def _add_inputs(
         elif input_type == "conditional":
             test_source = input_source.parse_test_input_source()
             conditional = Group(path, selector=test_source.parse_name())
-            _add_inputs(conditional, [test_source], f"{path}.", tool_sanitize, wrapped)
+            _add_inputs(conditional, [test_source], f"{path}.", tool_sanitize, wrapped, colors_validated)
             values = []
             for value_name, case_source in input_source.parse_when_input_sources():
                 values.append(str(value_name))
                 case = Group(path)
-                _add_inputs(case, case_source.parse_input_sources(), f"{path}.", tool_sanitize, wrapped)
+                _add_inputs(
+                    case, case_source.parse_input_sources(), f"{path}.", tool_sanitize, wrapped, colors_validated
+                )
                 for child_name, nodes in case.children.items():
                     for node in nodes:
                         conditional.add(child_name, node)
@@ -316,7 +344,7 @@ def _add_inputs(
             conditional.case_values = frozenset(values)
             group.add(name, conditional)
         elif input_type == "param":
-            group.add(name, _value(input_source, path, tool_sanitize, wrapped))
+            group.add(name, _value(input_source, path, tool_sanitize, wrapped, colors_validated))
             if (input_source.get("type") or "") in ("data", "hidden_data"):
                 # Galaxy adds the dataset converted for a <conversion> next to the parameter.
                 for conversion, _ in input_source.parse_conversion_tuples():
@@ -333,13 +361,17 @@ def build_model(
     tool_source: ToolSource,
     template_job_parameters: frozenset[str] | None = None,
     keeps_undeclared_job_parameters: bool = False,
+    colors_validated: bool = True,
 ) -> Model:
     """``keeps_undeclared_job_parameters``: the tool does not check its values (`check_values="false"`, a data
-    source tool), so Galaxy passes it its job parameters as sent, and its inputs without parameter wrappers."""
+    source tool), so Galaxy passes it its job parameters as sent, and its inputs without parameter wrappers.
+    ``colors_validated``: the Galaxy that runs the tool renders a color param only when it is a colour
+    (release 25.1 and later), which the default assumes; an older one writes any value it is sent."""
     tool_sanitize = bool(tool_source.parse_sanitize())
+    wrapped = not keeps_undeclared_job_parameters
     root = Group("")
     for page_source in tool_source.parse_input_pages().page_sources:
-        _add_inputs(root, page_source.parse_input_sources(), "", tool_sanitize, not keeps_undeclared_job_parameters)
+        _add_inputs(root, page_source.parse_input_sources(), "", tool_sanitize, wrapped, colors_validated)
     model = Model(
         root=root,
         sanitize=tool_sanitize,

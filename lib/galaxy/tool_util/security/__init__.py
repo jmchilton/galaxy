@@ -247,6 +247,7 @@ def review_tool_source(
     tool_source: ToolSource,
     template_job_parameters: frozenset[str] | None = None,
     keeps_undeclared_job_parameters: bool | None = None,
+    colors_validated: bool = True,
 ) -> Report:
     """The security review of a tool.
 
@@ -256,6 +257,10 @@ def review_tool_source(
     parameters that are not inputs (``Tool.keeps_undeclared_job_parameters``, a data source tool);
     None reads that from the tool's ``<inputs check_values>``. Such a job parameter also replaces the
     names Galaxy sets before it adds the job's parameters (``__galaxy_url__``, ...).
+
+    ``colors_validated``: the Galaxy that runs the tool checks the values of color params as it
+    renders them (release 25.1 and later). The default assumes such a Galaxy; False reviews the tool
+    for an older one, which writes any value it is sent.
 
     The work on one template is bounded by the analysis' step budget: a template past it counts as
     not fully analysed.
@@ -267,7 +272,7 @@ def review_tool_source(
         return report
     if keeps_undeclared_job_parameters is None:
         keeps_undeclared_job_parameters = _keeps_undeclared_job_parameters(tool_source)
-    model = build_model(tool_source, template_job_parameters, keeps_undeclared_job_parameters)
+    model = build_model(tool_source, template_job_parameters, keeps_undeclared_job_parameters, colors_validated)
     readers: dict[str, set[str]] = {}
     # The names each template mentions, and those it looks up where a job parameter can answer.
     names: dict[str, tuple[set[str], set[str]]] = {}

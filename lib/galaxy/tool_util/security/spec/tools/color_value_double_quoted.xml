@@ -1,0 +1,10 @@
+<tool id="spec_color_value_double_quoted" name="Colour value in double quotes" version="1.0" profile="24.0">
+    <description>writes the value of a color param in double quotes</description>
+    <command><![CDATA[echo "$col.value" > '$out']]></command>
+    <inputs>
+        <param name="col" type="color" value="#000000"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>
