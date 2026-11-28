@@ -1,10 +1,11 @@
 <tool id="collection_type_source" name="collection_type_source" version="0.1.0">
   <command>
-    #import shlex
+    #import re
     mkdir output;
     #for $key in $input_collect.keys()#
-    cat "$header" > output/${shlex.quote(str($key))};
-    cat "$input_collect[$key]" >> output/${shlex.quote(str($key))};
+    #set $name = re.sub('^[-.]|[^\\w.-]', '_', str($key)) or '_'
+    cat "$header" > 'output/$name';
+    cat "$input_collect[$key]" >> 'output/$name';
     #end for#
   </command>
   <inputs>

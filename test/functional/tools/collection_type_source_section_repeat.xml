@@ -1,12 +1,14 @@
 <tool id="collection_type_source_section_repeat" name="collection_type_source_section_repeat" version="0.1.0">
   <command>
-    #import shlex
+    #import re
     mkdir section_output repeat_output;
     #for $key in $sect.input_collect.keys()#
-    cat "$sect.input_collect[$key]" > section_output/${shlex.quote(str($key))};
+    #set $name = re.sub('^[-.]|[^\\w.-]', '_', str($key)) or '_'
+    cat "$sect.input_collect[$key]" > 'section_output/$name';
     #end for#
     #for $key in $rep[0].input_collect.keys()#
-    cat "$rep[0].input_collect[$key]" > repeat_output/${shlex.quote(str($key))};
+    #set $name = re.sub('^[-.]|[^\\w.-]', '_', str($key)) or '_'
+    cat "$rep[0].input_collect[$key]" > 'repeat_output/$name';
     #end for#
   </command>
   <inputs>
