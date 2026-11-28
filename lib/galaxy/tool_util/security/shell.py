@@ -635,6 +635,34 @@ def placeholder(state: ShellState, tool_path: bool = False, dataset: str = "") -
     return context, lexer.state()
 
 
+# Command characters that do nothing inside these quotes, and start a command once a stray quote flips them.
+_INERT_OPERATORS = {"'": frozenset(";&|<>$`"), ANSI: frozenset(";&|<>$`"), '"': frozenset(";&|<>")}
+
+
+def inert_operators(quote: str, script: bool) -> frozenset[str]:
+    """The command characters that do nothing inside ``quote`` (none unquoted); in a script, also a newline."""
+    operators = _INERT_OPERATORS.get(quote, frozenset())
+    return operators | {"\n"} if script and operators else operators
+
+
+def quotes_operators(state: ShellState, text: str) -> bool:
+    """Whether template text written from ``state`` holds a command character inside quotes."""
+    quote, esc = state.frames[-1].quote, state.esc
+    for c in text:
+        if esc:
+            esc = False
+        elif c == "\\" and quote != "'":
+            esc = True
+        elif quote:
+            if c == ("'" if quote == ANSI else quote):
+                quote = ""
+            elif c in inert_operators(quote, state.script):
+                return True
+        elif c in "'\"":
+            quote = c
+    return False
+
+
 def finish(state: ShellState, events: set[Event] | None = None) -> ShellState:
     """End of the template: close the last word so its events are reported."""
     lexer = _Lexer(state, events)

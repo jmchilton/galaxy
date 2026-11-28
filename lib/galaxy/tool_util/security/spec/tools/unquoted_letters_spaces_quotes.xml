@@ -1,0 +1,19 @@
+<tool id="spec_unquoted_letters_spaces_quotes" name="Words with quotes, unquoted" version="1.0" profile="24.0">
+    <description>writes a text value of letters, spaces and double quotes, unquoted</description>
+    <command><![CDATA[cp '$input' reads.txt && sort $files > '$out']]></command>
+    <inputs>
+        <param name="input" type="data" format="txt"/>
+        <param name="files" type="text">
+            <sanitizer>
+                <valid initial="string.ascii_letters,string.digits,string.whitespace">
+                    <add value="_"/>
+                    <add value="."/>
+                    <add value="&quot;"/>
+                </valid>
+            </sanitizer>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

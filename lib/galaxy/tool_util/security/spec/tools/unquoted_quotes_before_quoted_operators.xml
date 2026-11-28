@@ -1,0 +1,19 @@
+<tool id="spec_unquoted_quotes_before_quoted_operators" name="Words with quotes, before quoted operators" version="1.0" profile="24.0">
+    <description>writes a text value of letters, spaces and double quotes, unquoted, before template text that quotes a command character</description>
+    <command><![CDATA[cp '$input' reads.txt && sort $files > '$out' && echo 'sorted; done' >> '$out']]></command>
+    <inputs>
+        <param name="input" type="data" format="txt"/>
+        <param name="files" type="text">
+            <sanitizer>
+                <valid initial="string.ascii_letters,string.digits,string.whitespace">
+                    <add value="_"/>
+                    <add value="."/>
+                    <add value="&quot;"/>
+                </valid>
+            </sanitizer>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

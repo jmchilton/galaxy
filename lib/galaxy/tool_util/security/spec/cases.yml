@@ -769,6 +769,84 @@ argument_injection:
       harm: true
       expect: {rejected: false}
 
+unquoted_quotes_only_regroup_words:
+  doc: >-
+    An unquoted value of letters, spaces and double quotes only adds or regroups plain words: a quote changes which
+    words are joined, not what they are. A quote that opens a string for the next value is a stray quote.
+  tool: unquoted_letters_spaces_quotes.xml
+  review:
+    findings:
+      - {rule: argument-injection, severity: low, accessor: text, param: files, checkable: true}
+    absent:
+      - {rule: argument-injection, severity: medium, param: files}
+  green:
+    - config: {mode: enforce_data}
+      datasets: {input: {}}
+      inputs: {files: 'reads.txt "reads.txt"'}
+      harm: true
+      expect: {rejected: false}
+    - doc: A lone quote leaves the line unbalanced, which the shell refuses to run.
+      config: {mode: enforce_data}
+      datasets: {input: {}}
+      inputs: {files: 'reads.txt"'}
+      expect: {rejected: false}
+
+unquoted_quotes_and_dash_split_into_options:
+  doc: With a dash allowed too, a word of the value can be an option, also between quotes.
+  tool: unquoted_letters_spaces_quotes_dash.xml
+  code: argument-injection
+  review:
+    findings:
+      - {rule: argument-injection, severity: medium, accessor: text, param: files, checkable: true}
+  red:
+    - config: {mode: enforce_data}
+      datasets: {input: {}}
+      inputs: {files: 'reads.txt "-o" harm-marker'}
+      harm: true
+      expect: {rejected: true}
+  green:
+    - config: {mode: enforce_data}
+      datasets: {input: {}}
+      inputs: {files: '"reads.txt" reads.txt'}
+      harm: true
+      expect: {rejected: false}
+
+unquoted_quotes_before_quoted_operators:
+  doc: >-
+    A quote of the value flips the quoting of the template text after it, and that text holds a command character
+    inside quotes: the value can do more than regroup plain words.
+  tool: unquoted_quotes_before_quoted_operators.xml
+  review:
+    findings:
+      - {rule: argument-injection, severity: medium, accessor: text, param: files, checkable: true}
+  green:
+    - config: {mode: enforce_data}
+      datasets: {input: {}}
+      inputs: {files: "reads.txt reads.txt"}
+      harm: true
+      expect: {rejected: false}
+
+unquoted_quotes_rewritten:
+  doc: >-
+    Where a rewrite of the template can add a quote the check does not see, a value of plain words and quotes
+    stays medium, so that the strict check refuses its jobs with `enforce_data`.
+  tool: unquoted_quotes_rewritten.xml
+  code: uncheckable-rewrites
+  review:
+    rewrites: true
+    findings:
+      - {rule: argument-injection, severity: medium, accessor: text, param: files}
+  red:
+    - config: {mode: enforce_data}
+      datasets: {input: {}}
+      inputs: {files: "reads.txt"}
+      expect: {rejected: true}
+  green:
+    - datasets: {input: {}}
+      inputs: {files: "reads.txt"}
+      harm: true
+      expect: {rejected: false}
+
 dataset_content_command_substitution:
   doc: >-
     A command substitution that reads a dataset writes its content where the job runs. Unquoted, the shell

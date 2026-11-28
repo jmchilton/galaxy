@@ -44,6 +44,7 @@ SHELL_EXEC: Chars = frozenset(";&|$`<>")
 # And a newline, in a shell script.
 SCRIPT_EXEC: Chars = SHELL_EXEC | {"\n"}
 WHITESPACE: Chars = frozenset(" \t\n")
+QUOTES: Chars = frozenset("'\"")
 # Split or rewrite an unquoted word: extra arguments, globs, quotes, comments.
 SHELL_SPLIT: Chars = frozenset(" \t\n*?[]{}()~#!'\"\\")
 
@@ -193,17 +194,30 @@ def unquoted(chars: Chars, word_first: Chars | None = None, script: bool = False
         return Verdict("shell-injection", HIGH, hit, "can start another command")
     if hit := chars & SHELL_SPLIT:
         dash = "-" in (chars if word_first is None else word_first)
-        if hit <= WHITESPACE and not dash and "/" not in chars:
-            # A list of plain words: none of them can be an option or name a file elsewhere.
+        if hit <= WHITESPACE | QUOTES and not dash and "/" not in chars:
+            # A list of plain words: none of them can be an option or name a file elsewhere. A quote only
+            # changes which words are joined (see regroups).
             return Verdict("argument-injection", LOW, hit, "can split the word into extra plain words")
-        return Verdict(
-            "argument-injection",
-            MEDIUM,
-            hit,
-            "can split the word into extra arguments or globs",
-            data_requires=DATA_HARM,
-        )
+        return split_words(hit)
     return None
+
+
+def split_words(hit: Chars) -> Verdict:
+    """An unquoted value that splits into words, one of which can be an option, a path or a glob."""
+    return Verdict(
+        "argument-injection",
+        MEDIUM,
+        hit,
+        "can split the word into extra arguments or globs",
+        data_requires=DATA_HARM,
+    )
+
+
+def regroups(verdict: Verdict) -> bool:
+    """A value of plain words with quotes (:func:`unquoted`). Its quotes also flip the quoting of the
+    template text after it: that is low only where no such text holds what runs a command unquoted,
+    and where the job check can see the quotes."""
+    return verdict.rule == "argument-injection" and verdict.severity == LOW and bool(verdict.chars & QUOTES)
 
 
 # What the shell does with the output of an unquoted command substitution: it splits it into words and

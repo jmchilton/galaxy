@@ -310,6 +310,41 @@ def test_validators_narrow_the_value(tmp_path, command, expected):
     assert found == ({expected} if expected else set())
 
 
+_WORDS_AND_QUOTES = """<param name="p" type="text"><sanitizer>
+  <valid initial="string.ascii_letters"><add value=" "/><add value="&quot;"/></valid>
+</sanitizer></param>"""
+
+
+@pytest.mark.parametrize(
+    "command,severity",
+    [
+        ("tool $p", "low"),
+        ("tool 'a;b' $p", "low"),
+        ('tool $p "\\$HOME" a\\;b', "low"),
+        # A quote of the value flips the template text after it: a quoted command character there starts a
+        # command.
+        ("tool $p 'a;b'", "medium"),
+        ('tool $p "a|b"', "medium"),
+        ("tool $p 'a\\$b'", "medium"),
+        # Also one a value the template computes writes, whose text the analysis does not know.
+        ('#set $sep = ";".strip()\ntool $p "x${sep}"', "medium"),
+        ('#set $sep = ";".strip()\ntool "x${sep}" $p', "low"),
+        ('tool $p "${input}"', "low"),
+    ],
+)
+def test_quotes_in_plain_words(tmp_path, command, severity):
+    inputs = _WORDS_AND_QUOTES + '<param name="input" type="data" format="txt"/>'
+    assert rules(review(tmp_path, command, inputs=inputs)) == {("argument-injection", severity)}
+
+
+@pytest.mark.parametrize("script,severity", [("echo $p 'a b'", "low"), ("echo $p 'a\nb'", "medium")])
+def test_quotes_in_plain_words_before_a_quoted_newline(tmp_path, script, severity):
+    # In a script, a newline ends a command.
+    configfiles = f'<configfile name="script">{script}</configfile>'
+    report = review(tmp_path, "bash '$script'", configfiles=configfiles, inputs=_WORDS_AND_QUOTES)
+    assert rules(report) == {("argument-injection", severity)}
+
+
 @pytest.mark.parametrize(
     "command,reported",
     [

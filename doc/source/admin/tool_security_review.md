@@ -1265,6 +1265,38 @@ config:
   mode: enforce_all
 ```
 
+#### unquoted_quotes_and_dash_split_into_options
+
+With a dash allowed too, a word of the value can be an option, also between quotes.
+
+Tool `unquoted_letters_spaces_quotes_dash.xml`:
+
+```
+cp '$input' reads.txt && sort $files > '$out'
+```
+
+Refused
+
+```
+inputs:
+  files: reads.txt "-o" harm-marker
+datasets:
+  input: {}
+config:
+  mode: enforce_data
+```
+
+Runs
+
+```
+inputs:
+  files: '"reads.txt" reads.txt'
+datasets:
+  input: {}
+config:
+  mode: enforce_data
+```
+
 #### dataset_content_command_substitution
 
 A command substitution that reads a dataset writes its content where the job runs. Unquoted, the shell splits it into words and globs them, so it can add options. The check reads the file Galaxy keeps; with `enforce_data`, content with a word that starts with a dash is refused.
@@ -1612,6 +1644,37 @@ fault: review
 ### `uncheckable-rewrites`
 
 The templates change values in ways that can bring back characters the sanitizer took out (`chr()`, a decoder, a `.replace` or `re.sub` of the sanitizer's tokens, of text that is not literal, or of a value template code changed before). A literal rewrite of a value as the job carries it is checked with each job.
+
+#### unquoted_quotes_rewritten
+
+Where a rewrite of the template can add a quote the check does not see, a value of plain words and quotes stays medium, so that the strict check refuses its jobs with `enforce_data`.
+
+Tool `unquoted_quotes_rewritten.xml`:
+
+```
+#set s = str($files).replace('q', '"')
+cp '$input' reads.txt && sort $s > '$out'
+```
+
+Refused
+
+```
+inputs:
+  files: reads.txt
+datasets:
+  input: {}
+config:
+  mode: enforce_data
+```
+
+Runs
+
+```
+inputs:
+  files: reads.txt
+datasets:
+  input: {}
+```
 
 #### rewrites_restore_tokens
 
@@ -2497,6 +2560,59 @@ inputs:
   c:
     sel: fixed
     word: b
+```
+
+#### unquoted_quotes_only_regroup_words
+
+An unquoted value of letters, spaces and double quotes only adds or regroups plain words: a quote changes which words are joined, not what they are. A quote that opens a string for the next value is a stray quote.
+
+Tool `unquoted_letters_spaces_quotes.xml`:
+
+```
+cp '$input' reads.txt && sort $files > '$out'
+```
+
+Runs
+
+```
+inputs:
+  files: reads.txt "reads.txt"
+datasets:
+  input: {}
+config:
+  mode: enforce_data
+```
+
+Runs: A lone quote leaves the line unbalanced, which the shell refuses to run.
+
+```
+inputs:
+  files: reads.txt"
+datasets:
+  input: {}
+config:
+  mode: enforce_data
+```
+
+#### unquoted_quotes_before_quoted_operators
+
+A quote of the value flips the quoting of the template text after it, and that text holds a command character inside quotes: the value can do more than regroup plain words.
+
+Tool `unquoted_quotes_before_quoted_operators.xml`:
+
+```
+cp '$input' reads.txt && sort $files > '$out' && echo 'sorted; done' >> '$out'
+```
+
+Runs
+
+```
+inputs:
+  files: reads.txt reads.txt
+datasets:
+  input: {}
+config:
+  mode: enforce_data
 ```
 
 #### dataset_content_substitution_quoted

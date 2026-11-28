@@ -32,10 +32,12 @@ from .model import (
     Model,
 )
 from .nodes import (
+    Collection,
     Data,
     dataset_content,
     file_content,
     Special,
+    Value,
 )
 from .report import (
     Finding,
@@ -139,6 +141,21 @@ def _literal_chars(value: AV) -> charsets.Chars:
     for inner in (*(value.items or ()), *((value.elem,) if value.elem is not None else ()), *value.alts):
         chars = chars | _literal_chars(inner)
     return chars
+
+
+def _template_chars(value: AV) -> charsets.Chars:
+    """The probe characters a value no user controls can write: none for a path Galaxy sets or a number, those
+    of its texts for a boolean or an option the tool lists, any for one whose text the analysis does not know
+    (`"x".strip()`, `chr(92)`)."""
+    chars: set[str] = set()
+    for node in value.nodes:
+        if isinstance(node, Value) and node.listed is not None:
+            chars.update(node.listed)
+        elif not isinstance(node, (Data, Collection, Special)) and not (
+            isinstance(node, Value) and node.type in ("integer", "float")
+        ):
+            return charsets.PROBE
+    return frozenset(chars) if value.nodes else charsets.PROBE
 
 
 def _is_tool_path(node: Any) -> bool:
@@ -631,6 +648,13 @@ class TemplateAnalysis:
         self._written: dict[SourceRef, charsets.Chars] = {}
         # Quote characters of values that an escaping's own quote leaves outside their string.
         self._closers: dict[SourceRef, charsets.Chars] = {}
+        # Writes so far, and the last one of template text with a command character inside quotes.
+        self._writes = 0
+        self._quoted_operators = -1
+        # Findings of plain words with quotes, by key: the first write they were seen at, and their
+        # message as a low finding. And the keys of the other findings of words that split.
+        self._regroups: dict[tuple[Any, ...], tuple[int, str]] = {}
+        self._splits: set[tuple[Any, ...]] = set()
         self._in_capture_region = 0
         self._noted: set[str] = set()
         self._line: int | None = None
@@ -779,7 +803,24 @@ class TemplateAnalysis:
         for i in indexes:
             finding = self.report.findings[i]
             if poisoned and finding.refs:
-                self.report.findings[i] = dataclasses.replace(finding, unchecked=finding.refs)
+                finding = self.report.findings[i] = dataclasses.replace(finding, unchecked=finding.refs)
+            regroups = self._regroups.get(finding.key())
+            if (
+                regroups is not None
+                and finding.severity == charsets.MEDIUM
+                and finding.key() not in self._splits
+                and not finding.unchecked
+                and self._quoted_operators <= regroups[0]
+            ):
+                # No template text after it holds a quoted command character for its quotes to flip, and the
+                # job check sees its quotes: the words are plain.
+                self.report.findings[i] = dataclasses.replace(
+                    finding,
+                    severity=charsets.LOW,
+                    message=regroups[1],
+                    level=charsets.level_of(charsets.LOW),
+                    data_requires=frozenset(),
+                )
 
     def note(self, message: str) -> None:
         if message not in self._noted:
@@ -1125,7 +1166,10 @@ class TemplateAnalysis:
     def write_literal(self, text: str, states: States) -> States:
         if self._capture:
             return states
+        self._writes += 1
         if self.language == "shell":
+            if any(shell.quotes_operators(state, text) for state in states):
+                self._quoted_operators = self._writes
             return frozenset(shell.feed(state, text, self.events, self._judge_substitution) for state in states)
         return frozenset(self._feed_text(state, text, self.language) for state in states)
 
@@ -1246,12 +1290,18 @@ class TemplateAnalysis:
         out = set()
         tool_path = bool(value.nodes) and not text.tainted and all(map(_is_tool_path, value.nodes))
         dataset = self._substitution_key(value, text, datasets)
+        written = charsets.NONE if text.tainted else _template_chars(value)
+        if written:
+            self._writes += 1
         for state in states:
             context, after = shell.placeholder(state, tool_path, dataset)
             if context.comment:
                 out.add(after)
                 continue
             self.note_reader(value, context)
+            if written & shell.inert_operators(context.quote, state.script):
+                # Template text too: a stray quote of an earlier value flips it.
+                self._quoted_operators = self._writes
             if text.tainted:
                 escaped = bool(context.quote) and state.escaped == context.quote
                 self.judge_shell(text, context, raw_expr, escaped)
@@ -1565,34 +1615,44 @@ class TemplateAnalysis:
         breakout, requires, closes = _breakout(verdict, text, self.language, escaped, self.script)
         source = "; ".join(sorted(text.sources)[:3])
         expr = f" (`{raw_expr}`)" if raw_expr else ""
+
+        def message(verdict: Verdict) -> str:
+            return f"{source} is written {where}{expr} and {verdict.why}. Characters that get through: {charsets.show(verdict.chars)}"
+
+        regroups = verdict if charsets.regroups(verdict) else None
+        if regroups is not None:
+            # Medium unless the end of the template shows that its quotes can only regroup words.
+            verdict = charsets.split_words(verdict.chars)
         severity = verdict.severity
         if all(CONDITIONAL in s for s in text.sources) and severity != charsets.LOW:
             severity = charsets.SEVERITIES[charsets.SEVERITIES.index(severity) - 1]
-        self.report.add(
-            Finding(
-                rule=verdict.rule,
-                kind=VULNERABILITY,
-                severity=severity,
-                message=(
-                    f"{source} is written {where}{expr} and {verdict.why}."
-                    f" Characters that get through: {charsets.show(verdict.chars)}"
-                ),
-                location=self.location,
-                line=self._line,
-                expr=raw_expr,
-                source=source,
-                context=where,
-                chars=charsets.show(verdict.chars),
-                refs=refs,
-                breakout=breakout,
-                requires=requires,
-                closes=closes if needs_closer is None else text.chars & frozenset(needs_closer + "\\"),
-                needs_closer=needs_closer is not None,
-                unchecked=self._unchecked(refs, breakout | requires | closes),
-                level=verdict.level or charsets.level_of(severity),
-                data_requires=verdict.data_requires,
-            )
+        finding = Finding(
+            rule=verdict.rule,
+            kind=VULNERABILITY,
+            severity=severity,
+            message=message(verdict),
+            location=self.location,
+            line=self._line,
+            expr=raw_expr,
+            source=source,
+            context=where,
+            chars=charsets.show(verdict.chars),
+            refs=refs,
+            breakout=breakout,
+            requires=requires,
+            closes=closes if needs_closer is None else text.chars & frozenset(needs_closer + "\\"),
+            needs_closer=needs_closer is not None,
+            unchecked=self._unchecked(refs, breakout | requires | closes),
+            level=verdict.level or charsets.level_of(severity),
+            data_requires=verdict.data_requires,
         )
+        self.report.add(finding)
+        key = finding.key()
+        if regroups is not None:
+            first = self._regroups.get(key, (self._writes, message(regroups)))
+            self._regroups[key] = (min(first[0], self._writes), first[1])
+        elif verdict.rule == "argument-injection" and severity != charsets.LOW:
+            self._splits.add(key)
 
     # -- helpers (#def) ------------------------------------------------------------------------
 

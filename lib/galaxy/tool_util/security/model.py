@@ -14,6 +14,7 @@ from dataclasses import (
 )
 from typing import (
     Any,
+    Callable,
 )
 
 from galaxy.tool_util.parser.interface import (
@@ -25,6 +26,7 @@ from galaxy.util.xml_macros import template_macro_params
 from .charsets import (
     Chars,
     default_chars,
+    probe,
     PROBE,
     sanitized,
 )
@@ -199,6 +201,19 @@ def _static_options(input_source: InputSource, ptype: str) -> tuple[str, ...] | 
     return values
 
 
+def _listed_chars(input_source: InputSource, ptype: str, rendered: Callable[[Chars], Chars]) -> Chars | None:
+    """The probe characters of every text a boolean or a select whose options the tool lists can render."""
+    if ptype == "boolean":
+        texts = [input_source.get("truevalue") or "true", input_source.get("falsevalue") or "false"]
+    elif ptype == "select" and not input_source.get("dynamic_options") and input_source.parse_dynamic_options() is None:
+        texts = [str(value) for _, value, _ in input_source.parse_static_options()]
+        texts.append(input_source.get("separator") or ",")
+    else:
+        return None
+    chars = probe("".join(texts))
+    return chars | rendered(chars)
+
+
 def _escapes_single_quote(sanitizer: ToolParameterSanitizer | None) -> bool:
     """The sanitizer rewrites ' to the sequence that writes a quote inside a single-quoted shell word."""
     return sanitizer is not None and sanitizer.sanitize_param("'") in ("'\"'\"'", "'\\''")
@@ -217,7 +232,9 @@ def _value(
         types = [t.strip() for t in (input_source.get("collection_type") or "").split(",") if t.strip()]
         nested = any(":" in t for t in types) if types else None
         return Collection(path, nested=nested, sanitize=tool_sanitize)
-    if ptype in ("integer", "float", "boolean", "rules") or (ptype == "baseurl" and wrapped):
+    if ptype == "boolean":
+        return Value(path, ptype, listed=_listed_chars(input_source, ptype, lambda chars: chars))
+    if ptype in ("integer", "float", "rules") or (ptype == "baseurl" and wrapped):
         return Value(path, ptype)
 
     sanitizer_elem = input_source.parse_sanitizer_elem()
@@ -229,7 +246,8 @@ def _value(
     if ptype in ("select", "drill_down") or ptype in _USER_SELECT_TYPES:
         reason = _user_select(input_source)
         if reason is None:
-            return Value(path, ptype, options=_static_options(input_source, ptype))
+            listed = _listed_chars(input_source, ptype, rendered)
+            return Value(path, ptype, options=_static_options(input_source, ptype), listed=listed)
         label = f"{reason} param '{path}'" if reason in _USER_SELECT_TYPES else f"'{path}' ({reason})"
         if ptype == "data_column":
             # Galaxy checks a column against the dataset's columns, except for an empty dataset.

@@ -16,6 +16,7 @@ from dataclasses import (
 from typing import Iterator
 
 from .charsets import (
+    Chars,
     default_chars,
     PROBE,
 )
@@ -60,6 +61,8 @@ class Value(Node):
     text_like: bool = False  # unknown attributes are string methods of the raw value
     # A select that takes only these values, each rendered as it is: options fixed in the tool, no sanitizer.
     options: tuple[str, ...] | None = None
+    # A boolean, or a select whose options the tool lists: the probe characters of every text it can render.
+    listed: Chars | None = None
     # False for a string Galaxy writes without a parameter wrapper, through SafeStringWrapper: its string
     # methods give the sanitized text, `.unsanitized` the value as submitted (as_raw), and nothing else exists.
     wrapped: bool = True
