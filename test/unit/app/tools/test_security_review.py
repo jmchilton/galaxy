@@ -368,25 +368,26 @@ INTERACTIVE_ECHO_IDS = ECHO_IDS.replace('profile="24.0">', f'profile="24.0" tool
 INTERACTIVE_LOOKALIKE = ECHO_IDS.replace('profile="24.0">', f'profile="24.0">{ENTRY_POINTS}')
 
 
-def test_interactive_tools_jobs_are_not_checked_at_any_level(app, tmp_path, caplog):
+def test_only_tools_galaxy_builds_as_interactive_are_left_out(app, tmp_path, caplog):
     caplog.set_level(logging.INFO, logger=security_review.__name__)
     app.config.interactivetools_enable = True
+    identifiers = ["sample_1", "it';id;'s"]
     tool = make_tool(app, tmp_path, INTERACTIVE_ECHO_IDS)
+    # It has a command, so only the exclusion leaves it unreviewed.
     assert tool.tool_type == "interactive" and tool.command
     assert reviewed_tool_source(tool) is None
     for mode in (ENFORCE_CODE, ENFORCE_DATA, ENFORCE_ALL):
         for when_unsure in (STRICT, "refuse"):
             r = ToolSecurityReviewer(mode, when_unsure=when_unsure)
             assert r.review(tool) is None
-            r.check_job(tool, evaluator(app, tool, ["sample_1", "it';id;'s"]))
+            r.check_job(tool, evaluator(app, tool, identifiers))
+    # Said once per reviewer and tool, not per job.
     assert caplog.text.count("is not reviewed for security: it is an interactive tool") == 6
-
-
-def test_tools_that_only_look_interactive_are_reviewed(app, tmp_path):
-    tool = make_tool(app, tmp_path, INTERACTIVE_LOOKALIKE)
-    assert tool.tool_type == "default" and tool.ports
+    # The same template and values with entry points but no tool_type="interactive" is reviewed and refused.
+    lookalike = make_tool(app, tmp_path, INTERACTIVE_LOOKALIKE, name="lookalike.xml")
+    assert lookalike.tool_type == "default" and lookalike.ports
     with pytest.raises(ToolInputRejected, match="element identifier"):
-        reviewer(tmp_path, ENFORCE_CODE).check_job(tool, evaluator(app, tool, ["sample_1", "it';id;'s"]))
+        reviewer(tmp_path, ENFORCE_CODE).check_job(lookalike, evaluator(app, lookalike, identifiers))
 
 
 def test_galaxy_upload_tool_exemption_is_decided_once_per_tool(upload_app, monkeypatch):
