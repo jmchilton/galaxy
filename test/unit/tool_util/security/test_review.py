@@ -626,6 +626,30 @@ def test_repeated_use_is_one_finding_with_all_lines(tmp_path):
 
 
 @pytest.mark.parametrize(
+    "command,lines",
+    [
+        # `#echo expr#` writes on the line of the text around it.
+        ("tool\n  --a #echo str($text)#\n\n  --b x", [2]),
+        ("tool\n  --a #echo str($text)# y\n  --b #echo str($text)#", [2, 3]),
+        # Running to the end of its line, it takes the line's newline with it.
+        ("tool\n#echo str($text)\n--b #echo str($text)#", [2, 3]),
+        ("tool\n  --a #echo str($text)# --b #echo str($text)\n--c x\n--d #echo str($text)#", [2, 4]),
+        ("tool\n#echo str($text) ## a note\n--d #echo str($text)#", [2, 3]),
+        ("tool\n  --a #echo str($text)# ## a #echo note\n--c x\n--d #echo str($text)#", [2, 4]),
+        # The #else line is a line of its own too, and an #elif ends with the #end if of its #if.
+        ("#if $count\ntool\n#else\ntool\n  --b #echo str($text)#\n#end if", [5]),
+        ("#if $count\ntool\n#elif $count == 2\nother\n#else\nthird\n#end if\n--d #echo str($text)#", [8]),
+        ("#if $count\ntool\n#else if $count == 2\nother\n#end if\n--d #echo str($text)#", [6]),
+        ("#if $count\ntool\n#else\n#if $count == 2\nother\n#end if\n#end if\n--d #echo str($text)#", [8]),
+    ],
+)
+def test_echo_is_on_its_line(tmp_path, command, lines):
+    report = review(tmp_path, command)
+    found = {line for f in report.findings if f.rule == "argument-injection" for line in (f.line, *f.more_lines)}
+    assert sorted(found) == lines
+
+
+@pytest.mark.parametrize(
     "old,new,regex,expected",
     [
         ('"', '\\"', False, ('"', '\\"')),

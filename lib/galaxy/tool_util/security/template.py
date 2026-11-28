@@ -307,12 +307,23 @@ def _is_literal_write(stmt: ast.stmt) -> str | None:
     return None
 
 
-def _statement_lines(body: list[ast.stmt], annotated: dict[int, int], current: int, out: dict[int, int]) -> int:
+def _statement_lines(
+    body: list[ast.stmt],
+    annotated: dict[int, int],
+    current: int,
+    out: dict[int, int],
+    lines: list[str],
+    echoes: dict[int, int],
+    chained: bool = False,
+) -> int:
     """Give every statement a template line.
 
     Cheetah annotates placeholders and block directives with their line. Between those, a
     literal write advances by the newlines it contains and any other statement is a directive
-    on a line of its own (``#set``, ``#silent``).
+    on a line of its own (``#set``, ``#silent``). An ``#echo`` is not annotated: it writes on
+    the line of the text around it, and takes that line's newline only when it runs to its end.
+    ``echoes``: how many ``#echo`` directives of each line were seen. ``chained``: ``body`` is the
+    ``#elif`` of an ``#if``, which ends with the ``#end if`` of that ``#if``.
     """
     for stmt in body:
         end = getattr(stmt, "end_lineno", None) or stmt.lineno
@@ -326,19 +337,52 @@ def _statement_lines(body: list[ast.stmt], annotated: dict[int, int], current: i
         if literal is not None:
             current += literal.count("\n")
             continue
+        if known is None and _is_placeholder_value(stmt):
+            continue
         blocks = [getattr(stmt, name, None) for name in ("body", "orelse", "finalbody")]
         blocks += [handler.body for handler in getattr(stmt, "handlers", [])]
         nested = [block for block in blocks if isinstance(block, list) and block]
+        if known is None and _is_placeholder(stmt):
+            for block in nested:
+                _statement_lines(block, annotated, current, out, lines, echoes)
+            if _echo_runs_to_line_end(lines, current, echoes):
+                current += 1
+            continue
         if nested:
             inner = current + 1 if known is not None and not _is_placeholder(stmt) else current
-            for block in nested:
-                inner = _statement_lines(block, annotated, inner, out)
+            for i, block in enumerate(nested):
+                # The #else, #except or #finally line before a block after the first.
+                elif_ = block is getattr(stmt, "orelse", None) and _is_elif(block, annotated, lines)
+                start = inner if elif_ or not i else inner + 1
+                inner = _statement_lines(block, annotated, start, out, lines, echoes, chained=elif_)
             current = max(current, inner)
-            if not _is_placeholder(stmt):
+            if not _is_placeholder(stmt) and not chained:
                 current += 1  # the #end line
         elif known is None:
             current += 1
     return current
+
+
+def _echo_runs_to_line_end(lines: list[str], line: int, echoes: dict[int, int]) -> bool:
+    """Whether the next ``#echo`` of the line takes the line's newline with it: Cheetah does that for a
+    directive alone on its line that runs to its end."""
+    if not 0 < line <= len(lines):
+        return False
+    seen = echoes.get(line, 0)
+    echoes[line] = seen + 1
+    # A `##` comment runs to the end of the line too.
+    text = lines[line - 1].split("##", 1)[0]
+    starts = [m.start() for m in re.finditer("#echo", text)]
+    if seen >= len(starts):
+        return False
+    return not text[: starts[seen]].strip() and "#" not in text[starts[seen] + 1 :]
+
+
+def _is_elif(block: list[ast.stmt], annotated: dict[int, int], lines: list[str]) -> bool:
+    """An ``else:`` block that is the ``#elif`` or ``#else if`` of its ``#if``."""
+    if len(block) != 1 or not isinstance(block[0], ast.If) or (line := annotated.get(block[0].lineno)) is None:
+        return False
+    return 0 < line <= len(lines) and lines[line - 1].lstrip().startswith(("#elif", "#else if"))
 
 
 def _is_placeholder(stmt: ast.stmt) -> bool:
@@ -347,6 +391,16 @@ def _is_placeholder(stmt: ast.stmt) -> bool:
         and isinstance(stmt.test, ast.Compare)
         and isinstance(stmt.test.left, ast.Name)
         and stmt.test.left.id == "_v"
+    )
+
+
+def _is_placeholder_value(stmt: ast.stmt) -> bool:
+    """``_v = <expr>``, which Cheetah writes before the placeholder that writes it."""
+    return (
+        isinstance(stmt, ast.Assign)
+        and len(stmt.targets) == 1
+        and isinstance(stmt.targets[0], ast.Name)
+        and stmt.targets[0].id == "_v"
     )
 
 
@@ -370,6 +424,7 @@ def compile_template(source: str, rewrite: Callable[[ast.Module], set[int]] | No
     helpers: dict[str, Method] = {}
     attrs: list[ast.stmt] = []
     statement_lines: dict[int, int] = {}
+    source_lines = source.splitlines()
     for node in tree.body:
         if not isinstance(node, ast.ClassDef):
             continue
@@ -379,7 +434,7 @@ def compile_template(source: str, rewrite: Callable[[ast.Module], set[int]] | No
                     continue
                 method = _method(item)
                 start = annotated.get(item.body[0].lineno - 1, 1) if item.name != "respond" else 1
-                _statement_lines(method.body, annotated, start, statement_lines)
+                _statement_lines(method.body, annotated, start, statement_lines, source_lines, {})
                 if item.name == "respond":
                     main = method
                 else:
