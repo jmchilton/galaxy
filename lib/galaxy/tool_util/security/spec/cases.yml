@@ -628,6 +628,57 @@ python_os_system_escapes:
       harm: true
       expect: {rejected: false}
 
+conditional_selector_by_subscript_narrows:
+  doc: >-
+    Testing a conditional's selector as `$c['sel']` restricts its parameters to that case, as `$c.sel` does: there
+    the parameter is a select whose options the tool lists, and its raw value is one of them.
+  tool: conditional_selector_subscript.xml
+  review:
+    serious_rules: []
+    absent:
+      - {rule: shell-injection, param: c.word}
+  green:
+    - inputs: {c: {sel: fixed, word: a}}
+      harm: true
+      expect: {rejected: false}
+    - doc: In the other case the text is written through its sanitizer.
+      inputs: {c: {sel: free, word: "a';touch harm-marker;'"}}
+      harm: true
+      expect: {rejected: false}
+
+conditional_selector_by_attribute_narrows:
+  doc: The same test written as `$c.sel`.
+  tool: conditional_selector_attribute.xml
+  review:
+    serious_rules: []
+    absent:
+      - {rule: shell-injection, param: c.word}
+  green:
+    - inputs: {c: {sel: fixed, word: b}}
+      harm: true
+      expect: {rejected: false}
+
+conditional_selector_by_subscript_keeps_its_case:
+  doc: Where the subscript test picks the case whose parameter is text, its raw value can close the quotes.
+  tool: conditional_selector_subscript_text.xml
+  code: shell-injection
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, accessor: raw, param: c.word, checkable: true}
+  red:
+    - inputs: {c: {sel: free, word: "a';touch harm-marker;'"}}
+      harm: true
+      expect:
+        rejected: true
+        message_contains: ["the value of input 'c.word' contains the characters [' ;]"]
+  green:
+    - inputs: {c: {sel: free, word: "a;b|c && d"}}
+      harm: true
+      expect: {rejected: false}
+    - inputs: {c: {sel: fixed, word: a}}
+      expect: {rejected: false}
+
 path_traversal:
   doc: >-
     A file name the user gives is written as a path `cp` writes to. With `enforce_data`, a slash in it is refused,

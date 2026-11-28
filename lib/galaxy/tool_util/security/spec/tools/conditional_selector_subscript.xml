@@ -1,0 +1,28 @@
+<tool id="spec_conditional_selector_subscript" name="Conditional selector by subscript" version="1.0" profile="24.0">
+    <description>writes the raw value of a case's select, testing the selector by subscript</description>
+    <command><![CDATA[#if $c['sel'] == 'fixed'
+echo '$c.word.value' > '$out'
+#else
+echo '$c.word' > '$out'
+#end if]]></command>
+    <inputs>
+        <conditional name="c">
+            <param name="sel" type="select">
+                <option value="fixed">fixed</option>
+                <option value="free">free</option>
+            </param>
+            <when value="fixed">
+                <param name="word" type="select">
+                    <option value="a">a</option>
+                    <option value="b">b</option>
+                </param>
+            </when>
+            <when value="free">
+                <param name="word" type="text"/>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

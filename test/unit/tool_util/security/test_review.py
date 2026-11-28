@@ -1513,6 +1513,11 @@ def test_tests_narrow_the_value(tmp_path, command, expected):
         ("#if str($mode.kind) != 'x'\ntool $mode.value\n#end if", set()),
         ("#if $mode.kind == 'x'\ntool $mode.value\n#end if", {("argument-injection", "medium")}),
         ("tool $mode.value", {("argument-injection", "medium")}),
+        # A selector tested by subscript, of a conditional at the top or in a section.
+        ("#if $mode['kind'] == 'y'\ntool $mode.value\n#end if", set()),
+        ("#if $mode['kind'] == 'x'\ntool $mode.value\n#end if", {("argument-injection", "medium")}),
+        ("#if $opts.adv['on'] == 'n'\ntool $opts.adv.deep.name\n#end if", set()),
+        ("#if $opts.adv['on'] == 'y'\ntool $opts.adv.deep.name\n#end if", {("argument-injection", "medium")}),
     ],
 )
 def test_conditional_selector_picks_the_when_block(tmp_path, command, expected):

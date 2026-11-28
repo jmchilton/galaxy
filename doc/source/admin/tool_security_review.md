@@ -243,6 +243,47 @@ user:
     label: a;b|c && d
 ```
 
+#### conditional_selector_by_subscript_keeps_its_case
+
+Where the subscript test picks the case whose parameter is text, its raw value can close the quotes.
+
+Tool `conditional_selector_subscript_text.xml`:
+
+```
+#if $c['sel'] == 'free'
+echo '$c.word.value' > '$out'
+#else
+echo '$c.word' > '$out'
+#end if
+```
+
+Refused
+
+```
+inputs:
+  c:
+    sel: free
+    word: a';touch harm-marker;'
+```
+
+Runs
+
+```
+inputs:
+  c:
+    sel: free
+    word: a;b|c && d
+```
+
+Runs
+
+```
+inputs:
+  c:
+    sel: fixed
+    word: a
+```
+
 #### raw_dataset_model
 
 `$input.unsanitized.name` is the dataset's name as the user set it, without the sanitizer: the check reads it from the model too.
@@ -2401,6 +2442,61 @@ inputs:
   p: -o harm-marker
 config:
   mode: enforce_all
+```
+
+#### conditional_selector_by_subscript_narrows
+
+Testing a conditional's selector as `$c['sel']` restricts its parameters to that case, as `$c.sel` does: there the parameter is a select whose options the tool lists, and its raw value is one of them.
+
+Tool `conditional_selector_subscript.xml`:
+
+```
+#if $c['sel'] == 'fixed'
+echo '$c.word.value' > '$out'
+#else
+echo '$c.word' > '$out'
+#end if
+```
+
+Runs
+
+```
+inputs:
+  c:
+    sel: fixed
+    word: a
+```
+
+Runs: In the other case the text is written through its sanitizer.
+
+```
+inputs:
+  c:
+    sel: free
+    word: a';touch harm-marker;'
+```
+
+#### conditional_selector_by_attribute_narrows
+
+The same test written as `$c.sel`.
+
+Tool `conditional_selector_attribute.xml`:
+
+```
+#if $c.sel == 'fixed'
+echo '$c.word.value' > '$out'
+#else
+echo '$c.word' > '$out'
+#end if
+```
+
+Runs
+
+```
+inputs:
+  c:
+    sel: fixed
+    word: b
 ```
 
 #### dataset_content_substitution_quoted

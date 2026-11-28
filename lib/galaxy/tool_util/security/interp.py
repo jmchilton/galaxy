@@ -531,10 +531,18 @@ def _walrus_targets(node: ast.AST) -> set[str]:
 
 
 def _template_path(node: ast.expr) -> str | None:
-    """The dotted name of a ``$name`` placeholder, as Cheetah compiles it."""
-    if lookup := name_lookup(node):
+    """The dotted name of a ``$name`` placeholder, as Cheetah compiles it: ``$c['sel']`` is ``c.sel``, and
+    ``$c.input['forward']`` the name ``input`` of ``$c`` (`VFN`) and its item."""
+    if isinstance(node, ast.Call) and (lookup := name_lookup(node)):
         function, path = lookup
-        return None if function == "VFN" else path
+        if function != "VFN":
+            return path
+        receiver = _template_path(node.args[0])
+        return f"{receiver}.{path}" if receiver is not None else None
+    if isinstance(node, ast.Subscript):
+        key = _const(node.slice)
+        receiver = _template_path(node.value)
+        return f"{receiver}.{key}" if isinstance(key, str) and key.isidentifier() and receiver is not None else None
     if isinstance(node, ast.Name):
         return node.id
     return None
