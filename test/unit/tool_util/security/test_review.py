@@ -1539,6 +1539,20 @@ def test_value_in_a_string_a_shell_runs(tmp_path, content, expected):
     assert found - {("configfile-injection", "low")} == expected
 
 
+@pytest.mark.parametrize(
+    "content,expected",
+    [
+        # json.dumps() keeps braces, which the f-string it is written in or makes evaluates.
+        ("#import json\nx = f'${json.dumps(str($expr_no_quote))}'", {("configfile-injection", "high")}),
+        ("#import json\nx = f${json.dumps(str($free))}", {("configfile-injection", "high")}),
+        ("#import json\nx = ${json.dumps(str($free))}", set()),
+    ],
+)
+def test_json_in_an_f_string(tmp_path, content, expected):
+    found = rules(review(tmp_path, "python '$script'", CONFIG.format(f"<![CDATA[{content}]]>")))
+    assert found - {("configfile-injection", "low")} == expected
+
+
 def test_braces_in_an_f_string_are_code(tmp_path):
     braces = (
         '<inputs><param name="p" type="text"><sanitizer><valid initial="string.printable">'

@@ -785,6 +785,30 @@ inputs:
   word: ' or '
 ```
 
+#### json_inside_fstring
+
+json.dumps() escapes quotes and backslashes but keeps braces. Written as an f-string of a Python configfile, braces in the value are an expression the script evaluates.
+
+Tool `json_inside_fstring.xml`:
+
+```
+python3 '$script' > '$out'
+```
+
+Refused
+
+```
+inputs:
+  word: '{open(chr(104)+chr(97)+chr(114)+chr(109)+chr(45)+chr(109)+chr(97)+chr(114)+chr(107)+chr(101)+chr(114),chr(119))}'
+```
+
+Runs: Quotes and backslashes stay inside the string json.dumps() writes.
+
+```
+inputs:
+  word: a \" b
+```
+
 #### python_os_system_is_shell
 
 A string of a Python configfile that `os.system()` runs is a shell command. A sanitized value cannot end the Python string, but the shell splits it into words, which can be options.
@@ -2027,6 +2051,23 @@ Runs: Quotes and backslashes in the value stay inside the string repr() writes.
 inputs:
   raw_word: a\'); open('harm-marker', 'w'); ('
   word: a'); open('harm-marker', 'w'); ('
+```
+
+#### json_python_literal_clean
+
+The same json.dumps() written as code outside any string, without the f prefix, is a string literal, even for a raw value with braces.
+
+Tool `json_python_literal.xml`:
+
+```
+python3 '$script' > '$out'
+```
+
+Runs
+
+```
+inputs:
+  word: '{open(chr(104)+chr(97)+chr(114)+chr(109)+chr(45)+chr(109)+chr(97)+chr(114)+chr(107)+chr(101)+chr(114),chr(119))}'
 ```
 
 #### python_print_is_not_shell

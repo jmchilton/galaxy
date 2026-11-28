@@ -1352,8 +1352,9 @@ class TemplateAnalysis:
         ``command``: the string is a command a shell runs (``os.system('...')``), the value's place in it.
         ``raw_string``: the string is a raw Python string, where a backslash escapes nothing."""
         chars = text.chars
-        if fstring and "{" in chars and text.quoted != "json":
-            # {...} in an f-string is an expression; with parentheses it can call anything.
+        if fstring and "{" in chars:
+            # {...} in an f-string is an expression; with parentheses it can call anything. json.dumps() and
+            # repr() keep braces.
             severity = charsets.HIGH if "(" in chars else charsets.MEDIUM
             self.finding(
                 Verdict(
