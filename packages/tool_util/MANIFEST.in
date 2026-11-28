@@ -357,6 +357,7 @@ include src/galaxy/tool_util/unittest_utils/functional_tools/validation_repeat.x
 include src/galaxy/tool_util/unittest_utils/functional_tools/collection_nested_default.xml
 include src/galaxy/tool_util/unittest_utils/functional_tools/select_from_url.xml
 include src/galaxy/tool_util/unittest_utils/functional_tools/identifier_single.xml
+include src/galaxy/tool_util/unittest_utils/functional_tools/identifier_single_unsanitized.xml
 include src/galaxy/tool_util/unittest_utils/functional_tools/multiple_versions_v02.xml
 include src/galaxy/tool_util/unittest_utils/functional_tools/multi_output_recurse.xml
 include src/galaxy/tool_util/unittest_utils/functional_tools/collection_paired_or_list_paired_input.xml

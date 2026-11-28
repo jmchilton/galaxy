@@ -27,8 +27,8 @@ from galaxy.tool_util.unittest_utils.tool_patches import (
     write_collection,
 )
 
-TOOL = functional_test_tool_path("identifier_single.xml")
-KEY_FILE = "_local/identifier_single/1.0.0.yml"
+TOOL = functional_test_tool_path("identifier_single_unsanitized.xml")
+KEY_FILE = "_local/identifier_single_unsanitized/1.0.0.yml"
 PATCH_KEYS = ("patches", "before", "cleared", "introduced", "notes_added")
 ECHO = "echo 'identifier $input1.element_identifier' > 'output1';"
 DOC = "Jobs whose input identifier held other characters than letters, digits, '_', '-' and '.' now print them as '_'."
@@ -54,7 +54,7 @@ COSMETIC = security_patch(
     "unusual_inputs",
     DOC,
 )
-GUID = "toolshed.example.org/repos/owner/repo/identifier_single/1.0.0"
+GUID = "toolshed.example.org/repos/owner/repo/identifier_single_unsanitized/1.0.0"
 UNQUOTING = security_patch(
     [replace_text_op("command", "> 'output1';", "> 'output1'; echo $input1.name;")], "unusual_inputs", DOC
 )
@@ -219,7 +219,7 @@ def test_cli_rejects_a_missing_collection(tmp_path: Path, capsys: pytest.Capture
     "argv,error",
     [
         ([os.path.dirname(TOOL), "--guid", GUID], "--guid needs exactly one tool file"),
-        ([TOOL, "--guid", "identifier_single"], "--guid is not a Tool Shed guid"),
+        ([TOOL, "--guid", "identifier_single_unsanitized"], "--guid is not a Tool Shed guid"),
         ([TOOL, "--guid", "toolshed.example.org/repos/owner/repo"], "--guid is not a Tool Shed guid"),
     ],
     ids=["directory", "not-shed", "short"],
@@ -247,7 +247,7 @@ def test_cli_rejects_patch_options_without_a_collection(
 
 
 def test_cli_matches_shed_keys_by_guid(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    collection = write_collection(tmp_path / "c", {"owner/repo/identifier_single/1.0.0.yml": CLEANING})
+    collection = write_collection(tmp_path / "c", {"owner/repo/identifier_single_unsanitized/1.0.0.yml": CLEANING})
     _, unmatched = _cli_json([TOOL, "--tool-patch-path", str(collection)], capsys)
     assert unmatched["patches"] is None
     exit_code, report = _cli_json([TOOL, "--tool-patch-path", str(collection), "--guid", GUID], capsys)
@@ -265,7 +265,7 @@ def test_cli_reports_patch_review(
     got, report = _cli_json([TOOL, "--tool-patch-path", str(collection)], capsys)
     assert got == exit_code
     assert set(report) == set(unpatched) | set(PATCH_KEYS)
-    assert [s["key"] for s in report["patches"]] == ["_local/identifier_single/1.0.0"]
+    assert [s["key"] for s in report["patches"]] == ["_local/identifier_single_unsanitized/1.0.0"]
     assert bool(report["introduced"]) is bool(exit_code)
     assert set(report["before"]) == set(unpatched) - {"tool_version"}
     assert report["tool_version"] == "1.0.0"
@@ -275,7 +275,7 @@ def test_cli_text_shows_patch_states_and_cleared_findings(tmp_path: Path, capsys
     collection = write_collection(tmp_path / "c", {KEY_FILE: CLEANING})
     assert main([TOOL, "--tool-patch-path", str(collection)]) == 0
     lines = capsys.readouterr().out.splitlines()
-    assert lines[1].split() == ["PATCH", "applied", "security", "_local/identifier_single/1.0.0"]
+    assert lines[1].split() == ["PATCH", "applied", "security", "_local/identifier_single_unsanitized/1.0.0"]
     assert any(line.startswith("  CLEARED  HIGH     shell-injection") for line in lines)
     assert not any(line.startswith("  NEW ") for line in lines)
 
@@ -348,7 +348,7 @@ def test_cli_lists_a_patch_review_that_raises_as_an_error(
     exit_code, report = _cli_json([TOOL, "--tool-patch-path", str(collection)], capsys)
     assert exit_code == 1
     assert report["error"] == "ValueError: boom"
-    assert report["tool_id"] == "identifier_single"
+    assert report["tool_id"] == "identifier_single_unsanitized"
 
 
 UNCLEARED = ["--fail-on", "uncleared"]

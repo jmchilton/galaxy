@@ -1148,14 +1148,16 @@ CLEAN_IDENTIFIER_HELPER = (
 
 
 def test_identifier_helper_fixture(tmp_path: Path) -> None:
-    tool = get_tool_source(functional_test_tool_path("identifier_single.xml"))
+    tool = get_tool_source(functional_test_tool_path("identifier_single_unsanitized.xml"))
     ops = [
         text_op("echo 'identifier ", CLEAN_IDENTIFIER_HELPER + "echo 'identifier "),
         text_op(
             "'identifier $input1.element_identifier'", "'identifier ${clean_identifier($input1.element_identifier)}'"
         ),
     ]
-    db = load_db(write_collection(tmp_path / "c", {"_local/identifier_single/1.0.0.yml": security_doc(*ops)}))
+    db = load_db(
+        write_collection(tmp_path / "c", {"_local/identifier_single_unsanitized/1.0.0.yml": security_doc(*ops)})
+    )
 
     patched = db.apply_patches(tool)
 

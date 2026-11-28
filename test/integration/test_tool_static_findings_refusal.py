@@ -11,7 +11,7 @@ from galaxy.tool_util.unittest_utils.tool_patches import (
 from galaxy_test.base.populators import DatasetPopulator
 from galaxy_test.driver import integration_util
 
-IDENTIFIER_TOOL = Path(functional_test_tool_path("identifier_single.xml")).read_text()
+IDENTIFIER_TOOL = Path(functional_test_tool_path("identifier_single_unsanitized.xml")).read_text()
 ECHO = "echo 'identifier $input1.element_identifier' > 'output1';"
 DOC = "Jobs whose input identifier held other characters than letters, digits, '_', '-' and '.' now print them as '_'."
 CLEANING = security_patch(
@@ -65,7 +65,10 @@ class TestStaticFindingsRefusal(integration_util.IntegrationTestCase):
         tool_dir.mkdir(parents=True, exist_ok=True)
         for tool_id in ("static_refused", "static_cleaned"):
             (tool_dir / f"{tool_id}.xml").write_text(
-                IDENTIFIER_TOOL.replace('id="identifier_single"', f'id="{tool_id}"')
+                IDENTIFIER_TOOL.replace(
+                    'id="identifier_single_unsanitized" name="identifier_single_unsanitized"',
+                    f'id="{tool_id}" name="{tool_id}"',
+                )
             )
         (tool_dir / "static_lowered.xml").write_text(AWK_TOOL)
         tools = "".join(f'<tool file="{name}.xml"/>' for name in ("static_refused", "static_cleaned", "static_lowered"))

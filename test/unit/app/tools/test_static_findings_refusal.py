@@ -47,7 +47,7 @@ from galaxy.tools.static_findings import (
 if TYPE_CHECKING:
     from galaxy.tools import Tool
 
-TOOL = functional_test_tool_path("identifier_single.xml")
+TOOL = functional_test_tool_path("identifier_single_unsanitized.xml")
 TOOLS_DIR = os.path.dirname(static_findings.__file__)
 SET_METADATA_TOOL = os.path.join(TOOLS_DIR, os.pardir, "datatypes", "set_metadata_tool.xml")
 GALAXY_UPLOAD_TOOL = os.path.join(TOOLS_DIR, "bundled", "data_source", "upload.xml")
@@ -237,6 +237,12 @@ def test_other_tools_galaxy_ships_are_reviewed(path: str) -> None:
     assert review is not None and review.error is None
     assert static_review_is_current(_config(severity="low"), review, path, _built(path), None)
     assert not static_review_is_current(_config(severity="low"), None, path, _built(path), None)
+
+
+def test_the_unsafe_test_tool_is_refused() -> None:
+    # The red case of these tests and of the integration tests, whatever happens to identifier_single.
+    review = with_static_review(_config(), get_tool_source(TOOL), TOOL).static_review
+    assert review is not None and review.refused_rules("high") == ["shell-injection"]
 
 
 def test_failed_review_is_kept_and_refuses_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
