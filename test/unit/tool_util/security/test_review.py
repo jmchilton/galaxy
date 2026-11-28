@@ -1642,5 +1642,34 @@ def test_strict_check_reads_the_job_parameters_a_template_names(tmp_path, templa
         fh.write(f"""<tool id="t" name="t" version="1" profile="24.2"><command>tool</command>
   <inputs>{INPUTS}</inputs><outputs><data name="out" format="txt"/></outputs></tool>""")
     model = build_model(get_tool_source(path), template_job_parameters)
-    refs = model.sources(frozenset({"foo", "free", "__user_email__"}))
+    refs = model.sources(frozenset({"foo", "free", "__user_email__"}), frozenset({"foo", "free"}))
     assert {ref.key for ref in refs if ref.accessor == "special"} - {"__user_email__"} == expected
+
+
+def test_strict_check_reads_the_job_parameters_of_the_names_a_template_looks_up(tmp_path):
+    # Not Cheetah's own names and locals, attributes, the template object's, nor a local set on every path to
+    # the lookup: a loop variable in its loop, a lambda's argument, a comprehension's target. The namespace
+    # answers with its keys before the attributes of the TreeDict Galaxy retries it as ($data).
+    command = """#def show($arg)
+echo '$arg' '$data' '$self.searchList';
+#end def
+$show('x')
+echo '$trans' '$write' '$SL' '$_filter';
+#set $local = 'a'
+#if $text == 'x'
+#set $maybe = 'b'
+#end if
+#set $upper = [$f.upper() for $f in $text.split(',')]
+#set $fn = lambda g: $g.lower()
+#for $e in $text.split(',')
+echo '$e.upper()' '$local' '$maybe' '$undeclared' '$getVar("by_name", "")' '$fn($e)' '$upper';
+#end for
+echo '$searchList' > /dev/null"""
+    report = review(tmp_path, command)
+    assert "command" in report.unchecked_locations
+    assert {ref.key for ref in report.reads["command"] if ref.accessor == "special"} == {
+        "maybe",
+        "undeclared",
+        "by_name",
+        "data",
+    }

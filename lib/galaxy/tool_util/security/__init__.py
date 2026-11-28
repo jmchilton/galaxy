@@ -212,14 +212,19 @@ def _compile(source: str, location: str, report: Report, model: Model) -> Compil
 
 
 def _analyse(
-    source: str, location: str, language: str, model: Model, report: Report, names: dict[str, set[str]]
+    source: str,
+    location: str,
+    language: str,
+    model: Model,
+    report: Report,
+    names: dict[str, tuple[set[str], set[str]]],
 ) -> TemplateAnalysis | None:
     template = _compile(_include_templates(source, location, model, report), location, report, model)
     if template is None:
         return None
     audit = PythonAudit(report, location, model, analysed=True)
     audit.template(template)
-    names[location] = audit.names
+    names[location] = (audit.names, audit.job_parameter_names())
     for name in sorted(unresolved_names(template, model, audit.assigned | audit.stored_keys, audit.namespace_reads)):
         report.unanalyzed.append(f"{location}: ${name} is not a tool input, its value was not followed")
     analysis = TemplateAnalysis(model, template, report, location, language, audit.literal_rewrites)
@@ -264,7 +269,8 @@ def review_tool_source(
         keeps_undeclared_job_parameters = _keeps_undeclared_job_parameters(tool_source)
     model = build_model(tool_source, template_job_parameters, keeps_undeclared_job_parameters)
     readers: dict[str, set[str]] = {}
-    names: dict[str, set[str]] = {}
+    # The names each template mentions, and those it looks up where a job parameter can answer.
+    names: dict[str, tuple[set[str], set[str]]] = {}
 
     command = tool_source.parse_command()
     if command:
@@ -291,7 +297,8 @@ def review_tool_source(
         if reason == NOT_ANALYSED:
             # Parts of the template were not followed: what it writes there is any input it names.
             reads = report.reads.setdefault(location, [])
-            reads.extend(ref for ref in model.sources(frozenset(names.get(location, ()))) if ref not in reads)
+            mentioned, looked_up = names.get(location, (set(), set()))
+            reads.extend(ref for ref in model.sources(frozenset(mentioned), frozenset(looked_up)) if ref not in reads)
     audit_tool(tool_source, report)
     return report
 

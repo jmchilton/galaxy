@@ -41,6 +41,7 @@ from .lambdas import (
     impurity,
     method_locals,
     nested_lambdas,
+    unbound_lookups,
     unfollowed_changes,
 )
 from .model import (
@@ -54,6 +55,7 @@ from .report import (
     SANITIZE_OFF,
 )
 from .template import (
+    answered_before_namespace,
     CompiledTemplate,
     INCLUDE,
     include_options,
@@ -141,6 +143,9 @@ class PythonAudit:
         # Keys the template stores into dicts, and the first names of what it looks up in the namespace.
         self.stored_keys: set[str] = set()
         self.namespace_reads: set[str] = set()
+        # The first names of what it looks up where no local of the frame holds them, and of the names it passes
+        # to `getVar`: what the #set global store, the template object or the namespace answers for.
+        self.unbound_lookups: set[str] = set()
         # Names of `#set global` values, which `getVar` finds first, and of the template's own methods and
         # attributes (#def, #block, #attr), which it finds next.
         self.global_names: set[str] = set()
@@ -204,6 +209,7 @@ class PythonAudit:
         self.imported = imported_names(template.imports)
         self.changing = frozenset(self.global_names | self.members)
         for method in [template.main, *template.helpers.values()]:
+            self.unbound_lookups.update(unbound_lookups(method))
             self.method_locals = method_locals(method)
             for stmt in method.body:
                 self.walk(stmt, template)
@@ -215,6 +221,15 @@ class PythonAudit:
                 self.walk(expression, template)
         for stmt in template.attrs:
             self.walk(stmt, template)
+
+    def job_parameter_names(self) -> set[str]:
+        """The names of :attr:`unbound_lookups` that nothing before the namespace answers for, the #set global
+        store aside: a job parameter of such a name can be what the template reads."""
+        return {
+            name
+            for name in self.unbound_lookups
+            if name not in self.members and name not in answered_before_namespace()
+        }
 
     def expression(self, source: str) -> None:
         try:
@@ -283,6 +298,7 @@ class PythonAudit:
                 name = node.args[0] if node.args else None
                 if isinstance(name, ast.Constant) and isinstance(name.value, str):
                     if (chain := self.get_var_chain(name.value)) is not None:
+                        self.unbound_lookups.add(name.value.replace("$", "").split(".")[0])
                         self.judge(chain, line)
                     else:
                         self.add(

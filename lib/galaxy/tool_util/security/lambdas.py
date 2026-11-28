@@ -104,6 +104,90 @@ def _bound(node: ast.AST) -> Iterator[str]:
         yield from _bound(child)
 
 
+def scopes(
+    node: ast.AST, bound: frozenset[str], frame: frozenset[str]
+) -> Iterator[tuple[ast.AST, frozenset[str], frozenset[str]]]:
+    """Each node of an expression with ``bound``, the names the code around it binds, which Python names read,
+    and ``frame``, those of the frame that runs it, which `$name` finds there: the arguments of the innermost
+    lambda, or the targets of the innermost comprehension. Python 3.12 runs a comprehension in the frame around
+    it, older versions do not: `$name` of a name bound outside it is read as a lookup either way.
+
+    The defaults of a lambda and the first iterable of a comprehension are evaluated in the frame around them.
+    It does not go into the targets of a comprehension, the arguments of a lambda, nor the literal arguments of
+    a NameMapper call."""
+    yield node, bound, frame
+    if isinstance(node, ast.Lambda):
+        arguments = node.args
+        for default in [*arguments.defaults, *arguments.kw_defaults]:
+            if default is not None:
+                yield from scopes(default, bound, frame)
+        names = lambda_arguments(node)
+        yield from scopes(node.body, bound | names, names)
+    elif isinstance(node, _COMPREHENSIONS):
+        own: frozenset[str] = frozenset()
+        for generator in node.generators:
+            yield from scopes(generator.iter, bound, own if own else frame)
+            names = _targets(generator)[0]
+            bound, own = bound | names, own | names
+            for condition in generator.ifs:
+                yield from scopes(condition, bound, own)
+        for part in [node.key, node.value] if isinstance(node, ast.DictComp) else [node.elt]:
+            yield from scopes(part, bound, own)
+    elif lookup := name_lookup(node, NAME_MAPPER):
+        assert isinstance(node, ast.Call)
+        if lookup[0] not in NAMESPACE_LOOKUPS:
+            # `VFN(value, 'a.b', ...)`: attributes of a value.
+            yield from scopes(node.args[0], bound, frame)
+    else:
+        for child in ast.iter_child_nodes(node):
+            yield from scopes(child, bound, frame)
+
+
+def lambda_arguments(node: ast.Lambda) -> frozenset[str]:
+    arguments = node.args
+    own = [*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs, arguments.vararg, arguments.kwarg]
+    return frozenset(a.arg for a in own if a is not None)
+
+
+def unbound_lookups(method: Method) -> set[str]:
+    """The first names of the method's lookups (`$name`) where no local of the frame that runs them holds the
+    name: not an argument, a local of Cheetah's own code, a `#set` or loop variable set on every path to the
+    lookup, nor a name of the frame :func:`scopes` gives. There Cheetah looks the name up in the `#set global`
+    store, the template object and the namespace."""
+    found: set[str] = set()
+    _block_lookups(method.body, frozenset(method.args) | method.preamble, found)
+    for expression in method.at_definition:
+        _lookups(expression, frozenset(), found)
+    return found
+
+
+def _block_lookups(body: list[ast.stmt], frame: frozenset[str], found: set[str]) -> None:
+    for stmt in body:
+        _lookups(stmt, frame, found)
+        if isinstance(stmt, ast.Assign):
+            frame |= {name for target in stmt.targets for name in _bound(target)}
+
+
+def _lookups(node: ast.AST, frame: frozenset[str], found: set[str]) -> None:
+    if isinstance(node, ast.expr):
+        for child, _, child_frame in scopes(node, frozenset(), frame):
+            lookup = name_lookup(child, NAMESPACE_LOOKUPS)
+            if lookup and (first := lookup[1].split(".")[0]) not in child_frame:
+                found.add(first)
+    elif isinstance(node, ast.For):
+        _lookups(node.iter, frame, found)
+        _block_lookups(node.body, frame | set(_bound(node.target)), found)
+        _block_lookups(node.orelse, frame, found)
+    else:
+        for _, value in ast.iter_fields(node):
+            if isinstance(value, list) and value and isinstance(value[0], ast.stmt):
+                _block_lookups(value, frame, found)
+            else:
+                for child in value if isinstance(value, list) else [value]:
+                    if isinstance(child, ast.AST):
+                        _lookups(child, frame, found)
+
+
 def imported_names(imports: Iterable[ast.stmt]) -> frozenset[str] | None:
     """The module-level names the template's own imports bind to something else than a module of that name;
     None when a ``from ... import *`` can bind any name."""
@@ -125,10 +209,7 @@ def _targets(generator: ast.comprehension) -> tuple[frozenset[str], list[ast.exp
 
 
 class _Purity:
-    """``bound``: the names the lambda and the code in it bind, which Python names read; ``frame``: those of the
-    innermost lambda's own arguments, or of the innermost comprehension's targets, which `$name` finds in the
-    frame it runs in. Python 3.12 runs a comprehension in the frame around it, older versions do not: `$name`
-    of a name bound outside it is read as a lookup either way."""
+    """Reads the nodes of a lambda's body with their ``bound`` and ``frame`` (:func:`scopes`)."""
 
     def __init__(
         self,
@@ -142,35 +223,10 @@ class _Purity:
         self.changing = changing
         self.is_input = is_input
 
-    def lambda_(self, node: ast.Lambda, bound: frozenset[str], frame: frozenset[str], nested: bool) -> str | None:
-        arguments = node.args
-        if nested:
-            # The defaults of a lambda in the body are evaluated when the body runs.
-            defaults = [*arguments.defaults, *(d for d in arguments.kw_defaults if d is not None)]
-            for default in defaults:
-                if reason := self.expr(default, bound, frame):
-                    return reason
-        own = [*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs, arguments.vararg, arguments.kwarg]
-        names = frozenset(a.arg for a in own if a is not None)
-        return self.expr(node.body, bound | names, names)
-
-    def comprehension(self, node: ast.AST, bound: frozenset[str], frame: frozenset[str]) -> str | None:
-        assert isinstance(node, _COMPREHENSIONS)
-        # The first iterable is evaluated in the frame around the comprehension.
-        own: frozenset[str] = frozenset()
-        for generator in node.generators:
-            if reason := self.expr(generator.iter, bound, own if own else frame):
-                return reason
-            names, stores = _targets(generator)
-            if stores:
-                return f"stores into `{ast.unparse(stores[0])}`"
-            bound, own = bound | names, own | names
-            for condition in generator.ifs:
-                if reason := self.expr(condition, bound, own):
-                    return reason
-        parts = [node.key, node.value] if isinstance(node, ast.DictComp) else [node.elt]
-        for part in parts:
-            if reason := self.expr(part, bound, own):
+    def lambda_(self, node: ast.Lambda) -> str | None:
+        names = lambda_arguments(node)
+        for child, bound, frame in scopes(node.body, names, names):
+            if reason := self.node(child, bound, frame):
                 return reason
         return None
 
@@ -204,13 +260,11 @@ class _Purity:
                 return f"reaches `.{name}`"
         return None
 
-    def expr(self, node: ast.AST | None, bound: frozenset[str], frame: frozenset[str]) -> str | None:
-        if node is None or isinstance(node, (ast.Constant, ast.expr_context)):
-            return None
-        if isinstance(node, ast.Lambda):
-            return self.lambda_(node, bound, frame, nested=True)
+    def node(self, node: ast.AST, bound: frozenset[str], frame: frozenset[str]) -> str | None:
         if isinstance(node, _COMPREHENSIONS):
-            return self.comprehension(node, bound, frame)
+            for generator in node.generators:
+                if stores := _targets(generator)[1]:
+                    return f"stores into `{ast.unparse(stores[0])}`"
         if isinstance(node, ast.NamedExpr):
             return f"binds `{ast.unparse(node.target)}` with `:=`"
         if isinstance(node, (ast.Yield, ast.YieldFrom, ast.Await)):
@@ -218,17 +272,12 @@ class _Purity:
         if isinstance(node, ast.Name):
             return self.name(node.id, bound) if isinstance(node.ctx, ast.Load) else f"binds `{node.id}`"
         if isinstance(node, ast.Attribute):
-            return self.attributes([node.attr]) or self.expr(node.value, bound, frame)
+            return self.attributes([node.attr])
         if lookup := name_lookup(node, NAME_MAPPER):
             function, path = lookup
-            assert isinstance(node, ast.Call)
             if function in NAMESPACE_LOOKUPS:
                 return self.lookup(path, frame)
-            # `VFN(value, 'a.b', ...)`: attributes of a value.
-            return self.attributes(path.split(".")) or self.expr(node.args[0], bound, frame)
-        for child in ast.iter_child_nodes(node):
-            if reason := self.expr(child, bound, frame):
-                return reason
+            return self.attributes(path.split("."))
         return None
 
 
@@ -245,7 +294,7 @@ def impurity(
     ``changing``: the names of `#set global` values and of the template's members; ``is_input``: whether the
     namespace has a tool input of a name.
     """
-    return _Purity(locals_, imported, changing, is_input).lambda_(node, frozenset(), frozenset(), nested=False)
+    return _Purity(locals_, imported, changing, is_input).lambda_(node)
 
 
 def nested_lambdas(node: ast.Lambda) -> Iterator[ast.Lambda]:

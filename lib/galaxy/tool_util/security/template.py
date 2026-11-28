@@ -56,6 +56,14 @@ MACRO_METHOD = "galaxy_template_macro_"
 
 
 @lru_cache(maxsize=1)
+def answered_before_namespace() -> frozenset[str]:
+    """Names a lookup finds before it reaches the namespace: attributes of the compiled template object, and of
+    the dicts of a frame's locals and of the #set global store. A namespace answers with its keys first, so an
+    attribute of the TreeDict Galaxy retries it as hides no key."""
+    return frozenset(dir(Template("x", searchList=[{}]))) | frozenset(dir({}))
+
+
+@lru_cache(maxsize=1)
 def template_attributes() -> frozenset[str]:
     """Names Cheetah finds on an object rather than as a key: on a compiled template object, on the locals of a
     frame and the #set global dict, or on the TreeDict Galaxy retries the namespace as."""
@@ -172,6 +180,9 @@ class Method:
     # defined rather than called (defaults, decorators).
     defaults: dict[str, ast.expr] = field(default_factory=dict)
     at_definition: list[ast.expr] = field(default_factory=list)
+    # The names the generated code binds before the template's own: every argument (self, trans, **KWS) and
+    # the locals Cheetah sets up (write, SL, _filter, ...).
+    preamble: frozenset[str] = frozenset()
 
 
 @dataclass
@@ -277,7 +288,15 @@ def _method(func: ast.FunctionDef) -> Method:
         for arg, default in zip(positional[len(positional) - len(func.args.defaults) :], func.args.defaults)
     }
     at_definition = [*func.args.defaults, *(d for d in func.args.kw_defaults if d is not None), *func.decorator_list]
-    return Method(func.name, args, body[start:end], defaults, at_definition)
+    arguments = [*func.args.posonlyargs, *func.args.args, *func.args.kwonlyargs, func.args.vararg, func.args.kwarg]
+    preamble = {a.arg for a in arguments if a is not None}
+    preamble.update(
+        node.id
+        for stmt in body[:start]
+        for node in ast.walk(stmt)
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
+    )
+    return Method(func.name, args, body[start:end], defaults, at_definition, frozenset(preamble))
 
 
 def _is_literal_write(stmt: ast.stmt) -> str | None:

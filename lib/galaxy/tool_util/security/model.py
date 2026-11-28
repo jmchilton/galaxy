@@ -116,9 +116,10 @@ class Model:
             self._job_parameters[name] = Opaque(f"${name}", value)
         return AV(nodes=(self._job_parameters[name],))
 
-    def sources(self, names: frozenset[str]) -> list[SourceRef]:
+    def sources(self, names: frozenset[str], looked_up: frozenset[str]) -> list[SourceRef]:
         """The user-controlled sources a template that mentions ``names`` can read: the tool's
-        inputs, and the account values and preferences it names (``key=None``: any preference)."""
+        inputs, the account values and preferences it names (``key=None``: any preference), and the
+        job parameters of the names it looks up in the namespace (``looked_up``)."""
         refs = dict.fromkeys(self.root.sources(names))
         for name in _USER_SPECIALS:
             if name in names:
@@ -126,7 +127,7 @@ class Model:
         if self.keeps_undeclared_job_parameters:
             for name in REPLACEABLE_SPECIALS & names:
                 refs[SourceRef(SPECIAL, key=name)] = None
-        for name in sorted(names):
+        for name in sorted(looked_up):
             # A job parameter of a name no input or Galaxy value holds, where one reaches the templates.
             if name not in self.specials and self.lookup(name) is None and self.can_be_job_parameter(name):
                 refs[SourceRef(SPECIAL, key=name)] = None
