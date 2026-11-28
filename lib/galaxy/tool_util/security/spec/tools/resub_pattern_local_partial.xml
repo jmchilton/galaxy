@@ -1,0 +1,13 @@
+<tool id="spec_resub_pattern_local_partial" name="re.sub with a pattern local" version="1.0" profile="24.0">
+    <description>removes only semicolons from a raw value, with a pattern kept in a #set local</description>
+    <command><![CDATA[#import re
+#set $cre = '[;]'
+#set $v = re.sub($cre, '', str($p.value))
+echo 'fill:${v};' > '$out']]></command>
+    <inputs>
+        <param name="p" type="text"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

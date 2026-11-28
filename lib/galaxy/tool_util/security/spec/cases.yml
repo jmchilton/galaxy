@@ -1091,6 +1091,35 @@ replace_that_adds_a_quote_breaks_escape:
       harm: true
       expect: {rejected: false, warns: [uncheckable-rewrites]}
 
+resub_pattern_from_local:
+  doc: A cleaning pattern kept in a `#set` local cleans as the literal does.
+  tool: resub_pattern_local.xml
+  review:
+    serious_rules: []
+    absent:
+      - {rule: shell-injection, param: p}
+  green:
+    - inputs: {p: "x'$(touch harm-marker)';touch harm-marker"}
+      harm: true
+      expect: {rejected: false}
+
+resub_pattern_from_local_that_keeps_quote:
+  doc: A pattern kept in a local that removes only `;` leaves the quote, and `$(` after it runs a command.
+  tool: resub_pattern_local_partial.xml
+  code: shell-injection
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, accessor: raw, param: p}
+  red:
+    - inputs: {p: "x'$(touch harm-marker)'"}
+      harm: true
+      expect: {rejected: true}
+  green:
+    - inputs: {p: "a;b"}
+      harm: true
+      expect: {rejected: false}
+
 dataset_content_command_substitution:
   doc: >-
     A command substitution that reads a dataset writes its content where the job runs. Unquoted, the shell

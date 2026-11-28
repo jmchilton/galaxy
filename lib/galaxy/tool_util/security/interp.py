@@ -1038,17 +1038,18 @@ class TemplateAnalysis:
         # `x == re.sub(pattern, '_', x)`: the value holds no character the pattern replaces, except
         # those of the replacement itself.
         replacement = _const(other.args[1]) if isinstance(other, ast.Call) and len(other.args) == 3 else None
+        pattern = self._literal(other.args[0], env) if isinstance(other, ast.Call) and other.args else None
         if (
             isinstance(other, ast.Call)
             and ast.unparse(other.func) in ("re.sub", "re.subn")
             and len(other.args) == 3
             and not other.keywords
-            and isinstance(_const(other.args[0]), str)
+            and isinstance(pattern, str)
             and isinstance(replacement, str)
             and "\\" not in replacement
             and ast.unparse(_unwrap_str(other.args[2])) == ast.unparse(_unwrap_str(target))
         ):
-            removed = charsets.regex_removed(str(_const(other.args[0])))
+            removed = charsets.regex_removed(pattern)
             if removed is not None:
                 kept = charsets.probe(replacement)
                 removed = charsets.Removed(removed.everywhere - kept, removed.start - kept, removed.start_repeats)
@@ -1837,6 +1838,17 @@ class TemplateAnalysis:
             return value
         return value
 
+    def _literal(self, node: ast.expr, env: Env) -> object:
+        """The constant an expression is: a literal, or a local that holds one string literal on every path."""
+        literal = _const(node)
+        name = self._local_name(node, env) if literal is None else None
+        if name is None or name in env.hidden:
+            return literal
+        value = env.local[name]
+        if value.parts is not None and len(value.parts) == 1 and value == AV(parts=value.parts):
+            return value.parts[0]
+        return None
+
     def _local_name(self, node: ast.AST, env: Env) -> str | None:
         if isinstance(node, ast.Name) and node.id in env.local:
             return node.id
@@ -2124,7 +2136,8 @@ class TemplateAnalysis:
         if name in ("re.sub", "re.subn") and len(args) >= 3:
             # With a count, or a replacement that is not plain text, some matches are left in place.
             every_match = len(node.args) == 3 and not node.keywords
-            return self._substitute(node, _const(node.args[0]), args[1], node.args[1], stringify(args[2]), every_match)
+            pattern = self._literal(node.args[0], env)
+            return self._substitute(node, pattern, args[1], node.args[1], stringify(args[2]), every_match)
         if name == "re.escape":
             text = stringify(first)
             self._introduce(text, frozenset("\\"))
@@ -2249,7 +2262,10 @@ class TemplateAnalysis:
         literal = _const(replacement_node)
         plain = isinstance(literal, str) and "\\" not in literal
         added = replaced.chars | (charsets.probe(literal) if isinstance(literal, str) and text.tainted else set())
-        if not self._judge_rewrite(call, text, *literal_rewrite_call(call, regex=True), regex=True):
+        old, new = literal_rewrite_call(call, regex=True)
+        if len(call.args) == 3 and not call.keywords:
+            old = pattern
+        if not self._judge_rewrite(call, text, old, new, regex=True):
             self._introduce(text, frozenset(added) if isinstance(literal, str) and plain else charsets.PROBE)
         removed = charsets.regex_removed(pattern) if isinstance(pattern, str) and plain and every_match else None
         if removed is None or not isinstance(literal, str):

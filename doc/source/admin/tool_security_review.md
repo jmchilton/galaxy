@@ -478,6 +478,33 @@ inputs:
   p: a b
 ```
 
+#### resub_pattern_from_local_that_keeps_quote
+
+A pattern kept in a local that removes only `;` leaves the quote, and `$(` after it runs a command.
+
+Tool `resub_pattern_local_partial.xml`:
+
+```
+#import re
+#set $cre = '[;]'
+#set $v = re.sub($cre, '', str($p.value))
+echo 'fill:${v};' > '$out'
+```
+
+Refused
+
+```
+inputs:
+  p: x'$(touch harm-marker)'
+```
+
+Runs
+
+```
+inputs:
+  p: a;b
+```
+
 #### raw_dataset_model
 
 `$input.unsanitized.name` is the dataset's name as the user set it, without the sanitizer: the check reads it from the model too.
@@ -2947,6 +2974,26 @@ Runs
 ```
 inputs:
   p: a';touch harm-marker;'
+```
+
+#### resub_pattern_from_local
+
+A cleaning pattern kept in a `#set` local cleans as the literal does.
+
+Tool `resub_pattern_local.xml`:
+
+```
+#import re
+#set $cre = '[^#A-Za-z0-9]'
+#set $v = re.sub($cre, '', str($p.value))
+echo 'fill:${v};' > '$out'
+```
+
+Runs
+
+```
+inputs:
+  p: x'$(touch harm-marker)';touch harm-marker
 ```
 
 #### dataset_content_substitution_quoted

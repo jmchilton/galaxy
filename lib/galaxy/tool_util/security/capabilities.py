@@ -121,6 +121,12 @@ _GETATTR = frozenset(("getattr",))
 _KEEPING_CODECS = frozenset(("utf-8", "utf8", "utf_8", "ascii"))
 
 
+def _plain_name(node: ast.expr) -> bool:
+    """A name with no attribute: a local, or a lookup of one in the namespace."""
+    lookup = name_lookup(node)
+    return isinstance(node, ast.Name) or (lookup is not None and "." not in lookup[1])
+
+
 class PythonAudit:
     """Flag Python in a template (or an expression) that acts on the server instead of computing text."""
 
@@ -421,7 +427,11 @@ class PythonAudit:
         if name in _REWRITE_CALLS:
             return name, False
         if name in ("sub", "subn") and (chain[0] == "re" or chain[:1] == ["$"]):
-            return f"re.{name}", literal_rewrite(*literal_rewrite_call(node, regex=True), regex=True) is not None
+            old, new = literal_rewrite_call(node, regex=True)
+            if old is None and len(node.args) == 3 and _plain_name(node.args[0]):
+                # A pattern kept in a local: the analysis judges the rewrite where it knows the local's text.
+                return f"re.{name}", True
+            return f"re.{name}", literal_rewrite(old, new, regex=True) is not None
         if name == "decode":
             codec = node.args[0] if node.args else None
             keeps = codec is None or (isinstance(codec, ast.Constant) and str(codec.value).lower() in _KEEPING_CODECS)

@@ -1606,6 +1606,14 @@ def test_escaped_single_quote_survives_joins_and_methods(tmp_path, command, expe
             ),
             set(),
         ),
+        # A pattern kept in a local is the literal it holds.
+        (
+            (
+                "#import re\n#set $cre = '[^\\w.-]'\n#if str($input.element_identifier) == re.sub($cre, '_', str($input.element_identifier))\n"
+                "ln -s '$input' '$input.element_identifier'\n#end if"
+            ),
+            set(),
+        ),
         # The skipped iterations never reach the command; after the loop nothing is narrowed.
         (
             (
@@ -1703,6 +1711,22 @@ def test_conditional_selector_picks_the_when_block(tmp_path, command, expected):
             "#import re\n#if str($free) == re.sub('[^\\w]', ';', str($free))\ntool $free\n#end if",
             ("shell-injection", "high"),
         ),
+        # A pattern local reassigned on one path is not one literal.
+        (
+            "#import re\n#set $cre = '[^\\w]'\n#if $word == 'a'\n#set $cre = '[;]'\n#end if\ntool '${re.sub($cre, '', str($free))}'",
+            ("shell-injection", "high"),
+        ),
+        (
+            (
+                "#import re\n#set $cre = '[^\\w]'\n#if $word == 'a'\n#set $cre = '[;]'\n#end if\n"
+                "#if str($free) == re.sub($cre, '', str($free))\ntool '$free'\n#end if"
+            ),
+            ("shell-injection", "high"),
+        ),
+        (
+            "#import re\n#set global $cre = '[^\\w]'\ntool '${re.sub($cre, '', str($free))}'",
+            ("shell-injection", "high"),
+        ),
         # shlex.quote leaves `,` unquoted; a quote in literal text no longer lines up with the escaping.
         ("#import shlex\ntool ${shlex.quote(str($free)).replace(',', ';')}", ("shell-injection", "high")),
         ("#import shlex\ntool ${''.join([\"'\", shlex.quote(str($free))])}", ("shell-injection", "high")),
@@ -1710,6 +1734,28 @@ def test_conditional_selector_picks_the_when_block(tmp_path, command, expected):
 )
 def test_narrowing_does_not_hide_raw_values(tmp_path, command, expected):
     assert expected in rules(review(tmp_path, command))
+
+
+@pytest.mark.parametrize(
+    "command,checkable",
+    [
+        ("#import re\ntool '${re.sub('[;]', ' ', str($free))}'", True),
+        ("#import re\n#set $cre = '[;]'\ntool '${re.sub($cre, ' ', str($free))}'", True),
+        (
+            (
+                "#import re\n#set $cre = '[;]'\n#if $word == 'a'\n#set $cre = '[|]'\n#end if\n"
+                "tool '${re.sub($cre, ' ', str($free))}'"
+            ),
+            False,
+        ),
+        ("#import re\n#set global $cre = '[;]'\ntool '${re.sub($cre, ' ', str($free))}'", False),
+    ],
+)
+def test_a_pattern_kept_in_a_local_is_a_literal_rewrite(tmp_path, command, checkable):
+    # The job check adds what a literal rewrite writes to the values it reads (Report.rewritten).
+    report = review(tmp_path, command)
+    assert (report.rewrites == {}) is checkable
+    assert bool(report.rewritten) is checkable
 
 
 @pytest.mark.parametrize(
