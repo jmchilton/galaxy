@@ -22,6 +22,7 @@
         </xml>
     </macros>
     <command><![CDATA[
+        #import re
         #import shlex
 
         cd /home/higlass/projects &&
@@ -76,41 +77,41 @@
 
         #for $count, $input in enumerate($inputs):
             #for $file in $input.fileselect.inputfiles:
-                ## Element identifiers aren't sanitized, so the two file names made from one are shell-quoted once, here:
-                ## the track's file (slashes made underscores) and the input's copy, which adds the extension.
-                #set $safe_name = str($file.element_identifier).replace('/', '_')
-                #set $track_name = shlex.quote($safe_name)
-                #set $copy_name = shlex.quote($safe_name + "." + str($file.ext))
+                ## Element identifiers aren't sanitized. The two file names made from one, the track's file and the input's
+                ## copy (which adds the extension), keep word characters, '.' and '-'; any other character, and a leading
+                ## '-' or '.', becomes '_', and an empty name is '_'.
+                #set $track_name = re.sub('^[-.]|[^\\w.-]', '_', str($file.element_identifier)) or '_'
+                #set $copy_name = $track_name + "." + str($file.ext)
                 #if $input.fileselect.typeselect == "bed":
-                    cp '$file' data/$copy_name &&
-                    clodius aggregate bedfile --assembly '$file.metadata.dbkey' data/$copy_name &&
-                    mv data/${copy_name}.beddb data/$track_name &&
-                    python higlass-server/manage.py ingest_tileset --filename data/$track_name --filetype beddb --datatype bedlike --coordSystem '$file.metadata.dbkey' &&
+                    cp '$file' 'data/$copy_name' &&
+                    clodius aggregate bedfile --assembly '$file.metadata.dbkey' 'data/$copy_name' &&
+                    mv 'data/${copy_name}.beddb' 'data/$track_name' &&
+                    python higlass-server/manage.py ingest_tileset --filename 'data/$track_name' --filetype beddb --datatype bedlike --coordSystem '$file.metadata.dbkey' &&
                 #elif $input.fileselect.typeselect == "bigwig":
-                    cp '$file' data/$track_name &&
-                    python higlass-server/manage.py ingest_tileset --filename data/$track_name --filetype bigwig --datatype vector --coordSystem '${file.metadata.dbkey}' &&
+                    cp '$file' 'data/$track_name' &&
+                    python higlass-server/manage.py ingest_tileset --filename 'data/$track_name' --filetype bigwig --datatype vector --coordSystem '${file.metadata.dbkey}' &&
                 #elif $input.fileselect.typeselect == "bedgraph":
-                    cp '$file' data/$copy_name &&
-                    cat data/$copy_name | sort -k1,1 -k2,2n | awk '{ if (NF >= 4) print $${file.metadata.chromCol} "\t" $${file.metadata.startCol} "\t" $${file.metadata.endCol} "\t" $${input.fileselect.valuecol}}' > data/${copy_name}.presort;
+                    cp '$file' 'data/$copy_name' &&
+                    cat 'data/$copy_name' | sort -k1,1 -k2,2n | awk '{ if (NF >= 4) print $${file.metadata.chromCol} "\t" $${file.metadata.startCol} "\t" $${file.metadata.endCol} "\t" $${input.fileselect.valuecol}}' > 'data/${copy_name}.presort';
                     #if $file.metadata.dbkey in $existing_genomes:
-                        bedGraphToBigWig data/${copy_name}.presort 'negspy/negspy/data/${file.metadata.dbkey}/chromInfo.txt' data/${copy_name}.bigwig &&
+                        bedGraphToBigWig 'data/${copy_name}.presort' 'negspy/negspy/data/${file.metadata.dbkey}/chromInfo.txt' 'data/${copy_name}.bigwig' &&
                     #else
-                        bedGraphToBigWig data/${copy_name}.presort ${shlex.quote(str($uploaded_genomes[str($file.metadata.dbkey)]))} data/${copy_name}.bigwig &&
+                        bedGraphToBigWig 'data/${copy_name}.presort' ${shlex.quote(str($uploaded_genomes[str($file.metadata.dbkey)]))} 'data/${copy_name}.bigwig' &&
                     #end if
-                    mv data/${copy_name}.bigwig data/$track_name &&
-                    python higlass-server/manage.py ingest_tileset --filename data/$track_name --filetype bigwig --datatype vector --coordSystem '${file.metadata.dbkey}' &&
+                    mv 'data/${copy_name}.bigwig' 'data/$track_name' &&
+                    python higlass-server/manage.py ingest_tileset --filename 'data/$track_name' --filetype bigwig --datatype vector --coordSystem '${file.metadata.dbkey}' &&
                 #elif $input.fileselect.typeselect == "bigbed":
-                    cp '$file' data/$copy_name &&
-                    bigBedToBed data/$copy_name ./$track_name &&
-                    clodius aggregate bedfile --assembly '$file.metadata.dbkey' ./$track_name &&
-                    mv ./${track_name}.beddb data/$track_name &&
-                    python higlass-server/manage.py ingest_tileset --filename data/$track_name --filetype beddb --datatype bedlike --coordSystem '$file.metadata.dbkey' &&
+                    cp '$file' 'data/$copy_name' &&
+                    bigBedToBed 'data/$copy_name' './$track_name' &&
+                    clodius aggregate bedfile --assembly '$file.metadata.dbkey' './$track_name' &&
+                    mv './${track_name}.beddb' 'data/$track_name' &&
+                    python higlass-server/manage.py ingest_tileset --filename 'data/$track_name' --filetype beddb --datatype bedlike --coordSystem '$file.metadata.dbkey' &&
                 #elif $input.fileselect.typeselect == "mcool":
-                    cp '$file' data/$track_name &&
-                    python higlass-server/manage.py ingest_tileset --filename data/$track_name --filetype cooler --datatype matrix &&
+                    cp '$file' 'data/$track_name' &&
+                    python higlass-server/manage.py ingest_tileset --filename 'data/$track_name' --filetype cooler --datatype matrix &&
                 #elif $input.fileselect.typeselect == "cool":
-                    cp '$file' data/$copy_name &&
-                    cooler zoomify -r '$input.fileselect.zoomval' -o data/$track_name data/$copy_name &&
+                    cp '$file' 'data/$copy_name' &&
+                    cooler zoomify -r '$input.fileselect.zoomval' -o 'data/$track_name' 'data/$copy_name' &&
 
 
                     ###if $input.fileselect.granularity == "Yes":
@@ -120,7 +121,7 @@
                     ###end if
 
 
-                    python higlass-server/manage.py ingest_tileset --filename data/$track_name --filetype cooler --datatype matrix &&
+                    python higlass-server/manage.py ingest_tileset --filename 'data/$track_name' --filetype cooler --datatype matrix &&
                 #end if
             #end for
         #end for
