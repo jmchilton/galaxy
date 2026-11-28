@@ -101,9 +101,17 @@ class FakeConfig:
     database_connection: str = "sqlite:///:memory:"
 
 
-def _tool_xml(tool_id: str, *, name: str | None = None, version: str = "1.0", command: str = "echo") -> str:
+def _tool_xml(
+    tool_id: str,
+    *,
+    name: str | None = None,
+    version: str = "1.0",
+    command: str = "echo",
+    tool_type: str | None = None,
+) -> str:
+    tool_type_attribute = f' tool_type="{tool_type}"' if tool_type else ""
     return (
-        f'<tool id="{tool_id}" name="{name or tool_id}" version="{version}" profile="21.09">'
+        f'<tool id="{tool_id}" name="{name or tool_id}" version="{version}" profile="21.09"{tool_type_attribute}>'
         f"<command>{command}</command></tool>"
     )
 
@@ -952,16 +960,20 @@ class TestToolPatches:
 class TestStaticReview:
     """With refusals on, index entries keep the static review of the stored, patched source."""
 
-    def _setup(self, tmp_path, refuse: bool = True):
+    def _setup(self, tmp_path, refuse: bool = True, interactive: bool = False):
         tools_dir = tmp_path / "tools"
         for i in (1, 2):
             _write_tool(tools_dir / f"stest_{i}.xml", f"stest_{i}", command=f"#import subprocess\necho stest_{i}")
         _write_tool(tools_dir / "stest_clean.xml", "stest_clean", command="echo stest_clean")
-        _write_tool_conf(
-            tmp_path / "tool_conf.xml",
-            tools_dir,
-            '<tool file="stest_1.xml"/><tool file="stest_2.xml"/><tool file="stest_clean.xml"/>',
-        )
+        items = '<tool file="stest_1.xml"/><tool file="stest_2.xml"/><tool file="stest_clean.xml"/>'
+        if interactive:
+            # Reviewed, its #import would refuse it as stest_1 is.
+            command = "#import subprocess\necho stest_interactive"
+            _write_tool(
+                tools_dir / "stest_interactive.xml", "stest_interactive", command=command, tool_type="interactive"
+            )
+            items += '<tool file="stest_interactive.xml"/>'
+        _write_tool_conf(tmp_path / "tool_conf.xml", tools_dir, items)
         unimport = security_patch(
             [replace_text_op("command", "#import subprocess\necho stest_2", "echo stest_2")],
             "unusual_inputs",
@@ -1010,15 +1022,7 @@ class TestStaticReview:
         assert _populate_default(cfg, pattern="stest_", incremental=True)["unchanged"] == 3
 
     def test_interactive_tools_are_not_reviewed_and_stay_unchanged(self, tmp_path):
-        cfg = self._setup(tmp_path)
-        xml = _tool_xml("stest_interactive", command="#import subprocess\necho stest_interactive")
-        (tmp_path / "tools" / "stest_interactive.xml").write_text(
-            xml.replace("<tool ", '<tool tool_type="interactive" ')
-        )
-        tool_conf = (tmp_path / "tool_conf.xml").read_text()
-        (tmp_path / "tool_conf.xml").write_text(
-            tool_conf.replace("</toolbox>", '<tool file="stest_interactive.xml"/></toolbox>')
-        )
+        cfg = self._setup(tmp_path, interactive=True)
 
         _populate_default(cfg, pattern="stest_", incremental=True)
         _, index = _load_default_index(cfg)

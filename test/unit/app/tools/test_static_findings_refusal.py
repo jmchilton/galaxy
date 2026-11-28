@@ -184,32 +184,33 @@ def test_interactive_tools_are_not_refused(
     tool = tmp_path / name
     tool.write_text(contents)
     # Reviewed as any other tool, its findings would refuse it.
-    assert StaticReview.of(review_tool_source(get_tool_source(str(tool))), REVIEW_VERSION).refused_rules(severity)
+    review = StaticReview.of(review_tool_source(get_tool_source(str(tool))), REVIEW_VERSION)
+    assert review.refused_rules(severity)
     config = _config(severity=severity)
-    assert with_static_review(config, get_tool_source(str(tool)), tool).static_review is None
+    # Even when a store built before the tool was left out kept that review on its index entry.
+    assert with_static_review(config, get_tool_source(str(tool)), tool, kept=review).static_review is None
     assert static_review_is_current(config, None, tool, _built(tool), None)
     (said,) = _logged(caplog)
     assert str(tool) in said and "it is an interactive tool" in said
 
 
-def test_tools_that_only_look_interactive_are_refused(tmp_path: Path) -> None:
-    # Entry points and the API key, but no tool_type="interactive": Galaxy runs it as an ordinary tool.
-    tool = tmp_path / "lookalike.xml"
-    tool.write_text(INTERACTIVE_TOOL.replace(' tool_type="interactive"', ""))
-    review = with_static_review(_config(), get_tool_source(str(tool)), tool).static_review
-    assert review is not None and "capability-api-key" in review.refused_rules("high")
-    assert not static_review_is_current(_config(), None, tool, _built(tool), None)
-
-
-def test_tools_a_type_element_builds_as_ordinary_tools_are_refused(tmp_path: Path) -> None:
-    # tool_type="interactive", but the <type> element makes Galaxy build a plain Tool: it is not interactive.
-    tool = tmp_path / "overridden.xml"
-    tool.write_text(
-        INTERACTIVE_TOOL.replace("<entry_points>", '<type class="Tool" module="galaxy.tools"/><entry_points>', 1)
-    )
+@pytest.mark.parametrize(
+    "contents",
+    [
+        # Entry points and the API key, but no tool_type="interactive".
+        INTERACTIVE_TOOL.replace(' tool_type="interactive"', ""),
+        # tool_type="interactive", but the <type> element makes Galaxy build a plain Tool.
+        INTERACTIVE_TOOL.replace("<entry_points>", '<type class="Tool" module="galaxy.tools"/><entry_points>', 1),
+    ],
+    ids=["lookalike", "type_element"],
+)
+def test_tools_galaxy_builds_as_ordinary_tools_are_refused(tmp_path: Path, contents: str) -> None:
+    tool = tmp_path / "ordinary.xml"
+    tool.write_text(contents)
     review = with_static_review(_config(), get_tool_source(str(tool)), tool).static_review
     assert review is not None and "capability-api-key" in review.refused_rules("high")
     assert static_review_is_current(_config(), review, tool, _built(tool), None)
+    assert not static_review_is_current(_config(), None, tool, _built(tool), None)
 
 
 def test_cwl_tools_are_not_refused() -> None:
@@ -240,7 +241,7 @@ def test_other_tools_galaxy_ships_are_reviewed(path: str) -> None:
 
 
 def test_the_unsafe_test_tool_is_refused() -> None:
-    # The red case of these tests and of the integration tests, whatever happens to identifier_single.
+    # The red case of these tests and of the integration tests, whose refused job's info names exactly this rule.
     review = with_static_review(_config(), get_tool_source(TOOL), TOOL).static_review
     assert review is not None and review.refused_rules("high") == ["shell-injection"]
 
