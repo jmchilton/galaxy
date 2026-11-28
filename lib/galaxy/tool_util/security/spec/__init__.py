@@ -103,7 +103,7 @@ class JobCase(_Model):
 
 
 class FindingExpectation(_Model):
-    """A finding the review reports: every field given must match."""
+    """A finding the review reports, or must not report: every field given must match."""
 
     rule: str
     severity: Optional[str] = None
@@ -116,6 +116,8 @@ class FindingExpectation(_Model):
 
 class ReviewExpectation(_Model):
     findings: List[FindingExpectation] = []
+    # Findings the review must not report, of any severity: no finding may match one of these.
+    absent: List[FindingExpectation] = []
     # Exactly the rules of the high and critical vulnerabilities, when given.
     serious_rules: Optional[List[str]] = None
     # Exactly these, when given.
@@ -285,6 +287,9 @@ def review_problems(case: SpecCase) -> List[str]:
     for want in expected.findings:
         if not any(_matches(want, finding) for finding in report.findings):
             problems.append(f"no finding matches {want.model_dump(exclude_none=True)}")
+    for unwanted in expected.absent:
+        if any(_matches(unwanted, finding) for finding in report.findings):
+            problems.append(f"a finding matches the absent {unwanted.model_dump(exclude_none=True)}")
     if expected.serious_rules is not None:
         serious = sorted({f.rule for f in serious_findings(report)})
         if serious != sorted(expected.serious_rules):

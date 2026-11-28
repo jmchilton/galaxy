@@ -15,6 +15,7 @@ from galaxy.tool_util.security.patterns import (
 from galaxy.tool_util.security.spec import (
     load_cases,
     review_problems,
+    SpecCase,
     TOOLS_DIRECTORY,
 )
 from galaxy.tool_util.security.spec.docs import (
@@ -30,6 +31,22 @@ CASES = load_cases()
 @pytest.mark.parametrize("case_id", sorted(CASES))
 def test_review(case_id):
     assert review_problems(CASES[case_id]) == []
+
+
+@pytest.mark.parametrize(
+    "absent, problem",
+    [
+        # The tool's only finding is a low option-injection of `word`.
+        ({"rule": "shell-injection"}, False),
+        ({"rule": "option-injection", "severity": "medium"}, False),
+        ({"rule": "option-injection", "param": "other"}, False),
+        ({"rule": "option-injection"}, True),
+        ({"rule": "option-injection", "severity": "low", "accessor": "text", "param": "word"}, True),
+    ],
+)
+def test_absent_findings(absent, problem):
+    case = SpecCase(doc="d", tool="sanitized_text_single_quoted.xml", review={"absent": [absent]})
+    assert bool(review_problems(case)) == problem
 
 
 def test_every_tool_has_a_case():
