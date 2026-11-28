@@ -28,6 +28,11 @@ from galaxy.tool_util.security.charsets import (
     TILDE_WORD,
 )
 from galaxy.tool_util.security.model import build_model
+from galaxy.tool_util.security.report import (
+    DATASET_CONTENT,
+    ELEMENT_IDENTIFIER,
+    SourceRef,
+)
 from galaxy.tool_util.security.template import (
     compile_template,
     CompileTimeExecution,
@@ -195,6 +200,7 @@ def test_sanitizer_that_writes_a_shell_safe_quote(tmp_path):
         ("tool '$free'", ("shell-injection", "high")),
         # repr()'s own quotes end the single quotes around it.
         ("tool '${repr($text.value)}'", ("shell-injection", "high")),
+        ("tool $'${repr(str($text))}'", ("argument-injection", "medium")),
         ("tool '${str($text).__repr__()}'", ("argument-injection", "medium")),
         ("sh -c \"tool '${repr(str($text))}'\"", ("nested-interpreter", "medium")),
         ('tool "$no_quote"', ("shell-injection", "high")),
@@ -258,10 +264,14 @@ SPLIT_CONTENT = {("argument-injection", "medium"), ("option-injection", "low")}
         ("tool `head -n 1 '$input' | cut -f 2` > '$out'", SPLIT_CONTENT),
         ("tool \\$(sort < '$input' | grep -v '^#') > '$out'", SPLIT_CONTENT),
         ("tool \\$(cat '$input' 2> /dev/null) > '$out'", SPLIT_CONTENT),
+        # What a command of the list before another writes is output too.
+        ("tool \\$(cat '$input'; echo ok) > '$out'", SPLIT_CONTENT),
         ("tool \\$(sort -k 2 '$input') > '$out'", SPLIT_CONTENT),
         ("tool \\$(grep -v '^#' '$input') > '$out'", SPLIT_CONTENT),
         ("tool \\$(grep -e -c '$input') > '$out'", SPLIT_CONTENT),
+        ("tool \\$(grep -- -c '$input') > '$out'", SPLIT_CONTENT),
         ("tool \\$(cat '${input.file_name}') > '$out'", SPLIT_CONTENT),
+        ("tool \\$(cat '$input.path') > '$out'", SPLIT_CONTENT),
         # Older dash splits an operand of a declaration.
         ("export X=\\$(cat '$input') && tool > '$out'", {("argument-injection", "medium")}),
         # grep's first operand is its pattern; the word names another file.
@@ -272,6 +282,7 @@ SPLIT_CONTENT = {("argument-injection", "medium"), ("option-injection", "low")}
         ("tool \\$(cat '$input' | grep -c x) > '$out'", set()),
         ("tool \\$(grep -c x < '$input') > '$out'", set()),
         ("tool \\$(sort -o sorted.txt '$input') > '$out'", set()),
+        ("tool \\$(cat '$input' 1> copy.txt) > '$out'", set()),
         ("tool \\$(cat '$input' > copy.txt; echo ok) > '$out'", set()),
         # The shell does not split what it assigns.
         ("x=\\$(cat '$input') && tool > '$out'", set()),
@@ -286,6 +297,12 @@ def test_decompressed_dataset_content_is_not_checkable(tmp_path):
     report = review(tmp_path, "tool \\$(zcat '$input') > '$out'")
     assert rules(report) == SPLIT_CONTENT
     assert not any(f.checkable for f in report.findings)
+
+
+def test_the_strict_check_reads_dataset_content_a_command_substitution_writes(tmp_path):
+    # Here the shell keeps it one word, so there is no finding; the strict check still reads it.
+    report = review(tmp_path, "tool --name \"\\$(cat '$input')\" > '$out'")
+    assert SourceRef(DATASET_CONTENT, param="input") in report.reads["command"]
 
 
 @pytest.mark.parametrize(
@@ -319,11 +336,15 @@ _WORDS_AND_QUOTES = """<param name="p" type="text"><sanitizer>
         # A quote of the value flips the template text after it: a quoted command character there starts a
         # command.
         ('tool $p "a|b"', "medium"),
+        # A backslash inside single quotes escapes nothing.
+        ("tool $p 'a\\;b'", "medium"),
         ("tool $p 'a\\$b'", "medium"),
         # Also one a value the template computes writes, whose text the analysis does not know.
         ('#set $sep = ";".strip()\ntool $p "x${sep}"', "medium"),
         ('#set $sep = ";".strip()\ntool "x${sep}" $p', "low"),
         ('tool $p "${input}"', "low"),
+        # Written elsewhere in words that can name a file, the same value stays medium.
+        ("tool $p && tool ${str($p).replace('a', '/')}", "medium"),
     ],
 )
 def test_quotes_in_plain_words(tmp_path, command, severity):
@@ -386,6 +407,10 @@ _ESCAPES_GT = """<param name="p" type="text"><sanitizer>
   <valid initial="string.digits"/>
   <mapping initial="none"><add source="&gt;" target="\\&gt;"/><add source="z" target="\\"/></mapping>
 </sanitizer></param>
+<param name="sp" type="text"><sanitizer>
+  <valid initial="string.ascii_letters"/>
+  <mapping initial="none"><add source=" " target="\\ "/><add source="&gt;" target="\\&gt;"/></mapping>
+</sanitizer></param>
 <param name="c" type="boolean"/>
 <param name="sel" type="select"><option value="\\">backslash</option><option value="x">x</option></param>
 <param name="input" type="data" format="txt"/>"""
@@ -420,6 +445,9 @@ _ESCAPES_GT = """<param name="p" type="text"><sanitizer>
         ('tool "`echo $p`"', True),
         # The sanitizer also writes a backslash of its own, for a letter.
         ("tool $z", True),
+        # Stripping a value whose spaces are escaped can leave the backslash of one at its end.
+        ("tool $sp", False),
+        ("#set $t = str($sp).strip()\ntool $t x", True),
     ],
 )
 def test_escape_written_by_the_sanitizer(tmp_path, command, serious):
@@ -471,10 +499,13 @@ def test_options_sanitize_false_removes_all_sanitization(tmp_path):
         ('tool "$col" "$col.value"', False, {("shell-injection", "high")}),
         # Unquoted, the `#` of a colour comments out the rest of the line.
         ("tool $col > '$out'", True, {("argument-injection", "medium")}),
+        # A colour in a repeat too.
+        ("#for $r in $rows\ntool '$r.c'\n#end for", False, {("shell-injection", "high")}),
     ],
 )
 def test_color_param_where_galaxy_checks_colours(tmp_path, command, colors_validated, expected):
     color = '<param name="col" type="color" value="#000000"/>'
+    color += '<repeat name="rows" title="rows"><param name="c" type="color" value="#000000"/></repeat>'
     report = review(tmp_path, command, inputs=color, colors_validated=colors_validated)
     assert {rule for rule in rules(report) if rule != ("option-injection", "low")} == expected
 
@@ -511,6 +542,12 @@ _DATASETS = '<param name="input" type="data" format="txt"/><param name="inputs" 
 def test_dataset_members(tmp_path, command, expected):
     report = review(tmp_path, command, inputs=_DATASETS)
     assert rules(report) - {("option-injection", "low")} == expected
+
+
+def test_the_wrappers_own_element_identifier_is_the_identifier_the_job_check_reads(tmp_path):
+    report = review(tmp_path, "ln -s '$input._element_identifier' x && cat '$input' > '$out'", inputs=_DATASETS)
+    assert report.findings and all(f.checkable for f in report.findings)
+    assert {ref.accessor for f in report.findings for ref in f.refs} == {ELEMENT_IDENTIFIER}
 
 
 def test_python_built_command_keeps_quoting(tmp_path):
@@ -681,6 +718,8 @@ def test_repeated_use_is_one_finding_with_all_lines(tmp_path):
         ("tool\n#echo str($text)\n--b #echo str($text)#", [2, 3]),
         ("tool\n  --a #echo str($text)# --b #echo str($text)\n--c x\n--d #echo str($text)#", [2, 4]),
         ("tool\n#echo str($text) ## a note\n--d #echo str($text)#", [2, 3]),
+        # Closed by `#`, it leaves the newline to the text after it.
+        ("tool\n#echo str($text)# --b\n--c #echo str($text)#", [2, 3]),
         ("tool\n  --a #echo str($text)# ## a #echo note\n--c x\n--d #echo str($text)#", [2, 4]),
         # The #else line is a line of its own too, and an #elif ends with the #end if of its #if.
         ("#if $count\ntool\n#else\ntool\n  --b #echo str($text)#\n#end if", [5]),
@@ -1049,6 +1088,8 @@ def test_data_source_tools_keep_their_job_parameters(tmp_path, tool_type, check_
         ("tool '$letters.value'", set()),
         # A baseurl param is the request's value, not the tool's.
         ("tool $url", {("argument-injection", "medium"), ("option-injection", "low")}),
+        # So is a param whose wrapper writes the value as it is.
+        ("tool '$col' '$uri'", {("option-injection", "low")}),
     ],
 )
 def test_inputs_without_parameter_wrappers_are_default_sanitized_strings(tmp_path, command, expected):
@@ -1058,7 +1099,8 @@ def test_inputs_without_parameter_wrappers_are_default_sanitized_strings(tmp_pat
   <command><![CDATA[{command}]]></command>
   <inputs check_values="false"><param name="letters" type="text">
     <sanitizer><valid initial="string.ascii_letters"/></sanitizer></param>
-    <param name="url" type="baseurl" value="/tool_runner"/></inputs>
+    <param name="url" type="baseurl" value="/tool_runner"/>
+    <param name="col" type="color" value="#000000"/><param name="uri" type="directory_uri"/></inputs>
   <outputs><data name="out" format="txt"/></outputs></tool>""")
     assert rules(review_tool_source(get_tool_source(path))) == expected
 
@@ -1555,8 +1597,9 @@ def test_words_that_cannot_begin_with_a_dash(tmp_path, command, expected):
         ("tool '${str($sq).replace('\\\\\\n', ' ').replace('a', '\\\\')}'", set()),
         # Removing the backslash of '\'' breaks it.
         ("tool '${str($sq).replace('\\\\', '')}'", {("shell-injection", "high")}),
-        # The template writes the escape itself.
+        # The template writes the escape itself, but with a count only for the first quotes.
         ("tool '${text.value.replace(\"'\", \"'\\\"'\\\"'\")}'", set()),
+        ("tool '${text.value.replace(\"'\", \"'\\\"'\\\"'\", 1)}'", {("shell-injection", "high")}),
     ],
 )
 def test_escaped_single_quote_survives_joins_and_methods(tmp_path, command, expected):
@@ -1804,6 +1847,7 @@ def test_value_in_a_string_the_script_evaluates(tmp_path, command, content, expe
         ("import subprocess\nsubprocess.run('tool $text', shell=True)", {("configfile-injection", "medium")}),
         ("import os\nos.popen('tool $text').read()", {("configfile-injection", "medium")}),
         ("import subprocess\nsubprocess.getoutput('tool $text')", {("configfile-injection", "medium")}),
+        ("import subprocess\nsubprocess.Popen('tool $text', shell=True)", {("configfile-injection", "medium")}),
         ("import os\nos.system(f'tool $text')", {("configfile-injection", "medium")}),
         ("import os\nos.system(\n    'tool $text')", {("configfile-injection", "medium")}),
         ("import subprocess\nsubprocess.run(args='tool $text', shell=True)", {("configfile-injection", "medium")}),
@@ -1978,6 +2022,7 @@ def test_strict_check_reads_the_job_parameters_a_template_names(tmp_path, templa
 
 def test_strict_check_reads_the_job_parameters_of_the_names_a_template_looks_up(tmp_path):
     # Not Cheetah's own names and locals, attributes, the template object's, nor a local set on every path to
+
     # the lookup: a loop variable in its loop, a lambda's argument, a comprehension's target. The namespace
     # answers with its keys before the attributes of the TreeDict Galaxy retries it as ($data).
     command = """#def show($arg)
