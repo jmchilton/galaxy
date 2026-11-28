@@ -454,6 +454,30 @@ inputs:
   p: a;b|c && d
 ```
 
+#### replace_single_quote_escape_in_double_quotes
+
+The same escape inside double quotes does not stop `$(` or backticks.
+
+Tool `replace_single_quote_escape_dq.xml`:
+
+```
+echo "${p.value.replace("'", "'\\''")}" > '$out'
+```
+
+Refused
+
+```
+inputs:
+  p: $(touch harm-marker)
+```
+
+Runs
+
+```
+inputs:
+  p: a b
+```
+
 #### raw_dataset_model
 
 `$input.unsanitized.name` is the dataset's name as the user set it, without the sanitizer: the check reads it from the model too.
@@ -1874,6 +1898,34 @@ datasets:
   input: {}
 ```
 
+#### replace_that_adds_a_quote_breaks_escape
+
+A replace that writes a single quote does undo it. The check cannot tell which values it changes, so it runs no job of the tool.
+
+Tool `sq_escaped_replace_adds_quote.xml`:
+
+```
+#set s = str($p).strip()
+#set s = $s.replace('x', "'")
+echo '$s' > '$out'
+```
+
+Refused
+
+```
+inputs:
+  p: 'x;touch harm-marker #'
+```
+
+Runs
+
+```
+inputs:
+  p: a;b|c && d
+config:
+  when_unsure: log
+```
+
 #### rewrites_restore_tokens
 
 A template that turns the sanitizer's tokens back into quotes and redirects undoes the sanitizer.
@@ -2852,6 +2904,49 @@ Runs
 ```
 inputs:
   p: a\
+```
+
+#### replace_writes_single_quote_escape
+
+Replacing `'` by `'\''` keeps a raw value inside its single quotes.
+
+Tool `replace_single_quote_escape.xml`:
+
+```
+echo '${p.value.replace("'", "'\\''")}' > '$out'
+```
+
+Runs
+
+```
+inputs:
+  p: a';touch harm-marker;'
+```
+
+Runs
+
+```
+inputs:
+  p: $(touch harm-marker) `touch harm-marker`
+```
+
+#### escaped_value_keeps_escape_through_backslash_replace
+
+Removing backslash-newline pairs cannot undo the single-quote escape a sanitizer wrote: inside single quotes a backslash is a character like any other.
+
+Tool `sq_escaped_backslash_replace.xml`:
+
+```
+#set s = str($p).strip()
+#set s = $s.replace('\\\n', ' ')
+echo '$s' > '$out'
+```
+
+Runs
+
+```
+inputs:
+  p: a';touch harm-marker;'
 ```
 
 #### dataset_content_substitution_quoted

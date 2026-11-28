@@ -377,6 +377,10 @@ def test_double_quote_escaped_in_the_template(tmp_path):
     # Sound only when the value cannot bring a backslash, a dollar or a backtick of its own.
     assert rules(review(tmp_path, escaped % "no_expansion")) <= {("option-injection", "low")}
     assert ("shell-injection", "high") in rules(review(tmp_path, escaped % "free"))
+    # A later replace keeps the escaping unless it can add or take away a double quote or a backslash.
+    then = """#set $t = $no_expansion.replace('"', '\\\\"').replace(%s)\ntool "$t\""""
+    assert rules(review(tmp_path, then % "\"'\", ''")) <= {("option-injection", "low")}
+    assert ("shell-injection", "high") in rules(review(tmp_path, then % "'a', '\\\\\\\\'"))
 
 
 _ESCAPES_GT = """<param name="p" type="text"><sanitizer>
@@ -1557,8 +1561,20 @@ def test_words_that_cannot_begin_with_a_dash(tmp_path, command, expected):
         # Joined with a value no user controls, the escaping still holds.
         ("#set $x = $sq if $count else 'none'\ntool '$x'", set()),
         ("tool '${str($sq).strip()}'", set()),
+        # So it does after literal text without a single quote, but not after one with a quote.
+        ("#set $x = 'WHERE ' + str($sq)\ntool '${x.strip()}'", set()),
+        ("#set $x = \"it's \" + str($sq)\ntool '${x.strip()}'", {("shell-injection", "high")}),
         # Removing the double quotes of '"'"' breaks the escaping.
         ("tool '${str($sq).replace('\"', '')}'", {("shell-injection", "high")}),
+        # Inside single quotes a backslash is a character like any other.
+        ("tool '${str($sq).replace('\\\\\\n', ' ').replace('a', '\\\\')}'", set()),
+        # Removing the backslash of '\'' breaks it, and a written quote is a quote.
+        ("tool '${str($sq).replace('\\\\', '')}'", {("shell-injection", "high")}),
+        ("tool '${str($sq).replace('x', \"'\")}'", {("shell-injection", "high")}),
+        # The template writes the escape itself.
+        ("tool '${text.value.replace(\"'\", \"'\\\\''\")}'", set()),
+        ("tool '${text.value.replace(\"'\", \"'\\\"'\\\"'\")}'", set()),
+        ('tool "${text.value.replace("\'", "\'\\\\\'\'")}"', {("shell-injection", "high")}),
     ],
 )
 def test_escaped_single_quote_survives_joins_and_methods(tmp_path, command, expected):

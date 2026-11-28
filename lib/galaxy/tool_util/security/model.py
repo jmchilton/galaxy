@@ -31,6 +31,7 @@ from .charsets import (
     probe,
     PROBE,
     sanitized,
+    SINGLE_QUOTE_ESCAPES,
 )
 from .nodes import (
     Collection,
@@ -218,7 +219,7 @@ def _listed_chars(input_source: InputSource, ptype: str, rendered: Callable[[Cha
 
 def _escapes_single_quote(sanitizer: ToolParameterSanitizer | None) -> bool:
     """The sanitizer rewrites ' to the sequence that writes a quote inside a single-quoted shell word."""
-    return sanitizer is not None and sanitizer.sanitize_param("'") in ("'\"'\"'", "'\\''")
+    return sanitizer is not None and sanitizer.sanitize_param("'") in SINGLE_QUOTE_ESCAPES
 
 
 def _value(

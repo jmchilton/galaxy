@@ -2364,8 +2364,10 @@ class TemplateAnalysis:
             else:
                 written = charsets.NONE
             escaped = every and first_literal == '"' and second == '\\"' and "\\" not in text.chars
+            # Written between single quotes, '\'' and '"'"' end them, write a quote and start them again.
+            sq_escaped = every and first_literal == "'" and second in charsets.SINGLE_QUOTE_ESCAPES
             kept = self._kept_escaping(text, name, arg_nodes, keywords) if not replacement.tainted else ""
-            quoted = "dq-escaped" if escaped else kept
+            quoted = "dq-escaped" if escaped else "sq-escaped" if sq_escaped else kept
             return AV(
                 chars=(text.chars - removed) | replacement.chars | written,
                 sources=text.sources | replacement.sources,
@@ -2434,6 +2436,9 @@ class TemplateAnalysis:
             # Stripping an escaped space at the end leaves the backslash before it.
             return ""
         literals = [_const(node) for node in arg_nodes]
+        if text.quoted == "sq-escaped" and name == "replace" and literals[:1] == ["\\"]:
+            # It replaces the backslash of a '\''.
+            return ""
         if all(isinstance(literal, str) and not quoting.intersection(literal) for literal in literals):
             return text.quoted
         return ""

@@ -1028,6 +1028,69 @@ sq_escape_mapping_does_not_escape:
       harm: true
       expect: {rejected: false}
 
+replace_writes_single_quote_escape:
+  doc: Replacing `'` by `'\''` keeps a raw value inside its single quotes.
+  tool: replace_single_quote_escape.xml
+  review:
+    serious_rules: []
+  green:
+    - inputs: {p: "a';touch harm-marker;'"}
+      harm: true
+      expect: {rejected: false}
+    - inputs: {p: "$(touch harm-marker) `touch harm-marker`"}
+      harm: true
+      expect: {rejected: false}
+
+replace_single_quote_escape_in_double_quotes:
+  doc: The same escape inside double quotes does not stop `$(` or backticks.
+  tool: replace_single_quote_escape_dq.xml
+  code: shell-injection
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, accessor: raw, param: p}
+  red:
+    - inputs: {p: "$(touch harm-marker)"}
+      harm: true
+      expect: {rejected: true}
+  green:
+    - inputs: {p: "a b"}
+      harm: true
+      expect: {rejected: false}
+
+escaped_value_keeps_escape_through_backslash_replace:
+  doc: >-
+    Removing backslash-newline pairs cannot undo the single-quote escape a sanitizer wrote: inside single quotes a
+    backslash is a character like any other.
+  tool: sq_escaped_backslash_replace.xml
+  review:
+    serious_rules: []
+  green:
+    - inputs: {p: "a';touch harm-marker;'"}
+      harm: true
+      expect: {rejected: false}
+
+replace_that_adds_a_quote_breaks_escape:
+  doc: >-
+    A replace that writes a single quote does undo it. The check cannot tell which values it changes, so it runs no
+    job of the tool.
+  tool: sq_escaped_replace_adds_quote.xml
+  code: uncheckable-rewrites
+  review:
+    rewrites: true
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, accessor: text, param: p}
+  red:
+    - inputs: {p: "x;touch harm-marker #"}
+      harm: true
+      expect: {rejected: true}
+  green:
+    - config: {when_unsure: log}
+      inputs: {p: "a;b|c && d"}
+      harm: true
+      expect: {rejected: false, warns: [uncheckable-rewrites]}
+
 dataset_content_command_substitution:
   doc: >-
     A command substitution that reads a dataset writes its content where the job runs. Unquoted, the shell

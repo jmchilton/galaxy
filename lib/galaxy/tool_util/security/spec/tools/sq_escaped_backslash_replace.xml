@@ -1,0 +1,23 @@
+<tool id="spec_sq_escaped_backslash_replace" name="Escaped text with continued lines joined" version="1.0" profile="24.0">
+    <description>writes a text value whose sanitizer escapes single quotes, after joining continued lines, inside single quotes</description>
+    <command><![CDATA[
+#set s = str($p).strip()
+#set s = $s.replace('\\\n', ' ')
+echo '$s' > '$out'
+    ]]></command>
+    <inputs>
+        <param name="p" type="text">
+            <sanitizer invalid_char="">
+                <valid initial="string.printable">
+                    <remove value="&apos;"/>
+                </valid>
+                <mapping initial="none">
+                    <add source="&apos;" target="&apos;&quot;&apos;&quot;&apos;"/>
+                </mapping>
+            </sanitizer>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

@@ -45,6 +45,8 @@ SHELL_EXEC: Chars = frozenset(";&|$`<>")
 SCRIPT_EXEC: Chars = SHELL_EXEC | {"\n"}
 WHITESPACE: Chars = frozenset(" \t\n")
 QUOTES: Chars = frozenset("'\"")
+# What writes a single quote inside a single-quoted shell word: end the word, write the quote, start it again.
+SINGLE_QUOTE_ESCAPES = ("'\"'\"'", "'\\''")
 # Split or rewrite an unquoted word: extra arguments, globs, quotes, comments.
 SHELL_SPLIT: Chars = frozenset(" \t\n*?[]{}()~#!'\"\\")
 

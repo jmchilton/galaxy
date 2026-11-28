@@ -123,9 +123,12 @@ def concat(parts: list[str | AV]) -> AV:
             pieces.append(part)
     values = [p for p in pieces if isinstance(p, AV)]
     user = [v for v in values if v.tainted]
+    quoted, escaped = _concat_escaping(pieces)
     return AV(
         chars=frozenset().union(*(v.chars for v in values)),
         sources=frozenset().union(*(v.sources for v in values)),
+        quoted=quoted,
+        escaped=escaped,
         parts=tuple(pieces),
         whole=not user or (len(pieces) == 1 and user[0].whole),
     )
@@ -193,13 +196,11 @@ class ShellEscaping:
     backticks: bool
 
 
-# A str method that can add or take away a quote, a backslash or a backtick undoes a quote escape.
-_QUOTING: Chars = frozenset("'\"\\`")
 # '"'"' or '\'' writes a single quote inside a single-quoted word, where a backslash is a character like any
-# other.
-_SINGLE_QUOTE = ShellEscaping(frozenset("'"), frozenset("'"), frozenset("'"), _QUOTING, True)
+# other. Taking a double quote away breaks the first.
+_SINGLE_QUOTE = ShellEscaping(frozenset("'"), frozenset("'"), frozenset("'"), frozenset("'\""), True)
 # \" writes a double quote, in a value with no backslash of its own.
-_DOUBLE_QUOTE = ShellEscaping(frozenset('"'), frozenset('"\\'), frozenset('"\\'), _QUOTING, False)
+_DOUBLE_QUOTE = ShellEscaping(frozenset('"'), frozenset('"\\'), frozenset('"\\'), frozenset('"\\'), False)
 # A backslash and the character after it: the character, except that `\/` and `\-` are still a path and an option.
 _MEANING_KEPT: Chars = frozenset("/-")
 
@@ -229,6 +230,15 @@ def _quoted(a: AV, b: AV) -> tuple[str, Chars]:
     if any(not v.tainted and _quotes_in_text(v) for v in (a, b)):
         # Literal text with a quote of its own ('"' + escaped): the escaping no longer lines up.
         return "", NONE
+    kind, escaped = _common_escaping(user)
+    escaping = shell_escaping(kind, escaped)
+    if escaping is not None and any(not v.tainted and _text_chars(v) & escaping.joined for v in (a, b)):
+        return "", NONE
+    return kind, escaped
+
+
+def _common_escaping(user: list[AV]) -> tuple[str, Chars]:
+    """The escaping of user values joined together: one they share, where the others cannot hold what it covers."""
     kinds = {(v.quoted, v.escaped) for v in user if v.quoted}
     if len(kinds) != 1:
         return "", NONE
@@ -237,9 +247,19 @@ def _quoted(a: AV, b: AV) -> tuple[str, Chars]:
     for v in user:
         if v.quoted != kind and (escaping is None or v.chars & escaping.joined):
             return "", NONE
-    if escaping is not None and any(not v.tainted and _text_chars(v) & escaping.joined for v in (a, b)):
-        return "", NONE
     return kind, escaped
+
+
+def _concat_escaping(pieces: list[str | AV]) -> tuple[str, Chars]:
+    """How a string of literal text and values is escaped: as its values are, when its other text cannot hold
+    what their escaping covers (``"WHERE " + escaped``)."""
+    user = [p for p in pieces if isinstance(p, AV) and p.tainted]
+    kind, escaped = _common_escaping(user) if user else ("", NONE)
+    escaping = shell_escaping(kind, escaped)
+    if escaping is None:
+        return "", NONE
+    other = frozenset().union(*(frozenset(p) if isinstance(p, str) else p.chars for p in pieces if p not in user))
+    return ("", NONE) if other & escaping.joined else (kind, escaped)
 
 
 def _merge_narrowed(nodes: tuple[Node, ...]) -> tuple[Node, ...]:

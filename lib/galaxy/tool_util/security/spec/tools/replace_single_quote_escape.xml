@@ -1,0 +1,10 @@
+<tool id="spec_replace_single_quote_escape" name="Raw text escaped for single quotes" version="1.0" profile="24.0">
+    <description>writes a raw text value with its single quotes escaped, inside single quotes</description>
+    <command><![CDATA[echo '${p.value.replace("'", "'\\''")}' > '$out']]></command>
+    <inputs>
+        <param name="p" type="text"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>
