@@ -888,7 +888,11 @@ def _populate_store_inline_unlocked(
                     and old_entry.file_hash == file_hash
                     and old_entry.source_hash in stored_hashes[store_name]
                     and indexed_patch_is_current(tool_patches, old_entry, path)
-                    and static_review_is_current(config, old_entry.static_review, path, old_entry.patch)
+                    # The indexed tool_type is the declared one. Where a <type> element picks another class, the
+                    # two can disagree: the tool is then reviewed again here, never kept with the wrong review.
+                    and static_review_is_current(
+                        config, old_entry.static_review, path, old_entry.tool_type, old_entry.patch
+                    )
                 ):
                     return ("unchanged", d, store_name, None, None, None)
 

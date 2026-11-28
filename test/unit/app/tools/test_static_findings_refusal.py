@@ -19,6 +19,7 @@ from galaxy.config.schema import AppSchema
 from galaxy.exceptions import ConfigurationError
 from galaxy.tool_util.parser import get_tool_source
 from galaxy.tool_util.patches import load_tool_patch_database
+from galaxy.tool_util.security import review_tool_source
 from galaxy.tool_util.security.charsets import (
     INFO,
     SEVERITIES,
@@ -31,7 +32,10 @@ from galaxy.tool_util.unittest_utils.tool_patches import (
     write_collection,
 )
 from galaxy.tools import static_findings
-from galaxy.tools.security_refusal import ToolInputRejected
+from galaxy.tools.security_refusal import (
+    built_tool_type,
+    ToolInputRejected,
+)
 from galaxy.tools.static_findings import (
     check_static_findings,
     patch_and_review_tool_source,
@@ -128,19 +132,92 @@ def _logged(caplog: pytest.LogCaptureFixture) -> list[str]:
     return [record.getMessage() for record in caplog.records if record.name == static_findings.__name__]
 
 
+def _built(path: str | Path) -> str | None:
+    tool_type: str | None = built_tool_type(get_tool_source(str(path)))
+    return tool_type
+
+
 @pytest.mark.parametrize("path", [GALAXY_UPLOAD_TOOL, SET_METADATA_TOOL], ids=os.path.basename)
 def test_galaxy_own_tools_are_not_reviewed(path: str, caplog: pytest.LogCaptureFixture) -> None:
     # Which tools are Galaxy's own is is_galaxy_own_tool's, tested with it; here, that the review leaves them out.
     # upload1's $paramfile is option-injection at low, though Galaxy sets it to a path in the job directory.
     caplog.set_level(logging.INFO, logger=static_findings.__name__)
     assert with_static_review(_config(severity="low"), get_tool_source(path), path).static_review is None
-    assert static_review_is_current(_config(severity="low"), None, path, None)
+    assert static_review_is_current(_config(severity="low"), None, path, _built(path), None)
     # Galaxy says so at load, once and naming the tool, while refusals are on.
     (said,) = _logged(caplog)
-    assert path in said and "leaves out Galaxy's own tools" in said
+    assert path in said and "it is one of Galaxy's own tools" in said
     caplog.clear()
     assert with_static_review(_config(refuse=False), get_tool_source(path), path).static_review is None
     assert _logged(caplog) == []
+
+
+INTERACTIVE_TOOL = """<tool id="interactive_api_key" name="interactive_api_key" tool_type="interactive" version="1.0">
+    <entry_points><entry_point name="Notebook"><port>8888</port></entry_point></entry_points>
+    <environment_variables><environment_variable name="API_KEY" inject="api_key"/></environment_variables>
+    <command><![CDATA[start-notebook.sh]]></command>
+    <inputs/>
+    <outputs><data name="out" format="txt"/></outputs>
+</tool>
+"""
+
+
+YAML_INTERACTIVE_TOOL = (
+    "class: GalaxyTool\nid: interactive_yaml\nname: interactive_yaml\nversion: '1.0'\n"
+    "tool_type: interactive\ncommand: echo $word\ninputs:\n- name: word\n  type: text\noutputs: {}\n"
+)
+
+
+@pytest.mark.parametrize(
+    "name,contents,severity",
+    [
+        # capability-api-key, high.
+        ("interactive.xml", INTERACTIVE_TOOL, "high"),
+        # In any tool format: argument-injection, medium.
+        ("interactive.yml", YAML_INTERACTIVE_TOOL, "medium"),
+    ],
+)
+def test_interactive_tools_are_not_refused(
+    tmp_path: Path, name: str, contents: str, severity: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.INFO, logger=static_findings.__name__)
+    tool = tmp_path / name
+    tool.write_text(contents)
+    # Reviewed as any other tool, its findings would refuse it.
+    assert StaticReview.of(review_tool_source(get_tool_source(str(tool))), REVIEW_VERSION).refused_rules(severity)
+    config = _config(severity=severity)
+    assert with_static_review(config, get_tool_source(str(tool)), tool).static_review is None
+    assert static_review_is_current(config, None, tool, _built(tool), None)
+    (said,) = _logged(caplog)
+    assert str(tool) in said and "it is an interactive tool" in said
+
+
+def test_tools_that_only_look_interactive_are_refused(tmp_path: Path) -> None:
+    # Entry points and the API key, but no tool_type="interactive": Galaxy runs it as an ordinary tool.
+    tool = tmp_path / "lookalike.xml"
+    tool.write_text(INTERACTIVE_TOOL.replace(' tool_type="interactive"', ""))
+    review = with_static_review(_config(), get_tool_source(str(tool)), tool).static_review
+    assert review is not None and "capability-api-key" in review.refused_rules("high")
+    assert not static_review_is_current(_config(), None, tool, _built(tool), None)
+
+
+def test_tools_a_type_element_builds_as_ordinary_tools_are_refused(tmp_path: Path) -> None:
+    # tool_type="interactive", but the <type> element makes Galaxy build a plain Tool: it is not interactive.
+    tool = tmp_path / "overridden.xml"
+    tool.write_text(
+        INTERACTIVE_TOOL.replace("<entry_points>", '<type class="Tool" module="galaxy.tools"/><entry_points>', 1)
+    )
+    review = with_static_review(_config(), get_tool_source(str(tool)), tool).static_review
+    assert review is not None and "capability-api-key" in review.refused_rules("high")
+    assert static_review_is_current(_config(), review, tool, _built(tool), None)
+
+
+def test_cwl_tools_are_not_refused() -> None:
+    # The review reads a CWL tool's $__cwl_command as an unquoted command; a CWL tool has no Cheetah template.
+    path = functional_test_tool_path("parameters/cwl_int.cwl")
+    assert StaticReview.of(review_tool_source(get_tool_source(path)), REVIEW_VERSION).refused_rules("high")
+    assert with_static_review(_config(severity="low"), get_tool_source(path), path).static_review is None
+    assert static_review_is_current(_config(severity="low"), None, path, _built(path), None)
 
 
 @pytest.mark.parametrize(
@@ -158,8 +235,8 @@ def test_galaxy_own_tools_are_not_reviewed(path: str, caplog: pytest.LogCaptureF
 def test_other_tools_galaxy_ships_are_reviewed(path: str) -> None:
     review = with_static_review(_config(severity="low"), get_tool_source(path), path).static_review
     assert review is not None and review.error is None
-    assert static_review_is_current(_config(severity="low"), review, path, None)
-    assert not static_review_is_current(_config(severity="low"), None, path, None)
+    assert static_review_is_current(_config(severity="low"), review, path, _built(path), None)
+    assert not static_review_is_current(_config(severity="low"), None, path, _built(path), None)
 
 
 def test_failed_review_is_kept_and_refuses_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -206,7 +283,7 @@ def test_upload_tool_lookalike_is_reviewed(tmp_path: Path, name: str, caplog: py
     copy.write_text(Path(GALAXY_UPLOAD_TOOL).read_text())
     review = with_static_review(_config(severity="low"), get_tool_source(str(copy)), copy).static_review
     assert review is not None and "option-injection" in review.refused_rules("low")
-    assert not static_review_is_current(_config(severity="low"), None, copy, None)
+    assert not static_review_is_current(_config(severity="low"), None, copy, _built(copy), None)
     # Said once, naming Galaxy's own upload tool.
     warnings = [m for m in caplog.messages if "declares Galaxy's upload tool" in m]
     assert len(warnings) == 1
@@ -225,5 +302,9 @@ def test_patched_galaxy_upload_tool_is_reviewed(tmp_path: Path) -> None:
     patched = patch_and_review_tool_source(config, db, get_tool_source(GALAXY_UPLOAD_TOOL), None, GALAXY_UPLOAD_TOOL)
     assert patched.patch_state is not None and patched.static_review is not None
     assert "option-injection" in patched.static_review.refused_rules("low")
-    assert not static_review_is_current(config, None, GALAXY_UPLOAD_TOOL, patched.patch_state)
-    assert static_review_is_current(config, patched.static_review, GALAXY_UPLOAD_TOOL, patched.patch_state)
+    assert not static_review_is_current(
+        config, None, GALAXY_UPLOAD_TOOL, patched.parse_tool_type(), patched.patch_state
+    )
+    assert static_review_is_current(
+        config, patched.static_review, GALAXY_UPLOAD_TOOL, patched.parse_tool_type(), patched.patch_state
+    )

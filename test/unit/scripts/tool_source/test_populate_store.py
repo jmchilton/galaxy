@@ -1009,6 +1009,24 @@ class TestStaticReview:
         assert review is not None and review.severities == {"template-exec": "critical"}
         assert _populate_default(cfg, pattern="stest_", incremental=True)["unchanged"] == 3
 
+    def test_interactive_tools_are_not_reviewed_and_stay_unchanged(self, tmp_path):
+        cfg = self._setup(tmp_path)
+        xml = _tool_xml("stest_interactive", command="#import subprocess\necho stest_interactive")
+        (tmp_path / "tools" / "stest_interactive.xml").write_text(
+            xml.replace("<tool ", '<tool tool_type="interactive" ')
+        )
+        tool_conf = (tmp_path / "tool_conf.xml").read_text()
+        (tmp_path / "tool_conf.xml").write_text(
+            tool_conf.replace("</toolbox>", '<tool file="stest_interactive.xml"/></toolbox>')
+        )
+
+        _populate_default(cfg, pattern="stest_", incremental=True)
+        _, index = _load_default_index(cfg)
+        entry = index.entries["stest_interactive"]
+        assert (entry.tool_type, entry.static_review) == ("interactive", None)
+        # Its entry has no review, which is current: the next populate carries it forward unparsed.
+        assert _populate_default(cfg, pattern="stest_", incremental=True)["unchanged"] == 4
+
     def test_stale_review_version_is_reviewed_again(self, tmp_path, monkeypatch):
         cfg = self._setup(tmp_path)
         _populate_default(cfg, pattern="stest_", incremental=True)

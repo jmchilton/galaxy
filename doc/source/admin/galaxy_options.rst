@@ -1511,7 +1511,11 @@
     tool patch applies to them: the upload tool (`upload1`) and the
     tools Galaxy runs itself (set metadata, data fetch, history import
     and export). Every other tool Galaxy ships is reviewed. Dynamic
-    tools are not reviewed either.
+    tools, interactive tools (`tool_type="interactive"`) and CWL tools
+    are not reviewed either: an administrator enables interactive
+    tools explicitly, and an interactive tool is meant to run in its
+    own container and may get the user's API key by design; a CWL tool
+    has no Cheetah command template.
 :Default: ``false``
 :Type: bool
 

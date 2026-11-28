@@ -78,8 +78,15 @@ message that names the rules of the findings and not their detail, for example
   tools Galaxy runs itself (set metadata, data fetch, history import and export). Each is matched by its real
   path, so a copy elsewhere is reviewed. Tool patches can name only the upload tool of these. Every other tool
   Galaxy ships is reviewed wherever Galaxy is installed: its stock tools, the datatype converters, the
-  collection operations and the sample sheet tools. Galaxy logs, at `INFO`, each of its own tools it loads and
-  does not review. Dynamic tools, which do not load from a tool file, are not reviewed either.
+  collection operations and the sample sheet tools. Dynamic tools, which do not load from a tool file, are not
+  reviewed either.
+- Interactive tools and CWL tools are not reviewed. An administrator enables interactive tools explicitly
+  (`interactivetools_enable`), and an interactive tool is meant to run in its own container and may get the
+  user's API key by design. A tool is an interactive tool when Galaxy loads it as one, usually because it
+  declares `tool_type="interactive"`, in any tool format; entry points alone do not make it one. A CWL tool's
+  command line is built from its CWL description, not from a Cheetah template (Galaxy does not run CWL tools
+  yet). `python -m galaxy.tool_util.security` still reports the findings of both. Galaxy logs, at `INFO`, each
+  of its own, interactive and CWL tools it loads and does not review, and why.
 - Galaxy's own tools write values Galaxy sets itself, which the review cannot tell from user values. Set
   metadata writes the command line Galaxy builds for it as a hidden parameter (`shell-injection`, high, so it
   would be refused at the default severity), the history tools write parameters Galaxy fills in

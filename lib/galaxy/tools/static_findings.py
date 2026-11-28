@@ -14,9 +14,10 @@ from galaxy.tool_util.security.refusal import (
 )
 from galaxy.tools.patches import apply_tool_patches
 from galaxy.tools.security_refusal import (
+    built_tool_type,
     declares_upload_tool,
-    is_galaxy_own_tool,
     is_galaxy_upload_tool,
+    review_exclusion,
     ToolInputRejected,
     upload_tool_lookalike_message,
 )
@@ -37,16 +38,32 @@ def _patched(patch: ToolPatchInfo | None) -> bool:
     return bool(patch and any(state.state == APPLIED for state in patch.states))
 
 
-def reviews_tool(config: "GalaxyAppConfiguration", path: StrPath | None, patch: ToolPatchInfo | None) -> bool:
-    """True when refusals are on and the tool at ``path``, with ``patch`` applied, is not one of Galaxy's own."""
-    return bool(config.tool_security_refuse_static_findings) and not is_galaxy_own_tool(path, patched=_patched(patch))
+def _exclusion(path: StrPath | None, tool_type: str | None, patch: ToolPatchInfo | None) -> str | None:
+    reason: str | None = review_exclusion(path, tool_type, patched=_patched(patch))
+    return reason
+
+
+def reviews_tool(
+    config: "GalaxyAppConfiguration", path: StrPath | None, tool_type: str | None, patch: ToolPatchInfo | None
+) -> bool:
+    """True when refusals are on and the review does not leave out the tool at ``path``, patched by ``patch``.
+
+    It leaves out Galaxy's own tools, interactive tools and CWL tools
+    (:func:`~galaxy.tools.security_refusal.review_exclusion`); ``tool_type`` is the type of the class Galaxy
+    builds the tool as.
+    """
+    return bool(config.tool_security_refuse_static_findings) and _exclusion(path, tool_type, patch) is None
 
 
 def static_review_is_current(
-    config: "GalaxyAppConfiguration", review: StaticReview | None, path: StrPath | None, patch: ToolPatchInfo | None
+    config: "GalaxyAppConfiguration",
+    review: StaticReview | None,
+    path: StrPath | None,
+    tool_type: str | None,
+    patch: ToolPatchInfo | None,
 ) -> bool:
     """True when ``review`` is what :func:`with_static_review` would keep on the tool at ``path``, patched by ``patch``."""
-    if not reviews_tool(config, path, patch):
+    if not reviews_tool(config, path, tool_type, patch):
         return review is None
     return review is not None and review.version == REVIEW_VERSION
 
@@ -55,9 +72,10 @@ def with_static_review(
     config: "GalaxyAppConfiguration", tool_source: ToolSource, path: StrPath | None, kept: StaticReview | None = None
 ) -> ToolSource:
     """Keep a review on ``tool_source`` when refusals are on: ``kept`` if current, else a new one; never raises."""
-    if not reviews_tool(config, path, tool_source.patch_state):
-        if config.tool_security_refuse_static_findings:
-            log.info("Jobs of tool %s are not refused: the static security review leaves out Galaxy's own tools", path)
+    if not config.tool_security_refuse_static_findings:
+        tool_source.static_review = None
+    elif reason := _exclusion(path, built_tool_type(tool_source), tool_source.patch_state):
+        log.info("Jobs of tool %s are not refused by its static security review: %s", path, reason)
         tool_source.static_review = None
     elif kept is not None and kept.version == REVIEW_VERSION:
         tool_source.static_review = kept
