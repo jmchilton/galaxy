@@ -1919,7 +1919,7 @@ class TemplateAnalysis:
             return AV(elem=element(args[1]))
         if name == "dict":
             return AV(elem=join(*(element(a, strict=True) for a in args), *keywords))
-        if name == "getVar":
+        if name in ("getVar", "self.getVar"):
             variable = _const(node.args[0]) if node.args else None
             default = args[1] if len(args) > 1 else CLEAN
             if isinstance(variable, str):

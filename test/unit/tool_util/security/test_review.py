@@ -571,6 +571,11 @@ def test_charsets():
         ("#set global $g = $free\ntool '${getVar('g')}'", ("shell-injection", "high")),
         ("#set $free = 'safe'\ntool '${getVar('free')}'", ("shell-injection", "high")),
         ("#set $free = 'safe'\ntool '$getVar('free', '')'", ("shell-injection", "high")),
+        # The template object's getVar, as `$self.getVar` and in Python.
+        ("tool '${self.getVar('free')}'", ("shell-injection", "high")),
+        ('tool \'$self.getVar("free", "")\'', ("shell-injection", "high")),
+        ("#set $v = self.getVar('free')\ntool '$v'", ("shell-injection", "high")),
+        ("tool $self.getVar('undeclared')", ("argument-injection", "medium")),
     ],
 )
 def test_escaping_values_found_by_review(tmp_path, command, expected):
@@ -1199,6 +1204,7 @@ def test_script_read_from_standard_input_is_a_program(tmp_path):
         # getVar drops `$` from the name.
         ("tool ${getVar('$__app__').config.database_connection}", ("template-app-access", "high")),
         ("tool ${getVar('input.unsanitized.history.name')}", ("template-model-access", "medium")),
+        ("tool ${self.getVar('__app__').config.database_connection}", ("template-app-access", "high")),
         # The template object comes before the namespace.
         ("tool ${getVar('searchList')()}", ("template-reflection", "medium")),
         ("#set $searchList = 1\ntool ${getVar('searchList')()}", ("template-reflection", "medium")),

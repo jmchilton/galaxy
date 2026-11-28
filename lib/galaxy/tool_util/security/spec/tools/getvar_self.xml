@@ -1,0 +1,12 @@
+<tool id="spec_getvar_self" name="Raw text read with the template's getVar" version="1.0" profile="24.0">
+    <description>writes a text value without its sanitizer, read with $self.getVar(), inside single quotes</description>
+    <command><![CDATA[echo '${self.getVar("word")}' > '$out']]></command>
+    <inputs>
+        <param name="word" type="text">
+            <sanitizer sanitize="false"/>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

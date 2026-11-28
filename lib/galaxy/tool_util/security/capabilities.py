@@ -454,8 +454,17 @@ class PythonAudit:
             return func.id == "getVar"
         if isinstance(func, ast.Attribute):
             return func.attr == "getVar"
-        lookup = name_lookup(func, NAMESPACE_LOOKUPS)
-        return lookup is not None and lookup[1] in ("getVar", "self.getVar")
+        if (lookup := name_lookup(func, NAMESPACE_LOOKUPS)) is not None:
+            return lookup[1] in ("getVar", "self.getVar")
+        # `$self.getVar(...)`: VFN(VFFSL(SL, "self", True), "getVar", False)
+        lookup = name_lookup(func, _VFN)
+        return (
+            lookup is not None
+            and lookup[1] == "getVar"
+            and isinstance(func, ast.Call)
+            and (receiver := name_lookup(func.args[0], NAMESPACE_LOOKUPS)) is not None
+            and receiver[1] == "self"
+        )
 
     def get_var_chain(self, name: str) -> list[str] | None:
         """What `getVar(name)` reaches, as a chain to judge; None for the template object (a method or

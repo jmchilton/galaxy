@@ -1372,6 +1372,39 @@ getvar_request_parameter:
       harm: true
       expect: {rejected: false}
 
+getvar_self:
+  doc: >-
+    `$self.getVar("name")` is the template object's getVar, as `$getVar("name")` is: it reads the input of that
+    name, here written past its sanitizer.
+  tool: getvar_self.xml
+  code: shell-injection
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, accessor: text, param: word, checkable: true}
+  red:
+    - inputs: {word: "a';touch harm-marker;'"}
+      harm: true
+      expect:
+        rejected: true
+        message_contains: ["the value of input 'word' contains the characters [' ;]"]
+  green:
+    - inputs: {word: "a;b|c"}
+      harm: true
+      expect: {rejected: false}
+
+getvar_self_sanitized:
+  doc: The same read of a text value Galaxy sanitizes cannot leave its quotes.
+  tool: getvar_self_sanitized.xml
+  review:
+    serious_rules: []
+    absent:
+      - {rule: shell-injection, param: word}
+  green:
+    - inputs: {word: "a';touch harm-marker;'"}
+      harm: true
+      expect: {rejected: false}
+
 galaxy_url_kept:
   doc: >-
     A regular tool's templates get only its inputs and the job parameters Galaxy passes them: a job

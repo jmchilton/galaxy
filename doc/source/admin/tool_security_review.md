@@ -629,6 +629,30 @@ inputs:
   organism: Homo sapiens
 ```
 
+#### getvar_self
+
+`$self.getVar("name")` is the template object's getVar, as `$getVar("name")` is: it reads the input of that name, here written past its sanitizer.
+
+Tool `getvar_self.xml`:
+
+```
+echo '${self.getVar("word")}' > '$out'
+```
+
+Refused
+
+```
+inputs:
+  word: a';touch harm-marker;'
+```
+
+Runs
+
+```
+inputs:
+  word: a;b|c
+```
+
 #### pure_lambda
 
 A lambda whose body reads only its arguments, literals and functions that compute a value from them is read as what it gives for the values the template passes: here a value quoted by `json.dumps`, whose own quote still closes the single quotes around it.
@@ -2087,6 +2111,23 @@ inputs:
   p: -o harm-marker
 config:
   mode: enforce_all
+```
+
+#### getvar_self_sanitized
+
+The same read of a text value Galaxy sanitizes cannot leave its quotes.
+
+Tool `getvar_self_sanitized.xml`:
+
+```
+echo '${self.getVar("word")}' > '$out'
+```
+
+Runs
+
+```
+inputs:
+  word: a';touch harm-marker;'
 ```
 
 #### galaxy_url_kept
