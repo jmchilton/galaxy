@@ -10,7 +10,7 @@ from galaxy_test.driver import integration_util
 
 FIXTURES = os.path.join(galaxy_directory(), "test", "functional", "tool_patches")
 FUNCTIONAL_TOOLS = os.path.join(galaxy_directory(), "test", "functional", "tools")
-TOOL_ID = "identifier_single"
+TOOL_ID = "identifier_single_unsanitized"
 
 
 def _inputs(hda_id: str) -> dict[str, Any]:
@@ -19,7 +19,7 @@ def _inputs(hda_id: str) -> dict[str, Any]:
 
 class BaseToolPatchesIntegrationTestCase(integration_util.IntegrationTestCase):
     framework_tool_and_types = True
-    collection: str = "identifier_single"
+    collection: str = "identifier_single_unsanitized"
     dataset_populator: DatasetPopulator
 
     def setUp(self) -> None:
@@ -41,13 +41,13 @@ class BaseToolPatchesIntegrationTestCase(integration_util.IntegrationTestCase):
         self._assert_status_code_is(response, 200)
         return response.text
 
-    def _run_identifier_single(self, history_id: str, hda_id: str, use_cached_job: bool = False) -> dict:
+    def _run_tool(self, history_id: str, hda_id: str, use_cached_job: bool = False) -> dict:
         run = self.dataset_populator.run_tool(TOOL_ID, _inputs(hda_id), history_id, use_cached_job=use_cached_job)
         self.dataset_populator.wait_for_job(run["jobs"][0]["id"], assert_ok=True)
         return run
 
     def _run_job(self, history_id: str, hda_id: str, use_cached_job: bool = False) -> str:
-        return self._run_identifier_single(history_id, hda_id, use_cached_job=use_cached_job)["jobs"][0]["id"]
+        return self._run_tool(history_id, hda_id, use_cached_job=use_cached_job)["jobs"][0]["id"]
 
     def _run_tool_request_job(self, history_id: str, hda_id: str) -> str:
         """Run through the tool request API with the job cache on; returns the job id."""
@@ -85,7 +85,7 @@ class TestToolPatchApplied(BaseToolPatchesIntegrationTestCase):
     def test_api_reports_patch(self):
         (state,) = self._patch_states()
         assert state["state"] == "applied"
-        assert state["key"] == "_local/identifier_single/1.0.0"
+        assert state["key"] == "_local/identifier_single_unsanitized/1.0.0"
         assert state["reproducibility"] == "unusual_inputs"
         assert "contained a dot" in state["reproducibility_doc"]
         assert "#set $clean_identifier" in self._raw_tool_source()
@@ -93,7 +93,7 @@ class TestToolPatchApplied(BaseToolPatchesIntegrationTestCase):
     def test_job_runs_patched_command(self):
         with self.dataset_populator.test_history() as history_id:
             hda = self.dataset_populator.new_dataset(history_id, content="1\n", name="a.b", wait=True)
-            run = self._run_identifier_single(history_id, hda["id"])
+            run = self._run_tool(history_id, hda["id"])
             content = self.dataset_populator.get_history_dataset_content(history_id, dataset=run["outputs"][0])
             assert content.splitlines()[0] == "identifier a_b"
 
@@ -117,7 +117,7 @@ class TestToolPatchAppliedCachedToolbox(TestToolPatchApplied):
 
 
 class TestToolPatchRejectsInputsKeepsJobCache(BaseToolPatchesIntegrationTestCase):
-    collection = "identifier_single_validator"
+    collection = "identifier_single_unsanitized_validator"
 
     def test_rejects_inputs_patch_reuses_job_cache(self):
         (state,) = self._patch_states()
@@ -137,11 +137,13 @@ class TestToolPatchAlreadyApplied(BaseToolPatchesIntegrationTestCase):
         os.makedirs(conf_dir, exist_ok=True)
         conf_path = os.path.join(conf_dir, "tool_patches_fixed_conf.xml")
         with open(conf_path, "w") as f:
-            f.write(f'<toolbox tool_path="{FUNCTIONAL_TOOLS}"><tool file="identifier_single_fixed.xml" /></toolbox>')
+            f.write(
+                f'<toolbox tool_path="{FUNCTIONAL_TOOLS}"><tool file="identifier_single_unsanitized_fixed.xml" /></toolbox>'
+            )
         config["tool_config_file"] = conf_path
 
     def test_already_applied_leaves_source_unchanged(self):
         (state,) = self._patch_states()
         assert state["state"] == "already_applied"
-        unpatched = get_tool_source(os.path.join(FUNCTIONAL_TOOLS, "identifier_single_fixed.xml"))
+        unpatched = get_tool_source(os.path.join(FUNCTIONAL_TOOLS, "identifier_single_unsanitized_fixed.xml"))
         assert self._raw_tool_source() == unpatched.to_string()

@@ -1,0 +1,16 @@
+<tool id="identifier_single_unsanitized" name="identifier_single_unsanitized" version="1.0.0">
+    <!-- Unsafe on purpose: the element identifier is not sanitized, so the tool security tests use this tool
+         as the one with a finding to refuse and to patch. Keep it unsafe. -->
+    <command><![CDATA[
+echo 'identifier $input1.element_identifier' > 'output1';
+echo 'safe_identifier $input1.safe_element_identifier' >> 'output1'
+    ]]></command>
+    <inputs>
+        <param name="input1" type="data" label="Input 1" />
+    </inputs>
+    <outputs>
+        <data name="output1" format="tabular" from_work_dir="output1" />
+    </outputs>
+    <tests>
+    </tests>
+</tool>
