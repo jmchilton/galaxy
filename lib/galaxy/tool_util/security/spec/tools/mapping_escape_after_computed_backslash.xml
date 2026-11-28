@@ -1,0 +1,25 @@
+<tool id="spec_mapping_escape_after_computed_backslash" name="Escaped value after a computed backslash" version="1.0" profile="24.0">
+    <description>writes a text value whose sanitizer escapes $ after a backslash the template computes, unquoted</description>
+    <command><![CDATA[#set b = "\\".strip()
+echo ${b}${p} > '$out']]></command>
+    <inputs>
+        <param name="p" type="text">
+            <sanitizer invalid_char="">
+                <valid initial="string.ascii_letters,string.digits">
+                    <add value=" "/>
+                    <add value="("/>
+                    <add value=")"/>
+                    <add value="-"/>
+                </valid>
+                <mapping initial="none">
+                    <add source="$" target="\$"/>
+                    <add source="&gt;" target="\&gt;"/>
+                    <add source="\" target="\\"/>
+                </mapping>
+            </sanitizer>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

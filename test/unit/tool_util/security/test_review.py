@@ -379,6 +379,59 @@ def test_double_quote_escaped_in_the_template(tmp_path):
     assert ("shell-injection", "high") in rules(review(tmp_path, escaped % "free"))
 
 
+_ESCAPES_GT = """<param name="p" type="text"><sanitizer>
+  <valid initial="string.ascii_letters"><add value=" "/><add value="("/><add value=")"/></valid>
+  <mapping initial="none"><add source="&gt;" target="\\&gt;"/><add source="$" target="\\$"/></mapping>
+</sanitizer></param>
+<param name="q" type="text"><sanitizer><valid initial="string.ascii_letters"><add value="\\"/></valid></sanitizer></param>
+<param name="z" type="text"><sanitizer>
+  <valid initial="string.digits"/>
+  <mapping initial="none"><add source="&gt;" target="\\&gt;"/><add source="z" target="\\"/></mapping>
+</sanitizer></param>
+<param name="c" type="boolean"/>
+<param name="sel" type="select"><option value="\\">backslash</option><option value="x">x</option></param>
+<param name="input" type="data" format="txt"/>"""
+
+
+@pytest.mark.parametrize(
+    "command,serious",
+    [
+        ("tool $p", False),
+        ('tool "$p"', False),
+        ("#set $t = str($p).lower().strip()\ntool $t", False),
+        ("#set $t = str($p).replace('a', 'b')\ntool $t", False),
+        # Taking away the backslash, writing a bare `>` or cutting the value undoes the escape.
+        ("#set $t = str($p).replace('\\\\', '')\ntool $t", True),
+        ("#set $t = str($p).replace('a', '>')\ntool $t", True),
+        ("#set $t = str($p)[1:]\ntool $t", True),
+        # So does a backslash of the template's or of another value just before it.
+        ('#set $t = "\\\\" + str($p)\ntool $t', True),
+        ('#set $t = "\\\\%s" % $p\ntool $t', True),
+        ('#set $t = "\\\\{}".format($p)\ntool $t', True),
+        ('#set $t = "\\\\".join([str($p), str($p)])\ntool $t', True),
+        ('#set $b = "\\\\"\ntool ${b}${p}', True),
+        ('#set $b = "\\\\"\ntool "${b}${p}"', True),
+        ("tool ${q}${p}", True),
+        # A value the template computes, whose text the analysis does not know, can be a backslash too.
+        ('#set $b = "\\\\" if $c else ""\ntool ${b}${p}', True),
+        ('#set $b = "\\\\".strip()\ntool ${b}${p}', True),
+        ('#set $b = "\\\\".strip()\ntool "${b}${p}"', True),
+        ("#set $b = chr(92)\ntool ${b}${p}", True),
+        ('#set $d = {"a": "\\\\"}\ntool ${d["a"]}${p}', True),
+        ('#set $b = "\\\\" * 1\ntool ${b}${p}', True),
+        ("tool ${sel}${p}", True),
+        ("tool ${input}${p}", False),
+        # Inside backticks the shell takes the backslash away and reads the text again.
+        ("tool `echo $p`", True),
+        ('tool "`echo $p`"', True),
+        # The sanitizer also writes a backslash of its own, for a letter.
+        ("tool $z", True),
+    ],
+)
+def test_escape_written_by_the_sanitizer(tmp_path, command, serious):
+    assert (("shell-injection", "high") in rules(review(tmp_path, command, inputs=_ESCAPES_GT))) is serious
+
+
 def test_strings_collected_in_a_list_keep_their_quotes(tmp_path):
     # The literal '"' closes the single quotes of echo: the value is inside double quotes, not single ones.
     command = (

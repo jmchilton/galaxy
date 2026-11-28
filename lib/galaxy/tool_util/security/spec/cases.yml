@@ -847,6 +847,187 @@ unquoted_quotes_rewritten:
       harm: true
       expect: {rejected: false}
 
+backslash_mapping_escapes_redirect:
+  doc: >-
+    A sanitizer that maps `>` to `\>`, and keeps no backslash of the user's, writes a literal `>` even unquoted:
+    the value only splits into words.
+  tool: mapping_escape_gt_unquoted.xml
+  review:
+    serious_rules: []
+    findings:
+      - {rule: argument-injection, accessor: text, param: p}
+  green:
+    - inputs: {p: "a > harm-marker"}
+      harm: true
+      expect: {rejected: false}
+
+backslash_mapping_with_raw_backslash:
+  doc: >-
+    Where the sanitizer keeps the user's own backslash, that backslash escapes the one the mapping writes, and the
+    `>` after it redirects.
+  tool: mapping_escape_gt_raw_backslash.xml
+  code: shell-injection
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, accessor: text, param: p, checkable: true}
+  red:
+    - inputs: {p: 'a\>harm-marker'}
+      harm: true
+      expect: {rejected: true}
+  green:
+    - inputs: {p: "a b-c"}
+      harm: true
+      expect: {rejected: false}
+
+dq_escape_mapping_still_allows_substitution:
+  doc: >-
+    Mapping `"` to `\"` and `\` to `\\` keeps a value inside its double quotes, but `$(` and backticks still run
+    there.
+  tool: mapping_escape_dq.xml
+  code: shell-injection
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, accessor: text, param: p, checkable: true}
+  red:
+    - inputs: {p: "$(touch harm-marker)"}
+      harm: true
+      expect: {rejected: true}
+  green:
+    - inputs: {p: 'a "b"; c\'}
+      harm: true
+      expect: {rejected: false}
+
+dq_escape_mapping_without_substitution:
+  doc: >-
+    With `$` and the backtick refused by a validator, a value whose sanitizer maps `"` to `\"` and `\` to `\\` stays
+    inside its double quotes.
+  tool: mapping_escape_dq_validated.xml
+  review:
+    serious_rules: []
+  green:
+    - inputs: {p: 'a";touch harm-marker;"'}
+      harm: true
+      expect: {rejected: false}
+    - inputs: {p: 'a\'}
+      harm: true
+      expect: {rejected: false}
+
+dq_escape_mapping_with_raw_backslash:
+  doc: >-
+    Where the sanitizer keeps the user's own backslash, it escapes the backslash of a `\"` the mapping writes, and the
+    quote then closes the string.
+  tool: mapping_escape_dq_raw_backslash.xml
+  code: shell-injection
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, accessor: text, param: p, checkable: true}
+  red:
+    - inputs: {p: 'x\";touch harm-marker #'}
+      harm: true
+      expect: {rejected: true}
+  green:
+    - inputs: {p: "a;b|c && d"}
+      harm: true
+      expect: {rejected: false}
+
+backslash_mapping_after_template_backslash:
+  doc: >-
+    A backslash the template writes just before the value escapes the backslash of the value's first escape, and
+    the `$` after it is bare.
+  tool: mapping_escape_after_template_backslash.xml
+  code: shell-injection
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, accessor: text, param: p, checkable: true}
+  red:
+    - inputs: {p: "$(touch harm-marker)"}
+      harm: true
+      expect: {rejected: true}
+  green:
+    - inputs: {p: "a b"}
+      harm: true
+      expect: {rejected: false}
+
+backslash_mapping_after_computed_backslash:
+  doc: >-
+    A value the template computes, whose text the analysis does not know (`"\\".strip()`), can end in a backslash
+    too: written just before the value, it escapes the backslash of the value's first escape.
+  tool: mapping_escape_after_computed_backslash.xml
+  code: shell-injection
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, accessor: text, param: p, checkable: true}
+  red:
+    - inputs: {p: "$(touch harm-marker)"}
+      harm: true
+      expect: {rejected: true}
+  green:
+    - inputs: {p: "a b"}
+      harm: true
+      expect: {rejected: false}
+
+backslash_mapping_in_backticks:
+  doc: >-
+    Inside backticks the shell takes away a backslash before `$`, then reads the text again: an escape the sanitizer
+    writes for `$` does not hold there.
+  tool: mapping_escape_in_backticks.xml
+  code: shell-injection
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, accessor: text, param: p, checkable: true}
+  red:
+    - inputs: {p: "$(touch harm-marker)"}
+      harm: true
+      expect: {rejected: true}
+  green:
+    - inputs: {p: "a b"}
+      harm: true
+      expect: {rejected: false}
+
+backslash_mapping_keeps_path:
+  doc: >-
+    `\/` is still a slash once the shell takes the backslash away: with `enforce_data`, a value with one is refused
+    as a redirection target.
+  tool: mapping_escape_slash_redirect.xml
+  code: path-traversal
+  review:
+    findings:
+      - {rule: path-traversal, severity: medium, accessor: text, param: p, checkable: true}
+  red:
+    - config: {mode: enforce_data}
+      inputs: {p: "/tmp/elsewhere"}
+      expect: {rejected: true}
+  green:
+    - config: {mode: enforce_data}
+      inputs: {p: "result"}
+      harm: true
+      expect: {rejected: false}
+
+sq_escape_mapping_does_not_escape:
+  doc: >-
+    Inside single quotes a backslash is a literal character: a sanitizer that maps `'` to `\'` leaves the quote to
+    close the string.
+  tool: mapping_escape_sq.xml
+  code: shell-injection
+  review:
+    serious_rules: [shell-injection]
+    findings:
+      - {rule: shell-injection, severity: high, accessor: text, param: p, checkable: true}
+  red:
+    - inputs: {p: "a';touch harm-marker #"}
+      harm: true
+      expect: {rejected: true}
+  green:
+    - inputs: {p: "a;b|c && d"}
+      harm: true
+      expect: {rejected: false}
+
 dataset_content_command_substitution:
   doc: >-
     A command substitution that reads a dataset writes its content where the job runs. Unquoted, the shell

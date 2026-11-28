@@ -152,6 +152,8 @@ class ShellState(NamedTuple):
     escaped: str = ""
     # A script with lines of its own, not a command line.
     script: bool = False
+    # The text just written is a user value that can end in a backslash, unquoted: it escapes what follows.
+    backslash: bool = False
 
 
 @dataclass(frozen=True)
@@ -218,11 +220,14 @@ class _Lexer:
         self.amp = state.amp
         self.escaped = state.escaped
         self.script = state.script
+        self.backslash = state.backslash
         self.events = events
         self.substituted = substituted
 
     def state(self) -> ShellState:
-        return ShellState(tuple(self.frames), self.esc, self.comment, self.last, self.amp, self.escaped, self.script)
+        return ShellState(
+            tuple(self.frames), self.esc, self.comment, self.last, self.amp, self.escaped, self.script, self.backslash
+        )
 
     @property
     def top(self) -> Frame:
@@ -439,6 +444,7 @@ class _Lexer:
         return self.context(not before and not f.dynamic, before)
 
     def step(self, c: str) -> None:
+        self.backslash = False
         if self.comment:
             if self.script and c == "\n":
                 self.comment = False
@@ -556,6 +562,7 @@ class _Lexer:
         if self.comment:
             return Context(True, "", "", None, "", "", False, False)
         self.esc = False
+        self.backslash = False
         self.last = ""
         self.amp = False
         f = self.top
@@ -637,6 +644,11 @@ def placeholder(state: ShellState, tool_path: bool = False, dataset: str = "") -
 
 # Command characters that do nothing inside these quotes, and start a command once a stray quote flips them.
 _INERT_OPERATORS = {"'": frozenset(";&|<>$`"), ANSI: frozenset(";&|<>$`"), '"': frozenset(";&|<>")}
+
+
+def in_backticks(state: ShellState) -> bool:
+    """Whether text written from ``state`` is inside backticks, which the shell reads twice."""
+    return any(frame.kind == "bt" for frame in state.frames)
 
 
 def inert_operators(quote: str, script: bool) -> frozenset[str]:

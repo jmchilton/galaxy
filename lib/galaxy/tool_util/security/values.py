@@ -41,8 +41,12 @@ class AV:
     elem: Optional[AV] = None  # element when iterated or indexed
     items: tuple[AV, ...] | None = None  # tuple or list literal
     # "shlex", "json", "pyrepr" (repr() of a list) or "pystr" (repr() of a string): the value was
-    # escaped for that syntax.
+    # escaped for that syntax. "sq-escaped", "dq-escaped" and "bs-escaped": the value's quotes, or with
+    # "bs-escaped" the characters of `escaped`, are written escaped for the shell.
     quoted: str = ""
+    # "bs-escaped": the characters the value holds only behind a backslash, and every backslash of the
+    # value is one of these escapes.
+    escaped: Chars = NONE
     py: str = ""  # a Python name such as "re.sub"
     # A method of another value: a str, list or dict method by name, or what calling it does.
     bound: tuple[AV, str | BoundCall] | None = None
@@ -172,27 +176,70 @@ def _words(*values: AV) -> Chars | None:
     return frozenset().union(*(v.words if v.words is not None else v.chars for v in user))
 
 
-# The other values a value escaped for this syntax may be joined with: they cannot hold what the escaping covers.
-_ESCAPED: dict[str, Chars] = {"sq-escaped": frozenset("'"), "dq-escaped": frozenset('"\\')}
+@dataclass(frozen=True)
+class ShellEscaping:
+    """An escaping for the shell that a value carries (``AV.quoted``), and where it holds."""
+
+    # The quotes the shell reads its escapes in: "" unquoted, "'" or '"'.
+    quotes: frozenset[str]
+    # The characters it keeps literal there.
+    literal: Chars
+    # What literal text or another value joined with it must not hold.
+    joined: Chars
+    # What the literal arguments of a str method that keeps it must not hold.
+    methods: Chars
+    # It still holds inside backticks, where the shell takes a backslash away before `$`, a backtick or a
+    # backslash, then reads the text again.
+    backticks: bool
 
 
-def _quoted(a: AV, b: AV) -> str:
-    """How the join of two values is escaped: a value that is not user-controlled does not change it."""
+# A str method that can add or take away a quote, a backslash or a backtick undoes a quote escape.
+_QUOTING: Chars = frozenset("'\"\\`")
+# '"'"' or '\'' writes a single quote inside a single-quoted word, where a backslash is a character like any
+# other.
+_SINGLE_QUOTE = ShellEscaping(frozenset("'"), frozenset("'"), frozenset("'"), _QUOTING, True)
+# \" writes a double quote, in a value with no backslash of its own.
+_DOUBLE_QUOTE = ShellEscaping(frozenset('"'), frozenset('"\\'), frozenset('"\\'), _QUOTING, False)
+# A backslash and the character after it: the character, except that `\/` and `\-` are still a path and an option.
+_MEANING_KEPT: Chars = frozenset("/-")
+
+
+def shell_escaping(quoted: str, escaped: Chars = NONE) -> ShellEscaping | None:
+    """The escaping of a value with these ``quoted`` and ``escaped``; None for one that is not for the shell."""
+    if quoted == "sq-escaped":
+        return _SINGLE_QUOTE
+    if quoted == "dq-escaped":
+        return _DOUBLE_QUOTE
+    if quoted == "bs-escaped":
+        covered = escaped | {"\\"}
+        return ShellEscaping(frozenset(("", '"')), covered - _MEANING_KEPT, covered, covered, False)
+    return None
+
+
+def _text_chars(value: AV) -> Chars:
+    return value.chars.union(*(frozenset(p) for p in value.parts or () if isinstance(p, str)))
+
+
+def _quoted(a: AV, b: AV) -> tuple[str, Chars]:
+    """How the join of two values is escaped, and its escaped characters: a value that is not user-controlled
+    does not change it, unless its text holds what the escaping covers."""
     user = [v for v in (a, b) if v.tainted]
     if not user:
-        return a.quoted if a.quoted == b.quoted else ""
+        return (a.quoted, a.escaped) if (a.quoted, a.escaped) == (b.quoted, b.escaped) else ("", NONE)
     if any(not v.tainted and _quotes_in_text(v) for v in (a, b)):
         # Literal text with a quote of its own ('"' + escaped): the escaping no longer lines up.
-        return ""
-    kinds = {v.quoted for v in user if v.quoted}
+        return "", NONE
+    kinds = {(v.quoted, v.escaped) for v in user if v.quoted}
     if len(kinds) != 1:
-        return ""
-    kind = kinds.pop()
-    covered = _ESCAPED.get(kind)
+        return "", NONE
+    kind, escaped = kinds.pop()
+    escaping = shell_escaping(kind, escaped)
     for v in user:
-        if v.quoted != kind and (covered is None or v.chars & covered):
-            return ""
-    return kind
+        if v.quoted != kind and (escaping is None or v.chars & escaping.joined):
+            return "", NONE
+    if escaping is not None and any(not v.tainted and _text_chars(v) & escaping.joined for v in (a, b)):
+        return "", NONE
+    return kind, escaped
 
 
 def _merge_narrowed(nodes: tuple[Node, ...]) -> tuple[Node, ...]:
@@ -250,13 +297,15 @@ def join(*values: AV | None) -> AV:
             chars = chars | _QUOTES
             introduced(out, _QUOTES)
             introduced(other, _QUOTES)
+        quoted, escaped = _quoted(out, other)
         out = AV(
             chars=chars,
             sources=out.sources | other.sources,
             nodes=nodes,
             elem=elem,
             items=items,
-            quoted=_quoted(out, other),
+            quoted=quoted,
+            escaped=escaped,
             py=out.py if out.py == other.py else "",
             bound=bound,
             helper=out.helper if out.helper == other.helper else "",
@@ -421,6 +470,7 @@ def stringify(value: AV) -> AV:
         chars=value.chars,
         sources=value.sources,
         quoted=value.quoted,
+        escaped=value.escaped,
         whole=value.whole,
         lead=value.lead,
         words=value.words,

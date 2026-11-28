@@ -1,0 +1,20 @@
+<tool id="spec_mapping_escape_gt_unquoted" name="Escaped redirection, unquoted" version="1.0" profile="24.0">
+    <description>writes a text value whose sanitizer maps &gt; to \&gt;, unquoted</description>
+    <command><![CDATA[echo $p > '$out']]></command>
+    <inputs>
+        <param name="p" type="text">
+            <sanitizer>
+                <valid initial="string.ascii_letters,string.digits">
+                    <add value=" "/>
+                    <add value="-"/>
+                </valid>
+                <mapping initial="none">
+                    <add source="&gt;" target="\&gt;"/>
+                </mapping>
+            </sanitizer>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

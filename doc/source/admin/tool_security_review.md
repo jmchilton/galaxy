@@ -284,6 +284,176 @@ inputs:
     word: a
 ```
 
+#### backslash_mapping_with_raw_backslash
+
+Where the sanitizer keeps the user's own backslash, that backslash escapes the one the mapping writes, and the `>` after it redirects.
+
+Tool `mapping_escape_gt_raw_backslash.xml`:
+
+```
+echo $p > '$out'
+```
+
+Refused
+
+```
+inputs:
+  p: a\>harm-marker
+```
+
+Runs
+
+```
+inputs:
+  p: a b-c
+```
+
+#### dq_escape_mapping_still_allows_substitution
+
+Mapping `"` to `\"` and `\` to `\\` keeps a value inside its double quotes, but `$(` and backticks still run there.
+
+Tool `mapping_escape_dq.xml`:
+
+```
+echo "$p" > '$out'
+```
+
+Refused
+
+```
+inputs:
+  p: $(touch harm-marker)
+```
+
+Runs
+
+```
+inputs:
+  p: a "b"; c\
+```
+
+#### dq_escape_mapping_with_raw_backslash
+
+Where the sanitizer keeps the user's own backslash, it escapes the backslash of a `\"` the mapping writes, and the quote then closes the string.
+
+Tool `mapping_escape_dq_raw_backslash.xml`:
+
+```
+echo "$p" > '$out'
+```
+
+Refused
+
+```
+inputs:
+  p: 'x\";touch harm-marker #'
+```
+
+Runs
+
+```
+inputs:
+  p: a;b|c && d
+```
+
+#### backslash_mapping_after_template_backslash
+
+A backslash the template writes just before the value escapes the backslash of the value's first escape, and the `$` after it is bare.
+
+Tool `mapping_escape_after_template_backslash.xml`:
+
+```
+#set t = "\\" + str($p)
+echo $t > '$out'
+```
+
+Refused
+
+```
+inputs:
+  p: $(touch harm-marker)
+```
+
+Runs
+
+```
+inputs:
+  p: a b
+```
+
+#### backslash_mapping_after_computed_backslash
+
+A value the template computes, whose text the analysis does not know (`"\\".strip()`), can end in a backslash too: written just before the value, it escapes the backslash of the value's first escape.
+
+Tool `mapping_escape_after_computed_backslash.xml`:
+
+```
+#set b = "\\".strip()
+echo ${b}${p} > '$out'
+```
+
+Refused
+
+```
+inputs:
+  p: $(touch harm-marker)
+```
+
+Runs
+
+```
+inputs:
+  p: a b
+```
+
+#### backslash_mapping_in_backticks
+
+Inside backticks the shell takes away a backslash before `$`, then reads the text again: an escape the sanitizer writes for `$` does not hold there.
+
+Tool `mapping_escape_in_backticks.xml`:
+
+```
+echo `echo $p` > '$out'
+```
+
+Refused
+
+```
+inputs:
+  p: $(touch harm-marker)
+```
+
+Runs
+
+```
+inputs:
+  p: a b
+```
+
+#### sq_escape_mapping_does_not_escape
+
+Inside single quotes a backslash is a literal character: a sanitizer that maps `'` to `\'` leaves the quote to close the string.
+
+Tool `mapping_escape_sq.xml`:
+
+```
+echo '$p' > '$out'
+```
+
+Refused
+
+```
+inputs:
+  p: 'a'';touch harm-marker #'
+```
+
+Runs
+
+```
+inputs:
+  p: a;b|c && d
+```
+
 #### raw_dataset_model
 
 `$input.unsanitized.name` is the dataset's name as the user set it, without the sanitizer: the check reads it from the model too.
@@ -1083,6 +1253,34 @@ inputs:
 datasets:
   input:
     name: reads.txt
+```
+
+#### backslash_mapping_keeps_path
+
+`\/` is still a slash once the shell takes the backslash away: with `enforce_data`, a value with one is refused as a redirection target.
+
+Tool `mapping_escape_slash_redirect.xml`:
+
+```
+echo x > $p
+```
+
+Refused
+
+```
+inputs:
+  p: /tmp/elsewhere
+config:
+  mode: enforce_data
+```
+
+Runs
+
+```
+inputs:
+  p: result
+config:
+  mode: enforce_data
 ```
 
 ### `option-injection`
@@ -2613,6 +2811,47 @@ datasets:
   input: {}
 config:
   mode: enforce_data
+```
+
+#### backslash_mapping_escapes_redirect
+
+A sanitizer that maps `>` to `\>`, and keeps no backslash of the user's, writes a literal `>` even unquoted: the value only splits into words.
+
+Tool `mapping_escape_gt_unquoted.xml`:
+
+```
+echo $p > '$out'
+```
+
+Runs
+
+```
+inputs:
+  p: a > harm-marker
+```
+
+#### dq_escape_mapping_without_substitution
+
+With `$` and the backtick refused by a validator, a value whose sanitizer maps `"` to `\"` and `\` to `\\` stays inside its double quotes.
+
+Tool `mapping_escape_dq_validated.xml`:
+
+```
+echo "$p" > '$out'
+```
+
+Runs
+
+```
+inputs:
+  p: a";touch harm-marker;"
+```
+
+Runs
+
+```
+inputs:
+  p: a\
 ```
 
 #### dataset_content_substitution_quoted

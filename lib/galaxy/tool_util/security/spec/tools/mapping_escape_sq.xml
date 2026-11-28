@@ -1,0 +1,21 @@
+<tool id="spec_mapping_escape_sq" name="Escaped single quotes" version="1.0" profile="24.0">
+    <description>writes a text value whose sanitizer escapes single quotes and backslashes, inside single quotes</description>
+    <command><![CDATA[echo '$p' > '$out']]></command>
+    <inputs>
+        <param name="p" type="text">
+            <sanitizer>
+                <valid initial="string.printable">
+                    <remove value="&apos;"/>
+                    <remove value="\"/>
+                </valid>
+                <mapping initial="none">
+                    <add source="&apos;" target="\&apos;"/>
+                    <add source="\" target="\\"/>
+                </mapping>
+            </sanitizer>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

@@ -1,0 +1,21 @@
+<tool id="spec_mapping_escape_dq" name="Escaped double quotes" version="1.0" profile="24.0">
+    <description>writes a text value whose sanitizer escapes double quotes and backslashes, inside double quotes</description>
+    <command><![CDATA[echo "$p" > '$out']]></command>
+    <inputs>
+        <param name="p" type="text">
+            <sanitizer>
+                <valid initial="string.printable">
+                    <remove value="&quot;"/>
+                    <remove value="\"/>
+                </valid>
+                <mapping initial="none">
+                    <add source="&quot;" target="\&quot;"/>
+                    <add source="\" target="\\"/>
+                </mapping>
+            </sanitizer>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

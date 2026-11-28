@@ -75,6 +75,7 @@ from .values import (
     raw,
     recording,
     REPR_PUNCTUATION,
+    shell_escaping,
     stringify,
 )
 
@@ -232,6 +233,23 @@ def _quoting_verdict(quote: str, chars: charsets.Chars, words: charsets.Chars | 
     return charsets.unquoted(chars, words, script)
 
 
+def _escaped_here(text: AV, quote: str, state: shell.ShellState | None = None) -> charsets.Chars:
+    """The characters of a value its escaping keeps literal where the shell reads it unquoted or inside ``quote``,
+    written from ``state``."""
+    escaping = shell_escaping(text.quoted, text.escaped)
+    if escaping is None or quote not in escaping.quotes:
+        return charsets.NONE
+    if state is not None and (
+        state.esc
+        or state.backslash
+        or (quote and state.escaped == quote)
+        or (not escaping.backticks and shell.in_backticks(state))
+    ):
+        # A backslash of the template or of another value just before it escapes the value's first backslash.
+        return charsets.NONE
+    return escaping.literal
+
+
 def _repr_verdicts(quote: str, chars: charsets.Chars, words: charsets.Chars | None, script: bool) -> list[Verdict]:
     """What repr() of a string with ``chars`` can do in the shell, written unquoted or inside ``quote``.
 
@@ -307,7 +325,8 @@ _PRESERVING_METHODS = frozenset(
         " removeprefix removesuffix __str__"
     ).split()
 )
-_QUOTING: charsets.Chars = frozenset("'\"\\`")
+
+
 _CLEAN_METHODS = frozenset(
     (
         "startswith endswith find rfind index rindex count isdigit isalpha isalnum isspace islower isupper"
@@ -576,6 +595,7 @@ def _constrained(value: AV, constraint: Any) -> AV:
         chars=chars,
         sources=text.sources,
         quoted=text.quoted,
+        escaped=text.escaped,
         whole=text.whole,
         lead=lead,
         words=(text.words if text.words is not None else chars) & constraint.word_first(),
@@ -588,7 +608,13 @@ def _without_removed(value: AV, removed: charsets.Removed) -> AV:
         return text
     chars = text.chars - removed.everywhere
     lead = (text.chars if text.lead is None else text.lead) - removed.everywhere - removed.start
-    return AV(chars=chars, sources=text.sources, quoted=text.quoted, whole=text.whole, lead=lead, words=text.words)
+    quoted, escaped = text.quoted, text.escaped
+    if quoted == "bs-escaped" and (removed.everywhere | removed.start) & (escaped | {"\\"}):
+        # Taking away a backslash or the character after it undoes the escape.
+        quoted, escaped = "", charsets.NONE
+    return AV(
+        chars=chars, sources=text.sources, quoted=quoted, escaped=escaped, whole=text.whole, lead=lead, words=text.words
+    )
 
 
 # What int() and float() accept besides digits and letters (inf, nan, 1e5); int() of a parameter
@@ -1302,17 +1328,27 @@ class TemplateAnalysis:
             if written & shell.inert_operators(context.quote, state.script):
                 # Template text too: a stray quote of an earlier value flips it.
                 self._quoted_operators = self._writes
+            if "\\" in written and context.quote in ("", '"'):
+                # A backslash at its end escapes the first character of what follows.
+                after = after._replace(backslash=True)
             if text.tainted:
                 escaped = bool(context.quote) and state.escaped == context.quote
-                self.judge_shell(text, context, raw_expr, escaped)
+                self.judge_shell(text, context, raw_expr, escaped, state=state)
                 self._record_escape_closer(text, (context.quote, context.inner))
-                own_escapes = text.quoted == "dq-escaped" and context.quote == '"'
+                own_escapes = "\\" in _escaped_here(text, context.quote, state)
                 if context.quote in ('"', shell.ANSI) and not context.lang and "\\" in text.chars and not own_escapes:
                     self._record_closers(text, frozenset("\\"))
                     after = after._replace(escaped=context.quote)
-                if not context.quote and text.quoted != "shlex" and (opening := text.chars & frozenset("'\"\\")):
+                literal = _escaped_here(text, "", state)
+                if (
+                    not context.quote
+                    and text.quoted != "shlex"
+                    and (opening := (text.chars - literal) & frozenset("'\"\\"))
+                ):
                     # shlex.quote balances the quotes it writes; any other quote here opens a string.
                     self._record_closers(text, opening)
+                    if "\\" in opening:
+                        after = after._replace(backslash=True)
             out.add(after)
         return frozenset(out)
 
@@ -1362,11 +1398,17 @@ class TemplateAnalysis:
                 self.readers.setdefault(node.path[len("configfile:") :], set()).add(context.cmd)
 
     def judge_shell(
-        self, text: AV, context: shell.Context, raw_expr: str | None, escaped: bool = False, substitution: bool = False
+        self,
+        text: AV,
+        context: shell.Context,
+        raw_expr: str | None,
+        escaped: bool = False,
+        substitution: bool = False,
+        state: shell.ShellState | None = None,
     ) -> None:
         """``escaped``: an earlier user value in the same kind of quotes can end in a backslash.
         ``substitution``: the value is the output of a command substitution, which the shell only splits and
-        globs, and only unquoted."""
+        globs, and only unquoted. ``state``: the shell state the value is written from."""
         chars = text.chars
         verdicts: list[Verdict] = []
         script = self.script
@@ -1406,13 +1448,7 @@ class TemplateAnalysis:
             elif text.quoted == "pyrepr" and text.tainted:
                 chars = chars | (REPR_PUNCTUATION if "'" in chars else REPR_PUNCTUATION - {'"'})
             # What the shell reads of the word. A program inside it still gets the quote.
-            outer = chars
-            if text.quoted == "sq-escaped" and context.quote == "'":
-                # The sanitizer writes a quote as '"'"', which stays inside the single-quoted word.
-                outer = chars - {"'"}
-            elif text.quoted == "dq-escaped" and context.quote == '"':
-                # The template writes a double quote as \", and the value has no backslash of its own.
-                outer = chars - {'"', "\\"}
+            outer = chars - _escaped_here(text, context.quote, state)
             if not context.lang:
                 chars = outer
             if substitution:
@@ -1833,7 +1869,7 @@ class TemplateAnalysis:
                 return attribute(base, index)
             if isinstance(node.slice, ast.Slice) and base.elem is None and base.items is None and not base.nodes:
                 # A slice can cut off the quotes or the escapes of an escaping.
-                return dataclasses.replace(base, quoted="")
+                return dataclasses.replace(base, quoted="", escaped=charsets.NONE)
             return element(base)
         if isinstance(node, ast.BinOp):
             left, right = self.ev(node.left, env), self.ev(node.right, env)
@@ -2329,10 +2365,12 @@ class TemplateAnalysis:
                 written = charsets.NONE
             escaped = every and first_literal == '"' and second == '\\"' and "\\" not in text.chars
             kept = self._kept_escaping(text, name, arg_nodes, keywords) if not replacement.tainted else ""
+            quoted = "dq-escaped" if escaped else kept
             return AV(
                 chars=(text.chars - removed) | replacement.chars | written,
                 sources=text.sources | replacement.sources,
-                quoted="dq-escaped" if escaped else kept,
+                quoted=quoted,
+                escaped=text.escaped if quoted == "bs-escaped" else charsets.NONE,
             )
         if name == "lstrip" and isinstance(first_literal, str) and len(args) == 1:
             return AV(chars=text.chars, sources=text.sources, lead=text.chars - charsets.probe(first_literal))
@@ -2363,18 +2401,22 @@ class TemplateAnalysis:
             codec = _const(arg_nodes[0]) if arg_nodes else "utf-8"
             if isinstance(codec, str) and codec.lower().replace("_", "-") in ("utf-8", "utf8", "ascii"):
                 # The bytes of the text in UTF-8, or the text of such bytes: the same characters.
-                return AV(chars=text.chars, sources=text.sources, whole=text.whole, quoted=text.quoted)
+                return AV(
+                    chars=text.chars, sources=text.sources, whole=text.whole, quoted=text.quoted, escaped=text.escaped
+                )
         # strip, lower, encode... keep whatever the value could contain.
         if name not in _PRESERVING_METHODS:
             self._introduce(text)
         else:
             literals = [_const(node) for node in arg_nodes]
             self._introduce(text, charsets.probe("".join(lit for lit in literals if isinstance(lit, str))))
+        quoted = self._kept_escaping(text, name, arg_nodes, keywords)
         return AV(
             chars=text.chars,
             sources=text.sources,
             whole=text.whole and text.parts is None,
-            quoted=self._kept_escaping(text, name, arg_nodes, keywords),
+            quoted=quoted,
+            escaped=text.escaped if quoted == "bs-escaped" else charsets.NONE,
         )
 
     @staticmethod
@@ -2382,12 +2424,17 @@ class TemplateAnalysis:
         """The escaping a str method leaves in place: none of its arguments can add or take away a quote."""
         if not text.quoted or name not in _ESCAPE_KEEPING_METHODS or keywords:
             return ""
-        if text.quoted not in ("sq-escaped", "dq-escaped"):
+        escaping = shell_escaping(text.quoted, text.escaped)
+        if escaping is None:
             # shlex, JSON and repr escaping depend on characters a replacement can add or remove
             # (shlex leaves `,` unquoted; JSON writes a newline as \n).
             return text.quoted if name in _CASE_METHODS or (name == "strip" and not arg_nodes) else ""
+        quoting = escaping.methods
+        if name in ("strip", "lstrip", "rstrip") and not arg_nodes and any(c.isspace() for c in quoting):
+            # Stripping an escaped space at the end leaves the backslash before it.
+            return ""
         literals = [_const(node) for node in arg_nodes]
-        if all(isinstance(literal, str) and not _QUOTING.intersection(literal) for literal in literals):
+        if all(isinstance(literal, str) and not quoting.intersection(literal) for literal in literals):
             return text.quoted
         return ""
 

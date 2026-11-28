@@ -24,8 +24,10 @@ from galaxy.tool_util.parser.interface import (
 from galaxy.tool_util.parser.sanitize import ToolParameterSanitizer
 from galaxy.util.xml_macros import template_macro_params
 from .charsets import (
+    backslash_escaped,
     Chars,
     default_chars,
+    NONE,
     probe,
     PROBE,
     sanitized,
@@ -285,10 +287,16 @@ def _value(
         )
         return Value(path, ptype, as_text=value, as_raw=value, text_like=True)
     # text, hidden, file (rendered by ToolParameter.to_param_dict_string, sanitized) and anything unknown.
+    escaped = backslash_escaped(universe, sanitizer) if tool_sanitize and sanitizer is not None else NONE
+    if tool_sanitize and _escapes_single_quote(sanitizer):
+        quoted = "sq-escaped"
+    else:
+        quoted = "bs-escaped" if escaped else ""
     text = AV(
         chars=rendered(universe),
         sources=frozenset((source(f"{ptype} param '{path}'", TEXT, path),)),
-        quoted="sq-escaped" if tool_sanitize and _escapes_single_quote(sanitizer) else "",
+        quoted=quoted,
+        escaped=escaped if quoted == "bs-escaped" else NONE,
         lead=rendered(lead) if lead is not None else None,
         words=rendered(words) if words is not None else None,
         verbatim=True,

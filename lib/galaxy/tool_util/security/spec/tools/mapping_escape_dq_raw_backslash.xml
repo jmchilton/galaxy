@@ -1,0 +1,20 @@
+<tool id="spec_mapping_escape_dq_raw_backslash" name="Escaped double quotes, raw backslash" version="1.0" profile="24.0">
+    <description>writes a text value whose sanitizer escapes double quotes but keeps a backslash as it is, and that holds no $ or backtick, inside double quotes</description>
+    <command><![CDATA[echo "$p" > '$out']]></command>
+    <inputs>
+        <param name="p" type="text">
+            <validator type="regex">^[^$`]*$</validator>
+            <sanitizer>
+                <valid initial="string.printable">
+                    <remove value="&quot;"/>
+                </valid>
+                <mapping initial="none">
+                    <add source="&quot;" target="\&quot;"/>
+                </mapping>
+            </sanitizer>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

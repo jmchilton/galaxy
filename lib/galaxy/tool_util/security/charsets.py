@@ -130,6 +130,25 @@ def sanitized(chars: Chars, sanitizer: ToolParameterSanitizer | None = None) -> 
     return frozenset(out)
 
 
+def backslash_escaped(chars: Chars, sanitizer: ToolParameterSanitizer) -> Chars:
+    """Characters of ``chars`` the sanitizer writes as a backslash and the character (``\\>`` for ``>``).
+
+    Empty unless that is how it writes every backslash of a value that may contain ``chars``: a backslash
+    of the user's that it keeps, or one of another mapping, could escape what follows it instead.
+    """
+    escaped = set()
+    # And characters that are not probes: whitespace, one Galaxy writes as the invalid character, and every
+    # character the sanitizer maps (it can map a letter to a backslash).
+    mapped = set(getattr(sanitizer, "_mapped_chars", {}))
+    for c in chars | mapped | {"\r", "\x0b", "\x0c", "\x00"}:
+        text = sanitizer.sanitize_param(c)
+        if "\\" in text:
+            if text != "\\" + c:
+                return NONE
+            escaped.add(c)
+    return frozenset(escaped)
+
+
 DEFAULT_SANITIZED: Chars = sanitized(PROBE)
 
 

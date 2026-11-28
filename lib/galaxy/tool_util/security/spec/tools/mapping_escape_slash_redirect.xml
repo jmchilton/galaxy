@@ -1,0 +1,17 @@
+<tool id="spec_mapping_escape_slash_redirect" name="Escaped slash as a redirection target" version="1.0" profile="24.0">
+    <description>writes a text value whose sanitizer maps / to \/, as a redirection target</description>
+    <command><![CDATA[echo x > $p]]></command>
+    <inputs>
+        <param name="p" type="text">
+            <sanitizer invalid_char="">
+                <valid initial="string.ascii_letters,string.digits"/>
+                <mapping initial="none">
+                    <add source="/" target="\/"/>
+                </mapping>
+            </sanitizer>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>
