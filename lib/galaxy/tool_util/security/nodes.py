@@ -45,6 +45,8 @@ from .values import (
     tainted,
 )
 
+_STR_ATTRIBUTES = frozenset(dir(str))
+
 
 @dataclass(eq=False)
 class Value(Node):
@@ -58,14 +60,22 @@ class Value(Node):
     text_like: bool = False  # unknown attributes are string methods of the raw value
     # A select that takes only these values, each rendered as it is: options fixed in the tool, no sanitizer.
     options: tuple[str, ...] | None = None
+    # False for a string Galaxy writes without a parameter wrapper, through SafeStringWrapper: its string
+    # methods give the sanitized text, `.unsanitized` the value as submitted (as_raw), and nothing else exists.
+    wrapped: bool = True
 
     def text(self) -> AV:
         return self.as_text
 
     def raw(self) -> AV:
-        return self.as_raw
+        return self.as_raw if self.wrapped else self.as_text
 
     def attr(self, name: str) -> AV | None:
+        if not self.wrapped:
+            if name == "unsanitized":
+                return self.as_raw
+            # Elsewhere the template fails.
+            return AV(bound=(self.as_text, name)) if name in _STR_ATTRIBUTES else CLEAN
         if name == "value":
             return self.as_raw
         if name == "fields":

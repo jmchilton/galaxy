@@ -1,0 +1,13 @@
+<tool id="spec_custom_sanitizer_letters_unquoted" name="Letters-only text, unquoted" version="1.0" profile="24.0">
+    <description>writes a text value with a letters-only sanitizer, unquoted</description>
+    <command><![CDATA[cp '$input' reads && sort $files > '$out']]></command>
+    <inputs>
+        <param name="input" type="data" format="txt"/>
+        <param name="files" type="text">
+            <sanitizer><valid initial="string.ascii_letters"/></sanitizer>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

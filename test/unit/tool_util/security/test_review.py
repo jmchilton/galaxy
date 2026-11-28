@@ -887,6 +887,32 @@ def test_data_source_tools_keep_their_job_parameters(tmp_path, tool_type, check_
 
 
 @pytest.mark.parametrize(
+    "command,expected",
+    [
+        # The default sanitizer runs, not the param's letters-only one.
+        ("tool $letters", {("argument-injection", "medium"), ("option-injection", "low")}),
+        ("tool '${letters.strip()}'", {("option-injection", "low")}),
+        # A plain string has no `.value`: the template fails there.
+        ("tool '$letters.value'", set()),
+        # SafeStringWrapper keeps the value as submitted.
+        ("tool '$letters.unsanitized'", {("shell-injection", "high"), ("option-injection", "low")}),
+        # A baseurl param is the request's value, not the tool's.
+        ("tool $url", {("argument-injection", "medium"), ("option-injection", "low")}),
+    ],
+)
+def test_inputs_without_parameter_wrappers_are_default_sanitized_strings(tmp_path, command, expected):
+    path = os.path.join(tmp_path, "tool.xml")
+    with open(path, "w") as fh:
+        fh.write(f"""<tool id="t" name="t" version="1" profile="24.2">
+  <command><![CDATA[{command}]]></command>
+  <inputs check_values="false"><param name="letters" type="text">
+    <sanitizer><valid initial="string.ascii_letters"/></sanitizer></param>
+    <param name="url" type="baseurl" value="/tool_runner"/></inputs>
+  <outputs><data name="out" format="txt"/></outputs></tool>""")
+    assert rules(review_tool_source(get_tool_source(path))) == expected
+
+
+@pytest.mark.parametrize(
     "name", ["__galaxy_url__", "__history_id__", "__datatypes_config__", "GALAXY_DATATYPES_CONF_FILE", "__job_resource"]
 )
 @pytest.mark.parametrize(

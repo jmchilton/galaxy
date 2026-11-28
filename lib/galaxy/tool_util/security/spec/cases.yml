@@ -679,6 +679,53 @@ dataset_content_substitution_quoted:
         fields: {content: "1 -o harm-marker\n"}
       expect: {rejected: false}
 
+check_values_false_ignores_param_sanitizer:
+  doc: >-
+    A tool that does not check its values gets its inputs without parameter wrappers: Galaxy writes a text value
+    through the default sanitizer, not the param's own. A letters-only sanitizer does not apply, and the
+    unquoted value splits into words. With `enforce_data`, a word that can be an option is refused.
+  tool: check_values_false_custom_sanitizer.xml
+  code: argument-injection
+  review:
+    findings:
+      - {rule: argument-injection, severity: medium, accessor: text, param: files, checkable: true}
+  red:
+    - config: {mode: enforce_data}
+      datasets: {input: {}}
+      inputs: {files: "reads -o harm-marker"}
+      harm: true
+      expect:
+        rejected: true
+        message_contains: ["the value of input 'files' contains the characters [space a word starting with -]"]
+  green:
+    - config: {mode: enforce_data}
+      datasets: {input: {}}
+      inputs: {files: "reads reads"}
+      harm: true
+      expect: {rejected: false}
+    - doc: With `enforce_code`, the default, words the shell splits are not refused.
+      datasets: {input: {}}
+      inputs: {files: "reads -r"}
+      expect: {rejected: false}
+
+param_sanitizer_applies_with_check_values:
+  doc: With parameter wrappers, the letters-only sanitizer applies, and the unquoted value is one plain word.
+  tool: custom_sanitizer_letters_unquoted.xml
+  review:
+    absent:
+      - {rule: argument-injection, param: files}
+  green:
+    - config: {mode: enforce_data}
+      datasets: {input: {}}
+      inputs: {files: reads}
+      harm: true
+      expect: {rejected: false}
+    - doc: The sanitizer writes the space and the dashes as `X`; `sort` finds no such file, and nothing else runs.
+      config: {mode: enforce_data}
+      datasets: {input: {}}
+      inputs: {files: "reads -o harm-marker"}
+      expect: {rejected: false}
+
 path_like_name:
   doc: >-
     `sort -o` writes to a file named after the element identifier, which the review does not take for a path

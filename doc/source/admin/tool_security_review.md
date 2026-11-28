@@ -1212,6 +1212,47 @@ datasets:
       '
 ```
 
+#### check_values_false_ignores_param_sanitizer
+
+A tool that does not check its values gets its inputs without parameter wrappers: Galaxy writes a text value through the default sanitizer, not the param's own. A letters-only sanitizer does not apply, and the unquoted value splits into words. With `enforce_data`, a word that can be an option is refused.
+
+Tool `check_values_false_custom_sanitizer.xml`:
+
+```
+cp '$input' reads && sort $files > '$out'
+```
+
+Refused
+
+```
+inputs:
+  files: reads -o harm-marker
+datasets:
+  input: {}
+config:
+  mode: enforce_data
+```
+
+Runs
+
+```
+inputs:
+  files: reads reads
+datasets:
+  input: {}
+config:
+  mode: enforce_data
+```
+
+Runs: With `enforce_code`, the default, words the shell splits are not refused.
+
+```
+inputs:
+  files: reads -r
+datasets:
+  input: {}
+```
+
 #### env_assignment
 
 `env` takes every word before the command as an assignment or the command: an unquoted value that splits runs a command of its own.
@@ -2265,6 +2306,38 @@ datasets:
     content: '1 -o harm-marker
 
       '
+config:
+  mode: enforce_data
+```
+
+#### param_sanitizer_applies_with_check_values
+
+With parameter wrappers, the letters-only sanitizer applies, and the unquoted value is one plain word.
+
+Tool `custom_sanitizer_letters_unquoted.xml`:
+
+```
+cp '$input' reads && sort $files > '$out'
+```
+
+Runs
+
+```
+inputs:
+  files: reads
+datasets:
+  input: {}
+config:
+  mode: enforce_data
+```
+
+Runs: The sanitizer writes the space and the dashes as `X`; `sort` finds no such file, and nothing else runs.
+
+```
+inputs:
+  files: reads -o harm-marker
+datasets:
+  input: {}
 config:
   mode: enforce_data
 ```

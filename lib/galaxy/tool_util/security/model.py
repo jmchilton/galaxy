@@ -199,7 +199,10 @@ def _escapes_single_quote(sanitizer: ToolParameterSanitizer | None) -> bool:
     return sanitizer is not None and sanitizer.sanitize_param("'") in ("'\"'\"'", "'\\''")
 
 
-def _value(input_source: InputSource, path: str, tool_sanitize: bool) -> Node:
+def _value(input_source: InputSource, path: str, tool_sanitize: bool, wrapped: bool = True) -> Node:
+    """``wrapped``: Galaxy writes the param through its parameter wrapper. Without one (a tool that does not
+    check its values) the value is a string the default sanitizer cleans: the param's own sanitizer and
+    attributes such as `.value` belong to the wrapper."""
     ptype = input_source.get("type") or "text"
     if ptype in ("data", "hidden_data"):
         return Data(path, multiple=input_source.get_bool("multiple", False), sanitize=tool_sanitize)
@@ -207,11 +210,11 @@ def _value(input_source: InputSource, path: str, tool_sanitize: bool) -> Node:
         types = [t.strip() for t in (input_source.get("collection_type") or "").split(",") if t.strip()]
         nested = any(":" in t for t in types) if types else None
         return Collection(path, nested=nested, sanitize=tool_sanitize)
-    if ptype in ("integer", "float", "boolean", "baseurl", "rules"):
+    if ptype in ("integer", "float", "boolean", "rules") or (ptype == "baseurl" and wrapped):
         return Value(path, ptype)
 
     sanitizer_elem = input_source.parse_sanitizer_elem()
-    sanitizer = ToolParameterSanitizer.from_element(sanitizer_elem) if sanitizer_elem is not None else None
+    sanitizer = ToolParameterSanitizer.from_element(sanitizer_elem) if sanitizer_elem is not None and wrapped else None
 
     def rendered(chars: Chars) -> Chars:
         return sanitized(chars, sanitizer) if tool_sanitize else chars
@@ -234,7 +237,7 @@ def _value(input_source: InputSource, path: str, tool_sanitize: bool) -> Node:
     lead = constraint.lead if "-" in universe and "-" not in constraint.lead else None
     word_first = constraint.word_first()
     words = word_first if "-" in universe and "-" not in word_first else None
-    if ptype in ("color", "directory_uri", "ftpfile"):
+    if ptype in ("color", "directory_uri", "ftpfile") and wrapped:
         # These types return the submitted value as it is: no sanitizer runs when they are rendered.
         value = AV(
             chars=universe,
@@ -245,29 +248,27 @@ def _value(input_source: InputSource, path: str, tool_sanitize: bool) -> Node:
         )
         return Value(path, ptype, as_text=value, as_raw=value, text_like=True)
     # text, hidden, file (rendered by ToolParameter.to_param_dict_string, sanitized) and anything unknown.
-    return Value(
-        path,
-        ptype,
-        as_text=AV(
-            chars=rendered(universe),
-            sources=frozenset((source(f"{ptype} param '{path}'", TEXT, path),)),
-            quoted="sq-escaped" if tool_sanitize and _escapes_single_quote(sanitizer) else "",
-            lead=rendered(lead) if lead is not None else None,
-            words=rendered(words) if words is not None else None,
-            verbatim=True,
-        ),
-        as_raw=AV(
-            chars=universe,
-            sources=frozenset((source(f"raw value of {ptype} param '{path}' (sanitizer bypassed)", RAW, path),)),
-            lead=lead,
-            words=words,
-            verbatim=True,
-        ),
-        text_like=True,
+    text = AV(
+        chars=rendered(universe),
+        sources=frozenset((source(f"{ptype} param '{path}'", TEXT, path),)),
+        quoted="sq-escaped" if tool_sanitize and _escapes_single_quote(sanitizer) else "",
+        lead=rendered(lead) if lead is not None else None,
+        words=rendered(words) if words is not None else None,
+        verbatim=True,
     )
+    raw = AV(
+        chars=universe,
+        sources=frozenset((source(f"raw value of {ptype} param '{path}' (sanitizer bypassed)", RAW, path),)),
+        lead=lead,
+        words=words,
+        verbatim=True,
+    )
+    return Value(path, ptype, as_text=text, as_raw=raw, text_like=True, wrapped=wrapped)
 
 
-def _add_inputs(group: Group, input_sources: list[InputSource], prefix: str, tool_sanitize: bool) -> None:
+def _add_inputs(
+    group: Group, input_sources: list[InputSource], prefix: str, tool_sanitize: bool, wrapped: bool
+) -> None:
     for input_source in input_sources:
         input_type = input_source.parse_input_type()
         try:
@@ -279,13 +280,21 @@ def _add_inputs(group: Group, input_sources: list[InputSource], prefix: str, too
         if input_type == "repeat":
             item = Group(path)
             _add_inputs(
-                item, input_source.parse_nested_inputs_source().parse_input_sources(), f"{path}.", tool_sanitize
+                item,
+                input_source.parse_nested_inputs_source().parse_input_sources(),
+                f"{path}.",
+                tool_sanitize,
+                wrapped,
             )
             group.add(name, Repeat(path, item))
         elif input_type == "section":
             section = Group(path)
             _add_inputs(
-                section, input_source.parse_nested_inputs_source().parse_input_sources(), f"{path}.", tool_sanitize
+                section,
+                input_source.parse_nested_inputs_source().parse_input_sources(),
+                f"{path}.",
+                tool_sanitize,
+                wrapped,
             )
             group.add(name, section)
         elif input_type == "conditional" and not _has_test_param(input_source):
@@ -294,12 +303,12 @@ def _add_inputs(group: Group, input_sources: list[InputSource], prefix: str, too
         elif input_type == "conditional":
             test_source = input_source.parse_test_input_source()
             conditional = Group(path, selector=test_source.parse_name())
-            _add_inputs(conditional, [test_source], f"{path}.", tool_sanitize)
+            _add_inputs(conditional, [test_source], f"{path}.", tool_sanitize, wrapped)
             values = []
             for value_name, case_source in input_source.parse_when_input_sources():
                 values.append(str(value_name))
                 case = Group(path)
-                _add_inputs(case, case_source.parse_input_sources(), f"{path}.", tool_sanitize)
+                _add_inputs(case, case_source.parse_input_sources(), f"{path}.", tool_sanitize, wrapped)
                 for child_name, nodes in case.children.items():
                     for node in nodes:
                         conditional.add(child_name, node)
@@ -307,7 +316,7 @@ def _add_inputs(group: Group, input_sources: list[InputSource], prefix: str, too
             conditional.case_values = frozenset(values)
             group.add(name, conditional)
         elif input_type == "param":
-            group.add(name, _value(input_source, path, tool_sanitize))
+            group.add(name, _value(input_source, path, tool_sanitize, wrapped))
             if (input_source.get("type") or "") in ("data", "hidden_data"):
                 # Galaxy adds the dataset converted for a <conversion> next to the parameter.
                 for conversion, _ in input_source.parse_conversion_tuples():
@@ -325,10 +334,12 @@ def build_model(
     template_job_parameters: frozenset[str] | None = None,
     keeps_undeclared_job_parameters: bool = False,
 ) -> Model:
+    """``keeps_undeclared_job_parameters``: the tool does not check its values (`check_values="false"`, a data
+    source tool), so Galaxy passes it its job parameters as sent, and its inputs without parameter wrappers."""
     tool_sanitize = bool(tool_source.parse_sanitize())
     root = Group("")
     for page_source in tool_source.parse_input_pages().page_sources:
-        _add_inputs(root, page_source.parse_input_sources(), "", tool_sanitize)
+        _add_inputs(root, page_source.parse_input_sources(), "", tool_sanitize, not keeps_undeclared_job_parameters)
     model = Model(
         root=root,
         sanitize=tool_sanitize,
