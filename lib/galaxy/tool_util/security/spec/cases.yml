@@ -349,6 +349,52 @@ repr_inside_python_string:
       harm: true
       expect: {rejected: false}
 
+repr_closes_shell_single_quotes:
+  doc: >-
+    repr() writes its own quotes, which end the shell's single quotes around it: the value is then unquoted, and
+    the shell splits it into words. With `enforce_data`, a word that can be an option is refused.
+  tool: repr_in_shell_single_quotes.xml
+  code: argument-injection
+  review:
+    findings:
+      - {rule: argument-injection, severity: medium, accessor: text, param: files, checkable: true}
+  red:
+    - config: {mode: enforce_data}
+      datasets: {input: {name: reads.txt}}
+      inputs: {files: "reads.txt -o harm-marker"}
+      harm: true
+      expect:
+        rejected: true
+        message_contains: ["the value of input 'files' contains the characters [space a word starting with -]"]
+  green:
+    - config: {mode: enforce_data}
+      datasets: {input: {name: reads.txt}}
+      inputs: {files: "reads.txt reads.txt"}
+      harm: true
+      expect: {rejected: false}
+    - doc: With `enforce_code`, the default, words the shell splits are not refused.
+      datasets: {input: {name: reads.txt}}
+      inputs: {files: "reads.txt -r"}
+      expect: {rejected: false}
+
+repr_unquoted_is_one_word:
+  doc: Unquoted, the quotes repr() writes keep a sanitized value one shell word.
+  tool: repr_in_shell_unquoted.xml
+  review:
+    absent:
+      - {rule: argument-injection, param: files}
+  green:
+    - config: {mode: enforce_data}
+      datasets: {input: {name: reads.txt}}
+      inputs: {files: reads.txt}
+      harm: true
+      expect: {rejected: false}
+    - doc: The value is one file name for `sort`, which it does not find; nothing else runs.
+      config: {mode: enforce_data}
+      datasets: {input: {name: reads.txt}}
+      inputs: {files: "reads.txt -o harm-marker"}
+      expect: {rejected: false}
+
 json_inside_python_string:
   doc: >-
     json.dumps() of a string writes it between double quotes. Inside a "..." string of a Python configfile,

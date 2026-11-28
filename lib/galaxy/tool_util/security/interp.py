@@ -126,7 +126,6 @@ _ESCAPING_ADDS: dict[str, charsets.Chars] = {
     "shlex": frozenset("'\""),
     "json": _JSON_PUNCTUATION,
     "pyrepr": REPR_PUNCTUATION,
-    "pystr": _PYSTR_QUOTING,
 }
 # repr() of a list or of a string writes a Python literal.
 _PYTHON_LITERALS = frozenset(("pyrepr", "pystr"))
@@ -214,6 +213,31 @@ def _quoting_verdict(quote: str, chars: charsets.Chars, words: charsets.Chars | 
     if quote == shell.ANSI:
         return _ansi_quoted(chars, script)
     return charsets.unquoted(chars, words, script)
+
+
+def _repr_verdicts(quote: str, chars: charsets.Chars, words: charsets.Chars | None, script: bool) -> list[Verdict]:
+    """What repr() of a string with ``chars`` can do in the shell, written unquoted or inside ``quote``.
+
+    repr() writes the value between single quotes, escaping its backslashes and single quotes, or between
+    double quotes when the value holds a single quote and no double quote.
+    """
+    single = "'" in chars
+    if quote in ("'", shell.ANSI):
+        # repr()'s quote ends the shell's, or the value's own single quote does: the value is unquoted.
+        verdicts = [charsets.unquoted(chars, words, script)]
+    elif quote == '"':
+        verdicts = [charsets.double_quoted(chars - {"\\"}, script)]
+        if single:
+            # repr()'s double quote ends the shell's.
+            verdicts.append(charsets.unquoted(chars, words, script))
+    elif single:
+        # Inside repr()'s double quotes the shell expands the value; with both quotes, the \' repr()
+        # writes ends its single quotes.
+        verdicts = [charsets.double_quoted(chars - {"\\", '"'}, script), charsets.single_quoted(chars, script)]
+    else:
+        # One word, inside repr()'s single quotes.
+        verdicts = []
+    return [verdict for verdict in verdicts if verdict]
 
 
 def _verdict_breakout(verdict: Verdict) -> charsets.Chars:
@@ -1316,6 +1340,8 @@ class TemplateAnalysis:
                     Verdict("argument-injection", charsets.MEDIUM, split, why, data_requires=frozenset("="))
                 )
         quoted_for_here = text.quoted == "shlex" and not context.quote and not context.lang
+        # Verdicts that read the quotes the escaping writes themselves.
+        own_quotes: list[Verdict] = []
         if not quoted_for_here:
             if text.quoted == "shlex":
                 chars = chars | {"'"}
@@ -1333,12 +1359,20 @@ class TemplateAnalysis:
                 chars = outer
             if substitution:
                 verdict = None if context.quote else charsets.substituted(outer)
+            elif text.quoted == "pystr":
+                verdict = None
+                own_quotes = _repr_verdicts(context.quote, outer, text.words, script)
             else:
                 verdict = _quoting_verdict(context.quote, outer, text.words, script)
             if verdict:
                 verdicts.append(verdict)
             if context.lang == "sh":
-                if verdict := _quoting_verdict(context.inner, chars, text.words, script):
+                if text.quoted == "pystr":
+                    nested = _repr_verdicts(context.inner, chars, text.words, script)
+                    own_quotes.extend(
+                        v._replace(rule="nested-interpreter", why=f"in the nested shell, {v.why}") for v in nested
+                    )
+                elif verdict := _quoting_verdict(context.inner, chars, text.words, script):
                     verdicts.append(
                         verdict._replace(rule="nested-interpreter", why=f"in the nested shell, {verdict.why}")
                     )
@@ -1375,6 +1409,8 @@ class TemplateAnalysis:
         where = context.describe() + (", as the output of a command substitution" if substitution else "")
         for verdict in verdicts:
             self.finding(verdict, text, where, raw_expr)
+        for verdict in own_quotes:
+            self.finding(verdict, text, f"{where}, between the quotes repr() writes", raw_expr, escaping=False)
 
     def judge_config(
         self,
@@ -1503,12 +1539,21 @@ class TemplateAnalysis:
         self.finding(verdict, text, f"into `{name}(...)` in template Python", name)
 
     def finding(
-        self, verdict: Verdict, text: AV, where: str, raw_expr: str | None, needs_closer: str | None = None
+        self,
+        verdict: Verdict,
+        text: AV,
+        where: str,
+        raw_expr: str | None,
+        needs_closer: str | None = None,
+        escaping: bool = True,
     ) -> None:
         """``needs_closer``: the quote of the value's string, when the finding holds only once another
-        value has escaped the closing quote; until then only that quote or a backslash closes it."""
+        value has escaped the closing quote; until then only that quote or a backslash closes it.
+        ``escaping``: the verdict does not read what an escaping writes, see _breakout."""
         refs = source_refs(text.sources)
-        escaped = frozenset().union(*(self._escapes.get(ref, charsets.NONE) for ref in refs))
+        escaped = (
+            frozenset().union(*(self._escapes.get(ref, charsets.NONE) for ref in refs)) if escaping else charsets.NONE
+        )
         breakout, requires, closes = _breakout(verdict, text, self.language, escaped, self.script)
         source = "; ".join(sorted(text.sources)[:3])
         expr = f" (`{raw_expr}`)" if raw_expr else ""
@@ -1918,17 +1963,9 @@ class TemplateAnalysis:
         if name in _CLEAN_FUNCTIONS:
             return CLEAN
         if name in _STRING_FUNCTIONS:
-            text = stringify(first)
             if name == "repr":
-                # repr() puts the string between quotes and escapes backslashes and that quote.
-                introduced(text, _PYSTR_QUOTING, escape=True)
-                if not text.tainted or text.quoted == "pyrepr":
-                    return dataclasses.replace(text, verbatim=False)
-                if text.parts is not None or text.alts:
-                    # One string: repr() escapes the quotes of its literal text as it does the value's.
-                    text = AV(chars=text.chars | _literal_chars(text), sources=text.sources, whole=False)
-                # A Python string literal of the value.
-                return dataclasses.replace(text, verbatim=False, quoted="pystr")
+                return self._repr(first)
+            text = stringify(first)
             if name == "format" and len(node.args) > 1:
                 spec = _const(node.args[1])
                 self._introduce(text, charsets.probe(spec) if isinstance(spec, str) else charsets.PROBE)
@@ -2034,6 +2071,19 @@ class TemplateAnalysis:
             self._introduce(contents(value))
         return join(*(contents(a) for a in args + keywords))
 
+    @staticmethod
+    def _repr(value: AV) -> AV:
+        """repr() puts a string between quotes and escapes backslashes and that quote."""
+        text = stringify(value)
+        introduced(text, _PYSTR_QUOTING, escape=True)
+        if not text.tainted or text.quoted == "pyrepr":
+            return dataclasses.replace(text, verbatim=False)
+        if text.parts is not None or text.alts:
+            # One string: repr() escapes the quotes of its literal text as it does the value's.
+            text = AV(chars=text.chars | _literal_chars(text), sources=text.sources, whole=False)
+        # A Python string literal of the value.
+        return dataclasses.replace(text, verbatim=False, quoted="pystr")
+
     def _opened_datasets(self, node: ast.Call, env: Env) -> tuple[Data, ...]:
         """The input datasets ``open()`` reads."""
         if len(node.args) != 1 or node.keywords:
@@ -2130,6 +2180,8 @@ class TemplateAnalysis:
         name = method
         if name in _CLEAN_METHODS:
             return CLEAN
+        if name == "__repr__" and not args and not keywords:
+            return self._repr(receiver)
         if receiver.helper:
             return self.call_helper(receiver.helper, args, env)
         if name in ("group", "groups", "groupdict") and receiver.elem is not None:

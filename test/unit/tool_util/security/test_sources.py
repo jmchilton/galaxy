@@ -109,7 +109,11 @@ def high(report: Report):
         # Escaping writes the quote that closes the string; the value has to bring the command characters.
         ("#import shlex\necho '${shlex.quote(str($free))}'", SHELL_EXEC, frozenset()),
         ('echo "$json.dumps(str($free))"', frozenset("`$") | SHELL_EXEC, frozenset()),
-        ('echo "${repr(str($free))}"', frozenset("`$") | SHELL_EXEC, frozenset()),
+        # repr() writes the value's double quote as it is, and its own quotes end the shell's.
+        ('echo "${repr(str($free))}"', frozenset('`$"') | SHELL_EXEC, frozenset()),
+        ("echo '${repr(str($free))}'", SHELL_EXEC, frozenset()),
+        # Unquoted, repr()'s quotes keep the value one word, unless it holds a quote.
+        ("echo ${repr(str($free))}", frozenset("`$'"), frozenset()),
     ],
 )
 def test_breakout(tmp_path, command, breakout, requires):

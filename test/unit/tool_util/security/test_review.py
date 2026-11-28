@@ -146,6 +146,9 @@ def rules(report: Report, kind: str = "vulnerability") -> set[tuple[str, str]]:
         # A commented-out line is not a command.
         "tool ## $text\n",
         "tool '$mode.kind' \\$GALAXY_SLOTS \"\\${TMPDIR:-.}\"",
+        # repr() writes the value between quotes of its own.
+        "tool ${repr(str($text))}",
+        'sh -c "tool ${repr(str($text))}"',
     ],
 )
 def test_contained_values_are_not_reported(tmp_path, command):
@@ -190,6 +193,11 @@ def test_sanitizer_that_writes_a_shell_safe_quote(tmp_path):
         ('#for $k in $flat.keys()\ntool "$k"\n#end for', ("shell-injection", "high")),
         ("tool $text", ("argument-injection", "medium")),
         ("tool '$free'", ("shell-injection", "high")),
+        # repr()'s own quotes end the single quotes around it.
+        ("tool '${repr(str($text))}'", ("argument-injection", "medium")),
+        ("tool '${repr($text.value)}'", ("shell-injection", "high")),
+        ("tool '${str($text).__repr__()}'", ("argument-injection", "medium")),
+        ("sh -c \"tool '${repr(str($text))}'\"", ("nested-interpreter", "medium")),
         ('tool "$no_quote"', ("shell-injection", "high")),
         # .value and string methods return the submitted value, not the sanitized one.
         ("tool '$text.value'", ("shell-injection", "high")),

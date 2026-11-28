@@ -1066,6 +1066,50 @@ datasets:
 
 A value is written unquoted, or can close its quotes, and can split into more words. From `enforce_data` on, a job is refused when a word can then be an option, a home directory, a path or a glob; with `enforce_all`, also when the words are plain or the value only closes its quotes.
 
+#### repr_closes_shell_single_quotes
+
+repr() writes its own quotes, which end the shell's single quotes around it: the value is then unquoted, and the shell splits it into words. With `enforce_data`, a word that can be an option is refused.
+
+Tool `repr_in_shell_single_quotes.xml`:
+
+```
+cp '$input' reads.txt && sort '${repr(str($files))}' > '$out'
+```
+
+Refused
+
+```
+inputs:
+  files: reads.txt -o harm-marker
+datasets:
+  input:
+    name: reads.txt
+config:
+  mode: enforce_data
+```
+
+Runs
+
+```
+inputs:
+  files: reads.txt reads.txt
+datasets:
+  input:
+    name: reads.txt
+config:
+  mode: enforce_data
+```
+
+Runs: With `enforce_code`, the default, words the shell splits are not refused.
+
+```
+inputs:
+  files: reads.txt -r
+datasets:
+  input:
+    name: reads.txt
+```
+
 #### argument_injection
 
 An unquoted value splits into words. With `enforce_data`, a job is refused when a word can be an option, a home directory, a path or a glob; with `enforce_all`, also when the words are plain.
@@ -2119,6 +2163,40 @@ Runs: Quotes and backslashes in the value stay inside the string repr() writes.
 inputs:
   raw_word: a\'); open('harm-marker', 'w'); ('
   word: a'); open('harm-marker', 'w'); ('
+```
+
+#### repr_unquoted_is_one_word
+
+Unquoted, the quotes repr() writes keep a sanitized value one shell word.
+
+Tool `repr_in_shell_unquoted.xml`:
+
+```
+cp '$input' reads.txt && sort ${repr(str($files))} > '$out'
+```
+
+Runs
+
+```
+inputs:
+  files: reads.txt
+datasets:
+  input:
+    name: reads.txt
+config:
+  mode: enforce_data
+```
+
+Runs: The value is one file name for `sort`, which it does not find; nothing else runs.
+
+```
+inputs:
+  files: reads.txt -o harm-marker
+datasets:
+  input:
+    name: reads.txt
+config:
+  mode: enforce_data
 ```
 
 #### json_python_literal_clean
