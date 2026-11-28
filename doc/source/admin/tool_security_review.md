@@ -970,6 +970,36 @@ collections:
 
 A value is written as a path a command writes or reads (a redirection, an argument of `cp`, `ln`, `mv`, ...) and can name a file outside the job's directory. Refused from `enforce_data` on.
 
+#### dataset_info_is_user_text
+
+The info of a dataset is text the user set, and can hold a path.
+
+Tool `dataset_info_link_name.xml`:
+
+```
+mkdir -p links && ln -s '$d' 'links/$d.info' && cat '$d' > '$out'
+```
+
+Refused
+
+```
+datasets:
+  d:
+    info: ../harm-marker
+config:
+  mode: enforce_data
+```
+
+Runs
+
+```
+datasets:
+  d:
+    info: notes
+config:
+  mode: enforce_data
+```
+
 #### path_traversal
 
 A file name the user gives is written as a path `cp` writes to. With `enforce_data`, a slash in it is refused, since it can name a file outside the job's directory.
@@ -2214,6 +2244,34 @@ Runs
 datasets:
   input:
     name: a';touch harm-marker;'
+```
+
+#### paired_element_attribute_is_a_path
+
+`.forward` of an element of an untyped collection is a dataset path when the element is a pair; a plain dataset has no such attribute, and the template fails where it reads one.
+
+Tool `untyped_collection_forward.xml`:
+
+```
+#for $pair in $c
+#if $pair.is_collection
+ln -s '$pair.forward' reads.txt &&
+#else
+ln -s '$pair' reads.txt &&
+#end if
+#end for
+cat reads.txt > '$out'
+```
+
+Runs
+
+```
+collections:
+  c:
+    elements:
+    - identifier: sample 1
+config:
+  mode: enforce_data
 ```
 
 #### wrapped_names_stay_quoted

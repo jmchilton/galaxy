@@ -168,6 +168,44 @@ dataset_name_stays_quoted:
       harm: true
       expect: {rejected: false}
 
+paired_element_attribute_is_a_path:
+  doc: >-
+    `.forward` of an element of an untyped collection is a dataset path when the element is a pair; a plain
+    dataset has no such attribute, and the template fails where it reads one.
+  tool: untyped_collection_forward.xml
+  review:
+    serious_rules: []
+    absent:
+      - {rule: path-traversal, accessor: dataset_attribute, key: forward}
+  green:
+    - config: {mode: enforce_data}
+      collections:
+        c:
+          elements: [{identifier: "sample 1"}]
+      harm: true
+      expect: {rejected: false}
+
+dataset_info_is_user_text:
+  doc: The info of a dataset is text the user set, and can hold a path.
+  tool: dataset_info_link_name.xml
+  code: path-traversal
+  review:
+    serious_rules: []
+    findings:
+      - {rule: path-traversal, severity: medium, accessor: dataset_attribute, param: d, key: info, checkable: true}
+  red:
+    - config: {mode: enforce_data}
+      datasets: {d: {info: "../harm-marker"}}
+      harm: true
+      expect:
+        rejected: true
+        message_contains: ["contains the characters [/]"]
+  green:
+    - config: {mode: enforce_data}
+      datasets: {d: {info: notes}}
+      harm: true
+      expect: {rejected: false}
+
 wrapped_names_stay_quoted:
   doc: >-
     Galaxy sanitizes dataset names and metadata read through the dataset wrapper even in a tool that turns

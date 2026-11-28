@@ -1,0 +1,10 @@
+<tool id="spec_dataset_info_link_name" name="Dataset info as a link name" version="1.0" profile="24.0">
+    <description>links a dataset under the name its info gives</description>
+    <command><![CDATA[mkdir -p links && ln -s '$d' 'links/$d.info' && cat '$d' > '$out']]></command>
+    <inputs>
+        <param name="d" type="data" format="txt"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>

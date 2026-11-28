@@ -398,6 +398,40 @@ def test_color_param_where_galaxy_checks_colours(tmp_path, command, colors_valid
     assert {rule for rule in rules(report) if rule != ("option-injection", "low")} == expected
 
 
+_DATASETS = '<param name="input" type="data" format="txt"/><param name="inputs" type="data" multiple="true"/>'
+
+
+@pytest.mark.parametrize(
+    "command,expected",
+    [
+        # The wrapper's own element identifier is the raw identifier.
+        (
+            "ln -s '$input._element_identifier' x && cat '$input' > '$out'",
+            {("shell-injection", "high"), ("path-traversal", "medium")},
+        ),
+        # A history import sets the tool version from the archive.
+        ("tool $input.tool_version > '$out'", {("argument-injection", "medium")}),
+        # serialize() holds the element identifier.
+        ("#import json\necho '$json.dumps($input.serialize())' > '$out'", {("shell-injection", "high")}),
+        ("tool '${input.serialize()['source_path']}' > '$out'", set()),
+        (
+            "ln -s '$input' '${input.serialize()['staging_path']}' && cat '$input' > '$out'",
+            {("shell-injection", "high")},
+        ),
+        # The datasets of a group are datasets of the input.
+        (
+            "#for $d in $inputs.get_datasets_for_group('g')\nln -s '$d' '$d.element_identifier' &&\n#end for\ntrue",
+            {("shell-injection", "high"), ("path-traversal", "medium")},
+        ),
+        # Names a dataset does not have make the template fail.
+        ("tool '$input.forward' '$input.tmp' > '$out'", set()),
+    ],
+)
+def test_dataset_members(tmp_path, command, expected):
+    report = review(tmp_path, command, inputs=_DATASETS)
+    assert rules(report) - {("option-injection", "low")} == expected
+
+
 def test_python_built_command_keeps_quoting(tmp_path):
     command = "#set $cmd = \"ln -s '%s' '%s.txt' &&\" % ($input, $letters)\n$cmd true"
     assert rules(review(tmp_path, command)) == set()

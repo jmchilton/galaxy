@@ -127,9 +127,37 @@ _DATA_CLEAN = frozenset(
         " get_size has_data serialize is_input_supplied"
     ).split()
 )
+# Members of a dataset that hold or reach text a user, the dataset's content or another job set: its strings,
+# the methods that return them and the objects it links to. Galaxy sets the others (its type, ids, paths,
+# sizes and state), and on any name a dataset does not have the template fails.
+DATA_TEXT = frozenset(
+    (
+        "name info dbkey created_from_basename designation blurb peek display_name display_info display_peek"
+        " get_display_name get_dbkey get_created_from_basename deferred_source_uri validated_state_message"
+        " as_display_type to_dict tags auto_propagated_tags make_tag_string_list annotations get_item_annotation_obj"
+        " get_item_annotation_str ratings history user creating_job creating_job_associations dependent_jobs copy"
+        " tool_version to_library_dataset_dataset_association to_dataset_instances"
+        " copied_from_history_dataset_association copied_from_library_dataset_dataset_association"
+        " copied_to_history_dataset_associations copied_to_library_dataset_dataset_associations"
+        " source_library_dataset source_dataset_chain hidden_beneath_collection_instance extended_metadata sources"
+        " hashes get_datasources get_access_roles get_metadata get_metadata_dataset get_converted_dataset"
+        " get_converted_dataset_deps get_converted_files_by_type implicitly_converted_datasets"
+        " implicitly_converted_parent_datasets find_conversion_destination get_display_applications"
+        " tool_evaluator compute_environment"
+    ).split()
+)
+# Names of the wrapper's own that Galaxy sets: whether it is an input or an output, and its path.
+_DATA_PRIVATE_CLEAN = frozenset(("_DatasetFilenameWrapper__io_type", "_path_or_uri"))
 _METADATA_CLEAN = frozenset(
     "columns data_lines comment_lines sequences column_types delimiter blocks bases number_of_models".split()
 )
+# Metadata elements that are files Galaxy writes, besides the indexes (`*_index`).
+_FILE_METADATA = frozenset(("offsets", "hyper_params", "species_chromosomes"))
+
+
+def galaxy_metadata(name: str) -> bool:
+    """Whether a metadata element of this name is a number, a column or a file Galaxy sets."""
+    return name in _METADATA_CLEAN or name in _FILE_METADATA or name.endswith(("_index", "Col"))
 
 
 # Dataset attributes a template reads by name, which hold text a user chose.
@@ -167,11 +195,12 @@ class Data(Node):
     def attr(self, name: str) -> AV | None:
         if self.output:
             return CLEAN
-        if name in ("element_identifier", "name_and_ext"):
+        if name in ("element_identifier", "name_and_ext", "_element_identifier"):
             return tainted(
                 PROBE,
                 source(f"element identifier of dataset '{self.path}' (not sanitized)", ELEMENT_IDENTIFIER, self.path),
-                # name_and_ext adds the extension to the identifier the job check reads.
+                # name_and_ext adds the extension to the identifier the job check reads, which outside a
+                # collection is the name where _element_identifier is None.
                 verbatim=name == "element_identifier",
             )
         if name == "groups":
@@ -192,15 +221,41 @@ class Data(Node):
             return AV(nodes=(DatasetObject(self.path, self),))
         if name == "single_item":
             return AV(nodes=(self,))
-        if name in _DATA_CLEAN:
-            return CLEAN
-        return self._safe_string("name" if name == "name" else f"attribute '{name}'", key=name)
+        if name == "serialize":
+            identifier = source(f"element identifier of dataset '{self.path}'", ELEMENT_IDENTIFIER, self.path)
+            serialized = AV(nodes=(StagedDataset(f"{self.path}.serialize()", tainted(PROBE, identifier)),))
+            # A list of them for a multiple data input.
+            return AV(bound=(AV(elem=serialized) if self.multiple else serialized, returns_receiver))
+        if name == "get_datasets_for_group":
+            return AV(bound=(AV(elem=AV(nodes=(self,))), returns_receiver))
+        if name == "pop":
+            return AV(bound=(AV(nodes=(self,)), returns_receiver))
+        if name in DATA_TEXT or (name.startswith("__") and name.endswith("__")):
+            return self._safe_string("name" if name == "name" else f"attribute '{name}'", key=name)
+        if name.startswith("_") and name not in _DATA_PRIVATE_CLEAN:
+            # The wrapper's own state, which reaches the datasets as they are.
+            private = source(f"'{name}' of dataset '{self.path}' (not sanitized)", OPAQUE, self.path)
+            return AV(nodes=(Opaque(f"{self.path}.{name}", tainted(PROBE, private)),))
+        return CLEAN
 
     def element(self) -> AV | None:
         return AV(nodes=(self,))
 
     def sources(self, names: frozenset[str]) -> Iterator[SourceRef]:
         return iter(()) if self.output else dataset_sources(self.path, names)
+
+
+@dataclass(eq=False)
+class StagedDataset(Opaque):
+    """``serialize()`` of a dataset: a dict of its element identifier, its staging path (the identifier without
+    slashes), its extension, its path and those of its metadata files, which are staged under the identifier."""
+
+    def attr(self, name: str) -> AV | None:
+        if name in ("ext", "source_path"):
+            return CLEAN
+        if name == "staging_path":
+            return AV(chars=self.value.chars - {"/"}, sources=self.value.sources)
+        return super().attr(name)
 
 
 # Attributes of a dataset model that Galaxy sets itself: its type, its id, its paths and state.
@@ -248,7 +303,7 @@ class RawMetadata(Opaque):
     data_path: str = ""
 
     def attr(self, name: str) -> AV | None:
-        if name in _METADATA_CLEAN or name.endswith(("_index", "Col")):
+        if galaxy_metadata(name):
             return CLEAN
         if name.isidentifier() and not name.startswith("_") and name not in ("spec", "items", "get", "parent"):
             return tainted(
@@ -282,7 +337,7 @@ class Metadata(Node):
     data: Data
 
     def attr(self, name: str) -> AV | None:
-        if name in _METADATA_CLEAN or name.endswith(("_index", "Col")) or name in ("get", "items", "element_is_set"):
+        if galaxy_metadata(name) or name in ("get", "items", "element_is_set"):
             return CLEAN
         return self.data._safe_string(f"metadata '{name}'", METADATA, name)
 

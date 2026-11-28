@@ -1,0 +1,17 @@
+<tool id="spec_untyped_collection_forward" name="Forward reads of an untyped collection" version="1.0" profile="24.0">
+    <description>links the forward dataset of each pair of a collection of any type</description>
+    <command><![CDATA[#for $pair in $c
+#if $pair.is_collection
+ln -s '$pair.forward' reads.txt &&
+#else
+ln -s '$pair' reads.txt &&
+#end if
+#end for
+cat reads.txt > '$out']]></command>
+    <inputs>
+        <param name="c" type="data_collection"/>
+    </inputs>
+    <outputs>
+        <data name="out" format="txt"/>
+    </outputs>
+</tool>
