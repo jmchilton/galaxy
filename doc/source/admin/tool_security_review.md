@@ -1124,6 +1124,50 @@ config:
   mode: enforce_all
 ```
 
+#### dataset_content_command_substitution
+
+A command substitution that reads a dataset writes its content where the job runs. Unquoted, the shell splits it into words and globs them, so it can add options. The check reads the file Galaxy keeps; with `enforce_data`, content with a word that starts with a dash is refused.
+
+Tool `dataset_content_substitution.xml`:
+
+```
+sort -k \$(cat '$fields') '$fields' > '$out'
+```
+
+Refused
+
+```
+datasets:
+  fields:
+    content: '1 -o harm-marker
+
+      '
+config:
+  mode: enforce_data
+```
+
+Runs
+
+```
+datasets:
+  fields:
+    content: '1
+
+      '
+config:
+  mode: enforce_data
+```
+
+Runs: With `enforce_code`, the default, words the shell splits are not refused.
+
+```
+datasets:
+  fields:
+    content: '1 -r
+
+      '
+```
+
 #### env_assignment
 
 `env` takes every word before the command as an assignment or the command: an unquoted value that splits runs a command of its own.
@@ -2111,6 +2155,40 @@ inputs:
   p: -o harm-marker
 config:
   mode: enforce_all
+```
+
+#### dataset_content_substitution_quoted
+
+Inside double quotes the output of a command substitution stays one word: the shell neither splits nor globs it, nor reads quotes or operators in it.
+
+Tool `dataset_content_substitution_quoted.xml`:
+
+```
+sort -k "\$(cat '$fields')" '$fields' > '$out'
+```
+
+Runs
+
+```
+datasets:
+  fields:
+    content: '1
+
+      '
+config:
+  mode: enforce_data
+```
+
+Runs: The content is one argument of `sort`, a key it refuses; nothing else runs.
+
+```
+datasets:
+  fields:
+    content: '1 -o harm-marker
+
+      '
+config:
+  mode: enforce_data
 ```
 
 #### getvar_self_sanitized

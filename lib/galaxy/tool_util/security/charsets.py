@@ -206,6 +206,24 @@ def unquoted(chars: Chars, word_first: Chars | None = None, script: bool = False
     return None
 
 
+# What the shell does with the output of an unquoted command substitution: it splits it into words and
+# globs them. It reads no quotes, operators or expansions in it, and expands no `~` or braces.
+SUBSTITUTION_SPLIT: Chars = WHITESPACE | frozenset("*?[")
+
+
+def substituted(chars: Chars) -> Verdict | None:
+    """What the output of a command substitution that can hold ``chars`` can do unquoted."""
+    if hit := chars & SUBSTITUTION_SPLIT:
+        return Verdict(
+            "argument-injection",
+            MEDIUM,
+            hit,
+            "can split into extra arguments or globs",
+            data_requires=DATA_HARM - {TILDE_WORD, "{"},
+        )
+    return None
+
+
 def single_quoted(chars: Chars, script: bool = False) -> Verdict | None:
     if "'" not in chars:
         return None

@@ -242,6 +242,47 @@ def test_file_read_by_the_template_is_user_data(tmp_path):
     assert rules(review(tmp_path, own)) == set()
 
 
+SPLIT_CONTENT = {("argument-injection", "medium"), ("option-injection", "low")}
+
+
+@pytest.mark.parametrize(
+    "command,expected",
+    [
+        ("tool \\$(cat '$input') > '$out'", SPLIT_CONTENT),
+        ("tool `head -n 1 '$input' | cut -f 2` > '$out'", SPLIT_CONTENT),
+        ("tool \\$(sort < '$input' | grep -v '^#') > '$out'", SPLIT_CONTENT),
+        ("tool \\$(cat '$input' 2> /dev/null) > '$out'", SPLIT_CONTENT),
+        ("tool \\$(sort -k 2 '$input') > '$out'", SPLIT_CONTENT),
+        ("tool \\$(grep -v '^#' '$input') > '$out'", SPLIT_CONTENT),
+        ("tool \\$(grep -e -c '$input') > '$out'", SPLIT_CONTENT),
+        ("tool \\$(cat '${input.file_name}') > '$out'", SPLIT_CONTENT),
+        # Older dash splits an operand of a declaration.
+        ("export X=\\$(cat '$input') && tool > '$out'", {("argument-injection", "medium")}),
+        # grep's first operand is its pattern; the word names another file.
+        ("tool \\$(grep '$input') > '$out'", set()),
+        ("tool \\$(cat '$input'.txt) > '$out'", set()),
+        ("tool --name \"\\$(cat '$input')\" > '$out'", set()),
+        # The substitution writes a count, or the content goes to a file.
+        ("tool \\$(cat '$input' | wc -l) > '$out'", set()),
+        ("tool \\$(cat '$input' | grep -c x) > '$out'", set()),
+        ("tool \\$(grep -c x < '$input') > '$out'", set()),
+        ("tool \\$(sort -o sorted.txt '$input') > '$out'", set()),
+        ("tool \\$(cat '$input' > copy.txt; echo ok) > '$out'", set()),
+        # The shell does not split what it assigns.
+        ("x=\\$(cat '$input') && tool > '$out'", set()),
+        ("\\$(cat '$input') > '$out'", {("command-position", "high"), ("argument-injection", "medium")}),
+    ],
+)
+def test_dataset_content_a_command_substitution_writes(tmp_path, command, expected):
+    assert rules(review(tmp_path, command)) == expected
+
+
+def test_decompressed_dataset_content_is_not_checkable(tmp_path):
+    report = review(tmp_path, "tool \\$(zcat '$input') > '$out'")
+    assert rules(report) == SPLIT_CONTENT
+    assert not any(f.checkable for f in report.findings)
+
+
 @pytest.mark.parametrize(
     "command,expected",
     [

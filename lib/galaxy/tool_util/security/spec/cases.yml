@@ -583,6 +583,56 @@ argument_injection:
       harm: true
       expect: {rejected: false}
 
+dataset_content_command_substitution:
+  doc: >-
+    A command substitution that reads a dataset writes its content where the job runs. Unquoted, the shell
+    splits it into words and globs them, so it can add options. The check reads the file Galaxy keeps; with
+    `enforce_data`, content with a word that starts with a dash is refused.
+  tool: dataset_content_substitution.xml
+  code: argument-injection
+  review:
+    findings:
+      - {rule: argument-injection, severity: medium, accessor: dataset_content, param: fields, checkable: true}
+  red:
+    - config: {mode: enforce_data}
+      datasets:
+        fields: {content: "1 -o harm-marker\n"}
+      harm: true
+      expect:
+        rejected: true
+        message_contains:
+          - "the content of a dataset of input 'fields' contains the characters [newline space a word starting with -]"
+  green:
+    - config: {mode: enforce_data}
+      datasets:
+        fields: {content: "1\n"}
+      harm: true
+      expect: {rejected: false}
+    - doc: With `enforce_code`, the default, words the shell splits are not refused.
+      datasets:
+        fields: {content: "1 -r\n"}
+      expect: {rejected: false}
+
+dataset_content_substitution_quoted:
+  doc: >-
+    Inside double quotes the output of a command substitution stays one word: the shell neither splits nor
+    globs it, nor reads quotes or operators in it.
+  tool: dataset_content_substitution_quoted.xml
+  review:
+    absent:
+      - {rule: argument-injection, param: fields}
+  green:
+    - config: {mode: enforce_data}
+      datasets:
+        fields: {content: "1\n"}
+      harm: true
+      expect: {rejected: false}
+    - doc: The content is one argument of `sort`, a key it refuses; nothing else runs.
+      config: {mode: enforce_data}
+      datasets:
+        fields: {content: "1 -o harm-marker\n"}
+      expect: {rejected: false}
+
 path_like_name:
   doc: >-
     `sort -o` writes to a file named after the element identifier, which the review does not take for a path

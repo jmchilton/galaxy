@@ -582,6 +582,8 @@ class TemplateAnalysis:
         self.events: set[shell.Event] = set()
         # configfile name -> commands that take it as an argument
         self.readers: dict[str, set[str]] = {}
+        # Input datasets whose paths a command substitution may read, by the key the shell lexer gets.
+        self._substitution_datasets: dict[str, tuple[Data, ...]] = {}
         self._capture: list[list[AV]] = []
         self._returns: list[list[AV]] = []
         self._pending: ast.expr | None = None  # expression of the placeholder about to be written
@@ -1092,7 +1094,7 @@ class TemplateAnalysis:
         if self._capture:
             return states
         if self.language == "shell":
-            return frozenset(shell.feed(state, text, self.events) for state in states)
+            return frozenset(shell.feed(state, text, self.events, self._judge_substitution) for state in states)
         return frozenset(self._feed_text(state, text, self.language) for state in states)
 
     @staticmethod
@@ -1148,7 +1150,8 @@ class TemplateAnalysis:
                 args = [self.ev(arg, env) for arg in node.args]
                 keywords = {k.arg: self.ev(k.value, env) for k in node.keywords if k.arg}
                 return self.inline(callee.helper, args, states, env, keywords)
-        return self.write_value(self.ev(node, env), raw_expr, states, env)
+        datasets = self._dataset_path(node, env) if node is not None and self.language == "shell" else ()
+        return self.write_value(self.ev(node, env), raw_expr, states, env, datasets)
 
     def _returns_value(self, name: str) -> bool:
         """A helper with `#return value` is a function: its result is written, not what it wrote."""
@@ -1157,7 +1160,10 @@ class TemplateAnalysis:
             isinstance(node, ast.Return) and node.value is not None for stmt in method.body for node in ast.walk(stmt)
         )
 
-    def write_value(self, value: AV, raw_expr: str | None, states: States, env: Env) -> States:
+    def write_value(
+        self, value: AV, raw_expr: str | None, states: States, env: Env, datasets: tuple[Data, ...] = ()
+    ) -> States:
+        """``datasets``: the value is the path of these input datasets."""
         if value.helper and not self._capture:
             if self._returns_value(value.helper):
                 return self.write_value(self.call_helper(value.helper, [], env), raw_expr, states, env)
@@ -1207,8 +1213,9 @@ class TemplateAnalysis:
             return frozenset(after_config)
         out = set()
         tool_path = bool(value.nodes) and not text.tainted and all(map(_is_tool_path, value.nodes))
+        dataset = self._substitution_key(value, text, datasets)
         for state in states:
-            context, after = shell.placeholder(state, tool_path)
+            context, after = shell.placeholder(state, tool_path, dataset)
             if context.comment:
                 out.add(after)
                 continue
@@ -1226,6 +1233,31 @@ class TemplateAnalysis:
                     self._record_closers(text, opening)
             out.add(after)
         return frozenset(out)
+
+    def _substitution_key(self, value: AV, text: AV, datasets: tuple[Data, ...]) -> str:
+        """The key the shell lexer gets for a value that is the path of input datasets, "" for other values."""
+        if text.tainted:
+            return ""
+        if not datasets:
+            datasets = tuple(n for n in value.nodes if isinstance(n, Data) and not n.output)
+            if not datasets or len(datasets) != len(value.nodes):
+                return ""
+        key = ",".join(data.path for data in datasets)
+        self._substitution_datasets[key] = datasets
+        return key
+
+    def _judge_substitution(self, read: tuple[tuple[str, str], ...], context: shell.Context | None) -> None:
+        """A command substitution writes the content of the datasets it reads; ``context``: where."""
+        for key, reader in dict.fromkeys(read):
+            text = stringify(dataset_content(self._substitution_datasets[key]))
+            if reader in shell.DECOMPRESSORS:
+                # The job check reads the dataset's file, not what decompressing it writes.
+                self._record(text.sources, charsets.PROBE, False)
+            for ref in source_refs(text.sources):
+                # Its output reads no quotes: it does no harm once another value flips the quoting.
+                self._written.setdefault(ref, charsets.NONE)
+            if context is not None:
+                self.judge_shell(text, context, f"$({reader} ${key})", substitution=True)
 
     def _can_escape_config_quote(self, text: AV, quote: str) -> bool:
         """The value can end in a backslash that escapes the closing quote of a string in a program."""
@@ -1247,8 +1279,12 @@ class TemplateAnalysis:
             if isinstance(node, Special) and node.path.startswith("configfile:"):
                 self.readers.setdefault(node.path[len("configfile:") :], set()).add(context.cmd)
 
-    def judge_shell(self, text: AV, context: shell.Context, raw_expr: str | None, escaped: bool = False) -> None:
-        """``escaped``: an earlier user value in the same kind of quotes can end in a backslash."""
+    def judge_shell(
+        self, text: AV, context: shell.Context, raw_expr: str | None, escaped: bool = False, substitution: bool = False
+    ) -> None:
+        """``escaped``: an earlier user value in the same kind of quotes can end in a backslash.
+        ``substitution``: the value is the output of a command substitution, which the shell only splits and
+        globs, and only unquoted."""
         chars = text.chars
         verdicts: list[Verdict] = []
         script = self.script
@@ -1295,7 +1331,11 @@ class TemplateAnalysis:
                 outer = chars - {'"', "\\"}
             if not context.lang:
                 chars = outer
-            if verdict := _quoting_verdict(context.quote, outer, text.words, script):
+            if substitution:
+                verdict = None if context.quote else charsets.substituted(outer)
+            else:
+                verdict = _quoting_verdict(context.quote, outer, text.words, script)
+            if verdict:
                 verdicts.append(verdict)
             if context.lang == "sh":
                 if verdict := _quoting_verdict(context.inner, chars, text.words, script):
@@ -1332,8 +1372,9 @@ class TemplateAnalysis:
                     level=charsets.DATA,
                 )
             )
+        where = context.describe() + (", as the output of a command substitution" if substitution else "")
         for verdict in verdicts:
-            self.finding(verdict, text, context.describe(), raw_expr)
+            self.finding(verdict, text, where, raw_expr)
 
     def judge_config(
         self,
@@ -1994,10 +2035,13 @@ class TemplateAnalysis:
         return join(*(contents(a) for a in args + keywords))
 
     def _opened_datasets(self, node: ast.Call, env: Env) -> tuple[Data, ...]:
-        """The input datasets ``open()`` reads: `open($x)`, `open(str($x))`, `open($x.__str__)`, `open($x.file_name)`."""
+        """The input datasets ``open()`` reads."""
         if len(node.args) != 1 or node.keywords:
             return ()
-        argument = node.args[0]
+        return self._dataset_path(node.args[0], env)
+
+    def _dataset_path(self, argument: ast.expr, env: Env) -> tuple[Data, ...]:
+        """The input datasets an expression is the path of: `$x`, `str($x)`, `$x.__str__`, `$x.file_name`."""
         if (
             isinstance(argument, ast.Call)
             and isinstance(argument.func, ast.Name)
@@ -2012,7 +2056,7 @@ class TemplateAnalysis:
         if path is None:
             return ()
         parts = path.split(".")
-        while len(parts) > 1 and parts[-1] in ("__str__", "file_name", "get_file_name"):
+        while len(parts) > 1 and parts[-1] in ("__str__", "file_name", "get_file_name", "path"):
             parts.pop()
         value = self.resolve(".".join(parts), env, False)
         datasets = tuple(n for n in value.nodes if isinstance(n, Data) and not n.output)

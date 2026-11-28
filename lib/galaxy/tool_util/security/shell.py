@@ -50,6 +50,16 @@ _SED = frozenset(("sed", "gsed"))
 # Commands that take their program as an argument, so that a file they are given is data.
 PROGRAM_IS_ARGUMENT = _AWK | _SED
 _PYTHON = re.compile(r"^(python|pypy)[0-9.]*$")
+# Commands that write the lines of the files they are given, or of what is piped into them: in a command
+# substitution, the dataset content they read is its output. grep's first operand is its pattern.
+_PASSES_LINES = frozenset(("cat", "tac", "head", "tail", "cut", "sort", "uniq", "grep"))
+DECOMPRESSORS = frozenset(("zcat",))
+READERS = _PASSES_LINES | DECOMPRESSORS
+# grep options after which it writes a count, file names or nothing instead of the lines.
+_GREP_NO_LINES = re.compile(r"^(-[A-Za-z]*[cLlq][A-Za-z]*|--(count|files-with(out)?-match(es)?|quiet|silent))$")
+# grep options that give the pattern in the next word, and in the same word.
+_GREP_PATTERN_NEXT = re.compile(r"^(-[A-Za-z]*[ef]|--regexp|--file)$")
+_GREP_PATTERN = re.compile(r"^(-[A-Za-z]*[ef].+|--(regexp|file)=.*)$")
 # Commands whose arguments name files to create or replace.
 FILE_COMMANDS = frozenset(("ln", "cp", "mv", "mkdir", "touch", "tee", "rm", "rmdir", "install", "rsync"))
 
@@ -122,6 +132,13 @@ class Frame(NamedTuple):
     after_option: bool = False  # the previous word was an option, so this word may be its value
     stdin: bool = False  # a shell data is piped into, whose arguments have not yet given it a script
     tool_path: bool = False  # every value in the current word is a path the tool controls, from its start
+    # In a command substitution: (dataset, reader) whose content the current pipeline passes on, and
+    # whose content earlier commands of the list wrote to the output.
+    content: tuple[tuple[str, str], ...] = ()
+    written: tuple[tuple[str, str], ...] = ()
+    pending: tuple[tuple[str, str], ...] = ()  # read by the current word, if it is nothing but the dataset's path
+    no_lines: bool = False  # the command writes a count, or writes to a file: not the lines it reads
+    operands: bool = False  # `--` ended the options of the command
 
 
 class ShellState(NamedTuple):
@@ -188,8 +205,12 @@ SCRIPT = ShellState(script=True)
 Event = Tuple[str, ...]
 
 
+# Receives the (dataset, reader) pairs whose content a command substitution writes, and where it lands.
+Substituted = Callable[[Tuple[Tuple[str, str], ...], Optional[Context]], None]
+
+
 class _Lexer:
-    def __init__(self, state: ShellState, events: set[Event] | None):
+    def __init__(self, state: ShellState, events: set[Event] | None, substituted: Substituted | None = None):
         self.frames = list(state.frames)
         self.esc = state.esc
         self.comment = state.comment
@@ -198,6 +219,7 @@ class _Lexer:
         self.escaped = state.escaped
         self.script = state.script
         self.events = events
+        self.substituted = substituted
 
     def state(self) -> ShellState:
         return ShellState(tuple(self.frames), self.esc, self.comment, self.last, self.amp, self.escaped, self.script)
@@ -261,6 +283,8 @@ class _Lexer:
         if f.word is None:
             return
         text, dynamic, role, tool_path = f.word, f.dynamic, f.role, f.tool_path
+        if f.pending:
+            self.set(content=f.content + f.pending if text == "" else f.content, pending=())
         self.set(word=None, dynamic=False, tool_path=False, role="", lead=False, inner="", sed=None)
         if not dynamic:
             self.event("word", text)
@@ -287,6 +311,9 @@ class _Lexer:
             if f.wrapper and _WRAPPER_ARG.match(text):
                 return
         name = "?" if dynamic else text.rsplit("/", 1)[-1]
+        if f.piped and f.content and name not in _PASSES_LINES:
+            # The command reads what is piped into it, and writes something else.
+            self.set(content=())
         # A shell runs the data piped into it unless its arguments give it a script: see runs_input.
         stdin = f.piped and name in SHELLS
         self.event("command", name, "piped" if f.piped and not stdin else "")
@@ -303,6 +330,19 @@ class _Lexer:
 
     def end_argument(self, text: str) -> None:
         cmd = self.top.cmd or ""
+        if cmd == "grep" and self.top.operands:
+            self.set(has_args=True)
+        elif cmd == "grep":
+            if text == "--":
+                self.set(operands=True)
+            elif _GREP_PATTERN_NEXT.match(text):
+                self.set(expect="optarg", has_args=True)
+            elif _GREP_PATTERN.match(text):
+                self.set(has_args=True)
+            elif _GREP_NO_LINES.match(text):
+                self.set(content=(), no_lines=True)
+        elif cmd == "sort" and text.startswith(("-o", "--output")):
+            self.set(content=(), no_lines=True)
         language = language_of(cmd)
         inline = _INLINE_CODE.get(language or "")
         # After its script operand, an interpreter passes every word to the script: `perl x.pl -e 1`.
@@ -358,6 +398,9 @@ class _Lexer:
     def new_command(self, piped: bool = False) -> None:
         self.end_word()
         self.runs_input()
+        f = self.top
+        if not piped and f.content:
+            self.set(written=f.written + f.content, content=())
         self.set(
             cmd=None,
             wrapper=False,
@@ -368,6 +411,8 @@ class _Lexer:
             has_args=False,
             after_option=False,
             sandbox=False,
+            no_lines=False,
+            operands=False,
         )
 
     # -- characters ----------------------------------------------------------------------------
@@ -379,7 +424,19 @@ class _Lexer:
         self.end_word()
         self.runs_input()
         if len(self.frames) > 1:
-            self.frames.pop()
+            frame = self.frames.pop()
+            if self.substituted and (read := frame.written + frame.content):
+                self.substituted(read, self.substitution(frame.kind))
+
+    def substitution(self, kind: str) -> Context | None:
+        """Where the output of the command substitution that just ended lands; None in an assignment, which
+        the shell does not split."""
+        f = self.top
+        word = f.word or ""
+        before = word[:-1] if kind == "cs" and word.endswith("$") else word
+        if f.role == "cmd" and not f.wrapper and _ASSIGNMENT.match(before):
+            return None
+        return self.context(not before and not f.dynamic, before)
 
     def step(self, c: str) -> None:
         if self.comment:
@@ -478,10 +535,14 @@ class _Lexer:
                 self.new_command()
                 self.amp = last != "&"
         elif c in "<>":
-            if f.word is not None and f.word.isdigit() and not f.dynamic:
+            fd = f.word if f.word is not None and f.word.isdigit() and not f.dynamic else None
+            if fd is not None:
                 self.set(word=None, role="")
             else:
                 self.end_word()
+            if c == ">" and fd in (None, "1") and last not in "<>":
+                # What the command writes goes to a file, not to the output of a substitution.
+                self.set(content=(), no_lines=True)
             if c == ">":
                 self.set(expect="redir")
             else:
@@ -491,7 +552,7 @@ class _Lexer:
         else:
             self.add(c)
 
-    def placeholder(self, tool_path: bool = False) -> Context:
+    def placeholder(self, tool_path: bool = False, dataset: str = "") -> Context:
         if self.comment:
             return Context(True, "", "", None, "", "", False, False)
         self.esc = False
@@ -503,6 +564,19 @@ class _Lexer:
         self.start_word("x")
         f = self.top
         self.set(dynamic=True, tool_path=tool_path and (lead or f.tool_path), lead=f.lead or lead)
+        f = self.top
+        if not lead:
+            # The word is more than a path the lexer was given.
+            self.set(pending=())
+        elif dataset and f.kind in ("cs", "bt") and not f.no_lines:
+            reader = (f.cmd or "cat") if f.role == "stdin" else f.cmd if f.role == "arg" else None
+            pattern = reader == "grep" and f.role == "arg" and not f.has_args
+            if reader in READERS and not pattern:
+                self.set(pending=f.pending + ((dataset, reader),))
+        return self.context(f.lead, before)
+
+    def context(self, lead: bool, before: str) -> Context:
+        """Where a value written into the current word lands. ``lead``: the word begins with it."""
         f = self.top
         lang = inner = ""
         sed_state = None
@@ -524,7 +598,7 @@ class _Lexer:
             else:
                 assign = "split" if f.wrapped else "value"
         first_arg = role == "arg" and not f.has_args and not (f.word or "").startswith("-")
-        option_position = role == "arg" and f.lead and not f.after_option and bool(f.cmd) and f.cmd != "?"
+        option_position = role == "arg" and lead and not f.after_option and bool(f.cmd) and f.cmd != "?"
         return Context(
             False,
             f.quote,
@@ -532,7 +606,7 @@ class _Lexer:
             f.cmd,
             lang,
             inner,
-            f.lead,
+            lead,
             len(self.frames) > 1,
             first_arg,
             option_position,
@@ -542,19 +616,22 @@ class _Lexer:
         )
 
 
-def feed(state: ShellState, text: str, events: set[Event] | None = None) -> ShellState:
-    """Advance over literal template text."""
-    lexer = _Lexer(state, events)
+def feed(
+    state: ShellState, text: str, events: set[Event] | None = None, substituted: Substituted | None = None
+) -> ShellState:
+    """Advance over literal template text. ``substituted`` receives the datasets whose content a command
+    substitution that ends in the text writes, as (dataset, reader), and where it lands."""
+    lexer = _Lexer(state, events, substituted)
     for c in text:
         lexer.step(c)
     return lexer.state()
 
 
-def placeholder(state: ShellState, tool_path: bool = False) -> tuple[Context, ShellState]:
+def placeholder(state: ShellState, tool_path: bool = False, dataset: str = "") -> tuple[Context, ShellState]:
     """Where a value written at this point lands, and the state after it. ``tool_path``: a configfile or the
-    tool directory."""
+    tool directory. ``dataset``: the value is the path of these input datasets."""
     lexer = _Lexer(state, None)
-    context = lexer.placeholder(tool_path)
+    context = lexer.placeholder(tool_path, dataset)
     return context, lexer.state()
 
 
