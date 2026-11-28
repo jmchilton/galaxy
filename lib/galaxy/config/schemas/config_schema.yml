@@ -4104,7 +4104,11 @@ mapping:
           Galaxy's own tools are not reviewed at any level: the upload tool (``upload1``)
           and the tools Galaxy runs itself (set metadata, data fetch, history import and
           export). Nor are tools without a command template, user-defined tools and
-          expression tools. Every other tool Galaxy ships is reviewed.
+          expression tools. Interactive tools (``tool_type="interactive"``) and CWL tools
+          are not reviewed either: an administrator enables interactive tools explicitly,
+          and an interactive tool is meant to run in its own container and may get the
+          user's API key by design; a CWL tool has no Cheetah command template. Every
+          other tool Galaxy ships is reviewed.
 
       tool_security_review_when_unsure:
         type: str
@@ -4133,8 +4137,8 @@ mapping:
           that names the values or the reason. With ``refuse``, Galaxy fails every such job
           whatever its values. With ``log``, Galaxy only logs what ``strict`` would fail and
           runs the job. Galaxy's own tools (the upload tool and the tools Galaxy runs
-          itself), tools without a command template, user-defined tools and expression tools
-          are not reviewed and are not affected.
+          itself), interactive tools, CWL tools, tools without a command template,
+          user-defined tools and expression tools are not reviewed and are not affected.
 
       preserve_python_environment:
         type: str

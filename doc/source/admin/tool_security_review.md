@@ -95,7 +95,15 @@ metadata, data fetch, history import and export). Nor are tools without a comman
 and expression tools. Every other tool Galaxy ships with a command template is reviewed: its stock tools
 wherever Galaxy is installed, the datatype converters and the sample sheet tools (the collection operations have
 no command). Galaxy's own tools are matched by their real path, so a copy of one elsewhere is reviewed like any
-other tool. Galaxy logs once per tool, at `INFO`, that one of its own tools is not reviewed.
+other tool.
+
+Interactive tools and CWL tools are not reviewed either. An administrator enables interactive tools explicitly
+(`interactivetools_enable`), and an interactive tool is meant to run in its own container and may get the
+user's API key by design. A tool is an interactive tool when Galaxy loads it as one, usually because it
+declares `tool_type="interactive"`, in any tool format; entry points alone do not make it one. A CWL tool's
+command line is built from its CWL description, not from a Cheetah template (Galaxy does not run CWL tools
+yet). `python -m galaxy.tool_util.security` still reports the findings of both. Galaxy logs once per tool, at
+`INFO`, each of its own, interactive and CWL tools it leaves out, and why.
 
 The upload tool is the one the default settings would otherwise refuse. Galaxy gives an upload job its outputs
 when it creates the job, so the tool cannot list them and its template reads them by a computed name

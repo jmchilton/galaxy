@@ -93,7 +93,7 @@ from galaxy.tool_util.security.report import (
 from galaxy.tools.parameters.basic import FTPFileToolParameter
 from galaxy.tools.security_refusal import (
     declares_upload_tool,
-    is_galaxy_own_tool,
+    review_exclusion,
     tool_file,
     ToolInputRejected,
     upload_tool_lookalike_message,
@@ -183,14 +183,21 @@ class ToolReview:
         return self.report.unchecked_locations if self.report is not None else {}
 
 
+def _review_exclusion(tool: "Tool") -> str | None:
+    # The tool's source dropped its XML tree after parsing; Tool.tool_type is the type of the class Galaxy built.
+    reason: str | None = review_exclusion(tool_file(tool), tool.tool_type)
+    return reason
+
+
 def reviewed_tool_source(tool: "Tool") -> ToolSource | None:
     """The source the review reads: the tool as parsed, macros expanded.
 
-    None for a tool without a template, and for one of Galaxy's own tools (:func:`is_galaxy_own_tool`).
+    None for a tool without a template, and for one of Galaxy's own tools, an interactive tool or a CWL
+    tool (:func:`~galaxy.tools.security_refusal.review_exclusion`).
     """
     if tool.tool_type_local or tool.tool_type in _UNREVIEWED_TOOL_TYPES or not tool.command:
         return None
-    if is_galaxy_own_tool(tool_file(tool)):
+    if _review_exclusion(tool) is not None:
         return None
     source = tool.tool_source
     if not isinstance(source, (XmlToolSource, YamlToolSource)):
@@ -216,7 +223,7 @@ class ToolSecurityReviewer:
         self._reviews: WeakKeyDictionary[Tool, ToolReview] = WeakKeyDictionary()
         self._tool_locks: WeakKeyDictionary[Tool, threading.Lock] = WeakKeyDictionary()
         self._lock = threading.Lock()
-        # Tools without a template to review, and Galaxy's own tools: decided once per tool.
+        # Tools without a template to review, and the tools the review leaves out: decided once per tool.
         self._unreviewed: WeakSet[Tool] = WeakSet()
 
     @classmethod
@@ -255,12 +262,8 @@ class ToolSecurityReviewer:
             return review
         if tool_source is None:
             self._unreviewed.add(tool)
-            if is_galaxy_own_tool(tool_file(tool)):
-                log.info(
-                    "Tool %s version %s is not reviewed for security: it is one of Galaxy's own tools",
-                    tool.id,
-                    tool.version,
-                )
+            if (reason := _review_exclusion(tool)) is not None:
+                log.info("Tool %s version %s is not reviewed for security: %s", tool.id, tool.version, reason)
             return None
         with self._lock:
             tool_lock = self._tool_locks.setdefault(tool, threading.Lock())

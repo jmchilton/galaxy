@@ -360,6 +360,35 @@ def test_other_tools_galaxy_ships_beside_them_are_reviewed(upload_app, path):
     assert review is not None and review.status == ANALYSED
 
 
+# -- interactive tools --------------------------------------------------------------------------
+
+ENTRY_POINTS = '<entry_points><entry_point name="Echo"><port>7000</port></entry_point></entry_points>'
+INTERACTIVE_ECHO_IDS = ECHO_IDS.replace('profile="24.0">', f'profile="24.0" tool_type="interactive">{ENTRY_POINTS}')
+# Entry points but no tool_type="interactive": Galaxy runs it as an ordinary tool.
+INTERACTIVE_LOOKALIKE = ECHO_IDS.replace('profile="24.0">', f'profile="24.0">{ENTRY_POINTS}')
+
+
+def test_interactive_tools_jobs_are_not_checked_at_any_level(app, tmp_path, caplog):
+    caplog.set_level(logging.INFO, logger=security_review.__name__)
+    app.config.interactivetools_enable = True
+    tool = make_tool(app, tmp_path, INTERACTIVE_ECHO_IDS)
+    assert tool.tool_type == "interactive" and tool.command
+    assert reviewed_tool_source(tool) is None
+    for mode in (ENFORCE_CODE, ENFORCE_DATA, ENFORCE_ALL):
+        for when_unsure in (STRICT, "refuse"):
+            r = ToolSecurityReviewer(mode, when_unsure=when_unsure)
+            assert r.review(tool) is None
+            r.check_job(tool, evaluator(app, tool, ["sample_1", "it';id;'s"]))
+    assert caplog.text.count("is not reviewed for security: it is an interactive tool") == 6
+
+
+def test_tools_that_only_look_interactive_are_reviewed(app, tmp_path):
+    tool = make_tool(app, tmp_path, INTERACTIVE_LOOKALIKE)
+    assert tool.tool_type == "default" and tool.ports
+    with pytest.raises(ToolInputRejected, match="element identifier"):
+        reviewer(tmp_path, ENFORCE_CODE).check_job(tool, evaluator(app, tool, ["sample_1", "it';id;'s"]))
+
+
 def test_galaxy_upload_tool_exemption_is_decided_once_per_tool(upload_app, monkeypatch):
     tool = create_tool_from_source(upload_app, get_tool_source(GALAXY_UPLOAD_TOOL), config_file=GALAXY_UPLOAD_TOOL)
     calls = []
